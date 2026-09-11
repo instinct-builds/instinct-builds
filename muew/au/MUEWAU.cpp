@@ -6,13 +6,21 @@
 
 #include <AudioToolbox/AudioUnitProperties.h>
 #include <AudioToolbox/MusicDevice.h>
+#include <CoreFoundation/CoreFoundation.h>
 #include <cstring>
 #include <new>
+#include <vector>
 
 namespace {
 
 constexpr OSType kSubType = 'Muew';
 constexpr OSType kManufacturer = 'Inst';
+
+struct Listener {
+    AudioUnitPropertyID id;
+    AudioUnitPropertyListenerProc proc;
+    void* userData;
+};
 
 struct MUEWInstance {
     AudioComponentPlugInInterface vtable;
@@ -22,6 +30,8 @@ struct MUEWInstance {
     UInt32 maxFrames = 512;
     UInt32 renderQuality = 0x7F;
     bool initialized = false;
+    SInt32 presentPreset = 0;
+    std::vector<Listener> listeners;
 
     AudioStreamBasicDescription streamFormat() const {
         AudioStreamBasicDescription d;
@@ -71,6 +81,11 @@ reverb 1 0.75 0.4 0.35
 };
 
 MUEWInstance* Self(void* self) { return reinterpret_cast<MUEWInstance*>(self); }
+
+void NotifyListeners(MUEWInstance* u, AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement elem) {
+    for (auto& l : u->listeners)
+        l.proc(l.userData, u->componentInstance, id, scope, elem);
+}
 
 // ---- AudioComponentPlugInInterface ----
 
@@ -142,6 +157,16 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
         case kMusicDeviceProperty_InstrumentCount:
             if (inScope == kAudioUnitScope_Global) { *outDataSize = sizeof(UInt32); return noErr; }
             break;
+        case kAudioUnitProperty_PresentPreset:
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(AUPreset); if (outWritable) *outWritable = true; return noErr;
+            }
+            break;
+        case kAudioUnitProperty_ClassInfo:
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(CFPropertyListRef); if (outWritable) *outWritable = true; return noErr;
+            }
+            break;
         default: break;
     }
     (void)u;
@@ -199,6 +224,30 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 *static_cast<UInt32*>(outData) = 1; *ioDataSize = sizeof(UInt32); return noErr;
             }
             break;
+        case kAudioUnitProperty_PresentPreset:
+            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(AUPreset)) {
+                AUPreset* p = static_cast<AUPreset*>(outData);
+                p->presetNumber = u->presentPreset;
+                p->presetName = CFSTR("Warm Pad");
+                *ioDataSize = sizeof(AUPreset);
+                return noErr;
+            }
+            break;
+        case kAudioUnitProperty_ClassInfo:
+            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(CFPropertyListRef)) {
+                // Document-based state: which preset is loaded and the render quality.
+                CFStringRef keys[] = {CFSTR("presetNumber"), CFSTR("presetName"), CFSTR("renderQuality")};
+                CFNumberRef num = CFNumberCreate(nullptr, kCFNumberSInt32Type, &u->presentPreset);
+                CFNumberRef rq = CFNumberCreate(nullptr, kCFNumberSInt32Type, &u->renderQuality);
+                CFTypeRef vals[] = {num, CFSTR("Warm Pad"), rq};
+                CFDictionaryRef dict = CFDictionaryCreate(nullptr, (const void**)keys, (const void**)vals, 3,
+                    &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+                CFRelease(num); CFRelease(rq);
+                *static_cast<CFPropertyListRef*>(outData) = dict; // caller releases
+                *ioDataSize = sizeof(CFPropertyListRef);
+                return noErr;
+            }
+            break;
         default: break;
     }
     return kAudioUnitErr_InvalidProperty;
@@ -214,6 +263,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 if (sr < 8000.0 || sr > 192000.0) return kAudioUnitErr_InvalidPropertyValue;
                 if (u->initialized) return kAudioUnitErr_CannotDoInCurrentContext;
                 u->sampleRate = sr;
+                NotifyListeners(u, kAudioUnitProperty_SampleRate, kAudioUnitScope_Global, 0);
                 return noErr;
             }
             break;
@@ -231,12 +281,37 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
         case kAudioUnitProperty_MaximumFramesPerSlice:
             if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(UInt32)) {
                 u->maxFrames = *static_cast<const UInt32*>(inData);
+                NotifyListeners(u, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0);
                 return noErr;
             }
             break;
         case kAudioUnitProperty_RenderQuality:
             if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(UInt32)) {
                 u->renderQuality = *static_cast<const UInt32*>(inData);
+                NotifyListeners(u, kAudioUnitProperty_RenderQuality, kAudioUnitScope_Global, 0);
+                return noErr;
+            }
+            break;
+        case kAudioUnitProperty_PresentPreset:
+            if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(AUPreset)) {
+                const AUPreset* p = static_cast<const AUPreset*>(inData);
+                // One factory sound; -1 marks host-applied custom state. Both accepted.
+                u->presentPreset = (p->presetNumber == -1) ? -1 : 0;
+                return noErr;
+            }
+            break;
+        case kAudioUnitProperty_ClassInfo:
+            if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(CFPropertyListRef)) {
+                CFPropertyListRef plist = *static_cast<const CFPropertyListRef*>(inData);
+                if (plist && CFGetTypeID(plist) == CFDictionaryGetTypeID()) {
+                    CFDictionaryRef dict = (CFDictionaryRef)plist;
+                    CFNumberRef num = (CFNumberRef)CFDictionaryGetValue(dict, CFSTR("presetNumber"));
+                    if (num && CFGetTypeID(num) == CFNumberGetTypeID()) {
+                        SInt32 n = 0;
+                        if (CFNumberGetValue(num, kCFNumberSInt32Type, &n))
+                            u->presentPreset = (n == -1) ? -1 : 0;
+                    }
+                }
                 return noErr;
             }
             break;
@@ -318,20 +393,24 @@ OSStatus MUEWStopNote(void* self, MusicDeviceGroupID inGroupID, NoteInstanceID i
 
 OSStatus MUEWAddPropertyListener(void* self, AudioUnitPropertyID inID,
                                  AudioUnitPropertyListenerProc inProc, void* inProcUserData) {
-    (void)self; (void)inID; (void)inProc; (void)inProcUserData;
+    Self(self)->listeners.push_back({inID, inProc, inProcUserData});
     return noErr;
 }
 
 OSStatus MUEWRemovePropertyListener(void* self, AudioUnitPropertyID inID,
                                     AudioUnitPropertyListenerProc inProc) {
-    (void)self; (void)inID; (void)inProc;
+    auto& ls = Self(self)->listeners;
+    for (auto it = ls.begin(); it != ls.end(); ++it)
+        if (it->id == inID && it->proc == inProc) { ls.erase(it); break; }
     return noErr;
 }
 
 OSStatus MUEWRemovePropertyListenerWithUserData(void* self, AudioUnitPropertyID inID,
                                                 AudioUnitPropertyListenerProc inProc,
                                                 void* inProcUserData) {
-    (void)self; (void)inID; (void)inProc; (void)inProcUserData;
+    auto& ls = Self(self)->listeners;
+    for (auto it = ls.begin(); it != ls.end(); ++it)
+        if (it->id == inID && it->proc == inProc && it->userData == inProcUserData) { ls.erase(it); break; }
     return noErr;
 }
 
