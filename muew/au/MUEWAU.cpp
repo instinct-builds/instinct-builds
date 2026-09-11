@@ -235,14 +235,21 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
             break;
         case kAudioUnitProperty_ClassInfo:
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(CFPropertyListRef)) {
-                // Document-based state: which preset is loaded and the render quality.
-                CFStringRef keys[] = {CFSTR("presetNumber"), CFSTR("presetName"), CFSTR("renderQuality")};
+                // auval requires the component identity fields plus our state.
+                UInt32 type = kAudioUnitType_MusicDevice, sub = kSubType, mfr = kManufacturer;
+                CFStringRef keys[] = {CFSTR("type"), CFSTR("subtype"), CFSTR("manufacturer"),
+                                      CFSTR("name"), CFSTR("version"), CFSTR("presetNumber"), CFSTR("renderQuality")};
+                CFNumberRef t = CFNumberCreate(nullptr, kCFNumberIntType, &type);
+                CFNumberRef st = CFNumberCreate(nullptr, kCFNumberIntType, &sub);
+                CFNumberRef m = CFNumberCreate(nullptr, kCFNumberIntType, &mfr);
+                SInt32 ver = 0x00010000;
+                CFNumberRef v = CFNumberCreate(nullptr, kCFNumberSInt32Type, &ver);
                 CFNumberRef num = CFNumberCreate(nullptr, kCFNumberSInt32Type, &u->presentPreset);
                 CFNumberRef rq = CFNumberCreate(nullptr, kCFNumberSInt32Type, &u->renderQuality);
-                CFTypeRef vals[] = {num, CFSTR("Warm Pad"), rq};
-                CFDictionaryRef dict = CFDictionaryCreate(nullptr, (const void**)keys, (const void**)vals, 3,
+                CFTypeRef vals[] = {t, st, m, CFSTR("Instinct: MUEW"), v, num, rq};
+                CFDictionaryRef dict = CFDictionaryCreate(nullptr, (const void**)keys, (const void**)vals, 7,
                     &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-                CFRelease(num); CFRelease(rq);
+                CFRelease(t); CFRelease(st); CFRelease(m); CFRelease(v); CFRelease(num); CFRelease(rq);
                 *static_cast<CFPropertyListRef*>(outData) = dict; // caller releases
                 *ioDataSize = sizeof(CFPropertyListRef);
                 return noErr;
