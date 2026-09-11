@@ -122,10 +122,7 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
             }
             break;
         case kAudioUnitProperty_ElementCount:
-            if (inScope == kAudioUnitScope_Output || inScope == kAudioUnitScope_Global) {
-                *outDataSize = sizeof(UInt32); return noErr;
-            }
-            break;
+            *outDataSize = sizeof(UInt32); return noErr;
         case kAudioUnitProperty_MaximumFramesPerSlice:
             if (inScope == kAudioUnitScope_Global) {
                 *outDataSize = sizeof(UInt32); if (outWritable) *outWritable = true; return noErr;
@@ -170,13 +167,10 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
             }
             break;
         case kAudioUnitProperty_ElementCount:
-            if (inScope == kAudioUnitScope_Output) {
-                *static_cast<UInt32*>(outData) = 1; *ioDataSize = sizeof(UInt32); return noErr;
+            if (inScope == kAudioUnitScope_Input) {
+                *static_cast<UInt32*>(outData) = 0; *ioDataSize = sizeof(UInt32); return noErr;
             }
-            if (inScope == kAudioUnitScope_Global) {
-                *static_cast<UInt32*>(outData) = 1; *ioDataSize = sizeof(UInt32); return noErr;
-            }
-            break;
+            *static_cast<UInt32*>(outData) = 1; *ioDataSize = sizeof(UInt32); return noErr;
         case kAudioUnitProperty_MaximumFramesPerSlice:
             if (inScope == kAudioUnitScope_Global) {
                 *static_cast<UInt32*>(outData) = u->maxFrames; *ioDataSize = sizeof(UInt32); return noErr;
@@ -322,6 +316,25 @@ OSStatus MUEWStopNote(void* self, MusicDeviceGroupID inGroupID, NoteInstanceID i
     return noErr;
 }
 
+OSStatus MUEWAddPropertyListener(void* self, AudioUnitPropertyID inID,
+                                 AudioUnitPropertyListenerProc inProc, void* inProcUserData) {
+    (void)self; (void)inID; (void)inProc; (void)inProcUserData;
+    return noErr;
+}
+
+OSStatus MUEWRemovePropertyListener(void* self, AudioUnitPropertyID inID,
+                                    AudioUnitPropertyListenerProc inProc) {
+    (void)self; (void)inID; (void)inProc;
+    return noErr;
+}
+
+OSStatus MUEWRemovePropertyListenerWithUserData(void* self, AudioUnitPropertyID inID,
+                                                AudioUnitPropertyListenerProc inProc,
+                                                void* inProcUserData) {
+    (void)self; (void)inID; (void)inProc; (void)inProcUserData;
+    return noErr;
+}
+
 AudioComponentMethod MUEWLookup(SInt16 selector) {
     switch (selector) {
         case kAudioUnitInitializeSelect:   return (AudioComponentMethod)MUEWInitialize;
@@ -330,6 +343,9 @@ AudioComponentMethod MUEWLookup(SInt16 selector) {
         case kAudioUnitGetPropertySelect:  return (AudioComponentMethod)MUEWGetProperty;
         case kAudioUnitSetPropertySelect:  return (AudioComponentMethod)MUEWSetProperty;
         case kAudioUnitResetSelect:        return (AudioComponentMethod)MUEWReset;
+        case kAudioUnitAddPropertyListenerSelect: return (AudioComponentMethod)MUEWAddPropertyListener;
+        case kAudioUnitRemovePropertyListenerSelect: return (AudioComponentMethod)MUEWRemovePropertyListener;
+        case kAudioUnitRemovePropertyListenerWithUserDataSelect: return (AudioComponentMethod)MUEWRemovePropertyListenerWithUserData;
         case kAudioUnitRenderSelect:       return (AudioComponentMethod)MUEWRender;
         case kMusicDeviceMIDIEventSelect:  return (AudioComponentMethod)MUEWMIDIEvent;
         case kMusicDeviceSysExSelect:      return (AudioComponentMethod)MUEWSysEx;
