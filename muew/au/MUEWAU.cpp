@@ -111,9 +111,6 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
     MUEWInstance* u = Self(self);
     if (outWritable) *outWritable = false;
     switch (inID) {
-        case kAudioUnitProperty_AudioComponentDescription:
-            if (inScope == kAudioUnitScope_Global) { *outDataSize = sizeof(AudioComponentDescription); return noErr; }
-            break;
         case kAudioUnitProperty_SampleRate:
             if (inScope == kAudioUnitScope_Global || inScope == kAudioUnitScope_Output) {
                 *outDataSize = sizeof(Float64); if (outWritable) *outWritable = true; return noErr;
@@ -158,18 +155,6 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                          AudioUnitElement inElement, void* outData, UInt32* ioDataSize) {
     MUEWInstance* u = Self(self);
     switch (inID) {
-        case kAudioUnitProperty_AudioComponentDescription:
-            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(AudioComponentDescription)) {
-                AudioComponentDescription* d = static_cast<AudioComponentDescription*>(outData);
-                d->componentType = kAudioUnitType_MusicDevice;
-                d->componentSubType = kSubType;
-                d->componentManufacturer = kManufacturer;
-                d->componentFlags = 0;
-                d->componentFlagsMask = 0;
-                *ioDataSize = sizeof(AudioComponentDescription);
-                return noErr;
-            }
-            break;
         case kAudioUnitProperty_SampleRate:
             if ((inScope == kAudioUnitScope_Global || inScope == kAudioUnitScope_Output) && *ioDataSize >= sizeof(Float64)) {
                 *static_cast<Float64*>(outData) = u->sampleRate;
@@ -337,8 +322,7 @@ OSStatus MUEWStopNote(void* self, MusicDeviceGroupID inGroupID, NoteInstanceID i
     return noErr;
 }
 
-AudioComponentMethod MUEWLookup(void* self, SInt16 selector) {
-    (void)self;
+AudioComponentMethod MUEWLookup(SInt16 selector) {
     switch (selector) {
         case kAudioUnitInitializeSelect:   return (AudioComponentMethod)MUEWInitialize;
         case kAudioUnitUninitializeSelect: return (AudioComponentMethod)MUEWUninitialize;
