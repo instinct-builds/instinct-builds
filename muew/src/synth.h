@@ -71,6 +71,16 @@ public:
         }
     }
 
+    // Non-interleaved stereo (Audio Unit buffer layout): same path as renderStereo.
+    void renderPlanar(float* left, float* right, int frames) {
+        for (int i = 0; i < frames; ++i) {
+            float l = mixVoices(), r = l;
+            fx_.process(l, r);
+            left[i]  = std::tanh(l * 1.6f);
+            right[i] = std::tanh(r * 1.6f);
+        }
+    }
+
     static std::vector<ModRoute> defaultRoutes() {
         return {
             {ModRoute::Source::ModEnv, ModRoute::Dest::FilterCutoff, 2.0},

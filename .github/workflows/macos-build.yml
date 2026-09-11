@@ -36,3 +36,17 @@ jobs:
             architer/*.dmg
             asssets/*.dmg
             muew/out/*
+
+  au:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build, sign, install and validate MUEW AU
+        run: cd muew && au/build_au.sh
+
+      - name: Upload AU artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muew-au-unsigned
+          path: muew/out/MUEW-AU-unsigned.zip
