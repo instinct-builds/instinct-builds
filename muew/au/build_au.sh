@@ -24,6 +24,16 @@ mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
 rm -rf "$HOME/Library/Audio/Plug-Ins/Components/MUEW.component"
 cp -R "$OUT" "$HOME/Library/Audio/Plug-Ins/Components/"
 
+echo "== Refreshing AudioComponent registrar cache =="
+# macOS caches component registrations; a freshly installed component is
+# invisible to auval until the registrar re-scans. This is the documented
+# remedy for "didn't find the component" after a new install.
+killall -9 AudioComponentRegistrar 2>/dev/null || true
+sleep 2
+
+echo "== Discovery check =="
+auval -a | grep -i muew || { echo "FAIL: component not discovered after registrar restart"; exit 1; }
+
 echo "== auval =="
 auval -v aumu Muew Inst
 
