@@ -246,7 +246,6 @@ struct MUEWInstance {
 
     void loadDefaultSound() { loadFactoryPreset(7); }
 };
-};
 
 MUEWInstance* Self(void* self) { return reinterpret_cast<MUEWInstance*>(self); }
 
