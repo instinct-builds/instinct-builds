@@ -1,0 +1,390 @@
+import Foundation
+
+/// A minimal, dependency-free PDF 1.4 writer: Letter pages, the standard-14
+/// Helvetica faces, text, filled/stroked rects, and lines. Enough for a
+/// clean print layout without any platform APIs.
+public struct PDFDocument {
+
+    public enum Face { case regular, bold }
+
+    public struct PageSize {
+        public var width: Double
+        public var height: Double
+        public static let letter = PageSize(width: 612, height: 792)
+        public static let a4 = PageSize(width: 595.28, height: 841.89)
+    }
+
+    public private(set) var pageSize: PageSize
+    private var streams: [[String]] = [] // one operator list per page
+
+    public init(pageSize: PageSize = .letter) {
+        self.pageSize = pageSize
+    }
+
+    public var pageCount: Int { streams.count }
+
+    @discardableResult
+    public mutating func addPage() -> Int {
+        streams.append([])
+        return streams.count - 1
+    }
+
+    // Content streams are byte strings; keep text to ASCII so every reader
+    // renders it identically. Common punctuation gets an ASCII stand-in.
+    private static let asciiFallback: [UnicodeScalar: String] = [
+        "\u{2018}": "'", "\u{2019}": "'", "\u{201C}": "\"", "\u{201D}": "\"",
+        "\u{2013}": "-", "\u{2014}": "-", "\u{00B7}": "-", "\u{2026}": "...",
+    ]
+
+    private static func esc(_ s: String) -> String {
+        var out = ""
+        for scalar in s.unicodeScalars {
+            switch scalar {
+            case "(": out += "\\("
+            case ")": out += "\\)"
+            case "\\": out += "\\\\"
+            default:
+                if scalar.value < 128 { out.unicodeScalars.append(scalar) }
+                else if let mapped = asciiFallback[scalar] { out += mapped }
+                else { out.append("?") }
+            }
+        }
+        return out
+    }
+
+    public mutating func text(page: Int, x: Double, y: Double, _ s: String,
+                              size: Double = 10, face: Face = .regular, gray: Double = 0) {
+        guard streams.indices.contains(page) else { return }
+        let font = face == .bold ? "F2" : "F1"
+        streams[page].append(
+            "\(fmt(gray)) g BT /\(font) \(fmt(size)) Tf \(fmt(x)) \(fmt(y)) Td (\(PDFDocument.esc(s))) Tj ET")
+    }
+
+    public mutating func fillRect(page: Int, x: Double, y: Double, w: Double, h: Double, gray: Double) {
+        guard streams.indices.contains(page) else { return }
+        streams[page].append("\(fmt(gray)) g \(fmt(x)) \(fmt(y)) \(fmt(w)) \(fmt(h)) re f 0 g")
+    }
+
+    public mutating func strokeRect(page: Int, x: Double, y: Double, w: Double, h: Double,
+                                    lineWidth: Double = 0.8, gray: Double = 0) {
+        guard streams.indices.contains(page) else { return }
+        streams[page].append(
+            "\(fmt(gray)) G \(fmt(lineWidth)) w \(fmt(x)) \(fmt(y)) \(fmt(w)) \(fmt(h)) re S 0 G 1 w")
+    }
+
+    public mutating func line(page: Int, x1: Double, y1: Double, x2: Double, y2: Double,
+                              lineWidth: Double = 0.8, gray: Double = 0) {
+        guard streams.indices.contains(page) else { return }
+        streams[page].append(
+            "\(fmt(gray)) G \(fmt(lineWidth)) w \(fmt(x1)) \(fmt(y1)) m \(fmt(x2)) \(fmt(y2)) l S 0 G 1 w")
+    }
+
+    private func fmt(_ v: Double) -> String {
+        if v == v.rounded() && abs(v) < 1e15 { return String(Int(v)) }
+        return String(format: "%.2f", v)
+    }
+
+    public func render() -> Data {
+        // Object layout: 1 catalog, 2 pages, 3 regular font, 4 bold font,
+        // then per page i: page object (5 + 2i) and content object (6 + 2i).
+        var objects: [String] = []
+        let pageKids = streams.indices.map { "\(5 + 2 * $0) 0 R" }.joined(separator: " ")
+        objects.append("<< /Type /Catalog /Pages 2 0 R >>")
+        objects.append("<< /Type /Pages /Kids [\(pageKids)] /Count \(streams.count) >>")
+        objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+        objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
+        for (i, ops) in streams.enumerated() {
+            let contentObj = 6 + 2 * i
+            objects.append("""
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 \(fmt(pageSize.width)) \(fmt(pageSize.height))] \
+            /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents \(contentObj) 0 R >>
+            """)
+            let body = ops.joined(separator: "\n")
+            objects.append("<< /Length \(body.utf8.count) >>\nstream\n\(body)\nendstream")
+        }
+
+        var out = "%PDF-1.4\n"
+        var offsets: [Int] = []
+        for (i, body) in objects.enumerated() {
+            offsets.append(out.utf8.count)
+            out += "\(i + 1) 0 obj\n\(body)\nendobj\n"
+        }
+        let xrefPos = out.utf8.count
+        out += "xref\n0 \(objects.count + 1)\n"
+        out += "0000000000 65535 f \n"
+        for off in offsets { out += String(format: "%010d 00000 n \n", off) }
+        out += """
+        trailer
+        << /Size \(objects.count + 1) /Root 1 0 R >>
+        startxref
+        \(xrefPos)
+        %%EOF
+        """
+        return Data(out.utf8)
+    }
+}
+
+/// Print layout for a character sheet: header, ability boxes, vitals chips,
+/// then sections in layout order, flowing across Letter pages.
+public enum SheetPDFExporter {
+
+    public static func export(_ c: Character) -> Data {
+        var doc = PDFDocument()
+        var cursor = Cursor(doc: doc)
+        let margin = 54.0
+        let contentW = doc.pageSize.width - margin * 2
+
+        cursor.ensure(120)
+        // Header
+        cursor.text(margin, c.name, size: 22, face: .bold)
+        cursor.advance(26)
+        let subtitle = "Level \(c.level) \(c.lineage) \(c.calling)"
+            .trimmingCharacters(in: .whitespaces)
+        cursor.text(margin, subtitle, size: 12)
+        cursor.advance(16)
+        var meta = "XP \(c.experience)  ·  Proficiency bonus +\(c.proficiencyBonus)"
+        if !c.background.isEmpty { meta += "  ·  \(c.background)" }
+        cursor.text(margin, meta, size: 9, gray: 0.35)
+        cursor.advance(10)
+        cursor.rule(margin, width: contentW)
+        cursor.advance(14)
+
+        for block in c.layout.visibleBlocks {
+            switch block.kind {
+            case .identity:
+                continue // already the header
+            case .abilities:
+                cursor.section("Abilities", margin: margin)
+                let boxW = (contentW - 5 * 8) / 6
+                cursor.ensure(58)
+                let top = cursor.y
+                for (i, a) in Ability.allCases.enumerated() {
+                    let x = margin + Double(i) * (boxW + 8)
+                    cursor.doc.strokeRect(page: cursor.page, x: x, y: top - 50, w: boxW, h: 50)
+                    let label = a.abbreviation
+                    cursor.doc.text(page: cursor.page, x: x + boxW / 2 - est(label, 7) / 2, y: top - 12,
+                                    label, size: 7, gray: 0.35)
+                    let score = "\(c.scores[a])"
+                    cursor.doc.text(page: cursor.page, x: x + boxW / 2 - est(score, 16) / 2, y: top - 32,
+                                    score, size: 16, face: .bold)
+                    let save = "save \(signed(c.savingThrow(a)))"
+                    cursor.doc.text(page: cursor.page, x: x + boxW / 2 - est(save, 6) / 2, y: top - 44,
+                                    save, size: 6, gray: 0.35)
+                }
+                cursor.advance(58)
+            case .vitals:
+                cursor.section("Vitals", margin: margin)
+                let chips: [(String, String)] = [
+                    ("HP", "\(c.currentHP)/\(c.maxHP)"),
+                    ("AC", "\(c.armorClass)"),
+                    ("Initiative", signed(c.initiative)),
+                    ("Speed", "\(c.speed) ft"),
+                    ("Passive Perc", "\(c.passivePerception)"),
+                ]
+                let chipW = (contentW - 4 * 8) / 5
+                cursor.ensure(36)
+                let top = cursor.y
+                for (i, (label, value)) in chips.enumerated() {
+                    let x = margin + Double(i) * (chipW + 8)
+                    cursor.doc.strokeRect(page: cursor.page, x: x, y: top - 28, w: chipW, h: 28)
+                    let t = "\(label)  \(value)"
+                    cursor.doc.text(page: cursor.page, x: x + chipW / 2 - est(t, 8) / 2, y: top - 18,
+                                    t, size: 8)
+                }
+                cursor.advance(36)
+            case .skills:
+                cursor.section("Skills", margin: margin)
+                let trained = c.skills.filter { $0.tier != .none }
+                if trained.isEmpty {
+                    cursor.line("No trained skills", margin: margin, gray: 0.45)
+                } else {
+                    let colW = contentW / 2
+                    for (i, s) in trained.enumerated() {
+                        if i % 2 == 0 { cursor.ensure(13) }
+                        let x = margin + Double(i % 2) * colW
+                        let bonus = signed(s.bonus(scores: c.scores, level: c.level))
+                        let text = "\(s.name) \(bonus)\(s.tier == .expert ? " (expert)" : "")"
+                        cursor.doc.text(page: cursor.page, x: x, y: cursor.y - 10, text, size: 9)
+                        if i % 2 == 1 || i == trained.count - 1 { cursor.advance(13) }
+                    }
+                }
+            case .attacks:
+                cursor.section("Attacks", margin: margin)
+                let cols: [(String, Double)] = [("Attack", 0), ("Bonus", 200), ("Damage", 270), ("Notes", 350)]
+                cursor.ensure(16)
+                cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
+                for (title, off) in cols {
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + off, y: cursor.y - 10, title, size: 8, face: .bold)
+                }
+                cursor.advance(16)
+                if c.attacks.isEmpty {
+                    cursor.line("No attacks", margin: margin, gray: 0.45)
+                }
+                for a in c.attacks {
+                    cursor.ensure(14)
+                    cursor.doc.text(page: cursor.page, x: margin + 4, y: cursor.y - 10, a.name, size: 9)
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + 200, y: cursor.y - 10, signed(a.attackBonus), size: 9)
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + 270, y: cursor.y - 10, a.damageExpression, size: 9)
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + 350, y: cursor.y - 10, a.notes, size: 9)
+                    cursor.advance(13)
+                    cursor.rule(margin, width: contentW, gray: 0.85)
+                    cursor.advance(1)
+                }
+            case .inventory:
+                cursor.section("Inventory", margin: margin)
+                if c.inventory.isEmpty {
+                    cursor.line("Empty pack", margin: margin, gray: 0.45)
+                } else {
+                    let colW = contentW / 2
+                    for (i, item) in c.inventory.enumerated() {
+                        if i % 2 == 0 { cursor.ensure(13) }
+                        let x = margin + Double(i % 2) * colW
+                        var text = item.name
+                        if item.quantity > 1 { text += " x\(item.quantity)" }
+                        if !item.notes.isEmpty { text += " - \(item.notes)" }
+                        cursor.doc.text(page: cursor.page, x: x, y: cursor.y - 10, text, size: 9)
+                        if i % 2 == 1 || i == c.inventory.count - 1 { cursor.advance(13) }
+                    }
+                }
+            case .diceRoller:
+                continue // interactive block, not printable
+            case .notes:
+                guard !c.notes.isEmpty else { continue }
+                cursor.section("Notes", margin: margin)
+                for para in c.notes.components(separatedBy: "\n") {
+                    for line in wrap(para, width: contentW, size: 9) {
+                        cursor.line(line, margin: margin)
+                    }
+                }
+            }
+            cursor.advance(8)
+        }
+
+        // Custom ruleset sections and user-defined templated blocks.
+        if !c.customAbilities.isEmpty {
+            cursor.section("\(c.rulesetName ?? "Custom") Abilities", margin: margin)
+            let cols: [(String, Double)] = [("Ability", 0), ("Score", 200), ("Mod", 270)]
+            cursor.ensure(16)
+            cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
+            for (title, off) in cols {
+                cursor.doc.text(page: cursor.page, x: margin + 4 + off, y: cursor.y - 10, title, size: 8, face: .bold)
+            }
+            cursor.advance(16)
+            for a in c.customAbilities {
+                cursor.ensure(14)
+                cursor.doc.text(page: cursor.page, x: margin + 4, y: cursor.y - 10, a.name, size: 9)
+                cursor.doc.text(page: cursor.page, x: margin + 4 + 200, y: cursor.y - 10, "\(a.score)", size: 9)
+                cursor.doc.text(page: cursor.page, x: margin + 4 + 270, y: cursor.y - 10, signed(a.modifier), size: 9)
+                cursor.advance(13)
+            }
+            cursor.advance(8)
+        }
+        if !c.customSkills.isEmpty {
+            cursor.section("\(c.rulesetName ?? "Custom") Skills", margin: margin)
+            let trained = c.customSkills.filter { $0.tier != .none }
+            if trained.isEmpty {
+                cursor.line("No trained skills", margin: margin, gray: 0.45)
+            } else {
+                let colW = contentW / 2
+                for (i, s) in trained.enumerated() {
+                    if i % 2 == 0 { cursor.ensure(13) }
+                    let x = margin + Double(i % 2) * colW
+                    let bonus = signed(s.bonus(abilities: c.customAbilities, level: c.level))
+                    let text = "\(s.name) \(bonus)\(s.tier == .expert ? " (expert)" : "")"
+                    cursor.doc.text(page: cursor.page, x: x, y: cursor.y - 10, text, size: 9)
+                    if i % 2 == 1 || i == trained.count - 1 { cursor.advance(13) }
+                }
+            }
+            cursor.advance(8)
+        }
+        for block in c.layout.customBlocks {
+            cursor.section(TemplateRenderer.render(block.title, for: c), margin: margin)
+            for para in TemplateRenderer.render(block.body, for: c).components(separatedBy: "\n") {
+                for line in wrap(para, width: contentW, size: 9) {
+                    cursor.line(line, margin: margin)
+                }
+            }
+            cursor.advance(8)
+        }
+
+        // Cursor owns the working copy; take it back before finishing.
+        doc = cursor.doc
+
+        // Footer on every page.
+        for p in 0..<doc.pageCount {
+            doc.line(page: p, x1: margin, y1: 46, x2: margin + contentW, y2: 46, lineWidth: 0.5, gray: 0.8)
+            doc.text(page: p, x: margin, y: 36, "Made with ARCHITER", size: 7, gray: 0.5)
+            doc.text(page: p, x: margin + contentW - 40, y: 36, "Page \(p + 1) of \(doc.pageCount)", size: 7, gray: 0.5)
+        }
+        return doc.render()
+    }
+
+    /// Rough Helvetica advance estimate for centering/wrapping (~0.5 em).
+    private static func est(_ s: String, _ size: Double) -> Double {
+        Double(s.count) * size * 0.5
+    }
+
+    private static func wrap(_ s: String, width: Double, size: Double) -> [String] {
+        var lines: [String] = []
+        var current = ""
+        for word in s.split(separator: " ", omittingEmptySubsequences: false) {
+            let candidate = current.isEmpty ? String(word) : current + " " + word
+            if est(candidate, size) > width, !current.isEmpty {
+                lines.append(current)
+                current = String(word)
+            } else {
+                current = candidate
+            }
+        }
+        if !current.isEmpty { lines.append(current) }
+        return lines.isEmpty ? [""] : lines
+    }
+
+    private static func signed(_ n: Int) -> String { n >= 0 ? "+\(n)" : "\(n)" }
+
+    /// Tracks the vertical cursor and opens new pages as needed.
+    private struct Cursor {
+        var doc: PDFDocument
+        var page: Int
+        var y: Double
+        let bottom = 60.0
+
+        init(doc: PDFDocument) {
+            var d = doc
+            self.page = d.addPage()
+            self.doc = d
+            self.y = d.pageSize.height - 54
+        }
+
+        mutating func ensure(_ space: Double) {
+            if y - space < bottom {
+                page = doc.addPage()
+                y = doc.pageSize.height - 54
+            }
+        }
+
+        mutating func advance(_ dy: Double) { y -= dy }
+
+        mutating func text(_ x: Double, _ s: String, size: Double, face: PDFDocument.Face = .regular, gray: Double = 0) {
+            doc.text(page: page, x: x, y: y, s, size: size, face: face, gray: gray)
+        }
+
+        mutating func section(_ title: String, margin: Double) {
+            ensure(30)
+            text(margin, title.uppercased(), size: 10, face: .bold)
+            advance(13)
+            rule(margin, width: doc.pageSize.width - margin * 2, gray: 0.7)
+            advance(6)
+        }
+
+        mutating func line(_ s: String, margin: Double, gray: Double = 0) {
+            ensure(13)
+            text(margin, s, size: 9, gray: gray)
+            advance(13)
+        }
+
+        mutating func rule(_ x: Double, width: Double, gray: Double = 0) {
+            doc.line(page: page, x1: x, y1: y, x2: x + width, y2: y, lineWidth: 0.8, gray: gray)
+        }
+    }
+}

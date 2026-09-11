@@ -1,0 +1,19 @@
+muew-preset 1
+osc1Shape 2
+osc2Shape 3
+osc2Detune 7
+osc2Level 0.5
+filterCutoff 8000
+filterReso 0.7
+filterMode 0
+amp 0.005 0.15 0.8 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+routes 3
+route 1 2 2
+route 0 1 0.05
+route 2 2 1
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28

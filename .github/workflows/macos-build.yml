@@ -1,0 +1,38 @@
+name: macOS build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ARCHITER tests
+        run: cd architer && swift test
+
+      - name: ASSSETS tests
+        run: cd asssets && swift test
+
+      - name: MUEW build + tests
+        run: cd muew && make all && make test
+
+      - name: ARCHITER DMG (unsigned)
+        run: cd architer && scripts/make_dmg.sh
+
+      - name: ASSSETS DMG (unsigned)
+        run: cd asssets && scripts/make_dmg.sh
+
+      - name: MUEW demo renders
+        run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-suite-unsigned
+          path: |
+            architer/*.dmg
+            asssets/*.dmg
+            muew/out/*
