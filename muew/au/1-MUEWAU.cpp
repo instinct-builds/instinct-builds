@@ -493,10 +493,12 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
         case kAudioUnitProperty_PresentPreset:
             if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(AUPreset)) {
                 const AUPreset* p = static_cast<const AUPreset*>(inData);
-                if (p->presetNumber < 0 || p->presetNumber >= kPresetCount)
-                    return kAudioUnitErr_InvalidPropertyValue;
-                if (!u->loadFactoryPreset(p->presetNumber))
-                    return kAudioUnitErr_InvalidPropertyValue;
+                if (p->presetNumber < 0) {
+                    u->presentPreset = -1; // host-applied custom state
+                } else {
+                    if (p->presetNumber >= kPresetCount || !u->loadFactoryPreset(p->presetNumber))
+                        return kAudioUnitErr_InvalidPropertyValue;
+                }
                 NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
                 return noErr;
             }
