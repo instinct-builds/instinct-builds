@@ -347,15 +347,17 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
 
     float* left = static_cast<float*>(ioData->mBuffers[0].mData);
     float* right = static_cast<float*>(ioData->mBuffers[1].mData);
-    u->synth.renderPlanar(left, right, static_cast<int>(inNumberFrames));
-
-    if (ioActionFlags) {
-        // Always producing tail-capable audio; never claim silence while any voice is active.
-        if (u->synth.activeVoiceCount() == 0)
-            *ioActionFlags |= kAudioUnitRenderAction_OutputIsSilence;
-        else
-            *ioActionFlags &= ~kAudioUnitRenderAction_OutputIsSilence;
+    // Never set kAudioUnitRenderAction_OutputIsSilence: hosts may answer that
+    // flag with null buffers next cycle, and the engine's FX tail still counts
+    // as active output. If a host hands null buffers anyway, render into a
+    // scratch buffer and drop it.
+    static thread_local std::vector<float> scratch;
+    if (!left || !right) {
+        if (scratch.size() < inNumberFrames * 2) scratch.resize(inNumberFrames * 2, 0.0f);
+        left = scratch.data();
+        right = scratch.data() + inNumberFrames;
     }
+    u->synth.renderPlanar(left, right, static_cast<int>(inNumberFrames));
     return noErr;
 }
 
