@@ -1,0 +1,17 @@
+name: dump AU SDK headers
+on: [workflow_dispatch, push]
+jobs:
+  dump:
+    runs-on: macos-latest
+    steps:
+      - name: locate and print AU plug-in headers
+        run: |
+          SDK=$(xcrun --show-sdk-path)
+          echo "SDK: $SDK"
+          for h in AudioComponentPlugIn.h AudioUnitPlugInInterface.h; do
+            f=$(find "$SDK/System/Library/Frameworks" -name "$h" 2>/dev/null | head -1)
+            echo "===== $h @ $f ====="
+            cat "$f" || echo "NOT FOUND"
+          done
+          echo "===== auval ====="
+          which auval && auval -h 2>&1 | head -5 || true
