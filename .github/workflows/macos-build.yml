@@ -9,25 +9,18 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: ARCHITER tests
         run: cd architer && swift test
-
       - name: ASSSETS tests
         run: cd asssets && swift test
-
       - name: MUEW build + tests
         run: cd muew && make all && make test
-
       - name: ARCHITER DMG (unsigned)
         run: cd architer && scripts/make_dmg.sh
-
       - name: ASSSETS DMG (unsigned)
         run: cd asssets && scripts/make_dmg.sh
-
       - name: MUEW demo renders
         run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -41,10 +34,13 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
+      - name: Stage AU continuation sources
+        run: |
+          cp muew/au/1-MUEWAU.cpp muew/au/MUEWAU.cpp
+          cp muew/au/2-au_host_test.cpp muew/au/au_host_test.cpp
+          cp muew/au/3-build_au.sh muew/au/build_au.sh
       - name: Build, sign, install and validate MUEW AU
         run: cd muew && au/build_au.sh
-
       - name: Upload AU artifact
         uses: actions/upload-artifact@v4
         with:
