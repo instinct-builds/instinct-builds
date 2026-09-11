@@ -27,7 +27,7 @@ static AudioUnit openUnit() {
 static bool render(AudioUnit u, std::vector<float>& l, std::vector<float>& r) {
     UInt32 frames = (UInt32)l.size();
     AudioBufferList* b = (AudioBufferList*)calloc(1, sizeof(AudioBufferList) + sizeof(AudioBuffer));
-    b->mNumberBuffers=2; b->mBuffers[0]={1,frames*sizeof(float),l.data()}; b->mBuffers[1]={1,frames*sizeof(float),r.data()};
+    b->mNumberBuffers=2; b->mBuffers[0]={1,static_cast<UInt32>(frames*sizeof(float)),l.data()}; b->mBuffers[1]={1,static_cast<UInt32>(frames*sizeof(float)),r.data()};
     AudioUnitRenderActionFlags flags=0; AudioTimeStamp ts{};
     bool ok=AudioUnitRender(u,&flags,&ts,0,frames,b)==noErr; free(b); return ok;
 }
