@@ -74,7 +74,7 @@ struct SheetView: View {
         switch block.kind {
         case .identity: IdentityBlock(character: $character)
         case .abilities: AbilitiesBlock(character: $character)
-        case .vitals: VitalsBlock(character: character)
+        case .vitals: VitalsBlock(character: $character)
         case .skills: SkillsBlock(character: $character)
         case .attacks: AttacksBlock(character: $character)
         case .inventory: InventoryBlock(character: $character)
