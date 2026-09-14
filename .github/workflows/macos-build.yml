@@ -15,20 +15,39 @@ jobs:
         run: cd asssets && swift test
       - name: MUEW build + tests
         run: cd muew && make all && make test
-      - name: ARCHITER DMG (unsigned)
-        run: cd architer && scripts/make_dmg.sh
-      - name: ASSSETS DMG (unsigned)
-        run: cd asssets && scripts/make_dmg.sh
-      - name: MUEW demo renders
-        run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
-      - name: Upload artifacts
+      - name: Build universal ad-hoc-signed DMGs
+        run: |
+          cd architer && scripts/make_dmg.sh
+          cd ../asssets && scripts/make_dmg.sh
+      - name: Verify DMG integrity, app architecture, signatures and Gatekeeper state
+        run: |
+          set -euo pipefail
+          for spec in "architer/ARCHITER-0.1.1.dmg:ARCHITER" "asssets/ASSSETS-0.1.1.dmg:ASSSETS"; do
+            dmg=${spec%%:*}; app=${spec##*:}
+            hdiutil verify "$dmg"
+            mount=$(mktemp -d)
+            hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount"
+            file "$mount/$app.app/Contents/MacOS/$app"
+            lipo -verify_arch arm64 x86_64 "$mount/$app.app/Contents/MacOS/$app"
+            codesign --verify --deep --strict --verbose=4 "$mount/$app.app"
+            codesign -dv --verbose=4 "$mount/$app.app" 2>&1
+            if spctl --assess --type execute --verbose=4 "$mount/$app.app"; then
+              echo "Unexpected: unsigned distribution passed Gatekeeper" >&2
+              exit 1
+            else
+              echo "Expected: Gatekeeper rejects ad-hoc distribution until quarantine is cleared or the app is notarized"
+            fi
+            hdiutil detach "$mount"
+          done
+      - name: Upload app artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-suite-unsigned
+          name: macos-apps-universal-adhoc
           path: |
-            architer/*.dmg
-            asssets/*.dmg
-            muew/out/*
+            architer/ARCHITER-0.1.1.dmg
+            asssets/ASSSETS-0.1.1.dmg
+      - name: MUEW demo renders
+        run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
 
   au:
     runs-on: macos-latest
