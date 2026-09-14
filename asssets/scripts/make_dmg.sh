@@ -36,6 +36,6 @@ PLIST
 plutil -lint "$APP_DIR/Contents/Info.plist"
 codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
-lipo -verify_arch arm64 x86_64 "$APP_DIR/Contents/MacOS/$APP"
+lipo "$APP_DIR/Contents/MacOS/$APP" -verify_arch arm64 x86_64
 hdiutil create -volname "$APP" -srcfolder "$APP_DIR" -ov -format UDZO "$APP-$VERSION.dmg"
 hdiutil verify "$APP-$VERSION.dmg"
