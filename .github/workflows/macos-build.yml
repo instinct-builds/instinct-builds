@@ -28,7 +28,7 @@ jobs:
             mount=$(mktemp -d)
             hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount"
             file "$mount/$app.app/Contents/MacOS/$app"
-            lipo -verify_arch arm64 x86_64 "$mount/$app.app/Contents/MacOS/$app"
+            lipo "$mount/$app.app/Contents/MacOS/$app" -verify_arch arm64 x86_64
             codesign --verify --deep --strict --verbose=4 "$mount/$app.app"
             codesign -dv --verbose=4 "$mount/$app.app" 2>&1
             if spctl --assess --type execute --verbose=4 "$mount/$app.app"; then
