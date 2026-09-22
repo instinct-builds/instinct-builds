@@ -175,7 +175,7 @@ public enum SpellLibrary {
               detail: "Creatures in a 20-ft cube glow (Dexterity save negates); attacks against them have advantage and they can't turn invisible."),
         Spell(name: "Healing Word", level: 1, school: "Evocation", castingTime: "1 bonus action", range: "60 ft", duration: "Instantaneous",
               detail: "A creature you see regains 1d4 + spellcasting modifier hit points. +1d4 per slot above 1st."),
-        Spell(name: "Identify", level: 1, school: "Divination", castingTime: "1 minute", range: "Touch", duration: "Instantaneous", ritual: true, components: "V, S, M (a pearl)",
+        Spell(name: "Identify", level: 1, school: "Divination", castingTime: "1 minute", range: "Touch", duration: "Instantaneous", components: "V, S, M (a pearl)", ritual: true,
               detail: "Learn a magic item's properties, attunement needs, and any spells affecting it or the touched creature."),
         Spell(name: "Mage Armor", level: 1, school: "Abjuration", range: "Touch", duration: "8 hours",
               detail: "An unarmored willing creature's AC becomes 13 + its Dexterity modifier."),
