@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 0.8.0
+
+- **Compendium browser**: a book icon in the sidebar opens a searchable
+  library window - spells (filter by level, search name/school/text, ritual
+  and concentration badges, full original descriptions), weapons (damage,
+  range, finesse, properties), and armor (AC, category, cost). One click
+  adds a spell to the character's list, a weapon to attacks, or equips
+  armor. All entries are original content.
+
 ## What's in 0.7.0
 
 - **Conditions that fight back**: hindering conditions now fold into the

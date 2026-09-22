@@ -8,6 +8,7 @@ public final class AppModel: ObservableObject {
     @Published public var selectedID: UUID?
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
+    @Published public var showCompendium = false
     @Published private var undoStacks: [UUID: UndoStack<Character>] = [:]
 
     public let store = CharacterStore.defaultStore()

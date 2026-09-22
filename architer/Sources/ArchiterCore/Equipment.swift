@@ -71,6 +71,26 @@ public struct GearDef: Codable, Equatable, Sendable, Identifiable {
 
 public enum EquipmentLibrary {
 
+    /// Case-insensitive weapon search across name, damage type, and
+    /// properties. Empty query returns everything.
+    public static func searchWeapons(_ query: String) -> [WeaponDef] {
+        weapons.filter {
+            query.isEmpty
+                || $0.name.localizedCaseInsensitiveContains(query)
+                || $0.damageType.localizedCaseInsensitiveContains(query)
+                || $0.properties.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    /// Case-insensitive armor search across name and category.
+    public static func searchArmor(_ query: String) -> [ArmorDef] {
+        armors.filter {
+            query.isEmpty
+                || $0.name.localizedCaseInsensitiveContains(query)
+                || $0.category.rawValue.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     public static func armor(named name: String) -> ArmorDef? { armors.first { $0.name == name } }
     public static func weapon(named name: String) -> WeaponDef? { weapons.first { $0.name == name } }
     public static func gear(named name: String) -> GearDef? { gear.first { $0.name == name } }

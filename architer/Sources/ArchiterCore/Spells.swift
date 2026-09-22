@@ -130,6 +130,18 @@ public struct Spellcasting: Codable, Equatable, Sendable {
 /// so the app is content-rich out of the box with no downloads or APIs.
 public enum SpellLibrary {
 
+    /// Case-insensitive search across name, school, and original detail
+    /// text. Empty query returns everything, level-filtered if given.
+    public static func search(_ query: String, level: Int? = nil) -> [Spell] {
+        all.filter { spell in
+            if let level, spell.level != level { return false }
+            if query.isEmpty { return true }
+            return spell.name.localizedCaseInsensitiveContains(query)
+                || spell.school.localizedCaseInsensitiveContains(query)
+                || spell.detail.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     public static func spell(named name: String) -> Spell? {
         all.first { $0.name == name }
     }

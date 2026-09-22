@@ -265,6 +265,25 @@ struct CharacterTests {
         #expect(c.effectiveRollMode(.advantage, for: .attack) == .advantage)
     }
 
+    @Test func spellLibrarySearchMatchesNameSchoolAndDetail() {
+        #expect(SpellLibrary.search("").count == SpellLibrary.all.count)
+        #expect(SpellLibrary.search("", level: 0).allSatisfy { $0.level == 0 })
+        let byName = SpellLibrary.search("fire")
+        #expect(!byName.isEmpty)
+        let needle = byName[0]
+        #expect(SpellLibrary.search(needle.name).contains(needle))
+        #expect(SpellLibrary.search("zzzz-no-such-spell").isEmpty)
+    }
+
+    @Test func equipmentSearchMatchesNamesAndFilters() {
+        #expect(EquipmentLibrary.searchWeapons("").count == EquipmentLibrary.weapons.count)
+        #expect(EquipmentLibrary.searchArmor("").count == EquipmentLibrary.armors.count)
+        let w = EquipmentLibrary.weapons[0]
+        #expect(EquipmentLibrary.searchWeapons(w.name).contains(w))
+        #expect(EquipmentLibrary.searchWeapons("zzzz").isEmpty)
+        #expect(EquipmentLibrary.searchArmor("zzzz").isEmpty)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

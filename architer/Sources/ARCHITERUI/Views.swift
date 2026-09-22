@@ -39,6 +39,8 @@ public struct ContentView: View {
             .toolbar {
                 ToolbarItem { Button(action: { model.showWizard = true }) { Image(systemName: "plus") }
                     .help("New character (wizard)") }
+                ToolbarItem { Button(action: { model.showCompendium = true }) { Image(systemName: "books.vertical") }
+                    .help("Compendium - browse spells and equipment") }
                 ToolbarItem { Button(action: model.duplicateSelected) { Image(systemName: "plus.square.on.square") }
                     .help("Duplicate") }
                 ToolbarItem { Button(action: model.deleteSelected) { Image(systemName: "trash") }
@@ -54,6 +56,10 @@ public struct ContentView: View {
         }
         .sheet(isPresented: $model.showWizard) {
             CharacterWizardView()
+                .environmentObject(model)
+        }
+        .sheet(isPresented: $model.showCompendium) {
+            CompendiumView()
                 .environmentObject(model)
         }
         .tint(Theme.accent)
