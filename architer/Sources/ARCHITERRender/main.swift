@@ -48,14 +48,19 @@ func run(model: AppModel, character: Character, outDir: String) {
     renderPNG(
         SheetColumnView(character: .constant(character))
             .padding()
+            .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "sheet-full", outDir: outDir)
     renderPNG(
         BuilderView(character: .constant(character))
+            .padding()
+            .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "builder", outDir: outDir, minHeight: 700)
     renderPNG(
         DiceRollerView()
+            .padding()
+            .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice", outDir: outDir, minHeight: 420)
 
@@ -76,6 +81,7 @@ struct RenderMain {
         try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
+        app.appearance = NSAppearance(named: .darkAqua)
         let model = AppModel()
         let character = SampleContent.demoCharacter()
         run(model: model, character: character, outDir: outDir)

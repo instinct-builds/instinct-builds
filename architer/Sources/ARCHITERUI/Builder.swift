@@ -104,6 +104,8 @@ public struct BuilderView: View {
                 }
             }
         }
+        .preferredColorScheme(.dark)
+        .foregroundStyle(Theme.ink)
     }
 
     private func apply(_ ruleset: Ruleset) {

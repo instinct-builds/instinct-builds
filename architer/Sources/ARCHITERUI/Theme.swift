@@ -19,6 +19,8 @@ public enum Theme {
     public static let edge = Color(red: 0.28, green: 0.26, blue: 0.31)          // hairline borders
     public static let accent = Color(red: 0.83, green: 0.62, blue: 0.28)        // brass
     public static let accentSoft = Color(red: 0.83, green: 0.62, blue: 0.28).opacity(0.18)
+    /// Pre-blended opaque hero gradient end (surfaceRaised warmed with brass).
+    public static let heroGlow = Color(red: 0.24, green: 0.19, blue: 0.16)
     public static let danger = Color(red: 0.85, green: 0.36, blue: 0.32)
     public static let success = Color(red: 0.48, green: 0.75, blue: 0.44)
     public static let arcana = Color(red: 0.62, green: 0.52, blue: 0.87)        // spellcasting violet

@@ -99,6 +99,7 @@ public struct DiceRollerView: View {
         }
         .padding(Theme.Gap.lg)
         .background(Theme.surface)
+        .preferredColorScheme(.dark)
     }
 }
 #endif

@@ -74,7 +74,7 @@ struct IdentityBlock: View {
         .padding(Theme.Gap.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            LinearGradient(colors: [Theme.surfaceRaised, Theme.accentSoft.opacity(0.55)],
+            LinearGradient(colors: [Theme.surfaceRaised, Theme.heroGlow],
                            startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: Theme.Radius.lg)
         )

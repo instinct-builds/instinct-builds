@@ -107,6 +107,15 @@ public struct SheetColumnView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            contentBlocks
+        }
+        .preferredColorScheme(.dark)
+        .foregroundStyle(Theme.ink)
+    }
+
+    @ViewBuilder
+    private var contentBlocks: some View {
+        Group {
             ForEach(character.layout.visibleBlocks) { block in
                 blockView(for: block)
                     .scaleEffect(block.size == .compact ? 0.92 : (block.size == .large ? 1.06 : 1.0),
