@@ -7,8 +7,6 @@ import ArchiterCore
 public struct BuilderView: View {
     @Binding var character: Character
 
-    public init(character: Binding<Character>) { _character = character }
-
     public init(character: Binding<Character>) {
         _character = character
     }

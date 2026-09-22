@@ -39,8 +39,6 @@ public struct DiceRollerView: View {
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
 
-    public init() {}
-
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
