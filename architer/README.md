@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.3.0
+
+- **Session restore**: the app reopens exactly where you left it - the
+  last-selected character and the last-used detail tab (Sheet / Builder /
+  Dice) survive relaunch.
+
 ## What's in 1.2.0
 
 - **Critical hits**: an attack that rolls a natural 20 now automatically

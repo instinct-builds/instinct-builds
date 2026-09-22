@@ -5,7 +5,17 @@ import ArchiterCore
 @MainActor
 public final class AppModel: ObservableObject {
     @Published public var characters: [Character] = []
-    @Published public var selectedID: UUID?
+    /// Session restore: the last-selected character id persists across launches.
+    @Published public var selectedID: UUID? {
+        didSet {
+            if let id = selectedID {
+                UserDefaults.standard.set(id.uuidString, forKey: AppModel.lastSelectedKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: AppModel.lastSelectedKey)
+            }
+        }
+    }
+    private static let lastSelectedKey = "architer.lastSelectedCharacterID"
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
     @Published public var showCompendium = false
@@ -38,7 +48,13 @@ public final class AppModel: ObservableObject {
         characters = (try? store.loadAll()) ?? []
         rulesets = rulesetStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
-            selectedID = characters.first?.id
+            if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
+               let uuid = UUID(uuidString: saved),
+               characters.contains(where: { $0.id == uuid }) {
+                selectedID = uuid
+            } else {
+                selectedID = characters.first?.id
+            }
         }
     }
 

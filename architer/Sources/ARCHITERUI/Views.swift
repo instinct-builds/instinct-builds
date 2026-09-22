@@ -73,7 +73,7 @@ public struct ContentView: View {
 struct CharacterDetailView: View {
     @Binding var character: Character
     @EnvironmentObject var model: AppModel
-    @State private var tab = 0
+    @AppStorage("architer.detailTab") private var tab = 0
 
     var body: some View {
         VStack(spacing: 0) {
