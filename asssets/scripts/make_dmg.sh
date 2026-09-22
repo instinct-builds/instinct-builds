@@ -2,34 +2,27 @@
 # Build a universal, ad-hoc-signed ASSSETS app and package it as a DMG.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
 APP=ASSSETS
 PRODUCT=asssets
-VERSION=${VERSION:-0.1.1}
+VERSION=${VERSION:-0.3.0}
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 APP_DIR="$STAGE/$APP.app"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-
-for ARCH in arm64 x86_64; do
-  swift build -c release --product "$PRODUCT" --arch "$ARCH" --scratch-path ".build-$ARCH"
-done
-ARM_BIN=$(swift build -c release --product "$PRODUCT" --arch arm64 --scratch-path .build-arm64 --show-bin-path)/$PRODUCT
-INTEL_BIN=$(swift build -c release --product "$PRODUCT" --arch x86_64 --scratch-path .build-x86_64 --show-bin-path)/$PRODUCT
-lipo -create "$ARM_BIN" "$INTEL_BIN" -output "$APP_DIR/Contents/MacOS/$APP"
-
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" out
+for ARCH in arm64 x86_64; do swift build -c release --product "$PRODUCT" --arch "$ARCH" --scratch-path ".build-$ARCH"; done
+ARM_DIR=$(swift build -c release --product "$PRODUCT" --arch arm64 --scratch-path .build-arm64 --show-bin-path)
+INTEL_DIR=$(swift build -c release --product "$PRODUCT" --arch x86_64 --scratch-path .build-x86_64 --show-bin-path)
+lipo -create "$ARM_DIR/$PRODUCT" "$INTEL_DIR/$PRODUCT" -output "$APP_DIR/Contents/MacOS/$APP"
+# SwiftPM emits Bundle.module resources beside the product. Preserve the generated bundle in the app.
+find "$ARM_DIR" -maxdepth 1 -type d -name '*AsssetsApp*.bundle' -exec cp -R {} "$APP_DIR/Contents/Resources/" \;
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>$APP</string>
-  <key>CFBundleDisplayName</key><string>$APP</string>
-  <key>CFBundleIdentifier</key><string>co.instinct.asssets</string>
-  <key>CFBundleExecutable</key><string>$APP</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>2</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>CFBundleName</key><string>$APP</string><key>CFBundleDisplayName</key><string>$APP</string>
+  <key>CFBundleIdentifier</key><string>co.instinct.asssets</string><key>CFBundleExecutable</key><string>$APP</string>
+  <key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>3</string><key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
@@ -37,5 +30,9 @@ plutil -lint "$APP_DIR/Contents/Info.plist"
 codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 lipo "$APP_DIR/Contents/MacOS/$APP" -verify_arch arm64 x86_64
+rm -f "$APP-$VERSION.dmg"
 hdiutil create -volname "$APP" -srcfolder "$APP_DIR" -ov -format UDZO "$APP-$VERSION.dmg"
 hdiutil verify "$APP-$VERSION.dmg"
+# Keep a staged app for the workflow's native launch screenshot and size audit.
+rm -rf out/ASSSETS.app; cp -R "$APP_DIR" out/ASSSETS.app
+du -sh out/ASSSETS.app "$APP-$VERSION.dmg"
