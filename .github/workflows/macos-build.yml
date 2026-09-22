@@ -57,8 +57,8 @@ jobs:
           file "$mount/ASSSETS.app/Contents/MacOS/ASSSETS"
           lipo "$mount/ASSSETS.app/Contents/MacOS/ASSSETS" -verify_arch arm64 x86_64
           codesign --verify --deep --strict --verbose=4 "$mount/ASSSETS.app"
-          test -d "$mount/ASSSETS.app/Contents/Resources/ASSSETS_AsssetsApp.bundle/StarterLibrary"
-          du -sh "$mount/ASSSETS.app/Contents/Resources/ASSSETS_AsssetsApp.bundle/StarterLibrary"
+          test -f "$mount/ASSSETS.app/Contents/Resources/StarterLibrary.zip"
+          du -sh "$mount/ASSSETS.app/Contents/Resources/StarterLibrary.zip"
           hdiutil detach "$mount"
       - name: Capture ASSSETS native UI proof
         run: |
