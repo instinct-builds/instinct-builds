@@ -19,9 +19,9 @@ jobs:
         run: |
           set -euo pipefail
           cd architer
-          hdiutil verify ARCHITER-1.0.0.dmg
+          hdiutil verify ARCHITER-1.1.0.dmg
           mount=$(mktemp -d)
-          hdiutil attach ARCHITER-1.0.0.dmg -nobrowse -readonly -mountpoint "$mount"
+          hdiutil attach ARCHITER-1.1.0.dmg -nobrowse -readonly -mountpoint "$mount"
           file "$mount/ARCHITER.app/Contents/MacOS/ARCHITER"
           lipo "$mount/ARCHITER.app/Contents/MacOS/ARCHITER" -verify_arch arm64 x86_64
           codesign --verify --deep --strict --verbose=4 "$mount/ARCHITER.app"
@@ -30,10 +30,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: architer-1.0.0
+          name: architer-1.1.0
           if-no-files-found: warn
           path: |
-            architer/ARCHITER-1.0.0.dmg
+            architer/ARCHITER-1.1.0.dmg
             architer/out/
       - name: MUEW demo renders
         run: cd muew && make all && ./build/muew-demo && ./build/muew-demo-wt && ./build/muew-demo-mod-depth && ls -la out

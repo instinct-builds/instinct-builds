@@ -53,11 +53,13 @@ public struct PDFDocument {
     }
 
     public mutating func text(page: Int, x: Double, y: Double, _ s: String,
-                              size: Double = 10, face: Face = .regular, gray: Double = 0) {
+                              size: Double = 10, face: Face = .regular, gray: Double = 0,
+                              rgb: (r: Double, g: Double, b: Double)? = nil) {
         guard streams.indices.contains(page) else { return }
         let font = face == .bold ? "F2" : "F1"
+        let color = rgb.map { "\(fmt($0.r)) \(fmt($0.g)) \(fmt($0.b)) rg" } ?? "\(fmt(gray)) g"
         streams[page].append(
-            "\(fmt(gray)) g BT /\(font) \(fmt(size)) Tf \(fmt(x)) \(fmt(y)) Td (\(PDFDocument.esc(s))) Tj ET")
+            "\(color) BT /\(font) \(fmt(size)) Tf \(fmt(x)) \(fmt(y)) Td (\(PDFDocument.esc(s))) Tj ET")
     }
 
     public mutating func fillRect(page: Int, x: Double, y: Double, w: Double, h: Double, gray: Double) {
@@ -66,17 +68,21 @@ public struct PDFDocument {
     }
 
     public mutating func strokeRect(page: Int, x: Double, y: Double, w: Double, h: Double,
-                                    lineWidth: Double = 0.8, gray: Double = 0) {
+                                    lineWidth: Double = 0.8, gray: Double = 0,
+                                    rgb: (r: Double, g: Double, b: Double)? = nil) {
         guard streams.indices.contains(page) else { return }
+        let color = rgb.map { "\(fmt($0.r)) \(fmt($0.g)) \(fmt($0.b)) RG" } ?? "\(fmt(gray)) G"
         streams[page].append(
-            "\(fmt(gray)) G \(fmt(lineWidth)) w \(fmt(x)) \(fmt(y)) \(fmt(w)) \(fmt(h)) re S 0 G 1 w")
+            "\(color) \(fmt(lineWidth)) w \(fmt(x)) \(fmt(y)) \(fmt(w)) \(fmt(h)) re S 0 G 1 w")
     }
 
     public mutating func line(page: Int, x1: Double, y1: Double, x2: Double, y2: Double,
-                              lineWidth: Double = 0.8, gray: Double = 0) {
+                              lineWidth: Double = 0.8, gray: Double = 0,
+                              rgb: (r: Double, g: Double, b: Double)? = nil) {
         guard streams.indices.contains(page) else { return }
+        let color = rgb.map { "\(fmt($0.r)) \(fmt($0.g)) \(fmt($0.b)) RG" } ?? "\(fmt(gray)) G"
         streams[page].append(
-            "\(fmt(gray)) G \(fmt(lineWidth)) w \(fmt(x1)) \(fmt(y1)) m \(fmt(x2)) \(fmt(y2)) l S 0 G 1 w")
+            "\(color) \(fmt(lineWidth)) w \(fmt(x1)) \(fmt(y1)) m \(fmt(x2)) \(fmt(y2)) l S 0 G 1 w")
     }
 
     private func fmt(_ v: Double) -> String {
@@ -128,6 +134,9 @@ public struct PDFDocument {
 /// then sections in layout order, flowing across Letter pages.
 public enum SheetPDFExporter {
 
+    /// Print-friendly brass, echoing the app's ink-and-brass theme.
+    private static let brass = (r: 0.55, g: 0.40, b: 0.15)
+
     public static func export(_ c: Character) -> Data {
         var doc = PDFDocument()
         var cursor = Cursor(doc: doc)
@@ -142,11 +151,12 @@ public enum SheetPDFExporter {
             .trimmingCharacters(in: .whitespaces)
         cursor.text(margin, subtitle, size: 12)
         cursor.advance(16)
-        var meta = "XP \(c.experience)  ·  Proficiency bonus +\(c.proficiencyBonus)"
+        var meta = "XP \(c.experience)  ·  Proficiency bonus +\(c.proficiencyBonus)  ·  \(c.era.displayName)"
         if !c.background.isEmpty { meta += "  ·  \(c.background)" }
+        if let ruleset = c.rulesetName { meta += "  ·  \(ruleset) ruleset" }
         cursor.text(margin, meta, size: 9, gray: 0.35)
         cursor.advance(10)
-        cursor.rule(margin, width: contentW)
+        cursor.ruleColored(margin, width: contentW, rgb: brass)
         cursor.advance(14)
 
         for block in c.layout.visibleBlocks {
@@ -201,6 +211,9 @@ public enum SheetPDFExporter {
                 if !c.conditions.isEmpty {
                     cursor.line("Conditions: " + c.conditions.map { $0.displayName }.sorted().joined(separator: ", "), margin: margin, gray: 0.3)
                 }
+                if c.exhaustion > 0 {
+                    cursor.line("Exhaustion \(c.exhaustion): \(c.exhaustionStepNote)", margin: margin, gray: 0.3)
+                }
             case .skills:
                 cursor.section("Skills", margin: margin)
                 let trained = c.skills.filter { $0.tier != .none }
@@ -219,7 +232,10 @@ public enum SheetPDFExporter {
                 }
             case .attacks:
                 cursor.section("Attacks", margin: margin)
-                let cols: [(String, Double)] = [("Attack", 0), ("Bonus", 170), ("Damage", 230), ("Type", 320), ("Range", 400)]
+                let showMastery = c.era.usesWeaponMastery && c.attacks.contains { $0.mastery != nil }
+                let cols: [(String, Double)] = showMastery
+                    ? [("Attack", 0), ("Bonus", 150), ("Damage", 205), ("Type", 290), ("Mastery", 350), ("Range", 430)]
+                    : [("Attack", 0), ("Bonus", 170), ("Damage", 230), ("Type", 320), ("Range", 400)]
                 cursor.ensure(16)
                 cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
                 for (title, off) in cols {
@@ -232,10 +248,18 @@ public enum SheetPDFExporter {
                 for a in c.attacks {
                     cursor.ensure(14)
                     cursor.doc.text(page: cursor.page, x: margin + 4, y: cursor.y - 10, a.name, size: 9)
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + 170, y: cursor.y - 10, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + 230, y: cursor.y - 10, a.damageString(scores: c.scores), size: 9)
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + 320, y: cursor.y - 10, a.damageType, size: 9)
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + 400, y: cursor.y - 10, a.range, size: 9)
+                    if showMastery {
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 150, y: cursor.y - 10, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 205, y: cursor.y - 10, a.damageString(scores: c.scores), size: 9)
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 290, y: cursor.y - 10, a.damageType, size: 9)
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 350, y: cursor.y - 10, a.mastery?.rawValue ?? "-", size: 9)
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 430, y: cursor.y - 10, a.range, size: 9)
+                    } else {
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 170, y: cursor.y - 10, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 230, y: cursor.y - 10, a.damageString(scores: c.scores), size: 9)
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 320, y: cursor.y - 10, a.damageType, size: 9)
+                        cursor.doc.text(page: cursor.page, x: margin + 4 + 400, y: cursor.y - 10, a.range, size: 9)
+                    }
                     cursor.advance(13)
                     cursor.rule(margin, width: contentW, gray: 0.85)
                     cursor.advance(1)
@@ -255,6 +279,9 @@ public enum SheetPDFExporter {
                 }
                 if !slotChips.isEmpty {
                     cursor.line("Slots: " + slotChips.joined(separator: "  "), margin: margin)
+                }
+                if let concentrating = c.concentratingOn {
+                    cursor.line("Concentrating: \(concentrating)", margin: margin, gray: 0.3)
                 }
                 let cantrips = sc.cantrips.map { $0.name }.sorted().joined(separator: ", ")
                 if !cantrips.isEmpty {
@@ -455,10 +482,15 @@ public enum SheetPDFExporter {
 
         mutating func section(_ title: String, margin: Double) {
             ensure(30)
-            text(margin, title.uppercased(), size: 10, face: .bold)
+            doc.text(page: page, x: margin, y: y, title.uppercased(), size: 10, face: .bold,
+                     rgb: SheetPDFExporter.brass)
             advance(13)
-            rule(margin, width: doc.pageSize.width - margin * 2, gray: 0.7)
+            ruleColored(margin, width: doc.pageSize.width - margin * 2, rgb: SheetPDFExporter.brass)
             advance(6)
+        }
+
+        mutating func ruleColored(_ x: Double, width: Double, rgb: (r: Double, g: Double, b: Double)) {
+            doc.line(page: page, x1: x, y1: y, x2: x + width, y2: y, lineWidth: 0.9, rgb: rgb)
         }
 
         mutating func line(_ s: String, margin: Double, gray: Double = 0) {

@@ -295,6 +295,27 @@ struct CharacterTests {
         #expect(c.concentratingOn == nil)
     }
 
+    @Test func pdfExportIncludesEraMasteryAndConcentration() {
+        var c = Character(name: "PdfTest", era: .era2024, concentratingOn: "Ward Bond")
+        c.attacks = [Attack(name: "Blade", mastery: .topple)]
+        c.exhaustion = 2
+        let data = SheetPDFExporter.export(c)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("2024-style"))
+        #expect(text.contains("Topple"))
+        #expect(text.contains("Concentrating: Ward Bond"))
+        #expect(text.contains("Exhaustion 2"))
+        #expect(text.hasPrefix("%PDF"))
+    }
+
+    @Test func pdfExportHidesMasteryColumnIn2014() {
+        var c = Character(name: "PdfTest", era: .era2014)
+        c.attacks = [Attack(name: "Blade", mastery: .topple)] // ignored under 2014
+        let text = String(decoding: SheetPDFExporter.export(c), as: UTF8.self)
+        #expect(!text.contains("Mastery"))
+        #expect(!text.contains("Concentrating:"))
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

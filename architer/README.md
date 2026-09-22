@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.1.0
+
+- **Print pass**: the PDF export now echoes the ink-and-brass theme (brass
+  section headers and rules) and catches up to recent features - the header
+  names the ruleset era and any custom ruleset, the attacks table gains a
+  mastery column on 2024-style sheets, concentration and exhaustion notes
+  print.
+
 ## What's in 1.0.0
 
 - **Concentration tracker**: casting a concentration spell moves
