@@ -13,14 +13,35 @@ jobs:
         run: cd architer && swift test
       - name: ARCHITER renders
         run: cd architer && swift run architer-render out
+      - name: ARCHITER DMG
+        run: cd architer && scripts/make_dmg.sh
+      - name: Verify ARCHITER DMG
+        run: |
+          set -euo pipefail
+          cd architer
+          hdiutil verify ARCHITER-0.2.0.dmg
+          mount=$(mktemp -d)
+          hdiutil attach ARCHITER-0.2.0.dmg -nobrowse -readonly -mountpoint "$mount"
+          file "$mount/ARCHITER.app/Contents/MacOS/ARCHITER"
+          lipo "$mount/ARCHITER.app/Contents/MacOS/ARCHITER" -verify_arch arm64 x86_64
+          codesign --verify --deep --strict --verbose=4 "$mount/ARCHITER.app"
+          hdiutil detach "$mount"
+      - name: Upload ARCHITER artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architer-0.2.0
+          if-no-files-found: warn
+          path: |
+            architer/ARCHITER-0.2.0.dmg
+            architer/out/
       - name: ASSSETS tests
         run: cd asssets && swift test
       - name: MUEW build + tests
         run: cd muew && make all && make test
       - name: Build universal ad-hoc-signed DMGs
         run: |
-          cd architer && scripts/make_dmg.sh
-          cd ../asssets && scripts/make_dmg.sh
+          cd asssets && scripts/make_dmg.sh
       - name: Verify DMG integrity, app architecture, signatures and Gatekeeper state
         run: |
           set -euo pipefail

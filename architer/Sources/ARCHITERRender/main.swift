@@ -9,12 +9,12 @@ import ArchiterCore
 // PDF/HTML/Markdown exports, so CI can attach visual proof to each build.
 // Usage: architer-render <output-directory>
 
-func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String) {
+func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String, minHeight: CGFloat = 120) {
     let hosting = NSHostingView(rootView: view)
     hosting.frame = NSRect(x: 0, y: 0, width: width, height: 100)
     hosting.layoutSubtreeIfNeeded()
     let fitting = hosting.fittingSize
-    let size = NSSize(width: width, height: max(fitting.height, 120))
+    let size = NSSize(width: width, height: max(fitting.height, minHeight))
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                           styleMask: [.titled], backing: .buffered, defer: false)
     window.title = name
@@ -53,11 +53,11 @@ func run(model: AppModel, character: Character, outDir: String) {
     renderPNG(
         BuilderView(character: .constant(character))
             .environmentObject(model),
-        width: width, name: "builder", outDir: outDir)
+        width: width, name: "builder", outDir: outDir, minHeight: 700)
     renderPNG(
         DiceRollerView()
             .environmentObject(model),
-        width: width, name: "dice", outDir: outDir)
+        width: width, name: "dice", outDir: outDir, minHeight: 420)
 
     // Exports as files.
     let pdf = SheetPDFExporter.export(character)
