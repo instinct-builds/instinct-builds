@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+
 import AppKit
 import ARCHITERUI
 import ArchiterCore
@@ -8,17 +9,7 @@ import ArchiterCore
 // PDF/HTML/Markdown exports, so CI can attach visual proof to each build.
 // Usage: architer-render <output-directory>
 
-let outDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "render-out"
-try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
-
-let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
-
-let model = AppModel()
-let character = SampleContent.demoCharacter()
-
-@MainActor
-func renderPNG<V: View>(_ view: V, width: CGFloat, name: String) {
+func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String) {
     let hosting = NSHostingView(rootView: view)
     hosting.frame = NSRect(x: 0, y: 0, width: width, height: 100)
     hosting.layoutSubtreeIfNeeded()
@@ -52,21 +43,21 @@ func renderPNG<V: View>(_ view: V, width: CGFloat, name: String) {
 }
 
 @MainActor
-func run() {
+func run(model: AppModel, character: Character, outDir: String) {
     let width: CGFloat = 1180
     renderPNG(
         SheetColumnView(character: .constant(character))
             .padding()
             .environmentObject(model),
-        width: width, name: "sheet-full")
+        width: width, name: "sheet-full", outDir: outDir)
     renderPNG(
         BuilderView(character: .constant(character))
             .environmentObject(model),
-        width: width, name: "builder")
+        width: width, name: "builder", outDir: outDir)
     renderPNG(
         DiceRollerView()
             .environmentObject(model),
-        width: width, name: "dice")
+        width: width, name: "dice", outDir: outDir)
 
     // Exports as files.
     let pdf = SheetPDFExporter.export(character)
@@ -77,8 +68,20 @@ func run() {
     print("RENDER DONE")
 }
 
-run()
-exit(0)
+@main
+struct RenderMain {
+    @MainActor
+    static func main() {
+        let outDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "render-out"
+        try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let model = AppModel()
+        let character = SampleContent.demoCharacter()
+        run(model: model, character: character, outDir: outDir)
+        exit(0)
+    }
+}
 #else
 @main
 struct RenderStub {
