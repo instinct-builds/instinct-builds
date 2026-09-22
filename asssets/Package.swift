@@ -13,7 +13,7 @@ let package = Package(
         .executableTarget(
             name: "AsssetsApp",
             dependencies: ["AsssetsCore"],
-            resources: [.copy("StarterLibrary.zip")]
+            resources: [.copy("StarterLibrary")]
         ),
         .testTarget(name: "AsssetsCoreTests", dependencies: ["AsssetsCore"]),
     ]
