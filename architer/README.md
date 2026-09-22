@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.2.0
+
+- **Critical hits**: an attack that rolls a natural 20 now automatically
+  follows up with a "(CRIT)" damage roll - every damage die doubled,
+  modifiers untouched.
+
 ## What's in 1.1.0
 
 - **Print pass**: the PDF export now echoes the ink-and-brass theme (brass

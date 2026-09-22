@@ -142,8 +142,15 @@ public final class AppModel: ObservableObject {
             tags.append("advantage canceled by condition")
         }
         let label = tags.isEmpty ? "\(attack.name) attack" : "\(attack.name) attack (\(tags.joined(separator: "; ")))"
-        record(roller.check(label, bonus: attack.attackBonus(scores: c.scores, level: c.level) - c.exhaustionRollPenalty, mode: effective))
-        rollLabeled("\(attack.name) damage", attack.damageString(scores: c.scores))
+        let attackRoll = roller.check(label, bonus: attack.attackBonus(scores: c.scores, level: c.level) - c.exhaustionRollPenalty, mode: effective)
+        record(attackRoll)
+        let crit = attackRoll.dice.contains { $0.sides == 20 && $0.kept && $0.value == 20 }
+        let damageExpr = attack.damageString(scores: c.scores)
+        if crit, let parsed = try? DiceExpression.parse(damageExpr) {
+            rollLabeled("\(attack.name) damage (CRIT)", parsed.doubledDice())
+        } else {
+            rollLabeled("\(attack.name) damage", damageExpr)
+        }
     }
 
     public func rollDeathSave() {

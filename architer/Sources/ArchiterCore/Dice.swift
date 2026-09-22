@@ -98,6 +98,27 @@ public struct DiceExpression: Equatable, Sendable {
         return DiceExpression(terms: terms, modifier: modifier, source: input)
     }
 
+    /// The crit version of an expression: every dice term doubled,
+    /// modifiers untouched (genre-standard critical-hit damage).
+    public func doubledDice() -> String {
+        var parts: [String] = []
+        for t in terms {
+            var term = "\(t.count * 2)d\(t.sides)"
+            if let kh = t.keepHighest { term += "kh\(kh)" }
+            if let dl = t.dropLowest { term += "dl\(dl)" }
+            if t.sign < 0 { term = "-" + term }
+            parts.append(term)
+        }
+        var expr = ""
+        for p in parts {
+            if p.hasPrefix("-") { expr += p } else { expr += (expr.isEmpty ? p : "+" + p) }
+        }
+        if modifier != 0 {
+            expr += modifier > 0 ? "+\(modifier)" : "\(modifier)"
+        }
+        return expr.isEmpty ? source : expr
+    }
+
     private static func parseDie(_ tok: String, sign: Int) throws -> Term {
         // forms: d20, 2d6, 4d6kh3, 4d6dl1
         guard let dIdx = tok.firstIndex(of: "d") else { throw DiceError.invalidDie(tok) }

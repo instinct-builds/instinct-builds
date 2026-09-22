@@ -317,6 +317,17 @@ struct CharacterTests {
         #expect(!text.contains("Concentrating:"))
     }
 
+    @Test func critDoublesDiceKeepsModifier() throws {
+        let a = try DiceExpression.parse("1d8+2")
+        #expect(a.doubledDice() == "2d8+2")
+        let b = try DiceExpression.parse("2d6")
+        #expect(b.doubledDice() == "4d6")
+        let c = try DiceExpression.parse("1d8+1d4+2")
+        #expect(c.doubledDice() == "2d8+2d4+2")
+        let d = try DiceExpression.parse("4d6kh3")
+        #expect(d.doubledDice() == "8d6kh3")
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",
