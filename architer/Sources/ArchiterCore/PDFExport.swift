@@ -226,7 +226,7 @@ public enum SheetPDFExporter {
                         let x = margin + Double(i % 2) * colW
                         let bonus = signed(s.bonus(scores: c.scores, level: c.level))
                         let text = "\(s.name) \(bonus)\(s.tier == .expert ? " (expert)" : "")"
-                        cursor.doc.text(page: cursor.page, x: x, y: cursor.y - 10, text, size: 9)
+                        cursor.put(x, text, size: 9)
                         if i % 2 == 1 || i == trained.count - 1 { cursor.advance(13) }
                     }
                 }
@@ -239,7 +239,7 @@ public enum SheetPDFExporter {
                 cursor.ensure(16)
                 cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
                 for (title, off) in cols {
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + off, y: cursor.y - 10, title, size: 8, face: .bold)
+                    cursor.put(margin + 4 + off, title, size: 8, face: .bold)
                 }
                 cursor.advance(16)
                 if c.attacks.isEmpty {
@@ -247,18 +247,18 @@ public enum SheetPDFExporter {
                 }
                 for a in c.attacks {
                     cursor.ensure(14)
-                    cursor.doc.text(page: cursor.page, x: margin + 4, y: cursor.y - 10, a.name, size: 9)
+                    cursor.put(margin + 4, a.name, size: 9)
                     if showMastery {
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 150, y: cursor.y - 10, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 205, y: cursor.y - 10, a.damageString(scores: c.scores), size: 9)
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 290, y: cursor.y - 10, a.damageType, size: 9)
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 350, y: cursor.y - 10, a.mastery?.rawValue ?? "-", size: 9)
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 430, y: cursor.y - 10, a.range, size: 9)
+                        cursor.put(margin + 4 + 150, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
+                        cursor.put(margin + 4 + 205, a.damageString(scores: c.scores), size: 9)
+                        cursor.put(margin + 4 + 290, a.damageType, size: 9)
+                        cursor.put(margin + 4 + 350, a.mastery?.rawValue ?? "-", size: 9)
+                        cursor.put(margin + 4 + 430, a.range, size: 9)
                     } else {
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 170, y: cursor.y - 10, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 230, y: cursor.y - 10, a.damageString(scores: c.scores), size: 9)
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 320, y: cursor.y - 10, a.damageType, size: 9)
-                        cursor.doc.text(page: cursor.page, x: margin + 4 + 400, y: cursor.y - 10, a.range, size: 9)
+                        cursor.put(margin + 4 + 170, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
+                        cursor.put(margin + 4 + 230, a.damageString(scores: c.scores), size: 9)
+                        cursor.put(margin + 4 + 320, a.damageType, size: 9)
+                        cursor.put(margin + 4 + 400, a.range, size: 9)
                     }
                     cursor.advance(13)
                     cursor.rule(margin, width: contentW, gray: 0.85)
@@ -311,7 +311,7 @@ public enum SheetPDFExporter {
                         var text = item.name
                         if item.quantity > 1 { text += " x\(item.quantity)" }
                         if !item.notes.isEmpty { text += " - \(item.notes)" }
-                        cursor.doc.text(page: cursor.page, x: x, y: cursor.y - 10, text, size: 9)
+                        cursor.put(x, text, size: 9)
                         if i % 2 == 1 || i == c.inventory.count - 1 { cursor.advance(13) }
                     }
                 }
@@ -327,7 +327,7 @@ public enum SheetPDFExporter {
                     if !f.detail.isEmpty {
                         for line in wrap(f.detail, width: contentW - 14, size: 9) {
                             cursor.ensure(13)
-                            cursor.doc.text(page: cursor.page, x: margin + 14, y: cursor.y - 10, line, size: 9, gray: 0.3)
+                            cursor.put(margin + 14, line, size: 9, gray: 0.3)
                             cursor.advance(13)
                         }
                     }
@@ -341,9 +341,9 @@ public enum SheetPDFExporter {
                     for (i, line) in wrap(value, width: contentW - 60, size: 9).enumerated() {
                         cursor.ensure(13)
                         if i == 0 {
-                            cursor.doc.text(page: cursor.page, x: margin, y: cursor.y - 10, label + ":", size: 9, face: .bold)
+                            cursor.put(margin, label + ":", size: 9, face: .bold)
                         }
-                        cursor.doc.text(page: cursor.page, x: margin + 60, y: cursor.y - 10, line, size: 9)
+                        cursor.put(margin + 60, line, size: 9)
                         cursor.advance(13)
                     }
                 }
@@ -352,7 +352,7 @@ public enum SheetPDFExporter {
                     for para in p.backstory.components(separatedBy: "\n") {
                         for line in wrap(para, width: contentW, size: 9) {
                             cursor.ensure(13)
-                            cursor.doc.text(page: cursor.page, x: margin + 14, y: cursor.y - 10, line, size: 9, gray: 0.3)
+                            cursor.put(margin + 14, line, size: 9, gray: 0.3)
                             cursor.advance(13)
                         }
                     }
@@ -378,14 +378,14 @@ public enum SheetPDFExporter {
             cursor.ensure(16)
             cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
             for (title, off) in cols {
-                cursor.doc.text(page: cursor.page, x: margin + 4 + off, y: cursor.y - 10, title, size: 8, face: .bold)
+                cursor.put(margin + 4 + off, title, size: 8, face: .bold)
             }
             cursor.advance(16)
             for a in c.customAbilities {
                 cursor.ensure(14)
-                cursor.doc.text(page: cursor.page, x: margin + 4, y: cursor.y - 10, a.name, size: 9)
-                cursor.doc.text(page: cursor.page, x: margin + 4 + 200, y: cursor.y - 10, "\(a.score)", size: 9)
-                cursor.doc.text(page: cursor.page, x: margin + 4 + 270, y: cursor.y - 10, signed(a.modifier), size: 9)
+                cursor.put(margin + 4, a.name, size: 9)
+                cursor.put(margin + 4 + 200, "\(a.score)", size: 9)
+                cursor.put(margin + 4 + 270, signed(a.modifier), size: 9)
                 cursor.advance(13)
             }
             cursor.advance(8)
@@ -402,7 +402,7 @@ public enum SheetPDFExporter {
                     let x = margin + Double(i % 2) * colW
                     let bonus = signed(s.bonus(abilities: c.customAbilities, level: c.level))
                     let text = "\(s.name) \(bonus)\(s.tier == .expert ? " (expert)" : "")"
-                    cursor.doc.text(page: cursor.page, x: x, y: cursor.y - 10, text, size: 9)
+                    cursor.put(x, text, size: 9)
                     if i % 2 == 1 || i == trained.count - 1 { cursor.advance(13) }
                 }
             }
@@ -476,6 +476,13 @@ public enum SheetPDFExporter {
 
         mutating func advance(_ dy: Double) { y -= dy }
 
+        /// Draws at the current cursor baseline - the single convention for
+        /// all rows so ascenders never overlap the previous line.
+        mutating func put(_ x: Double, _ s: String, size: Double = 9,
+                          face: PDFDocument.Face = .regular, gray: Double = 0) {
+            doc.text(page: page, x: x, y: y, s, size: size, face: face, gray: gray)
+        }
+
         mutating func text(_ x: Double, _ s: String, size: Double, face: PDFDocument.Face = .regular, gray: Double = 0) {
             doc.text(page: page, x: x, y: y, s, size: size, face: face, gray: gray)
         }
@@ -486,7 +493,7 @@ public enum SheetPDFExporter {
                      rgb: SheetPDFExporter.brass)
             advance(13)
             ruleColored(margin, width: doc.pageSize.width - margin * 2, rgb: SheetPDFExporter.brass)
-            advance(6)
+            advance(11)
         }
 
         mutating func ruleColored(_ x: Double, width: Double, rgb: (r: Double, g: Double, b: Double)) {
