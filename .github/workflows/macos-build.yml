@@ -24,7 +24,7 @@ jobs:
       - name: Verify DMG integrity, app architecture, signatures and Gatekeeper state
         run: |
           set -euo pipefail
-          for spec in "architer/ARCHITER-0.2.0.dmg:ARCHITER" "asssets/ASSSETS-0.1.1.dmg:ASSSETS"; do
+          for spec in "architer/ARCHITER-0.2.0.dmg:ARCHITER" "asssets/ASSSETS-0.3.0.dmg:ASSSETS"; do
             dmg=${spec%%:*}; app=${spec##*:}
             hdiutil verify "$dmg"
             mount=$(mktemp -d)
@@ -41,13 +41,25 @@ jobs:
             fi
             hdiutil detach "$mount"
           done
+      - name: Capture ASSSETS native UI proof
+        run: |
+          open asssets/out/ASSSETS.app
+          sleep 8
+          screencapture -x asssets/out/ASSSETS-0.3.0-library.png
+          test -s asssets/out/ASSSETS-0.3.0-library.png
+          sips -g pixelWidth -g pixelHeight asssets/out/ASSSETS-0.3.0-library.png
+      - name: Upload ASSSETS visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: asssets-visual-proof
+          path: asssets/out/ASSSETS-0.3.0-library.png
       - name: Upload app artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-apps-universal-adhoc
           path: |
             architer/ARCHITER-0.2.0.dmg
-            asssets/ASSSETS-0.1.1.dmg
+            asssets/ASSSETS-0.3.0.dmg
       - name: Upload ARCHITER renders
         if: always()
         uses: actions/upload-artifact@v4
