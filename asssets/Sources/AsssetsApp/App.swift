@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 struct ASSSETSApp: App {
     @StateObject private var library = StudioLibrary()
     var body: some Scene {
-        WindowGroup("ASSSETS") { StudioView().environmentObject(library).frame(minWidth: 1120, minHeight: 720) }
+        WindowGroup("ASSSETS") { StudioView().environmentObject(library).frame(minWidth: 1180, minHeight: 760).preferredColorScheme(.dark).tint(Color(red: 0.55, green: 0.38, blue: 1.0)) }
         .commands { CommandGroup(after: .newItem) { Button("Import Files…") { library.importFiles() }.keyboardShortcut("i") } }
     }
 }
@@ -147,6 +147,8 @@ struct StudioView: View {
             if let asset = model.selected { Inspector(asset: asset) } else { ContentUnavailableView("Select an asset", systemImage: "square.dashed") }
         }
         .navigationSplitViewStyle(.balanced)
+        .background(LinearGradient(colors: [Color(red: 0.035, green: 0.04, blue: 0.065), Color(red: 0.08, green: 0.055, blue: 0.13)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        .toolbarBackground(Color(red: 0.045, green: 0.05, blue: 0.08), for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup {
                 Button { model.importFiles() } label: { Label("Import", systemImage: "plus") }
@@ -164,7 +166,10 @@ struct Sidebar: View {
             Section { Label("ASSSETS Library", systemImage: "sparkles").font(.headline); Text("\(model.assets.count) original assets").font(.caption).foregroundStyle(.secondary) }
             Section("Collections") { ForEach(model.collections, id: \.self) { name in Label(name, systemImage: name == "Favorites" ? "heart.fill" : name == "All Assets" ? "square.grid.2x2" : "folder").tag(name).contentShape(Rectangle()).onTapGesture { model.selectedCollection = name } } }
             Section("Media") { Label("Everything", systemImage: "circle.grid.3x3").contentShape(Rectangle()).onTapGesture { model.selectedKind = nil }; ForEach(MediaKind.allCases) { kind in Label(kind.rawValue, systemImage: kind.symbol).contentShape(Rectangle()).onTapGesture { model.selectedKind = model.selectedKind == kind ? nil : kind } } }
-        }.listStyle(.sidebar).navigationTitle("ASSSETS")
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color(red: 0.035, green: 0.04, blue: 0.065))
+        .listStyle(.sidebar).navigationTitle("ASSSETS")
     }
 }
 
@@ -173,11 +178,15 @@ struct AssetBrowser: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack { Image(systemName: "magnifyingglass"); TextField("Search 72 assets, tags, colors…", text: $model.search).textFieldStyle(.plain); if !model.search.isEmpty { Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain) }; Text("\(model.filtered.count)").font(.caption).foregroundStyle(.secondary) }
-                .padding(10).background(.regularMaterial)
+                .padding(12)
+                .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.09)))
+                .padding(.horizontal, 14).padding(.vertical, 10)
             Divider()
             if model.filtered.isEmpty { ContentUnavailableView.search(text: model.search) }
-            else { ScrollView { LazyVGrid(columns: [GridItem(.adaptive(minimum: model.gridScale), spacing: 14)], spacing: 18) { ForEach(model.filtered) { asset in AssetCard(asset: asset).onTapGesture { model.selectedID = asset.id } } }.padding(18) } }
+            else { ScrollView { LazyVGrid(columns: [GridItem(.adaptive(minimum: model.gridScale), spacing: 16)], spacing: 20) { ForEach(model.filtered) { asset in AssetCard(asset: asset).onTapGesture { model.selectedID = asset.id } } }.padding(20) } }
         }
+        .background(LinearGradient(colors: [Color(red: 0.045,green:0.05,blue:0.08), Color(red:0.075,green:0.05,blue:0.115)], startPoint: .top, endPoint: .bottom))
         .navigationTitle(model.selectedCollection)
     }
 }
@@ -196,7 +205,7 @@ struct AssetCard: View {
             HStack { VStack(alignment: .leading, spacing: 2) { Text(asset.title).font(.headline).lineLimit(1); Text("\(asset.kind.rawValue.dropLast(asset.kind == .audio ? 0 : 1)) • \(asset.resolution)").font(.caption).foregroundStyle(.secondary).lineLimit(1) }; Spacer(); Menu { Button("Add to favorites") { model.toggleFavorite(asset.id) }; Button("Reveal source") { if let p = asset.importedPath { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)]) } } } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 24) }
             HStack(spacing: 3) { ForEach(asset.palette, id: \.self) { hex in Color(hex: hex).frame(height: 5) } }.clipShape(Capsule())
         }
-        .padding(9).background(model.selectedID == asset.id ? Color.accentColor.opacity(0.16) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).stroke(model.selectedID == asset.id ? Color.accentColor : .clear, lineWidth: 2))
+        .padding(9).background(model.selectedID == asset.id ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).stroke(model.selectedID == asset.id ? Color.accentColor : Color.white.opacity(0.08), lineWidth: model.selectedID == asset.id ? 2 : 1)).shadow(color: .black.opacity(0.32), radius: 14, y: 8)
     }
 }
 
@@ -224,7 +233,8 @@ struct Inspector: View {
                 Button { exportPreview() } label: { Label("Export Processed Preview…", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent).frame(maxWidth: .infinity)
                 Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(asset.tags.joined(separator: ", "), forType: .string) } label: { Label("Copy Keywords", systemImage: "doc.on.doc") }
             }.padding(18)
-        }.frame(minWidth: 290, idealWidth: 330).background(Color(nsColor: .windowBackgroundColor))
+        }.frame(minWidth: 310, idealWidth: 350)
+        .background(LinearGradient(colors: [Color(red:0.06,green:0.06,blue:0.095), Color(red:0.035,green:0.04,blue:0.065)], startPoint:.top, endPoint:.bottom))
     }
     private func exportPreview() {
         let p = NSSavePanel(); p.nameFieldStringValue = asset.title.replacingOccurrences(of: " ", with: "-") + "-preview.png"; p.allowedContentTypes = [.png]
