@@ -183,6 +183,43 @@ struct CharacterTests {
         #expect(c.levelUpRollExpression == "1d8+2")
     }
 
+    @Test func eraGovernsLongRestDiceRecovery() {
+        var c = Character(name: "T", level: 4, hitDiceType: 8, hitDiceSpent: 4, era: .era2014)
+        c.longRest()
+        #expect(c.hitDiceSpent == 2) // half of 4 returns
+        var d = Character(name: "T", level: 4, hitDiceType: 8, hitDiceSpent: 4, era: .era2024)
+        d.longRest()
+        #expect(d.hitDiceSpent == 0) // all return
+    }
+
+    @Test func eraGovernsExhaustionPenaltyAndCap() {
+        var c = Character(name: "T", exhaustion: 3, era: .era2014)
+        #expect(c.exhaustionRollPenalty == 0) // named side effects instead
+        c.exhaustion = 7 // past the 2014 cap of 6 - UI/era clamp applies at init
+        var d = Character(name: "T", exhaustion: 8, era: .era2024)
+        #expect(d.exhaustionRollPenalty == 8)
+        #expect(d.era.exhaustionCap == 10)
+        #expect(RulesetVariant.era2014.exhaustionCap == 6)
+    }
+
+    @Test func eraGovernsPreparedLimit() {
+        // 2014: level + casting modifier; 2024: fixed by level
+        #expect(RulesetVariant.era2014.preparedLimit(casterLevel: 5, castingModifier: 4) == 9)
+        #expect(RulesetVariant.era2024.preparedLimit(casterLevel: 5, castingModifier: 4) == 9)
+        #expect(RulesetVariant.era2014.preparedLimit(casterLevel: 1, castingModifier: -1) == 1) // min 1
+        #expect(RulesetVariant.era2024.preparedLimit(casterLevel: 1, castingModifier: 5) == 4) // scores don't add
+    }
+
+    @Test func weaponMasteryDefaultsNilAndDecodes() throws {
+        let a = Attack(name: "Blade")
+        #expect(a.mastery == nil)
+        let json = """
+        {"name":"Blade","ability":"strength","proficient":true,"damageExpression":"1d8","mastery":"Topple"}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(Attack.self, from: json)
+        #expect(decoded.mastery == .topple)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

@@ -103,19 +103,25 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
+    /// Era-aware d20 roll: the 2024-style preset subtracts exhaustion from
+    /// every d20 test; the 2014 style models exhaustion by side effects.
     public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal) {
-        record(roller.check(label, bonus: bonus, mode: mode))
+        let penalty = selected?.wrappedValue.exhaustionRollPenalty ?? 0
+        let adjusted = bonus - penalty
+        let r = roller.check(penalty > 0 ? "\(label) (exhaustion -\(penalty))" : label,
+                             bonus: adjusted, mode: mode)
+        record(r)
     }
 
     /// Attack roll + damage roll as two history entries.
     public func rollAttack(_ attack: Attack, for c: Character, mode: RollMode = .normal) {
-        record(roller.check("\(attack.name) attack", bonus: attack.attackBonus(scores: c.scores, level: c.level), mode: mode))
+        record(roller.check("\(attack.name) attack", bonus: attack.attackBonus(scores: c.scores, level: c.level) - c.exhaustionRollPenalty, mode: mode))
         rollLabeled("\(attack.name) damage", attack.damageString(scores: c.scores))
     }
 
     public func rollDeathSave() {
         guard var c = selected?.wrappedValue else { return }
-        let r = roller.check("Death save", bonus: 0)
+        let r = roller.check("Death save", bonus: -c.exhaustionRollPenalty)
         record(r)
         let natural = r.dice.first?.value ?? 0
         if natural == 20 {

@@ -5,6 +5,7 @@ import ArchiterCore
 /// Guided character creation: identity, a calling preset (HP, hit die, save
 /// proficiencies, suggested skills), ability scores three ways, and skills.
 struct CharacterWizardView: View {
+    @State private var era: RulesetVariant = .era2014
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
@@ -97,6 +98,17 @@ struct CharacterWizardView: View {
                             }
                         }
                         .padding(.top, 4)
+                    }
+                    GroupBox("Ruleset era (mechanics preset)") {
+                        Picker("Era", selection: $era) {
+                            ForEach(RulesetVariant.allCases, id: \.self) { e in
+                                Text(e.displayName).tag(e)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Text(era.summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     GroupBox("Calling preset (fills HP, hit die, saves, suggested skills)") {
                         HStack {
@@ -239,6 +251,7 @@ struct CharacterWizardView: View {
             savingThrowProficiencies: chosenSaves,
             maxHP: max(1, maxHP),
             hitDiceType: hitDiceType,
+            era: era,
             spellcasting: spellcasting
         )
         model.addCharacter(c)

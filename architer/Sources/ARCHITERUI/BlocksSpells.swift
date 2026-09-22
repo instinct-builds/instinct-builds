@@ -87,6 +87,17 @@ struct SpellcastingBlock: View {
                         }
                     }
                 }
+                if let limit = character.preparedSpellLimit {
+                    let prepared = character.spellcasting?.spells.filter { $0.prepared && $0.level > 0 }.count ?? 0
+                    HStack(spacing: Theme.Gap.xs) {
+                        Text("Prepared \(prepared) / \(limit)")
+                            .font(Theme.Typeface.caption.monospacedDigit())
+                            .foregroundStyle(prepared > limit ? Theme.danger : Theme.inkMuted)
+                        Text("(\(character.era.displayName))")
+                            .font(Theme.Typeface.captionSmall)
+                            .foregroundStyle(Theme.inkFaint)
+                    }
+                }
                 // Known/prepared spells grouped by level
                 SpellGroup(character: $character, level: 0)
                 ForEach(1...9, id: \.self) { sl in

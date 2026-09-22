@@ -22,6 +22,14 @@ struct IdentityBlock: View {
                 }
                 .buttonStyle(.plain)
                 .help("Inspiration")
+                Picker("Rules", selection: $character.era) {
+                    ForEach(RulesetVariant.allCases, id: \.self) { era in
+                        Text(era.displayName).tag(era)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 200)
+                .help(character.era.summary)
                 Stepper(value: $character.level, in: 1...20) {
                     Text("LVL \(character.level)")
                         .font(Theme.Typeface.headline.monospacedDigit())

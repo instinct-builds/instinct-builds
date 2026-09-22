@@ -101,8 +101,13 @@ struct VitalsBlock: View {
             // Conditions + exhaustion
             HStack {
                 CardSectionLabel(text: "Exhaustion")
-                Stepper("\(character.exhaustion)", value: $character.exhaustion, in: 0...6)
+                Stepper("\(character.exhaustion)", value: $character.exhaustion, in: 0...character.era.exhaustionCap)
                     .font(Theme.Typeface.caption)
+                if character.exhaustion > 0 {
+                    Text(character.exhaustionStepNote)
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.danger)
+                }
             }
             .foregroundStyle(Theme.inkMuted)
             ConditionGrid(character: $character)
@@ -222,6 +227,28 @@ struct AttackRow: View {
                     model.rollLabeled("\(attack.name) damage", attack.damageString(scores: character.scores))
                 }
                 .controlSize(.small)
+            }
+            if character.era.usesWeaponMastery {
+                HStack(spacing: Theme.Gap.xs) {
+                    Text("Mastery")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                    Picker("", selection: $attack.mastery) {
+                        Text("None").tag(WeaponMastery?.none)
+                        ForEach(WeaponMastery.allCases, id: \.self) { m in
+                            Text(m.rawValue).tag(WeaponMastery?.some(m))
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 110)
+                    if let mastery = attack.mastery {
+                        Text(mastery.effect)
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                    }
+                    Spacer()
+                }
             }
         }
     }

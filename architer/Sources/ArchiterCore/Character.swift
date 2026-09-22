@@ -126,10 +126,13 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
     public var damageType: String
     public var range: String
     public var notes: String
+    /// 2024-era weapon mastery trait; ignored under the 2014 era preset.
+    public var mastery: WeaponMastery?
 
     public init(name: String, ability: Ability? = .strength, proficient: Bool = true,
                 bonusOverride: Int? = nil, damageExpression: String = "1d6",
-                damageType: String = "", range: String = "5 ft", notes: String = "") {
+                damageType: String = "", range: String = "5 ft", notes: String = "",
+                mastery: WeaponMastery? = nil) {
         self.name = name
         self.ability = ability
         self.proficient = proficient
@@ -138,6 +141,7 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         self.damageType = damageType
         self.range = range
         self.notes = notes
+        self.mastery = mastery
     }
 
     /// Back-compatible: old sheets pinned `attackBonus` (0.1.x format).
@@ -169,6 +173,7 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         damageType = try c.decodeIfPresent(String.self, forKey: .damageType) ?? ""
         range = try c.decodeIfPresent(String.self, forKey: .range) ?? "5 ft"
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        mastery = try c.decodeIfPresent(WeaponMastery.self, forKey: .mastery)
     }
 
     /// The ability actually rolled: the set ability, or the better of
@@ -264,6 +269,8 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var speed: Int
     public var conditions: Set<Condition>
     public var exhaustion: Int
+    /// Which d20 era preset governs rest/exhaustion/weapon/prep mechanics.
+    public var era: RulesetVariant
     // Combat & magic
     public var attacks: [Attack]
     public var spellcasting: Spellcasting?
@@ -308,6 +315,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         speed: Int = 30,
         conditions: Set<Condition> = [],
         exhaustion: Int = 0,
+        era: RulesetVariant = .era2014,
         attacks: [Attack] = [],
         spellcasting: Spellcasting? = nil,
         inventory: [InventoryItem] = [],
@@ -346,7 +354,8 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.initiativeBonus = initiativeBonus
         self.speed = speed
         self.conditions = conditions
-        self.exhaustion = max(0, min(6, exhaustion))
+        self.era = era
+        self.exhaustion = max(0, min(era.exhaustionCap, exhaustion))
         self.attacks = attacks
         self.spellcasting = spellcasting
         self.inventory = inventory
@@ -390,7 +399,9 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         initiativeBonus = try c.decodeIfPresent(Int.self, forKey: .initiativeBonus) ?? 0
         speed = try c.decode(Int.self, forKey: .speed)
         conditions = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditions) ?? []
-        exhaustion = try c.decodeIfPresent(Int.self, forKey: .exhaustion) ?? 0
+        era = try c.decodeIfPresent(RulesetVariant.self, forKey: .era) ?? .era2014
+        let rawExhaustion = try c.decodeIfPresent(Int.self, forKey: .exhaustion) ?? 0
+        exhaustion = max(0, min(era.exhaustionCap, rawExhaustion))
         attacks = try c.decode([Attack].self, forKey: .attacks)
         spellcasting = try c.decodeIfPresent(Spellcasting.self, forKey: .spellcasting)
         inventory = try c.decode([InventoryItem].self, forKey: .inventory)
@@ -512,11 +523,12 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         applyHealing(max(1, healingRolled))
     }
 
-    /// Long rest: full HP, half of spent hit dice return (min 1), all slots,
-    /// death saves reset, long-rest features recharge.
+    /// Long rest: full HP, spent hit dice return per the era preset (half in
+    /// the 2014 style, all in the 2024 style, min 1), all slots, death saves
+    /// reset, long-rest features recharge.
     public mutating func longRest() {
         currentHP = maxHP
-        hitDiceSpent = max(0, hitDiceSpent - max(1, hitDiceTotal / 2))
+        hitDiceSpent = max(0, hitDiceSpent - era.longRestDiceRecovered(total: hitDiceTotal))
         deathSaveSuccesses = 0
         deathSaveFailures = 0
         spellcasting?.restoreAllSlots()
@@ -540,6 +552,22 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// Average HP gain on a level-up (genre-standard: half the die + 1 + CON).
     public var averageLevelUpHP: Int {
         max(1, hitDiceType / 2 + 1 + scores.modifier(.constitution))
+    }
+
+    /// Flat d20 penalty from exhaustion under the current era (2024 style).
+    public var exhaustionRollPenalty: Int {
+        era.exhaustionRollPenalty(level: exhaustion)
+    }
+
+    /// What the current exhaustion step means under the current era.
+    public var exhaustionStepNote: String {
+        era.exhaustionStepNote(level: exhaustion)
+    }
+
+    /// Prepared-spell limit under the current era, for prepared casters.
+    public var preparedSpellLimit: Int? {
+        guard let sc = spellcasting else { return nil }
+        return era.preparedLimit(casterLevel: level, castingModifier: scores.modifier(sc.ability))
     }
 
     /// HP roll expression for a level-up ("1d10+2"), independent of dice left.
