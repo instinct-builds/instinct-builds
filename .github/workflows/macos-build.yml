@@ -13,15 +13,21 @@ jobs:
         run: cd architer && swift test
       - name: ARCHITER renders
         run: cd architer && swift run architer-render out
+      - name: Resolve ARCHITER version
+        id: architer-ver
+        run: |
+          cd architer
+          echo "value=$(sed -n 's/^VERSION=${VERSION:-\([^}]*\)}/\1/p' scripts/make_dmg.sh)" >> "$GITHUB_OUTPUT"
       - name: ARCHITER DMG
         run: cd architer && scripts/make_dmg.sh
       - name: Verify ARCHITER DMG
         run: |
           set -euo pipefail
           cd architer
-          hdiutil verify ARCHITER-1.1.0.dmg
+          V="ARCHITER-${{ steps.architer-ver.outputs.value }}.dmg"
+          hdiutil verify "$V"
           mount=$(mktemp -d)
-          hdiutil attach ARCHITER-1.1.0.dmg -nobrowse -readonly -mountpoint "$mount"
+          hdiutil attach "$V" -nobrowse -readonly -mountpoint "$mount"
           file "$mount/ARCHITER.app/Contents/MacOS/ARCHITER"
           lipo "$mount/ARCHITER.app/Contents/MacOS/ARCHITER" -verify_arch arm64 x86_64
           codesign --verify --deep --strict --verbose=4 "$mount/ARCHITER.app"
@@ -30,10 +36,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: architer-1.1.0
+          name: architer-${{ steps.architer-ver.outputs.value }}
           if-no-files-found: warn
           path: |
-            architer/ARCHITER-1.1.0.dmg
+            architer/ARCHITER-${{ steps.architer-ver.outputs.value }}.dmg
             architer/out/
       - name: MUEW demo renders
         run: cd muew && make all && ./build/muew-demo && ./build/muew-demo-wt && ./build/muew-demo-mod-depth && ls -la out
