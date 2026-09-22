@@ -297,6 +297,7 @@ struct CharacterTests {
 
     @Test func pdfExportIncludesEraMasteryAndConcentration() {
         var c = Character(name: "PdfTest", era: .era2024, concentratingOn: "Ward Bond")
+        c.spellcasting = Spellcasting(ability: .intelligence, progression: .full) // spells section prints the concentration line
         c.attacks = [Attack(name: "Blade", mastery: .topple)]
         c.exhaustion = 2
         let data = SheetPDFExporter.export(c)
