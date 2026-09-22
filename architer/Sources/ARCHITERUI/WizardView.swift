@@ -157,7 +157,7 @@ struct CharacterWizardView: View {
                 }
             }
         case .pointBuy:
-            let spent = Ability.allCases.reduce(0) { $0 + (RulesMath.pointBuyCost(score: scores[$1]) ?? 0) }
+            let spent = Ability.allCases.reduce(0) { $0 + (RulesMath.pointBuyCost(score: scores[$1] ?? 10) ?? 0) }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Points spent: \(spent)/27 — scores 8 to 15")
                     .font(.caption)
