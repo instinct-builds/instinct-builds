@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 0.9.0
+
+- **Roll cards**: history entries are now styled cards - each die shows as
+  a chip (dropped dice struck out), the advantage alternate sits beside the
+  total, and natural 20s glow green while natural 1s burn red. The sheet's
+  inline dice block shows the latest roll as the same card.
+
 ## What's in 0.8.0
 
 - **Compendium browser**: a book icon in the sidebar opens a searchable

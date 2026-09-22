@@ -20,16 +20,11 @@ struct DiceInlineBlock: View {
                 }
             }
             if let last = model.rollHistory.first {
-                HStack {
-                    Text(last.label ?? last.expression).foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(last.total)")
-                        .font(Theme.Typeface.statBig)
-                        .foregroundStyle(Theme.accent)
-                }
+                RollCard(roll: last)
             }
             Text("Full roller and history on the Dice tab.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.inkMuted)
         }
     }
 }
@@ -72,34 +67,90 @@ public struct DiceRollerView: View {
                 Spacer()
                 Button("Clear") { model.rollHistory.removeAll() }.controlSize(.small)
             }
-            List(model.rollHistory.indices, id: \.self) { i in
-
-                let r = model.rollHistory[i]
-                HStack {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(r.label ?? r.expression)
-                        if r.label != nil {
-                            Text(r.expression).font(.caption).foregroundStyle(.secondary)
-                        }
+            ScrollView {
+                LazyVStack(spacing: Theme.Gap.sm) {
+                    ForEach(model.rollHistory.indices, id: \.self) { i in
+                        RollCard(roll: model.rollHistory[i])
                     }
-                    .frame(width: 200, alignment: .leading)
-                    Text(r.dice.map { $0.kept ? "\($0.value)" : "(\($0.value))" }.joined(separator: " "))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let alt = r.alternateTotal {
-                        Text("(\(alt))").foregroundStyle(.secondary)
-                    }
-                    Text("\(r.total)")
-                        .font(Theme.Typeface.headline.monospacedDigit())
-                        .foregroundStyle(Theme.accent)
                 }
-                .listRowBackground(Theme.surfaceRaised)
             }
-            .scrollContentBackground(.hidden)
         }
         .padding(Theme.Gap.lg)
         .background(Theme.surface)
         .preferredColorScheme(.dark)
+    }
+}
+
+/// A styled history entry: label, per-die chips (dropped dice struck out),
+/// advantage alternate, and a crit glow on natural 20s / 1s.
+struct RollCard: View {
+    let roll: RollResult
+
+    private var crit: Bool {
+        roll.dice.contains { $0.sides == 20 && $0.kept && $0.value == 20 }
+    }
+    private var fumble: Bool {
+        roll.dice.contains { $0.sides == 20 && $0.kept && $0.value == 1 }
+    }
+
+    var body: some View {
+        HStack(spacing: Theme.Gap.md) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(roll.label ?? roll.expression)
+                    .font(Theme.Typeface.body.bold())
+                    .foregroundStyle(Theme.ink)
+                HStack(spacing: 4) {
+                    if roll.label != nil {
+                        Text(roll.expression)
+                            .font(Theme.Typeface.captionSmall)
+                            .foregroundStyle(Theme.inkFaint)
+                    }
+                    ForEach(roll.dice.indices, id: \.self) { i in
+                        dieChip(roll.dice[i])
+                    }
+                    if roll.modifier != 0 {
+                        Text(signed(roll.modifier))
+                            .font(Theme.Typeface.caption.monospacedDigit())
+                            .foregroundStyle(Theme.inkMuted)
+                    }
+                }
+            }
+            Spacer()
+            if let alt = roll.alternateTotal {
+                Text("\(alt)")
+                    .font(Theme.Typeface.caption.monospacedDigit())
+                    .foregroundStyle(Theme.inkFaint)
+                    .strikethrough()
+                    .help("The die not taken")
+            }
+            Text("\(roll.total)")
+                .font(Theme.Typeface.statBig.monospacedDigit())
+                .foregroundStyle(crit ? Theme.success : fumble ? Theme.danger : Theme.accent)
+        }
+        .padding(.horizontal, Theme.Gap.md)
+        .padding(.vertical, Theme.Gap.sm)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.md))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.md)
+                .stroke(crit ? Theme.success.opacity(0.5) : fumble ? Theme.danger.opacity(0.5) : Theme.edge,
+                        lineWidth: crit || fumble ? 1.5 : 0.5)
+        )
+    }
+
+    private func dieChip(_ die: DieResult) -> some View {
+        Text("\(die.value)")
+            .font(Theme.Typeface.caption.monospacedDigit())
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(die.kept ? Theme.surfaceInset : Color.clear,
+                        in: RoundedRectangle(cornerRadius: Theme.Radius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                    .stroke(die.kept ? Theme.accent.opacity(0.35) : Theme.edge, lineWidth: 0.5)
+            )
+            .foregroundStyle(die.kept ? Theme.ink : Theme.inkFaint)
+            .strikethrough(!die.kept)
+            .help("d\(die.sides)\(die.kept ? "" : " (dropped)")")
     }
 }
 #endif
