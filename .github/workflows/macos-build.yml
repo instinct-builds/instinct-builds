@@ -86,6 +86,31 @@ jobs:
           cp muew/au/3-build_au.sh muew/au/build_au.sh
       - name: Build, sign, install and validate MUEW AU
         run: cd muew && au/build_au.sh
+      - name: Build designed MUEW standalone app + DMG
+        run: cd muew && scripts/make_muew_dmg.sh
+      - name: Verify MUEW app and distribution
+        run: |
+          set -euo pipefail
+          cd muew
+          lipo out/MUEW.app/Contents/MacOS/MUEW -verify_arch arm64 x86_64
+          codesign --verify --deep --strict out/MUEW.app
+          hdiutil verify out/MUEW-0.2.0.dmg
+      - name: Capture MUEW designed UI proof
+        run: |
+          cd muew
+          open out/MUEW.app
+          sleep 8
+          screencapture -x out/MUEW-0.2.0-instrument.png
+          test -s out/MUEW-0.2.0-instrument.png
+          sips -g pixelWidth -g pixelHeight out/MUEW-0.2.0-instrument.png
+      - name: Upload MUEW release + visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: muew-0.2.0-designed-instrument
+          path: |
+            muew/out/MUEW-0.2.0.dmg
+            muew/out/MUEW-0.2.0-instrument.png
+            muew/out/MUEW-AU-unsigned.zip
       - name: Upload AU artifact
         uses: actions/upload-artifact@v4
         with:
