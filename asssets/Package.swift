@@ -10,7 +10,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "AsssetsCore"),
-        .executableTarget(name: "AsssetsApp", dependencies: ["AsssetsCore"]),
+        .executableTarget(
+            name: "AsssetsApp",
+            dependencies: ["AsssetsCore"],
+            resources: [.copy("StarterLibrary.zip")]
+        ),
         .testTarget(name: "AsssetsCoreTests", dependencies: ["AsssetsCore"]),
     ]
 )
