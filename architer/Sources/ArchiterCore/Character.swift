@@ -75,6 +75,26 @@ public struct AbilityScores: Codable, Equatable, Sendable {
         self.values = v
     }
 
+    private enum CodingKeys: String, CodingKey { case values }
+
+    public init(from decoder: Decoder) throws {
+        // Current format: {"values": {...}}. Legacy 0.1.x saves stored the
+        // dictionary directly; accept both.
+        if let keyed = try? decoder.container(keyedBy: CodingKeys.self),
+           let v = try keyed.decodeIfPresent([Ability: Int].self, forKey: .values) {
+            values = v
+        } else if let dict = try? [Ability: Int](from: decoder) {
+            values = dict
+        } else {
+            values = Dictionary(uniqueKeysWithValues: Ability.allCases.map { ($0, 10) })
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(values, forKey: .values)
+    }
+
     public subscript(a: Ability) -> Int {
         get { values[a] ?? 10 }
         set { values[a] = newValue }
