@@ -103,6 +103,7 @@ jobs:
           screencapture -x out/MUEW-0.2.0-instrument.png
           test -s out/MUEW-0.2.0-instrument.png
           sips -g pixelWidth -g pixelHeight out/MUEW-0.2.0-instrument.png
+          test "$(sips -g pixelWidth out/MUEW-0.2.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
       - name: Upload MUEW release + visual proof
         uses: actions/upload-artifact@v4
         with:
