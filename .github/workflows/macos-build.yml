@@ -11,6 +11,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: ARCHITER tests
         run: cd architer && swift test
+      - name: ARCHITER renders
+        run: cd architer && swift run architer-render out
       - name: ASSSETS tests
         run: cd asssets && swift test
       - name: MUEW build + tests
@@ -22,7 +24,7 @@ jobs:
       - name: Verify DMG integrity, app architecture, signatures and Gatekeeper state
         run: |
           set -euo pipefail
-          for spec in "architer/ARCHITER-0.1.1.dmg:ARCHITER" "asssets/ASSSETS-0.1.1.dmg:ASSSETS"; do
+          for spec in "architer/ARCHITER-0.2.0.dmg:ARCHITER" "asssets/ASSSETS-0.1.1.dmg:ASSSETS"; do
             dmg=${spec%%:*}; app=${spec##*:}
             hdiutil verify "$dmg"
             mount=$(mktemp -d)
@@ -44,8 +46,15 @@ jobs:
         with:
           name: macos-apps-universal-adhoc
           path: |
-            architer/ARCHITER-0.1.1.dmg
+            architer/ARCHITER-0.2.0.dmg
             asssets/ASSSETS-0.1.1.dmg
+      - name: Upload ARCHITER renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architer-renders
+          if-no-files-found: warn
+          path: architer/out/
       - name: MUEW demo renders
         run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
 

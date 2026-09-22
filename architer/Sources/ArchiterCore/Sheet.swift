@@ -6,10 +6,13 @@ import Foundation
 public enum SheetBlockKind: String, Codable, CaseIterable, Sendable {
     case identity       // name, lineage, calling, background, level, XP
     case abilities      // six ability scores + modifiers + saves
-    case vitals         // HP, AC, initiative, speed, passive perception
+    case vitals         // HP, AC, initiative, speed, conditions, hit dice
     case skills
-    case attacks
-    case inventory
+    case attacks        // weapons/attacks + spellcasting stats
+    case spells         // slots + spell list
+    case inventory      // currency, items, weight
+    case features       // features & traits with limited uses
+    case personality    // traits/ideals/bonds/flaws, appearance, backstory
     case diceRoller
     case notes
 }
@@ -55,10 +58,13 @@ public struct SheetLayout: Codable, Equatable, Sendable {
         self.customBlocks = customBlocks
     }
 
-    // Layouts saved before custom blocks existed still decode.
+    // Layouts saved before newer blocks existed gain them (visible) on decode.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        blocks = try c.decode([SheetBlock].self, forKey: .blocks)
+        let decoded = try c.decode([SheetBlock].self, forKey: .blocks)
+        let have = Set(decoded.map { $0.kind })
+        let missing = SheetBlockKind.allCases.filter { !have.contains($0) }.map { SheetBlock(kind: $0) }
+        blocks = decoded + missing
         customBlocks = try c.decodeIfPresent([CustomBlock].self, forKey: .customBlocks) ?? []
     }
 

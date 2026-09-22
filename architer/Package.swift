@@ -7,12 +7,18 @@ let package = Package(
     products: [
         .library(name: "ArchiterCore", targets: ["ArchiterCore"]),
         .executable(name: "architer", targets: ["ARCHITERApp"]),
+        .executable(name: "architer-render", targets: ["ARCHITERRender"]),
     ],
     targets: [
         .target(name: "ArchiterCore"),
+        .target(name: "ARCHITERUI", dependencies: ["ArchiterCore"]),
         .executableTarget(
             name: "ARCHITERApp",
-            dependencies: ["ArchiterCore"]
+            dependencies: ["ARCHITERUI"]
+        ),
+        .executableTarget(
+            name: "ARCHITERRender",
+            dependencies: ["ARCHITERUI"]
         ),
         .testTarget(
             name: "ArchiterCoreTests",

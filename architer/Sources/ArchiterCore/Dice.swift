@@ -31,12 +31,14 @@ public struct DieResult: Equatable, Sendable {
 }
 
 public struct RollResult: Equatable, Sendable {
-    public let expression: String
+    public var expression: String
     public let dice: [DieResult]
     public let modifier: Int
     public let total: Int
     /// For advantage/disadvantage d20 rolls: both d20 results, best/worst chosen.
     public let alternateTotal: Int?
+    /// What the roll was for ("Stealth check", "Longsword damage"); nil for raw notation.
+    public var label: String? = nil
 }
 
 /// Parses and evaluates dice notation: `d20`, `2d6+3`, `4d6kh3` (keep highest 3),
@@ -172,6 +174,22 @@ public struct DiceRoller: Sendable {
         let expr = try DiceExpression.parse(expression)
         var g = seededOrSystem()
         return expr.roll(using: &g)
+    }
+
+    /// Roll notation with a purpose label for the history log.
+    public func rollLabeled(_ label: String, _ expression: String) throws -> RollResult {
+        var result = try roll(expression)
+        result.label = label
+        return result
+    }
+
+    /// A labeled d20 check: "Stealth check", "STR save", attack rolls.
+    public func check(_ label: String, bonus: Int, mode: RollMode = .normal) -> RollResult {
+        var result = rollD20(mode: mode, modifier: bonus)
+        result.label = label
+        let sign = bonus >= 0 ? "+" : ""
+        result.expression = "1d20\(sign)\(bonus)"
+        return result
     }
 
     private func seededOrSystem() -> AnyRNG {

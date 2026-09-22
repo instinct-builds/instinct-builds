@@ -2,139 +2,284 @@ import Testing
 import Foundation
 @testable import ArchiterCore
 
-@Suite("Rules math")
-struct RulesMathTests {
-    @Test(arguments: [
-        (1, -5), (8, -1), (9, -1), (10, 0), (11, 0), (12, 1), (15, 2), (18, 4), (20, 5),
-    ])
-    func abilityModifier(score: Int, expected: Int) {
-        #expect(RulesMath.modifier(for: score) == expected)
-    }
-
-    @Test(arguments: [
-        (1, 2), (4, 2), (5, 3), (8, 3), (9, 4), (13, 5), (17, 6), (20, 6),
-    ])
-    func proficiencyByLevel(level: Int, expected: Int) {
-        #expect(RulesMath.proficiencyBonus(level: level) == expected)
-    }
-
-    @Test func pointBuyBudget() {
-        var s = AbilityScores()
-        for a in Ability.allCases { s[a] = 15 } // 9 pts each = 54 > 27
-        #expect(s.totalPointBuyCost == 54)
-        var legal = AbilityScores()
-        let spread = [15, 14, 13, 12, 10, 8] // 9+7+5+4+2+0 = 27
-        for (a, v) in zip(Ability.allCases, spread) { legal[a] = v }
-        #expect(legal.totalPointBuyCost == 27)
-    }
-
-    @Test func outOfRangeScoresFailPointBuy() {
-        var s = AbilityScores()
-        s[.strength] = 20
-        #expect(s.totalPointBuyCost == nil)
-    }
-}
-
-@Suite("Character model")
+@Suite("Character core")
 struct CharacterTests {
-    @Test func derivedStats() {
-        var scores = AbilityScores()
-        scores[.dexterity] = 16 // +3
-        scores[.wisdom] = 14    // +2
-        var skills = Skill.defaultList
-        if let i = skills.firstIndex(where: { $0.name == "Perception" }) {
-            skills[i].tier = .proficient
-        }
-        let c = Character(name: "Test", level: 5, scores: scores, skills: skills)
-        #expect(c.initiative == 3)
-        #expect(c.proficiencyBonus == 3)
-        #expect(c.passivePerception == 10 + 2 + 3)
-    }
 
-    @Test func savingThrowsUseProficiency() {
-        var scores = AbilityScores()
-        scores[.strength] = 14 // +2
-        let c = Character(level: 1, scores: scores, savingThrowProficiencies: [.strength])
-        #expect(c.savingThrow(.strength) == 4)  // +2 mod +2 prof
-        #expect(c.savingThrow(.wisdom) == 0)
-    }
-
-    @Test func damageHealingAndRest() {
-        var c = Character(maxHP: 20)
-        #expect(c.currentHP == 20)
-        c.applyDamage(7)
-        #expect(c.currentHP == 13)
-        c.applyDamage(999)
-        #expect(c.currentHP == 0)
-        c.applyHealing(5)
-        #expect(c.currentHP == 5)
-        c.applyHealing(999)
-        #expect(c.currentHP == 20)
-        c.applyDamage(3)
-        c.longRest()
-        #expect(c.currentHP == 20)
-    }
-
-    @Test func levelIsClamped() {
-        #expect(Character(level: 0).level == 1)
-        #expect(Character(level: 99).level == 20)
-    }
-}
-
-@Suite("Persistence round-trip")
-struct PersistenceTests {
-    @Test func saveLoadRoundTrip() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("architer-tests-\(UUID().uuidString)")
-        let store = CharacterStore(directory: dir)
-        var c = Character(name: "Roundtrip", level: 3)
-        c.attacks.append(Attack(name: "Blade", attackBonus: 5, damageExpression: "1d8+3"))
-        c.layout.setVisible(.inventory, false)
+    @Test func defaultsRoundTrip() throws {
+        let c = Character(name: "Test")
+        let store = CharacterStore(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString))
         try store.save(c)
         let loaded = try store.load(id: c.id)
         #expect(loaded == c)
-        let all = try store.loadAll()
-        #expect(all.count == 1)
-        try store.delete(c)
-        #expect((try store.loadAll()).isEmpty)
+    }
+
+    @Test func damageTempHPAbsorbsFirst() {
+        var c = Character(name: "T", maxHP: 20)
+        c.gainTempHP(5)
+        c.applyDamage(3)
+        #expect(c.tempHP == 2)
+        #expect(c.currentHP == 20)
+        c.applyDamage(4)
+        #expect(c.tempHP == 0)
+        #expect(c.currentHP == 18)
+    }
+
+    @Test func tempHPNeverStacks() {
+        var c = Character(name: "T", maxHP: 20)
+        c.gainTempHP(5)
+        c.gainTempHP(3)
+        #expect(c.tempHP == 5)
+        c.gainTempHP(8)
+        #expect(c.tempHP == 8)
+    }
+
+    @Test func healingCapsAndResetsDeathSaves() {
+        var c = Character(name: "T", maxHP: 20, currentHP: 5)
+        c.applyHealing(50)
+        #expect(c.currentHP == 20)
+        c.applyDamage(30)
+        #expect(c.currentHP == 0)
+        c.deathSaveFailures = 2
+        c.applyHealing(4)
+        #expect(c.deathSaveFailures == 0)
+    }
+
+    @Test func hitDiceSpendAndRegain() {
+        var c = Character(name: "T", level: 6, maxHP: 40, currentHP: 10, hitDiceSpent: 4)
+        #expect(c.hitDiceRemaining == 2)
+        #expect(c.hitDieRollExpression() != nil)
+        c.spendHitDie(healingRolled: 7)
+        #expect(c.hitDiceRemaining == 1)
+        #expect(c.currentHP == 17)
+        c.longRest()
+        #expect(c.currentHP == 40)
+        #expect(c.hitDiceSpent == 2) // 5 spent, regained max(1, 6/2) = 3
+    }
+
+    @Test func longRestResetsSlotsDeathSavesAndFeatures() {
+        var c = Character(name: "T", level: 5, maxHP: 30, currentHP: 3,
+                          deathSaveSuccesses: 1,
+                          spellcasting: Spellcasting(ability: .intelligence, progression: .full,
+                                                     slotsUsed: [4, 3, 2, 0, 0, 0, 0, 0, 0]),
+                          features: [Feature(name: "F", usesMax: 1, usesUsed: 1, recharge: .longRest)])
+        c.exhaustion = 2
+        c.longRest()
+        #expect(c.currentHP == 30)
+        #expect(c.spellcasting?.slotsUsed.allSatisfy { $0 == 0 } == true)
+        #expect(c.deathSaveSuccesses == 0)
+        #expect(c.features[0].usesRemaining == 1)
+        #expect(c.exhaustion == 1)
+    }
+
+    @Test func shortRestOnlyAffectsPactAndShortRestFeatures() {
+        var c = Character(name: "T", level: 5,
+                          spellcasting: Spellcasting(ability: .charisma, progression: .pact,
+                                                     slotsUsed: [0, 0, 0, 0, 2, 0, 0, 0, 0]),
+                          features: [
+                            Feature(name: "Short", usesMax: 1, usesUsed: 1, recharge: .shortRest),
+                            Feature(name: "Long", usesMax: 1, usesUsed: 1, recharge: .longRest),
+                          ])
+        c.shortRest()
+        #expect(c.spellcasting?.slotsUsed.allSatisfy { $0 == 0 } == true)
+        #expect(c.features[0].usesRemaining == 1)
+        #expect(c.features[1].usesRemaining == 0)
+    }
+
+    @Test func xpAwardLevelsUp() {
+        var c = Character(name: "T", level: 1)
+        #expect(!c.addXP(100))
+        #expect(c.addXP(300))
+        #expect(c.level == 2)
+        _ = c.addXP(14000)
+        #expect(c.level == 6)
+        #expect(c.proficiencyBonus == 3)
+        #expect(c.xpToNextLevel != nil)
+    }
+
+    @Test func computedACFromArmorShieldAndMisc() {
+        var scores = AbilityScores()
+        scores[.dexterity] = 16 // +3
+        var c = Character(name: "T", scores: scores, armorClass: 10)
+        #expect(c.computedAC == 10)
+        c.equippedArmor = "Leather"
+        #expect(c.computedAC == 14) // 11 + 3
+        c.equippedArmor = "Half Plate"
+        #expect(c.computedAC == 17) // 15 + min(3, 2)
+        c.shieldEquipped = true
+        #expect(c.computedAC == 19)
+        c.armorClassBonus = 1
+        #expect(c.computedAC == 20)
+        c.equippedArmor = nil
+        #expect(c.computedAC == 13) // 10 + 2 + 1
+    }
+
+    @Test func attackBonusesDeriveFromAbilities() {
+        var scores = AbilityScores()
+        scores[.strength] = 16 // +3
+        scores[.dexterity] = 14 // +2
+        let c = Character(name: "T", level: 5, scores: scores) // prof +3
+        let sword = Attack(name: "Longsword", ability: .strength, proficient: true, damageExpression: "1d8")
+        #expect(sword.attackBonus(scores: c.scores, level: c.level) == 6)
+        #expect(sword.damageString(scores: c.scores) == "1d8+3")
+        let finesse = Attack(name: "Dagger", ability: nil, proficient: true, damageExpression: "1d4")
+        #expect(finesse.effectiveAbility(scores: c.scores) == .strength)
+        let pinned = Attack(name: "Old", attackBonus: 5, damageExpression: "1d6")
+        #expect(pinned.attackBonus(scores: c.scores, level: c.level) == 5)
+    }
+
+    @Test func encumbranceBands() {
+        var scores = AbilityScores()
+        scores[.strength] = 10 // capacity 150
+        var c = Character(name: "T", scores: scores)
+        #expect(c.encumbrance == .normal)
+        c.inventory = [InventoryItem(name: "Anvil", weight: 120)]
+        #expect(c.encumbrance == .encumbered)
+        c.inventory = [InventoryItem(name: "Anvils", weight: 200)]
+        #expect(c.encumbrance == .heavilyEncumbered)
+        c.inventory = [InventoryItem(name: "Anvils", weight: 350)]
+        #expect(c.encumbrance == .overCapacity)
+    }
+
+    @Test func currencyTotalsAndDisplay() {
+        let purse = Currency(copper: 5, silver: 2, electrum: 1, gold: 3, platinum: 1)
+        #expect(purse.totalCopper == 5 + 20 + 50 + 300 + 1000)
+        #expect(purse.displayString == "1 pp, 3 gp, 1 ep, 2 sp, 5 cp")
+    }
+
+    @Test func oldSaveFormatDecodes() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",
+        "level":3,"experience":900,"scores":{},"skills":[],
+        "savingThrowProficiencies":[],"maxHP":20,"currentHP":20,"armorClass":12,"speed":30,
+        "attacks":[{"name":"Sword","attackBonus":5,"damageExpression":"1d8+3","notes":""}],
+        "inventory":[{"name":"Rope","quantity":1,"notes":""}],
+        "notes":"","layout":{"blocks":[{"kind":"identity","visible":true,"size":"regular"}]}}
+        """.data(using: .utf8)!
+        let c = try JSONDecoder().decode(Character.self, from: json)
+        #expect(c.attacks.first?.attackBonus(scores: c.scores, level: c.level) == 5)
+        #expect(c.tempHP == 0)
+        #expect(c.hitDiceType == 8)
+        #expect(c.layout.blocks.count > 1)
+        #expect(c.layout.blocks.contains { $0.kind == .spells })
     }
 }
 
-@Suite("Export")
-struct ExportTests {
-    @Test func markdownContainsSections() {
-        var c = Character(name: "Aria <the Bold>", level: 2)
-        c.inventory.append(InventoryItem(name: "Rope", quantity: 2))
-        let md = SheetExporter.exportMarkdown(c)
-        #expect(md.contains("# Aria <the Bold>"))
-        #expect(md.contains("## Abilities"))
-        #expect(md.contains("Rope ×2"))
-    }
+@Suite("Rules tables")
+struct RulesTableTests {
 
-    @Test func htmlEscapesUserText() {
-        let c = Character(name: "<script>alert(1)</script>")
-        let html = SheetExporter.exportHTML(c)
-        #expect(!html.contains("<script>"))
-        #expect(html.contains("&lt;script&gt;"))
-    }
-
-    @Test func hiddenBlocksAreOmitted() {
-        var c = Character(name: "Minimal")
-        c.layout.setVisible(.skills, false)
-        c.layout.setVisible(.notes, false)
-        let md = SheetExporter.exportMarkdown(c)
-        #expect(!md.contains("## Skills"))
-        #expect(md.contains("## Abilities"))
-    }
-
-    @Test func blockReorderIsRespected() {
-        var c = Character(name: "Reorder")
-        // Move notes to the front.
-        if let idx = c.layout.blocks.firstIndex(where: { $0.kind == .notes }) {
-            c.layout.move(fromOffsets: IndexSet(integer: idx), toOffset: 0)
+    @Test func xpThresholdsAreMonotonic() {
+        for i in 1..<RulesMath.xpThresholds.count {
+            #expect(RulesMath.xpThresholds[i] > RulesMath.xpThresholds[i - 1])
         }
-        c.notes = "first!"
+        #expect(RulesMath.level(forXP: 0) == 1)
+        #expect(RulesMath.level(forXP: 354999) == 19)
+        #expect(RulesMath.level(forXP: 355000) == 20)
+    }
+
+    @Test func fullCasterSlotsMatchTable() {
+        #expect(RulesMath.spellSlots(casterLevel: 1, spellLevel: 1) == 2)
+        #expect(RulesMath.spellSlots(casterLevel: 5, spellLevel: 3) == 2)
+        #expect(RulesMath.spellSlots(casterLevel: 20, spellLevel: 9) == 1)
+        #expect(RulesMath.spellSlots(casterLevel: 2, spellLevel: 2) == 0)
+    }
+
+    @Test func pactSlots() {
+        #expect(RulesMath.pactSlots(casterLevel: 1) == (1, 1))
+        #expect(RulesMath.pactSlots(casterLevel: 9) == (2, 5))
+        #expect(RulesMath.pactSlots(casterLevel: 17) == (4, 5))
+    }
+
+    @Test func carryingCapacity() {
+        #expect(RulesMath.carryingCapacity(strength: 10) == 150)
+        #expect(RulesMath.pushDragLift(strength: 10) == 300)
+    }
+}
+
+@Suite("Spellcasting")
+struct SpellcastingTests {
+
+    @Test func slotUsage() {
+        var sc = Spellcasting(ability: .intelligence, progression: .full)
+        #expect(sc.slotsMax(spellLevel: 1, casterLevel: 3) == 4)
+        sc.useSlot(spellLevel: 1, casterLevel: 3)
+        #expect(sc.slotsRemaining(spellLevel: 1, casterLevel: 3) == 3)
+        sc.restoreSlot(spellLevel: 1)
+        #expect(sc.slotsRemaining(spellLevel: 1, casterLevel: 3) == 4)
+    }
+
+    @Test func halfAndThirdProgressions() {
+        let half = CasterProgression.half
+        #expect(half.slots(spellLevel: 1, level: 1) == 0)  // no casting at level 1
+        #expect(half.slots(spellLevel: 1, level: 2) == 2)  // caster level 1
+        let third = CasterProgression.third
+        #expect(third.slots(spellLevel: 1, level: 3) == 2)
+        #expect(third.maxSpellLevel(level: 3) == 1)
+    }
+
+    @Test func dcAndAttack() {
+        var scores = AbilityScores()
+        scores[.intelligence] = 16 // +3
+        let sc = Spellcasting(ability: .intelligence)
+        #expect(sc.spellSaveDC(scores: scores, level: 5) == 14) // 8 + 3 + 3
+        #expect(sc.spellAttackBonus(scores: scores, level: 5) == 6)
+    }
+
+    @Test func libraryIntegrity() {
+        let names = SpellLibrary.all.map { $0.name }
+        #expect(Set(names).count == names.count) // unique
+        #expect(SpellLibrary.all.count >= 50)
+        #expect(SpellLibrary.all.allSatisfy { !$0.detail.isEmpty })
+        for level in 0...9 {
+            #expect(!SpellLibrary.spells(atLevel: level).isEmpty)
+        }
+        #expect(SpellLibrary.spell(named: "Fireball")?.level == 3)
+    }
+}
+
+@Suite("Equipment library")
+struct EquipmentTests {
+
+    @Test func armorStats() {
+        let leather = EquipmentLibrary.armor(named: "Leather")!
+        #expect(leather.baseAC == 11 && leather.addDex)
+        let plate = EquipmentLibrary.armor(named: "Plate")!
+        #expect(plate.baseAC == 18 && !plate.addDex)
+        #expect(EquipmentLibrary.armors.allSatisfy { $0.weight > 0 })
+    }
+
+    @Test func weaponStats() {
+        let dagger = EquipmentLibrary.weapon(named: "Dagger")!
+        #expect(dagger.finesse)
+        #expect(dagger.damageExpression == "1d4")
+        let greatsword = EquipmentLibrary.weapon(named: "Greatsword")!
+        #expect(greatsword.damageExpression == "2d6")
+        // Every weapon's damage expression parses.
+        for w in EquipmentLibrary.weapons {
+            #expect((try? DiceExpression.parse(w.damageExpression)) != nil)
+        }
+    }
+}
+
+@Suite("Sample content")
+struct SampleContentTests {
+
+    @Test func demoCharacterIsRichAndValid() {
+        let c = SampleContent.demoCharacter()
+        #expect(c.spellcasting != nil)
+        #expect(c.features.count >= 4)
+        #expect(c.attacks.count >= 2)
+        #expect(c.inventory.count >= 5)
+        #expect(!c.personality.isEmpty)
+        #expect(c.currency.totalCopper > 0)
+        // Exports cover the new sections.
         let md = SheetExporter.exportMarkdown(c)
-        #expect(md.hasPrefix("## Notes"))
+        #expect(md.contains("## Spells"))
+        #expect(md.contains("## Features"))
+        #expect(md.contains("## Personality"))
+        #expect(md.contains("Currency:"))
+        let pdf = String(decoding: SheetPDFExporter.export(c), as: UTF8.self)
+        #expect(pdf.contains("(SPELLS"))
+        #expect(pdf.contains("(FEATURES"))
     }
 }

@@ -1,0 +1,220 @@
+#if os(macOS)
+import SwiftUI
+import ArchiterCore
+
+struct VitalsBlock: View {
+    @Binding var character: Character
+    @EnvironmentObject var model: AppModel
+    @State private var damageAmount = ""
+    @State private var healAmount = ""
+    @State private var tempAmount = ""
+
+    var body: some View {
+        BlockCard(title: "Vitals") {
+            // HP row with damage / heal / temp workflows
+            HStack {
+                Stepper("HP \(character.currentHP)/\(character.maxHP)",
+                        value: $character.currentHP, in: 0...character.maxHP)
+                Stepper("Max \(character.maxHP)", value: $character.maxHP, in: 1...999)
+                if character.tempHP > 0 {
+                    Text("+\(character.tempHP) temp").bold().foregroundStyle(.blue)
+                }
+            }
+            HStack {
+                TextField("Damage", text: $damageAmount).frame(width: 70).textFieldStyle(.roundedBorder)
+                Button("Apply") {
+                    if let n = Int(damageAmount) { character.applyDamage(n); damageAmount = "" }
+                }
+                TextField("Heal", text: $healAmount).frame(width: 70).textFieldStyle(.roundedBorder)
+                Button("Apply") {
+                    if let n = Int(healAmount) { character.applyHealing(n); healAmount = "" }
+                }
+                TextField("Temp", text: $tempAmount).frame(width: 70).textFieldStyle(.roundedBorder)
+                Button("Gain") {
+                    if let n = Int(tempAmount) { character.gainTempHP(n); tempAmount = "" }
+                }
+            }
+            Divider()
+            // Defenses row
+            HStack {
+                Text("AC \(character.computedAC)").font(.title3).bold()
+                Picker("Armor", selection: $character.equippedArmor) {
+                    Text("Unarmored").tag(String?.none)
+                    ForEach(EquipmentLibrary.armors.filter { $0.category != .shield }) { def in
+                        Text("\(def.name) (\(def.baseAC)\(def.addDex ? "+DEX" : ""))").tag(String?.some(def.name))
+                    }
+                }
+                .frame(maxWidth: 220)
+                Toggle("Shield", isOn: $character.shieldEquipped).toggleStyle(.checkbox)
+                Stepper("Misc \(signed(character.armorClassBonus))", value: $character.armorClassBonus, in: -10...10)
+            }
+            HStack {
+                Stepper("Manual AC \(character.armorClass)", value: $character.armorClass, in: 0...40)
+                    .help("Used when unarmored")
+                Stepper("Speed \(character.speed) ft", value: $character.speed, in: 0...120, step: 5)
+                Stepper("Init misc \(signed(character.initiativeBonus))", value: $character.initiativeBonus, in: -10...20)
+                Text("Initiative \(signed(character.initiative)) · Passive Perception \(character.passivePerception)")
+                    .foregroundStyle(.secondary)
+            }
+            Divider()
+            // Hit dice + death saves + rests
+            HStack {
+                Picker("Hit die", selection: $character.hitDiceType) {
+                    ForEach([6, 8, 10, 12], id: \.self) { Text("d\($0)").tag($0) }
+                }
+                .frame(width: 90)
+                Text("\(character.hitDiceRemaining)/\(character.hitDiceTotal) remaining")
+                    .foregroundStyle(.secondary)
+                Button("Spend hit die") { model.spendHitDie() }
+                    .disabled(character.hitDiceRemaining == 0)
+                Spacer()
+                Button("Short rest") { model.shortRest() }
+                Button("Long rest") { model.longRest() }
+            }
+            HStack {
+                Text("Death saves:").foregroundStyle(.secondary)
+                ForEach(0..<3, id: \.self) { i in
+                    Image(systemName: i < character.deathSaveSuccesses ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(.green)
+                        .onTapGesture {
+                            character.deathSaveSuccesses = i < character.deathSaveSuccesses ? i : i + 1
+                        }
+                }
+                ForEach(0..<3, id: \.self) { i in
+                    Image(systemName: i < character.deathSaveFailures ? "xmark.circle.fill" : "circle")
+                        .foregroundStyle(.red)
+                        .onTapGesture {
+                            character.deathSaveFailures = i < character.deathSaveFailures ? i : i + 1
+                        }
+                }
+                Button("Roll death save") { model.rollDeathSave() }
+                    .disabled(character.currentHP > 0)
+            }
+            Divider()
+            // Conditions + exhaustion
+            HStack {
+                Text("Exhaustion").foregroundStyle(.secondary)
+                Stepper("\(character.exhaustion)", value: $character.exhaustion, in: 0...6)
+            }
+            ConditionGrid(character: $character)
+        }
+    }
+}
+
+struct ConditionGrid: View {
+    @Binding var character: Character
+    private let cols = [GridItem(.adaptive(minimum: 130))]
+
+    var body: some View {
+        LazyVGrid(columns: cols, alignment: .leading, spacing: 6) {
+            ForEach(Condition.allCases, id: \.self) { condition in
+                Toggle(condition.displayName, isOn: Binding(
+                    get: { character.conditions.contains(condition) },
+                    set: { on in
+                        if on { character.conditions.insert(condition) }
+                        else { character.conditions.remove(condition) }
+                    }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.caption)
+            }
+        }
+    }
+}
+
+struct AttacksBlock: View {
+    @Binding var character: Character
+    @EnvironmentObject var model: AppModel
+    @State private var rollMode: RollMode = .normal
+
+    var body: some View {
+        BlockCard(title: "Attacks & Combat") {
+            HStack {
+                Picker("Roll mode", selection: $rollMode) {
+                    ForEach([RollMode.normal, .advantage, .disadvantage], id: \.self) { m in
+                        Text(m.rawValue.capitalized).tag(m)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
+                Spacer()
+                Menu("Add from library") {
+                    ForEach(EquipmentLibrary.weapons) { w in
+                        Button(w.name) {
+                            character.attacks.append(Attack(
+                                name: w.name,
+                                ability: w.finesse ? nil : .strength,
+                                proficient: true,
+                                damageExpression: w.damageExpression,
+                                damageType: w.damageType,
+                                range: w.range,
+                                notes: w.properties))
+                        }
+                    }
+                }
+                Button("Add custom") {
+                    character.attacks.append(Attack(name: "New attack"))
+                }
+            }
+            ForEach($character.attacks) { $attack in
+                AttackRow(character: $character, attack: $attack, rollMode: rollMode)
+            }
+            if let sc = character.spellcasting {
+                Divider()
+                HStack {
+                    Text("Spell attack \(signed(sc.spellAttackBonus(scores: character.scores, level: character.level)))")
+                    Text("Spell save DC \(sc.spellSaveDC(scores: character.scores, level: character.level))")
+                    Text("(\(sc.ability.abbreviation))").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Roll spell attack") {
+                        model.rollCheck("Spell attack", bonus: sc.spellAttackBonus(scores: character.scores, level: character.level), mode: rollMode)
+                    }
+                    .controlSize(.small)
+                }
+                .font(.callout)
+            }
+        }
+    }
+}
+
+struct AttackRow: View {
+    @Binding var character: Character
+    @Binding var attack: Attack
+    let rollMode: RollMode
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack {
+                TextField("Name", text: $attack.name).frame(width: 150)
+                Picker("Ability", selection: $attack.ability) {
+                    Text("Finesse").tag(Ability?.none)
+                    ForEach(Ability.allCases, id: \.self) { Text($0.abbreviation).tag(Ability?.some($0)) }
+                }
+                .frame(width: 110)
+                Toggle("Prof", isOn: $attack.proficient).toggleStyle(.checkbox)
+                Text(signed(attack.attackBonus(scores: character.scores, level: character.level)))
+                    .monospacedDigit().bold()
+                    .frame(width: 40)
+                Button("Attack") { model.rollAttack(attack, for: character, mode: rollMode) }
+                    .controlSize(.small)
+                Button(role: .destructive) {
+                    character.attacks.removeAll { $0.id == attack.id }
+                } label: { Image(systemName: "minus.circle") }
+            }
+            HStack {
+                TextField("Damage dice", text: $attack.damageExpression).frame(width: 90)
+                Text("= \(attack.damageString(scores: character.scores))")
+                    .font(.caption).foregroundStyle(.secondary)
+                TextField("Type", text: $attack.damageType).frame(width: 100)
+                TextField("Range", text: $attack.range).frame(width: 130)
+                TextField("Notes", text: $attack.notes)
+                Button("Damage") {
+                    model.rollLabeled("\(attack.name) damage", attack.damageString(scores: character.scores))
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+}
+#endif

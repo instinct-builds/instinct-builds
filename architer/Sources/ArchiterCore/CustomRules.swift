@@ -105,7 +105,7 @@ extension Character {
 /// sheet blocks. Unknown placeholders stay visible as `[?name]` instead of
 /// vanishing silently.
 ///
-/// Supported: {name} {lineage} {calling} {background} {level} {xp} {prof}
+/// Supported: {name} {lineage} {calling} {background} {level} {xp} {prof}/{proficiency}
 /// {hp} {maxhp} {ac} {init} {speed} {passiveperception}
 /// {str}/{dex}/{con}/{int}/{wis}/{cha} and their {.mod} signed modifiers,
 /// and {c.<custom ability name>} / {c.<name>.mod} for ruleset abilities.
@@ -137,10 +137,10 @@ public enum TemplateRenderer {
         case "background": return c.background
         case "level": return "\(c.level)"
         case "xp": return "\(c.experience)"
-        case "prof": return "+\(c.proficiencyBonus)"
+        case "prof", "proficiency": return "+\(c.proficiencyBonus)"
         case "hp": return "\(c.currentHP)"
         case "maxhp": return "\(c.maxHP)"
-        case "ac": return "\(c.armorClass)"
+        case "ac": return "\(c.computedAC)"
         case "init": return signed(c.initiative)
         case "speed": return "\(c.speed)"
         case "passiveperception": return "\(c.passivePerception)"

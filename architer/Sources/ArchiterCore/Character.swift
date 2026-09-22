@@ -4,6 +4,7 @@ public enum Ability: String, Codable, CaseIterable, Sendable {
     case strength, dexterity, constitution, intelligence, wisdom, charisma
 
     public var abbreviation: String { String(rawValue.prefix(3)).uppercased() }
+    public var displayName: String { rawValue.capitalized }
 }
 
 /// Genre-standard tabletop math (ability modifier, proficiency scaling). Game
@@ -91,18 +92,78 @@ public struct AbilityScores: Codable, Equatable, Sendable {
     }
 }
 
+/// An attack or weapon on the sheet. Attack and damage bonuses are derived
+/// from the character's abilities and proficiency, or pinned by an override.
 public struct Attack: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID = UUID()
     public var name: String
-    public var attackBonus: Int
-    public var damageExpression: String // e.g. "1d8+3"
-    public var notes: String = ""
+    /// Ability used for the roll; nil = finesse (better of STR/DEX).
+    public var ability: Ability?
+    public var proficient: Bool
+    /// Pinned total attack bonus; nil = derive from ability + proficiency.
+    public var bonusOverride: Int?
+    public var damageExpression: String
+    public var damageType: String
+    public var range: String
+    public var notes: String
 
-    public init(name: String, attackBonus: Int, damageExpression: String, notes: String = "") {
+    public init(name: String, ability: Ability? = .strength, proficient: Bool = true,
+                bonusOverride: Int? = nil, damageExpression: String = "1d6",
+                damageType: String = "", range: String = "5 ft", notes: String = "") {
         self.name = name
-        self.attackBonus = attackBonus
+        self.ability = ability
+        self.proficient = proficient
+        self.bonusOverride = bonusOverride
         self.damageExpression = damageExpression
+        self.damageType = damageType
+        self.range = range
         self.notes = notes
+    }
+
+    /// Back-compatible: old sheets pinned `attackBonus` (0.1.x format).
+    public init(name: String, attackBonus: Int, damageExpression: String, notes: String = "") {
+        self.init(name: name, ability: .strength, proficient: false,
+                  bonusOverride: attackBonus, damageExpression: damageExpression, notes: notes)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        ability = try c.decodeIfPresent(Ability.self, forKey: .ability)
+        proficient = try c.decodeIfPresent(Bool.self, forKey: .proficient) ?? true
+        bonusOverride = try c.decodeIfPresent(Int.self, forKey: .bonusOverride)
+        damageExpression = try c.decodeIfPresent(String.self, forKey: .damageExpression) ?? "1d6"
+        damageType = try c.decodeIfPresent(String.self, forKey: .damageType) ?? ""
+        range = try c.decodeIfPresent(String.self, forKey: .range) ?? "5 ft"
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+    }
+
+    /// The ability actually rolled: the set ability, or the better of
+    /// STR/DEX for finesse attacks.
+    public func effectiveAbility(scores: AbilityScores) -> Ability {
+        if let ability { return ability }
+        return scores[.dexterity] >= scores[.strength] ? .dexterity : .strength
+    }
+
+    public func attackBonus(scores: AbilityScores, level: Int) -> Int {
+        if let bonusOverride { return bonusOverride }
+        let prof = proficient ? RulesMath.proficiencyBonus(level: level) : 0
+        return scores.modifier(effectiveAbility(scores: scores)) + prof
+    }
+
+    /// Ability modifier added to damage (genre-standard for weapon attacks).
+    public func damageBonus(scores: AbilityScores) -> Int {
+        scores.modifier(effectiveAbility(scores: scores))
+    }
+
+    /// Damage expression with the ability modifier folded in, e.g. "1d8+3".
+    /// Pinned attacks (bonusOverride set, e.g. legacy sheets) are literal.
+    public func damageString(scores: AbilityScores) -> String {
+        if bonusOverride != nil { return damageExpression }
+        let bonus = damageBonus(scores: scores)
+        if bonus == 0 { return damageExpression }
+        return damageExpression + (bonus > 0 ? "+\(bonus)" : "\(bonus)")
     }
 }
 
@@ -111,14 +172,35 @@ public struct InventoryItem: Codable, Equatable, Sendable, Identifiable {
     public var name: String
     public var quantity: Int
     public var weight: Double?
-    public var notes: String = ""
+    public var equipped: Bool
+    public var attuned: Bool
+    public var category: String
+    public var notes: String
 
-    public init(name: String, quantity: Int = 1, weight: Double? = nil, notes: String = "") {
+    public init(name: String, quantity: Int = 1, weight: Double? = nil,
+                equipped: Bool = false, attuned: Bool = false, category: String = "", notes: String = "") {
         self.name = name
-        self.quantity = quantity
+        self.quantity = max(0, quantity)
         self.weight = weight
+        self.equipped = equipped
+        self.attuned = attuned
+        self.category = category
         self.notes = notes
     }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        quantity = try c.decodeIfPresent(Int.self, forKey: .quantity) ?? 1
+        weight = try c.decodeIfPresent(Double.self, forKey: .weight)
+        equipped = try c.decodeIfPresent(Bool.self, forKey: .equipped) ?? false
+        attuned = try c.decodeIfPresent(Bool.self, forKey: .attuned) ?? false
+        category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+    }
+
+    public var totalWeight: Double { (weight ?? 0) * Double(quantity) }
 }
 
 public struct Character: Codable, Equatable, Sendable, Identifiable {
@@ -127,17 +209,38 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var lineage: String       // ancestry/race, original free-text
     public var calling: String       // class/archetype, original free-text
     public var background: String
+    public var alignment: String
     public var level: Int
     public var experience: Int
+    public var inspiration: Bool
     public var scores: AbilityScores
     public var skills: [Skill]
     public var savingThrowProficiencies: Set<Ability>
+    // Vitals
     public var maxHP: Int
     public var currentHP: Int
-    public var armorClass: Int
+    public var tempHP: Int
+    public var hitDiceType: Int
+    public var hitDiceSpent: Int
+    public var deathSaveSuccesses: Int
+    public var deathSaveFailures: Int
+    public var armorClass: Int           // manual AC when no armor is equipped
+    public var equippedArmor: String?    // name from EquipmentLibrary
+    public var shieldEquipped: Bool
+    public var armorClassBonus: Int      // misc (ring, features, barkskin-like)
+    public var initiativeBonus: Int      // misc initiative on top of DEX
     public var speed: Int
+    public var conditions: Set<Condition>
+    public var exhaustion: Int
+    // Combat & magic
     public var attacks: [Attack]
+    public var spellcasting: Spellcasting?
+    // Gear & story
     public var inventory: [InventoryItem]
+    public var currency: Currency
+    public var proficienciesText: String
+    public var features: [Feature]
+    public var personality: Personality
     public var notes: String
     public var layout: SheetLayout
     /// Custom ruleset fields (v0.3): user-defined abilities/skills, filled by
@@ -151,17 +254,35 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         lineage: String = "",
         calling: String = "",
         background: String = "",
+        alignment: String = "",
         level: Int = 1,
         experience: Int = 0,
+        inspiration: Bool = false,
         scores: AbilityScores = AbilityScores(),
         skills: [Skill] = Skill.defaultList,
         savingThrowProficiencies: Set<Ability> = [],
         maxHP: Int = 10,
         currentHP: Int? = nil,
+        tempHP: Int = 0,
+        hitDiceType: Int = 8,
+        hitDiceSpent: Int = 0,
+        deathSaveSuccesses: Int = 0,
+        deathSaveFailures: Int = 0,
         armorClass: Int = 10,
+        equippedArmor: String? = nil,
+        shieldEquipped: Bool = false,
+        armorClassBonus: Int = 0,
+        initiativeBonus: Int = 0,
         speed: Int = 30,
+        conditions: Set<Condition> = [],
+        exhaustion: Int = 0,
         attacks: [Attack] = [],
+        spellcasting: Spellcasting? = nil,
         inventory: [InventoryItem] = [],
+        currency: Currency = Currency(),
+        proficienciesText: String = "",
+        features: [Feature] = [],
+        personality: Personality = Personality(),
         notes: String = "",
         layout: SheetLayout = SheetLayout(),
         rulesetName: String? = nil,
@@ -172,17 +293,35 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.lineage = lineage
         self.calling = calling
         self.background = background
+        self.alignment = alignment
         self.level = max(1, min(20, level))
-        self.experience = experience
+        self.experience = max(0, experience)
+        self.inspiration = inspiration
         self.scores = scores
         self.skills = skills
         self.savingThrowProficiencies = savingThrowProficiencies
         self.maxHP = max(1, maxHP)
-        self.currentHP = currentHP ?? max(1, maxHP)
+        self.currentHP = max(0, min(self.maxHP, currentHP ?? self.maxHP))
+        self.tempHP = max(0, tempHP)
+        self.hitDiceType = [6, 8, 10, 12].contains(hitDiceType) ? hitDiceType : 8
+        self.hitDiceSpent = max(0, hitDiceSpent)
+        self.deathSaveSuccesses = max(0, min(3, deathSaveSuccesses))
+        self.deathSaveFailures = max(0, min(3, deathSaveFailures))
         self.armorClass = armorClass
+        self.equippedArmor = equippedArmor
+        self.shieldEquipped = shieldEquipped
+        self.armorClassBonus = armorClassBonus
+        self.initiativeBonus = initiativeBonus
         self.speed = speed
+        self.conditions = conditions
+        self.exhaustion = max(0, min(6, exhaustion))
         self.attacks = attacks
+        self.spellcasting = spellcasting
         self.inventory = inventory
+        self.currency = currency
+        self.proficienciesText = proficienciesText
+        self.features = features
+        self.personality = personality
         self.notes = notes
         self.layout = layout
         self.rulesetName = rulesetName
@@ -190,7 +329,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.customSkills = customSkills
     }
 
-    // Characters saved before custom rulesets existed still decode.
+    // Characters saved in earlier versions still decode; new fields default.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -198,17 +337,35 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         lineage = try c.decode(String.self, forKey: .lineage)
         calling = try c.decode(String.self, forKey: .calling)
         background = try c.decode(String.self, forKey: .background)
+        alignment = try c.decodeIfPresent(String.self, forKey: .alignment) ?? ""
         level = try c.decode(Int.self, forKey: .level)
         experience = try c.decode(Int.self, forKey: .experience)
+        inspiration = try c.decodeIfPresent(Bool.self, forKey: .inspiration) ?? false
         scores = try c.decode(AbilityScores.self, forKey: .scores)
         skills = try c.decode([Skill].self, forKey: .skills)
         savingThrowProficiencies = try c.decode(Set<Ability>.self, forKey: .savingThrowProficiencies)
         maxHP = try c.decode(Int.self, forKey: .maxHP)
         currentHP = try c.decode(Int.self, forKey: .currentHP)
+        tempHP = try c.decodeIfPresent(Int.self, forKey: .tempHP) ?? 0
+        hitDiceType = try c.decodeIfPresent(Int.self, forKey: .hitDiceType) ?? 8
+        hitDiceSpent = try c.decodeIfPresent(Int.self, forKey: .hitDiceSpent) ?? 0
+        deathSaveSuccesses = try c.decodeIfPresent(Int.self, forKey: .deathSaveSuccesses) ?? 0
+        deathSaveFailures = try c.decodeIfPresent(Int.self, forKey: .deathSaveFailures) ?? 0
         armorClass = try c.decode(Int.self, forKey: .armorClass)
+        equippedArmor = try c.decodeIfPresent(String.self, forKey: .equippedArmor)
+        shieldEquipped = try c.decodeIfPresent(Bool.self, forKey: .shieldEquipped) ?? false
+        armorClassBonus = try c.decodeIfPresent(Int.self, forKey: .armorClassBonus) ?? 0
+        initiativeBonus = try c.decodeIfPresent(Int.self, forKey: .initiativeBonus) ?? 0
         speed = try c.decode(Int.self, forKey: .speed)
+        conditions = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditions) ?? []
+        exhaustion = try c.decodeIfPresent(Int.self, forKey: .exhaustion) ?? 0
         attacks = try c.decode([Attack].self, forKey: .attacks)
+        spellcasting = try c.decodeIfPresent(Spellcasting.self, forKey: .spellcasting)
         inventory = try c.decode([InventoryItem].self, forKey: .inventory)
+        currency = try c.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
+        proficienciesText = try c.decodeIfPresent(String.self, forKey: .proficienciesText) ?? ""
+        features = try c.decodeIfPresent([Feature].self, forKey: .features) ?? []
+        personality = try c.decodeIfPresent(Personality.self, forKey: .personality) ?? Personality()
         notes = try c.decode(String.self, forKey: .notes)
         layout = try c.decode(SheetLayout.self, forKey: .layout)
         rulesetName = try c.decodeIfPresent(String.self, forKey: .rulesetName)
@@ -216,27 +373,137 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         customSkills = try c.decodeIfPresent([CustomSkill].self, forKey: .customSkills) ?? []
     }
 
+    // MARK: Derived stats
+
     public var proficiencyBonus: Int { RulesMath.proficiencyBonus(level: level) }
-    public var initiative: Int { scores.modifier(.dexterity) }
+    public var initiative: Int { scores.modifier(.dexterity) + initiativeBonus }
     public var passivePerception: Int {
         let skill = skills.first { $0.name == "Perception" }
         return 10 + (skill?.bonus(scores: scores, level: level) ?? scores.modifier(.wisdom))
     }
 
+    /// Equipped-armor AC when armor is worn, else manual AC; shield and misc
+    /// bonuses always apply.
+    public var computedAC: Int {
+        var ac: Int
+        if let armorName = equippedArmor, let def = EquipmentLibrary.armor(named: armorName), def.category != .shield {
+            let dex = scores.modifier(.dexterity)
+            let contribution = def.addDex ? min(dex, def.maxDexBonus ?? dex) : 0
+            ac = def.baseAC + contribution
+        } else {
+            ac = armorClass
+        }
+        if shieldEquipped { ac += 2 }
+        return ac + armorClassBonus
+    }
+
+    public var hitDiceTotal: Int { level }
+    public var hitDiceRemaining: Int { max(0, hitDiceTotal - hitDiceSpent) }
+
+    public var totalWeight: Double {
+        inventory.reduce(0) { $0 + $1.totalWeight }
+    }
+    public var carryingCapacity: Int { RulesMath.carryingCapacity(strength: scores[.strength]) }
+    public var encumbrance: Encumbrance {
+        let w = totalWeight
+        let cap = Double(carryingCapacity)
+        if cap <= 0 { return w > 0 ? .overCapacity : .normal }
+        if w > cap * 2 { return .overCapacity }
+        if w > cap { return .heavilyEncumbered }
+        if w > cap * 2 / 3 { return .encumbered }
+        return .normal
+    }
+
+    public var xpToNextLevel: Int? {
+        guard let next = RulesMath.xpForNextLevel(level) else { return nil }
+        return max(0, next - experience)
+    }
+
+    public var isAlive: Bool { currentHP > 0 || deathSaveFailures < 3 }
+
     public func savingThrow(_ a: Ability) -> Int {
         scores.modifier(a) + (savingThrowProficiencies.contains(a) ? proficiencyBonus : 0)
     }
 
+    // MARK: Vitals
+
+    /// Damage eats temporary HP first, then real HP. Falling to 0 clears temp.
     public mutating func applyDamage(_ amount: Int) {
-        currentHP = max(0, currentHP - max(0, amount))
+        var remaining = max(0, amount)
+        if tempHP > 0 {
+            let absorbed = min(tempHP, remaining)
+            tempHP -= absorbed
+            remaining -= absorbed
+        }
+        currentHP = max(0, currentHP - remaining)
+        if currentHP == 0 {
+            deathSaveSuccesses = 0
+            deathSaveFailures = 0
+        }
     }
 
     public mutating func applyHealing(_ amount: Int) {
+        let before = currentHP
         currentHP = min(maxHP, currentHP + max(0, amount))
+        if before == 0 && currentHP > 0 {
+            deathSaveSuccesses = 0
+            deathSaveFailures = 0
+        }
     }
 
-    /// Long rest: restore HP to full.
-    public mutating func longRest() { currentHP = maxHP }
+    /// Temporary HP never stacks: take the better pool.
+    public mutating func gainTempHP(_ amount: Int) {
+        tempHP = max(tempHP, max(0, amount))
+    }
+
+    // MARK: Rests
+
+    /// Short rest: pact slots return, short-rest features recharge.
+    public mutating func shortRest() {
+        if spellcasting?.progression == .pact { spellcasting?.restoreAllSlots() }
+        for i in features.indices where features[i].recharge == .shortRest {
+            features[i].rechargeUses()
+        }
+    }
+
+    /// Spend one hit die: returns the notation to roll ("1d8+2").
+    public func hitDieRollExpression() -> String? {
+        guard hitDiceRemaining > 0 else { return nil }
+        let con = scores.modifier(.constitution)
+        return "1d\(hitDiceType)" + (con >= 0 ? "+\(con)" : "\(con)")
+    }
+
+    /// Record a spent hit die and apply the healing rolled for it.
+    public mutating func spendHitDie(healingRolled: Int) {
+        guard hitDiceRemaining > 0 else { return }
+        hitDiceSpent += 1
+        applyHealing(max(1, healingRolled))
+    }
+
+    /// Long rest: full HP, half of spent hit dice return (min 1), all slots,
+    /// death saves reset, long-rest features recharge.
+    public mutating func longRest() {
+        currentHP = maxHP
+        hitDiceSpent = max(0, hitDiceSpent - max(1, hitDiceTotal / 2))
+        deathSaveSuccesses = 0
+        deathSaveFailures = 0
+        spellcasting?.restoreAllSlots()
+        for i in features.indices where features[i].recharge == .longRest || features[i].recharge == .dawn {
+            features[i].rechargeUses()
+        }
+        if exhaustion > 0 { exhaustion -= 1 }
+    }
+
+    // MARK: Experience
+
+    /// Award XP; returns true when the character crossed into a new level.
+    @discardableResult
+    public mutating func addXP(_ amount: Int) -> Bool {
+        let before = level
+        experience = max(0, experience + max(0, amount))
+        level = RulesMath.level(forXP: experience)
+        return level > before
+    }
 }
 
 extension Skill {

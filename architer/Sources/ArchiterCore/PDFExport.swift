@@ -174,24 +174,33 @@ public enum SheetPDFExporter {
                 cursor.advance(58)
             case .vitals:
                 cursor.section("Vitals", margin: margin)
-                let chips: [(String, String)] = [
-                    ("HP", "\(c.currentHP)/\(c.maxHP)"),
-                    ("AC", "\(c.armorClass)"),
+                var chips: [(String, String)] = [
+                    ("HP", "\(c.currentHP)/\(c.maxHP)\(c.tempHP > 0 ? " +\(c.tempHP)t" : "")"),
+                    ("AC", "\(c.computedAC)"),
                     ("Initiative", signed(c.initiative)),
                     ("Speed", "\(c.speed) ft"),
                     ("Passive Perc", "\(c.passivePerception)"),
+                    ("Hit Dice", "\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)"),
                 ]
-                let chipW = (contentW - 4 * 8) / 5
-                cursor.ensure(36)
-                let top = cursor.y
+                if c.exhaustion > 0 { chips.append(("Exhaustion", "\(c.exhaustion)")) }
+                let perRow = 4
+                let chipW = (contentW - Double(perRow - 1) * 8) / Double(perRow)
+                let rowsNeeded = (chips.count + perRow - 1) / perRow
+                cursor.ensure(Double(rowsNeeded) * 36)
                 for (i, (label, value)) in chips.enumerated() {
-                    let x = margin + Double(i) * (chipW + 8)
+                    let row = i / perRow
+                    let col = i % perRow
+                    let x = margin + Double(col) * (chipW + 8)
+                    let top = cursor.y - Double(row) * 36
                     cursor.doc.strokeRect(page: cursor.page, x: x, y: top - 28, w: chipW, h: 28)
                     let t = "\(label)  \(value)"
                     cursor.doc.text(page: cursor.page, x: x + chipW / 2 - est(t, 8) / 2, y: top - 18,
                                     t, size: 8)
                 }
-                cursor.advance(36)
+                cursor.advance(Double(rowsNeeded) * 36)
+                if !c.conditions.isEmpty {
+                    cursor.line("Conditions: " + c.conditions.map { $0.displayName }.sorted().joined(separator: ", "), margin: margin, gray: 0.3)
+                }
             case .skills:
                 cursor.section("Skills", margin: margin)
                 let trained = c.skills.filter { $0.tier != .none }
@@ -210,7 +219,7 @@ public enum SheetPDFExporter {
                 }
             case .attacks:
                 cursor.section("Attacks", margin: margin)
-                let cols: [(String, Double)] = [("Attack", 0), ("Bonus", 200), ("Damage", 270), ("Notes", 350)]
+                let cols: [(String, Double)] = [("Attack", 0), ("Bonus", 170), ("Damage", 230), ("Type", 320), ("Range", 400)]
                 cursor.ensure(16)
                 cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
                 for (title, off) in cols {
@@ -223,15 +232,48 @@ public enum SheetPDFExporter {
                 for a in c.attacks {
                     cursor.ensure(14)
                     cursor.doc.text(page: cursor.page, x: margin + 4, y: cursor.y - 10, a.name, size: 9)
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + 200, y: cursor.y - 10, signed(a.attackBonus), size: 9)
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + 270, y: cursor.y - 10, a.damageExpression, size: 9)
-                    cursor.doc.text(page: cursor.page, x: margin + 4 + 350, y: cursor.y - 10, a.notes, size: 9)
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + 170, y: cursor.y - 10, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + 230, y: cursor.y - 10, a.damageString(scores: c.scores), size: 9)
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + 320, y: cursor.y - 10, a.damageType, size: 9)
+                    cursor.doc.text(page: cursor.page, x: margin + 4 + 400, y: cursor.y - 10, a.range, size: 9)
                     cursor.advance(13)
                     cursor.rule(margin, width: contentW, gray: 0.85)
                     cursor.advance(1)
                 }
+                if let sc = c.spellcasting {
+                    cursor.line("Spell attack \(signed(sc.spellAttackBonus(scores: c.scores, level: c.level))) - Spell save DC \(sc.spellSaveDC(scores: c.scores, level: c.level)) (\(sc.ability.abbreviation))", margin: margin, gray: 0.3)
+                }
+            case .spells:
+                guard let sc = c.spellcasting else { continue }
+                cursor.section("Spells (\(sc.progression.displayName))", margin: margin)
+                var slotChips: [String] = []
+                for sl in 1...9 {
+                    let maxSlots = sc.slotsMax(spellLevel: sl, casterLevel: c.level)
+                    if maxSlots > 0 {
+                        slotChips.append("Lvl \(sl) \(sc.slotsRemaining(spellLevel: sl, casterLevel: c.level))/\(maxSlots)")
+                    }
+                }
+                if !slotChips.isEmpty {
+                    cursor.line("Slots: " + slotChips.joined(separator: "  "), margin: margin)
+                }
+                let cantrips = sc.cantrips.map { $0.name }.sorted().joined(separator: ", ")
+                if !cantrips.isEmpty {
+                    for line in wrap("Cantrips: " + cantrips, width: contentW, size: 9) {
+                        cursor.line(line, margin: margin)
+                    }
+                }
+                for sl in 1...9 {
+                    let atLevel = sc.spells(atLevel: sl)
+                    if !atLevel.isEmpty {
+                        let names = atLevel.map { $0.prepared ? $0.name : "\($0.name) (unprepared)" }.joined(separator: ", ")
+                        for line in wrap("Level \(sl): " + names, width: contentW, size: 9) {
+                            cursor.line(line, margin: margin)
+                        }
+                    }
+                }
             case .inventory:
                 cursor.section("Inventory", margin: margin)
+                cursor.line("Currency: \(c.currency.displayString) - Carried \(SheetExporter.fmtWeight(c.totalWeight)) / \(c.carryingCapacity) lb", margin: margin, gray: 0.3)
                 if c.inventory.isEmpty {
                     cursor.line("Empty pack", margin: margin, gray: 0.45)
                 } else {
@@ -244,6 +286,48 @@ public enum SheetPDFExporter {
                         if !item.notes.isEmpty { text += " - \(item.notes)" }
                         cursor.doc.text(page: cursor.page, x: x, y: cursor.y - 10, text, size: 9)
                         if i % 2 == 1 || i == c.inventory.count - 1 { cursor.advance(13) }
+                    }
+                }
+            case .features:
+                cursor.section("Features & Traits", margin: margin)
+                if c.features.isEmpty {
+                    cursor.line("None recorded", margin: margin, gray: 0.45)
+                }
+                for f in c.features {
+                    var head = f.name + (f.source.isEmpty ? "" : " (\(f.source))")
+                    if let remaining = f.usesRemaining { head += " - \(remaining)/\(f.usesMax) uses" }
+                    cursor.line(head, margin: margin)
+                    if !f.detail.isEmpty {
+                        for line in wrap(f.detail, width: contentW - 14, size: 9) {
+                            cursor.ensure(13)
+                            cursor.doc.text(page: cursor.page, x: margin + 14, y: cursor.y - 10, line, size: 9, gray: 0.3)
+                            cursor.advance(13)
+                        }
+                    }
+                }
+            case .personality:
+                guard !c.personality.isEmpty else { continue }
+                let p = c.personality
+                cursor.section("Personality", margin: margin)
+                let pairs: [(String, String)] = [("Traits", p.traits), ("Ideals", p.ideals), ("Bonds", p.bonds), ("Flaws", p.flaws)]
+                for (label, value) in pairs where !value.isEmpty {
+                    for (i, line) in wrap(value, width: contentW - 60, size: 9).enumerated() {
+                        cursor.ensure(13)
+                        if i == 0 {
+                            cursor.doc.text(page: cursor.page, x: margin, y: cursor.y - 10, label + ":", size: 9, face: .bold)
+                        }
+                        cursor.doc.text(page: cursor.page, x: margin + 60, y: cursor.y - 10, line, size: 9)
+                        cursor.advance(13)
+                    }
+                }
+                if !p.backstory.isEmpty {
+                    cursor.line("Backstory", margin: margin)
+                    for para in p.backstory.components(separatedBy: "\n") {
+                        for line in wrap(para, width: contentW, size: 9) {
+                            cursor.ensure(13)
+                            cursor.doc.text(page: cursor.page, x: margin + 14, y: cursor.y - 10, line, size: 9, gray: 0.3)
+                            cursor.advance(13)
+                        }
                     }
                 }
             case .diceRoller:
