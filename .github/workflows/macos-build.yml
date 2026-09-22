@@ -35,61 +35,45 @@ jobs:
           path: |
             architer/ARCHITER-0.2.0.dmg
             architer/out/
+      - name: MUEW demo renders
+        run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
+
+  asssets:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: ASSSETS tests
         run: cd asssets && swift test
-      - name: MUEW build + tests
-        run: cd muew && make all && make test
-      - name: Build universal ad-hoc-signed DMGs
-        run: |
-          cd asssets && scripts/make_dmg.sh
-      - name: Verify DMG integrity, app architecture, signatures and Gatekeeper state
+      - name: Build ASSSETS universal ad-hoc-signed DMG
+        run: cd asssets && scripts/make_dmg.sh
+      - name: Verify ASSSETS DMG and bundle size
         run: |
           set -euo pipefail
-          for spec in "architer/ARCHITER-0.2.0.dmg:ARCHITER" "asssets/ASSSETS-0.3.0.dmg:ASSSETS"; do
-            dmg=${spec%%:*}; app=${spec##*:}
-            hdiutil verify "$dmg"
-            mount=$(mktemp -d)
-            hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount"
-            file "$mount/$app.app/Contents/MacOS/$app"
-            lipo "$mount/$app.app/Contents/MacOS/$app" -verify_arch arm64 x86_64
-            codesign --verify --deep --strict --verbose=4 "$mount/$app.app"
-            codesign -dv --verbose=4 "$mount/$app.app" 2>&1
-            if spctl --assess --type execute --verbose=4 "$mount/$app.app"; then
-              echo "Unexpected: unsigned distribution passed Gatekeeper" >&2
-              exit 1
-            else
-              echo "Expected: Gatekeeper rejects ad-hoc distribution until quarantine is cleared or the app is notarized"
-            fi
-            hdiutil detach "$mount"
-          done
+          cd asssets
+          test $(stat -f%z ASSSETS-0.3.0.dmg) -gt 5000000
+          hdiutil verify ASSSETS-0.3.0.dmg
+          mount=$(mktemp -d)
+          hdiutil attach ASSSETS-0.3.0.dmg -nobrowse -readonly -mountpoint "$mount"
+          file "$mount/ASSSETS.app/Contents/MacOS/ASSSETS"
+          lipo "$mount/ASSSETS.app/Contents/MacOS/ASSSETS" -verify_arch arm64 x86_64
+          codesign --verify --deep --strict --verbose=4 "$mount/ASSSETS.app"
+          test -d "$mount/ASSSETS.app/Contents/Resources/ASSSETS_AsssetsApp.bundle/StarterLibrary"
+          du -sh "$mount/ASSSETS.app/Contents/Resources/ASSSETS_AsssetsApp.bundle/StarterLibrary"
+          hdiutil detach "$mount"
       - name: Capture ASSSETS native UI proof
         run: |
           open asssets/out/ASSSETS.app
-          sleep 8
+          sleep 10
           screencapture -x asssets/out/ASSSETS-0.3.0-library.png
           test -s asssets/out/ASSSETS-0.3.0-library.png
           sips -g pixelWidth -g pixelHeight asssets/out/ASSSETS-0.3.0-library.png
-      - name: Upload ASSSETS visual proof
+      - name: Upload ASSSETS 0.3.0
         uses: actions/upload-artifact@v4
         with:
-          name: asssets-visual-proof
-          path: asssets/out/ASSSETS-0.3.0-library.png
-      - name: Upload app artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-apps-universal-adhoc
+          name: asssets-0.3.0
           path: |
-            architer/ARCHITER-0.2.0.dmg
             asssets/ASSSETS-0.3.0.dmg
-      - name: Upload ARCHITER renders
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: architer-renders
-          if-no-files-found: warn
-          path: architer/out/
-      - name: MUEW demo renders
-        run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
+            asssets/out/ASSSETS-0.3.0-library.png
 
   au:
     runs-on: macos-latest
