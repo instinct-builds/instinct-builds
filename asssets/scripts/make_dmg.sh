@@ -13,8 +13,8 @@ for ARCH in arm64 x86_64; do swift build -c release --product "$PRODUCT" --arch 
 ARM_DIR=$(swift build -c release --product "$PRODUCT" --arch arm64 --scratch-path .build-arm64 --show-bin-path)
 INTEL_DIR=$(swift build -c release --product "$PRODUCT" --arch x86_64 --scratch-path .build-x86_64 --show-bin-path)
 lipo -create "$ARM_DIR/$PRODUCT" "$INTEL_DIR/$PRODUCT" -output "$APP_DIR/Contents/MacOS/$APP"
-# SwiftPM emits Bundle.module resources beside the product. Preserve the generated bundle in the app.
-find "$ARM_DIR" -maxdepth 1 -type d -name '*AsssetsApp*.bundle' -exec cp -R {} "$APP_DIR/Contents/Resources/" \;
+# The physical original starter library is shipped inside the app and copied to Application Support on first launch.
+cp Sources/AsssetsApp/StarterLibrary.zip "$APP_DIR/Contents/Resources/StarterLibrary.zip"
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
