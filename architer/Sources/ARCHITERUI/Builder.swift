@@ -7,11 +7,13 @@ import ArchiterCore
 public struct BuilderView: View {
     @Binding var character: Character
 
+    public init(character: Binding<Character>) { _character = character }
+
     public init(character: Binding<Character>) {
         _character = character
     }
 
-    var body: some View {
+    public var body: some View {
         List {
             Section("Sheet blocks — drag to reorder") {
                 ForEach($character.layout.blocks) { $block in

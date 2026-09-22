@@ -25,7 +25,7 @@ struct InventoryBlock: View {
                     Text(character.encumbrance == .overCapacity ? "OVER CAPACITY" :
                             (character.encumbrance == .heavilyEncumbered ? "Heavily encumbered" : "Encumbered"))
                         .font(.caption).bold()
-                        .foregroundStyle(character.encumbrance == .normal ? .secondary : .orange)
+                        .foregroundStyle(.orange)
                 }
                 Spacer()
                 Menu("Add weapon") {

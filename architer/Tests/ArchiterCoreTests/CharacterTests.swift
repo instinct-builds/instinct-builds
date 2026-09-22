@@ -88,8 +88,10 @@ struct CharacterTests {
 
     @Test func xpAwardLevelsUp() {
         var c = Character(name: "T", level: 1)
-        #expect(!c.addXP(100))
-        #expect(c.addXP(300))
+        let noLevel = c.addXP(100)
+        #expect(!noLevel)
+        let leveled = c.addXP(300)
+        #expect(leveled)
         #expect(c.level == 2)
         _ = c.addXP(14000)
         #expect(c.level == 6)

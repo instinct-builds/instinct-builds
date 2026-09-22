@@ -33,13 +33,15 @@ struct DiceInlineBlock: View {
 
 public struct DiceRollerView: View {
     @EnvironmentObject var model: AppModel
+
+    public init() {}
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
 
     public init() {}
 
-    var body: some View {
+    public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 TextField("Dice notation", text: $expression)

@@ -18,6 +18,8 @@ public struct ContentView: View {
 
     public init() {}
 
+    public init() {}
+
     public var body: some View {
         NavigationSplitView {
             List(selection: $model.selectedID) {
@@ -89,6 +91,8 @@ struct CharacterDetailView: View {
 /// lazy) so the whole column can also render offscreen to an image.
 public struct SheetColumnView: View {
     @Binding public var character: Character
+
+    public init(character: Binding<Character>) { _character = character }
 
     public init(character: Binding<Character>) {
         _character = character
