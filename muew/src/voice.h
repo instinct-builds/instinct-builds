@@ -14,8 +14,8 @@ inline double midiToFreq(int note) {
 
 // Modulation routing: a source scales into a destination.
 struct ModRoute {
-    enum class Source { LFO1, LFO2, ModEnv, MSEG1, Velocity } source;
-    enum class Dest { Osc1Pitch, Osc2Pitch, FilterCutoff, FilterResonance, Osc2Level, Osc1Warp, Osc2Warp } dest;
+    enum class Source { LFO1 = 0, ModEnv = 1, Velocity = 2, LFO2 = 3, MSEG1 = 4 } source;
+    enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6 } dest;
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
 };
 

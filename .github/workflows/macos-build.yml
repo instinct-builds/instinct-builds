@@ -36,7 +36,7 @@ jobs:
             architer/ARCHITER-0.3.0.dmg
             architer/out/
       - name: MUEW demo renders
-        run: cd muew && ./build/muew-demo && ./build/muew-demo-wt && ls -la out || true
+        run: cd muew && make all && ./build/muew-demo && ./build/muew-demo-wt && ./build/muew-demo-mod-depth && ls -la out
 
   asssets:
     runs-on: macos-latest
