@@ -526,6 +526,28 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         if exhaustion > 0 { exhaustion -= 1 }
     }
 
+    /// Level up by one: max HP rises by the (rolled or average) gain, current
+    /// HP rises with it, and the milestone lands in notes.
+    public mutating func levelUp(hpGain: Int) {
+        guard level < 20 else { return }
+        level += 1
+        let gain = max(1, hpGain)
+        maxHP += gain
+        currentHP += gain
+        notes = (notes.isEmpty ? "" : notes + "\n") + "Reached level \(level) (+\(gain) HP)."
+    }
+
+    /// Average HP gain on a level-up (genre-standard: half the die + 1 + CON).
+    public var averageLevelUpHP: Int {
+        max(1, hitDiceType / 2 + 1 + scores.modifier(.constitution))
+    }
+
+    /// HP roll expression for a level-up ("1d10+2"), independent of dice left.
+    public var levelUpRollExpression: String {
+        let con = scores.modifier(.constitution)
+        return "1d\(hitDiceType)" + (con >= 0 ? "+\(con)" : "\(con)")
+    }
+
     // MARK: Experience
 
     /// Award XP; returns true when the character crossed into a new level.

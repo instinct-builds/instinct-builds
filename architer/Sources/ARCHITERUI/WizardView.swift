@@ -49,6 +49,18 @@ struct CharacterWizardView: View {
                       skills: ["Athletics", "Nature", "Perception", "Stealth", "Survival"], spellcasting: (.wisdom, .half)),
         CallingPreset(name: "Warlock", hitDie: 8, saves: [.wisdom, .charisma],
                       skills: ["Arcana", "Deception", "Intimidation", "Investigation"], spellcasting: (.charisma, .pact)),
+        CallingPreset(name: "Barbarian", hitDie: 12, saves: [.strength, .constitution],
+                      skills: ["Athletics", "Intimidation", "Perception", "Survival"], spellcasting: nil),
+        CallingPreset(name: "Bard", hitDie: 8, saves: [.dexterity, .charisma],
+                      skills: ["Deception", "Performance", "Persuasion", "Insight", "History"], spellcasting: (.charisma, .full)),
+        CallingPreset(name: "Druid", hitDie: 8, saves: [.intelligence, .wisdom],
+                      skills: ["Nature", "Medicine", "Perception", "Survival", "Insight"], spellcasting: (.wisdom, .full)),
+        CallingPreset(name: "Monk", hitDie: 8, saves: [.strength, .dexterity],
+                      skills: ["Acrobatics", "Athletics", "Stealth", "Insight", "Perception"], spellcasting: nil),
+        CallingPreset(name: "Paladin", hitDie: 10, saves: [.wisdom, .charisma],
+                      skills: ["Athletics", "Intimidation", "Medicine", "Persuasion", "Religion"], spellcasting: (.charisma, .half)),
+        CallingPreset(name: "Sorcerer", hitDie: 6, saves: [.constitution, .charisma],
+                      skills: ["Arcana", "Deception", "Intimidation", "Persuasion"], spellcasting: (.charisma, .full)),
     ]
 
     static let standardArray = [15, 14, 13, 12, 10, 8]

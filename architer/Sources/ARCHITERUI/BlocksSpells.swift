@@ -135,15 +135,17 @@ struct SpellGroup: View {
     @Binding var character: Character
     let level: Int
     @EnvironmentObject var model: AppModel
+    @State private var expandedIDs: Set<UUID> = []
 
     var body: some View {
         let spells = character.spellcasting?.spells(atLevel: level) ?? []
         if !spells.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                Text(level == 0 ? "Cantrips" : "Level \(level)")
-                    .font(.subheadline).bold()
+                Text(level == 0 ? "CANTRIPS" : "LEVEL \(level)")
+                    .font(Theme.Typeface.statLabel).tracking(1.2)
+                    .foregroundStyle(Theme.arcana)
                 ForEach(spells) { spell in
-                    HStack {
+                    HStack(alignment: .top) {
                         Toggle("", isOn: Binding(
                             get: { spell.prepared },
                             set: { on in
@@ -155,12 +157,62 @@ struct SpellGroup: View {
                         .labelsHidden()
                         .help("Prepared")
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(spell.name)
+                            HStack(spacing: Theme.Gap.xs) {
+                                Button(action: {
+                                    if expandedIDs.contains(spell.id) { expandedIDs.remove(spell.id) }
+                                    else { expandedIDs.insert(spell.id) }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: expandedIDs.contains(spell.id) ? "chevron.down" : "chevron.right")
+                                            .font(.caption2)
+                                            .foregroundStyle(Theme.inkFaint)
+                                        Text(spell.name)
+                                            .font(Theme.Typeface.body.bold())
+                                            .foregroundStyle(Theme.ink)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                if spell.ritual {
+                                    Text("R")
+                                        .font(Theme.Typeface.captionSmall)
+                                        .padding(.horizontal, 4).padding(.vertical, 1)
+                                        .background(Theme.arcana.opacity(0.25), in: Capsule())
+                                        .foregroundStyle(Theme.arcana)
+                                        .help("Ritual")
+                                }
+                                if spell.concentration {
+                                    Text("C")
+                                        .font(Theme.Typeface.captionSmall)
+                                        .padding(.horizontal, 4).padding(.vertical, 1)
+                                        .background(Theme.accent.opacity(0.22), in: Capsule())
+                                        .foregroundStyle(Theme.accent)
+                                        .help("Concentration")
+                                }
+                            }
                             Text([spell.school, spell.castingTime, spell.range, spell.duration]
                                     .filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary)
-                            if !spell.detail.isEmpty {
-                                Text(spell.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.inkMuted)
+                            if expandedIDs.contains(spell.id) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Components: \(spell.components)")
+                                        .font(Theme.Typeface.caption)
+                                        .foregroundStyle(Theme.inkMuted)
+                                    if !spell.detail.isEmpty {
+                                        Text(spell.detail)
+                                            .font(Theme.Typeface.caption)
+                                            .foregroundStyle(Theme.ink)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                .padding(Theme.Gap.sm)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Theme.surfaceInset, in: RoundedRectangle(cornerRadius: Theme.Radius.sm))
+                            } else if !spell.detail.isEmpty {
+                                Text(spell.detail)
+                                    .font(Theme.Typeface.caption)
+                                    .foregroundStyle(Theme.inkMuted)
+                                    .lineLimit(1)
                             }
                         }
                         Spacer()

@@ -88,6 +88,21 @@ public final class AppModel: ObservableObject {
         if let r = try? roller.rollLabeled(label, expression) { record(r) }
     }
 
+    /// Level-up assistant: roll the hit die or take the average, then apply.
+    public func levelUp(rollHP: Bool) {
+        guard var c = selected?.wrappedValue, c.level < 20 else { return }
+        let gain: Int
+        if rollHP {
+            guard let r = try? roller.rollLabeled("Level up HP (level \(c.level + 1))", c.levelUpRollExpression) else { return }
+            record(r)
+            gain = max(1, r.total)
+        } else {
+            gain = c.averageLevelUpHP
+        }
+        c.levelUp(hpGain: gain)
+        selected?.wrappedValue = c
+    }
+
     public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal) {
         record(roller.check(label, bonus: bonus, mode: mode))
     }

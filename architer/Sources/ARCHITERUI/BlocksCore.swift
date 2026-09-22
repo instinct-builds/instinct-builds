@@ -4,6 +4,7 @@ import ArchiterCore
 
 struct IdentityBlock: View {
     @Binding var character: Character
+    @EnvironmentObject var model: AppModel
     @State private var xpToAdd = ""
 
     var body: some View {
@@ -25,6 +26,18 @@ struct IdentityBlock: View {
                     Text("LVL \(character.level)")
                         .font(Theme.Typeface.headline.monospacedDigit())
                         .foregroundStyle(Theme.accent)
+                }
+                if character.level < 20 {
+                    Menu {
+                        Button("Roll HP (\(character.levelUpRollExpression))") { model.levelUp(rollHP: true) }
+                        Button("Take average (+\(character.averageLevelUpHP))") { model.levelUp(rollHP: false) }
+                    } label: {
+                        Text("Level up")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.accent)
+                    .help("Level up: roll or average HP, slots and proficiency update automatically")
                 }
             }
             HStack(spacing: Theme.Gap.sm) {
@@ -168,24 +181,28 @@ struct SkillsBlock: View {
 
     var body: some View {
         BlockCard(title: "Skills") {
-            ForEach($character.skills) { $skill in
-                HStack {
-                    Text(skill.name).frame(width: 140, alignment: .leading)
-                    Text("(\(skill.ability.abbreviation))").font(.caption).foregroundStyle(.secondary)
-                    Picker("", selection: $skill.tier) {
-                        ForEach(ProficiencyTier.allCases, id: \.self) { t in
-                            Text(t.rawValue).tag(t)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: Theme.Gap.lg), GridItem(.flexible(), spacing: Theme.Gap.lg)], spacing: 6) {
+                ForEach($character.skills) { $skill in
+                    HStack(spacing: Theme.Gap.xs) {
+                        Text(skill.name)
+                            .font(Theme.Typeface.body)
+                            .lineLimit(1)
+                        Text(skill.ability.abbreviation.uppercased())
+                            .font(Theme.Typeface.captionSmall)
+                            .foregroundStyle(Theme.inkFaint)
+                        Picker("", selection: $skill.tier) {
+                            ForEach(ProficiencyTier.allCases, id: \.self) { t in
+                                Text(t.rawValue).tag(t)
+                            }
                         }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 170)
+                        Spacer()
+                        Text(signed(skill.bonus(scores: character.scores, level: character.level)))
+                            .font(Theme.Typeface.body.monospacedDigit().bold())
+                            .foregroundStyle(skill.tier == .none ? Theme.inkMuted : Theme.accent)
+                        RollChip(label: skill.name, bonus: skill.bonus(scores: character.scores, level: character.level))
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 260)
-                    Spacer()
-                    Text(signed(skill.bonus(scores: character.scores, level: character.level)))
-                        .monospacedDigit().bold()
-                    Button("Roll") {
-                        model.rollCheck(skill.name, bonus: skill.bonus(scores: character.scores, level: character.level))
-                    }
-                    .controlSize(.small)
                 }
             }
         }

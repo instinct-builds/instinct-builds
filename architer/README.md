@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 0.4.0
+
+- **Level-up assistant**: roll the hit die or take the average, HP and notes
+  update, slots/proficiency follow level automatically.
+- **Compendium detail**: spells expand in place - components, ritual and
+  concentration badges, full original description.
+- **12 calling presets** in the wizard (was 6): barbarian, bard, druid, monk,
+  paladin, sorcerer join the original six.
+- Skills now lay out in two columns with brass roll chips.
+
 ## What's in 0.3.0
 
 - **Design language**: dark "ink and brass" tabletop theme, serif display type,

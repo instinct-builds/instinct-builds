@@ -149,6 +149,40 @@ struct CharacterTests {
         #expect(purse.displayString == "1 pp, 3 gp, 1 ep, 2 sp, 5 cp")
     }
 
+    @Test func levelUpGainsHPAndNotes() {
+        var c = Character(name: "T", level: 3)
+        c.maxHP = 20
+        c.currentHP = 15
+        c.hitDiceType = 10
+        c.notes = "Existing note"
+        c.levelUp(hpGain: 8)
+        #expect(c.level == 4)
+        #expect(c.maxHP == 28)
+        #expect(c.currentHP == 23)
+        #expect(c.notes.contains("Reached level 4 (+8 HP)"))
+        #expect(c.notes.contains("Existing note"))
+    }
+
+    @Test func levelUpFloorsAtOneAndCapsAtTwenty() {
+        var c = Character(name: "T", level: 20)
+        c.levelUp(hpGain: 5)
+        #expect(c.level == 20)
+        var d = Character(name: "T", level: 1)
+        d.levelUp(hpGain: -4)
+        #expect(d.level == 2)
+        #expect(d.maxHP > 0)
+    }
+
+    @Test func averageLevelUpHPUsesHalfDiePlusCon() {
+        var c = Character(name: "T")
+        c.hitDiceType = 8
+        var scores = AbilityScores()
+        scores[.constitution] = 14
+        c.scores = scores
+        #expect(c.averageLevelUpHP == 7) // 8/2 + 1 + 2
+        #expect(c.levelUpRollExpression == "1d8+2")
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",
