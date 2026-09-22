@@ -24,13 +24,13 @@ public enum RollMode: String, Codable, Sendable {
     case normal, advantage, disadvantage
 }
 
-public struct DieResult: Equatable, Sendable {
+public struct DieResult: Equatable, Codable, Sendable {
     public let sides: Int
     public let value: Int
     public let kept: Bool
 }
 
-public struct RollResult: Equatable, Sendable {
+public struct RollResult: Equatable, Codable, Sendable {
     public var expression: String
     public let dice: [DieResult]
     public let modifier: Int

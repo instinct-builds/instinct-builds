@@ -65,7 +65,7 @@ public struct DiceRollerView: View {
             HStack {
                 Text("History").font(.headline)
                 Spacer()
-                Button("Clear") { model.rollHistory.removeAll() }.controlSize(.small)
+                Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }
             ScrollView {
                 LazyVStack(spacing: Theme.Gap.sm) {

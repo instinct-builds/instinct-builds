@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.5.0
+
+- **Roll history persistence**: the last 50 rolls survive quitting the app
+  mid-session, saved next to the character files; clearing history clears
+  the saved record too.
+
 ## What's in 1.4.0
 
 - **Compendium favorites**: star the spells, weapons, and armor you reach

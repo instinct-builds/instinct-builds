@@ -349,6 +349,25 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func rollHistoryPersistsWithLimit() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("architer-rolls-\(UUID().uuidString)")
+        let store = RollHistoryStore(directory: dir, limit: 3)
+        #expect(store.load().isEmpty)
+
+        let roller = DiceRoller()
+        let r1 = try roller.roll("1d6+1")
+        let r2 = try roller.roll("2d8")
+        let r3 = try roller.roll("d20")
+        let r4 = try roller.roll("4d6kh3")
+        store.save([r1, r2, r3, r4])
+        let loaded = store.load()
+        #expect(loaded.count == 3)
+        #expect(loaded == [r1, r2, r3])
+        #expect(loaded[0].dice == r1.dice)
+        try? FileManager.default.removeItem(at: dir)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

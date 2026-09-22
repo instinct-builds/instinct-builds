@@ -25,6 +25,7 @@ public final class AppModel: ObservableObject {
     /// Compendium favorites (app-wide, persisted next to the character files).
     @Published public var favorites = CompendiumFavorites()
     public var favoritesStore: FavoritesStore { FavoritesStore(directory: store.directory) }
+    public var rollHistoryStore: RollHistoryStore { RollHistoryStore(directory: store.directory) }
     public var rulesetStore: RulesetStore { RulesetStore(directory: store.directory) }
     /// User-defined ruleset library (persisted).
     @Published public var rulesets: [Ruleset] = []
@@ -51,6 +52,7 @@ public final class AppModel: ObservableObject {
         characters = (try? store.loadAll()) ?? []
         rulesets = rulesetStore.load()
         favorites = favoritesStore.load()
+        rollHistory = rollHistoryStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
                let uuid = UUID(uuidString: saved),
@@ -105,9 +107,15 @@ public final class AppModel: ObservableObject {
 
     // MARK: Rolling
 
+    public func clearRollHistory() {
+        rollHistory.removeAll()
+        rollHistoryStore.save(rollHistory)
+    }
+
     private func record(_ r: RollResult) {
         rollHistory.insert(r, at: 0)
         if rollHistory.count > 200 { rollHistory.removeLast(rollHistory.count - 200) }
+        rollHistoryStore.save(rollHistory)
     }
 
     public func roll(_ expression: String) {
