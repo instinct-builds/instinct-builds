@@ -554,6 +554,38 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         max(1, hitDiceType / 2 + 1 + scores.modifier(.constitution))
     }
 
+    /// What kind of d20 roll is being made, for condition side effects.
+    public enum D20RollKind: String, Sendable {
+        case check, attack, save
+    }
+
+    /// Conditions that impose disadvantage on the given roll kind.
+    /// Original modeling of the genre-standard side effects: poisoned and
+    /// frightened hinder checks; blinded, poisoned, prone, restrained and
+    /// frightened hinder attacks. Saves are left to the era preset (the
+    /// 2014-style exhaustion track covers them by note).
+    public func disadvantageSources(for kind: D20RollKind) -> [Condition] {
+        conditions.filter {
+            switch kind {
+            case .check: return $0.hindersChecks
+            case .attack: return $0.hindersAttacks
+            case .save: return false
+            }
+        }.sorted { $0.rawValue < $1.rawValue }
+    }
+
+    /// Effective roll mode after condition side effects: disadvantage from a
+    /// condition and a chosen advantage cancel to normal (genre-standard).
+    public func effectiveRollMode(_ chosen: RollMode, for kind: D20RollKind) -> RollMode {
+        let hindered = !disadvantageSources(for: kind).isEmpty
+        switch (chosen, hindered) {
+        case (.disadvantage, _), (.normal, true): return .disadvantage
+        case (.advantage, true): return .normal
+        case (.advantage, false): return .advantage
+        case (.normal, false): return .normal
+        }
+    }
+
     /// Flat d20 penalty from exhaustion under the current era (2024 style).
     public var exhaustionRollPenalty: Int {
         era.exhaustionRollPenalty(level: exhaustion)

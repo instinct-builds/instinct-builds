@@ -151,6 +151,11 @@ struct AttacksBlock: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 300)
+                if !character.disadvantageSources(for: .attack).isEmpty {
+                    Text("Disadvantage from \(character.disadvantageSources(for: .attack).map(\.displayName).joined(separator: ", "))")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.danger)
+                }
                 Spacer()
                 Menu("Add from library") {
                     ForEach(EquipmentLibrary.weapons) { w in

@@ -107,19 +107,41 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
-    /// Era-aware d20 roll: the 2024-style preset subtracts exhaustion from
-    /// every d20 test; the 2014 style models exhaustion by side effects.
+    /// Era- and condition-aware d20 roll: the 2024-style preset subtracts
+    /// exhaustion from every d20 test, and hindering conditions (poisoned,
+    /// blinded, prone...) fold disadvantage into the mode.
     public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal) {
-        let penalty = selected?.wrappedValue.exhaustionRollPenalty ?? 0
-        let adjusted = bonus - penalty
-        let r = roller.check(penalty > 0 ? "\(label) (exhaustion -\(penalty))" : label,
-                             bonus: adjusted, mode: mode)
-        record(r)
+        guard let c = selected?.wrappedValue else {
+            record(roller.check(label, bonus: bonus, mode: mode))
+            return
+        }
+        let kind: Character.D20RollKind = label.localizedCaseInsensitiveContains("attack") ? .attack : .check
+        let effective = c.effectiveRollMode(mode, for: kind)
+        let penalty = c.exhaustionRollPenalty
+        var tags: [String] = []
+        if penalty > 0 { tags.append("exhaustion -\(penalty)") }
+        if effective != mode, effective == .disadvantage {
+            let names = c.disadvantageSources(for: kind).map(\.displayName).joined(separator: ", ")
+            tags.append("disadvantage: \(names)")
+        } else if mode == .advantage, effective == .normal {
+            tags.append("advantage canceled by condition")
+        }
+        let tagged = tags.isEmpty ? label : "\(label) (\(tags.joined(separator: "; ")))"
+        record(roller.check(tagged, bonus: bonus - penalty, mode: effective))
     }
 
     /// Attack roll + damage roll as two history entries.
     public func rollAttack(_ attack: Attack, for c: Character, mode: RollMode = .normal) {
-        record(roller.check("\(attack.name) attack", bonus: attack.attackBonus(scores: c.scores, level: c.level) - c.exhaustionRollPenalty, mode: mode))
+        let effective = c.effectiveRollMode(mode, for: .attack)
+        var tags: [String] = []
+        if c.exhaustionRollPenalty > 0 { tags.append("exhaustion -\(c.exhaustionRollPenalty)") }
+        if effective != mode, effective == .disadvantage {
+            tags.append("disadvantage: \(c.disadvantageSources(for: .attack).map(\.displayName).joined(separator: ", "))")
+        } else if mode == .advantage, effective == .normal {
+            tags.append("advantage canceled by condition")
+        }
+        let label = tags.isEmpty ? "\(attack.name) attack" : "\(attack.name) attack (\(tags.joined(separator: "; ")))"
+        record(roller.check(label, bonus: attack.attackBonus(scores: c.scores, level: c.level) - c.exhaustionRollPenalty, mode: effective))
         rollLabeled("\(attack.name) damage", attack.damageString(scores: c.scores))
     }
 

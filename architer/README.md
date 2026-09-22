@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 0.7.0
+
+- **Conditions that fight back**: hindering conditions now fold into the
+  dice. Poisoned, blinded, prone, restrained, and frightened impose
+  disadvantage on attack rolls; poisoned and frightened hinder ability
+  checks. Chosen advantage cancels to a straight roll (genre-standard), and
+  the roll history names the source - "Longsword attack (disadvantage:
+  Poisoned)". A warning chip appears by the roll-mode picker while a
+  hindering condition is active.
+
 ## What's in 0.6.0
 
 - **Ruleset library**: shape your own game - edit a character's custom

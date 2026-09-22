@@ -250,6 +250,21 @@ struct CharacterTests {
         #expect(d.customAbilities.map(\.name) == captured.abilities)
     }
 
+    @Test func conditionsFoldDisadvantageIntoRollMode() {
+        var c = Character(name: "T")
+        c.conditions = [.poisoned]
+        #expect(c.disadvantageSources(for: .attack) == [.poisoned])
+        #expect(c.disadvantageSources(for: .check) == [.poisoned])
+        #expect(c.effectiveRollMode(.normal, for: .attack) == .disadvantage)
+        #expect(c.effectiveRollMode(.advantage, for: .attack) == .normal) // cancels
+        #expect(c.effectiveRollMode(.disadvantage, for: .check) == .disadvantage)
+        c.conditions = [.blinded]
+        #expect(c.effectiveRollMode(.normal, for: .attack) == .disadvantage)
+        #expect(c.effectiveRollMode(.normal, for: .check) == .normal) // checks unaffected
+        c.conditions = []
+        #expect(c.effectiveRollMode(.advantage, for: .attack) == .advantage)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

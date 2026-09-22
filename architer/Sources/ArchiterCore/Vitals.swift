@@ -8,6 +8,23 @@ public enum Condition: String, Codable, CaseIterable, Sendable {
          stunned, unconscious
 
     public var displayName: String { rawValue.capitalized }
+
+    /// Genre-standard d20 side effects we model automatically. Attack
+    /// disadvantage: the attacker is hindered on attack rolls.
+    public var hindersAttacks: Bool {
+        switch self {
+        case .blinded, .poisoned, .prone, .restrained, .frightened: return true
+        default: return false
+        }
+    }
+
+    /// Ability-check disadvantage.
+    public var hindersChecks: Bool {
+        switch self {
+        case .poisoned, .frightened: return true
+        default: return false
+        }
+    }
 }
 
 /// Coin purse with genre-standard denominations: 10 cp = 1 sp, 5 sp = 1 ep,
