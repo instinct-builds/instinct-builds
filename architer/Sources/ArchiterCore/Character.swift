@@ -271,6 +271,8 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var exhaustion: Int
     /// Which d20 era preset governs rest/exhaustion/weapon/prep mechanics.
     public var era: RulesetVariant
+    /// Name of the spell currently being concentrated on, if any.
+    public var concentratingOn: String?
     // Combat & magic
     public var attacks: [Attack]
     public var spellcasting: Spellcasting?
@@ -316,6 +318,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditions: Set<Condition> = [],
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
+        concentratingOn: String? = nil,
         attacks: [Attack] = [],
         spellcasting: Spellcasting? = nil,
         inventory: [InventoryItem] = [],
@@ -355,6 +358,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.speed = speed
         self.conditions = conditions
         self.era = era
+        self.concentratingOn = concentratingOn
         self.exhaustion = max(0, min(era.exhaustionCap, exhaustion))
         self.attacks = attacks
         self.spellcasting = spellcasting
@@ -400,6 +404,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         speed = try c.decode(Int.self, forKey: .speed)
         conditions = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditions) ?? []
         era = try c.decodeIfPresent(RulesetVariant.self, forKey: .era) ?? .era2014
+        concentratingOn = try c.decodeIfPresent(String.self, forKey: .concentratingOn)
         let rawExhaustion = try c.decodeIfPresent(Int.self, forKey: .exhaustion) ?? 0
         exhaustion = max(0, min(era.exhaustionCap, rawExhaustion))
         attacks = try c.decode([Attack].self, forKey: .attacks)
@@ -536,6 +541,15 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
             features[i].rechargeUses()
         }
         if exhaustion > 0 { exhaustion -= 1 }
+    }
+
+    /// Start concentrating on a spell; any previous concentration ends.
+    public mutating func beginConcentration(on spellName: String) {
+        concentratingOn = spellName
+    }
+
+    public mutating func dropConcentration() {
+        concentratingOn = nil
     }
 
     /// Level up by one: max HP rises by the (rolled or average) gain, current

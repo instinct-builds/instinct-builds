@@ -284,6 +284,17 @@ struct CharacterTests {
         #expect(EquipmentLibrary.searchArmor("zzzz").isEmpty)
     }
 
+    @Test func concentrationTracksAndDrops() {
+        var c = Character(name: "T")
+        #expect(c.concentratingOn == nil)
+        c.beginConcentration(on: "Ward Bond")
+        #expect(c.concentratingOn == "Ward Bond")
+        c.beginConcentration(on: "Mist Step") // replaces
+        #expect(c.concentratingOn == "Mist Step")
+        c.dropConcentration()
+        #expect(c.concentratingOn == nil)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

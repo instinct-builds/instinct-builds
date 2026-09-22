@@ -9,6 +9,21 @@ struct SpellcastingBlock: View {
 
     var body: some View {
         BlockCard(title: "Spells") {
+            if let concentrating = character.concentratingOn {
+                HStack(spacing: Theme.Gap.xs) {
+                    Text("CONCENTRATING")
+                        .font(Theme.Typeface.statLabel).tracking(1.2)
+                        .foregroundStyle(Theme.arcana)
+                    Text(concentrating)
+                        .font(Theme.Typeface.body.bold())
+                        .foregroundStyle(Theme.ink)
+                    Spacer()
+                    Button("Drop") { model.dropConcentration() }
+                        .buttonStyle(RollButtonStyle())
+                }
+                .padding(Theme.Gap.sm)
+                .background(Theme.arcana.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.sm))
+            }
             if character.spellcasting == nil {
                 HStack {
                     Text("Not a spellcaster yet.").foregroundStyle(.secondary)
@@ -230,7 +245,7 @@ struct SpellGroup: View {
                         if spell.level > 0, character.spellcasting != nil {
                             let lvl = spell.level
                             let remaining = character.spellcasting?.slotsRemaining(spellLevel: lvl, casterLevel: character.level) ?? 0
-                            Button("Cast") { model.castSpell(atSlotLevel: lvl) }
+                            Button("Cast") { model.castSpell(spell) }
                                 .buttonStyle(RollButtonStyle(prominent: true))
                                 .disabled(remaining == 0)
                         }

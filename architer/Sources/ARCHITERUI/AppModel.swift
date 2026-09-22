@@ -187,6 +187,23 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
+    /// Cast a specific spell: spends the slot and, for concentration spells,
+    /// moves concentration to it (ending any previous one).
+    public func castSpell(_ spell: Spell) {
+        castSpell(atSlotLevel: spell.level)
+        if spell.concentration {
+            guard var c = selected?.wrappedValue else { return }
+            c.beginConcentration(on: spell.name)
+            selected?.wrappedValue = c
+        }
+    }
+
+    public func dropConcentration() {
+        guard var c = selected?.wrappedValue else { return }
+        c.dropConcentration()
+        selected?.wrappedValue = c
+    }
+
     public func castSpell(atSlotLevel slotLevel: Int) {
         guard var c = selected?.wrappedValue, var sc = c.spellcasting else { return }
         sc.useSlot(spellLevel: slotLevel, casterLevel: c.level)

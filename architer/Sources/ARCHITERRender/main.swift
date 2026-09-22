@@ -44,6 +44,13 @@ func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String,
 
 @MainActor
 func run(model: AppModel, character: Character, outDir: String) {
+    // Seed roll history so the dice render and the sheet's inline dice block
+    // exercise the roll cards (kept/dropped chips, advantage, crit glow).
+    model.roll("4d6kh3")
+    model.roll("2d6+3")
+    model.rollCheck("Stealth check", bonus: 7, mode: .advantage)
+    model.roll("1d8+1d4+2")
+    model.roll("d20")
     let width: CGFloat = 1180
     renderPNG(
         SheetColumnView(character: .constant(character))

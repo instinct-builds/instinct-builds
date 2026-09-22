@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.0.0
+
+- **Concentration tracker**: casting a concentration spell moves
+  concentration to it (ending any previous one); a banner at the top of the
+  Spells block shows what you're holding and can drop it.
+- **Renders now exercise the dice**: the CI render harness seeds a few rolls
+  so the dice screenshot shows the roll cards.
+
 ## What's in 0.9.0
 
 - **Roll cards**: history entries are now styled cards - each die shows as
