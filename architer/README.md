@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.4.0
+
+- **Compendium favorites**: star the spells, weapons, and armor you reach
+  for; a favorites-only filter sits in the compendium toolbar. Favorites
+  persist app-wide alongside the character files.
+
 ## What's in 1.3.0
 
 - **Session restore**: the app reopens exactly where you left it - the

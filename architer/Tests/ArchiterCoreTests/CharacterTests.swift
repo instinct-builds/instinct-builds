@@ -328,6 +328,27 @@ struct CharacterTests {
         #expect(d.doubledDice() == "8d6kh3")
     }
 
+    @Test func favoritesToggleAndPersist() throws {
+        var favs = CompendiumFavorites()
+        #expect(!favs.contains(kind: .spell, name: "Fire Bolt"))
+        favs.toggle(kind: .spell, name: "Fire Bolt")
+        #expect(favs.contains(kind: .spell, name: "fire bolt"))
+        favs.toggle(kind: .weapon, name: "Quarterstaff")
+        #expect(favs.keys.count == 2)
+        favs.toggle(kind: .spell, name: "FIRE BOLT")
+        #expect(!favs.contains(kind: .spell, name: "Fire Bolt"))
+        #expect(favs.keys.count == 1)
+
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("architer-favs-\(UUID().uuidString)")
+        let store = FavoritesStore(directory: dir)
+        store.save(favs)
+        let loaded = store.load()
+        #expect(loaded == favs)
+        #expect(FavoritesStore(directory: dir.appendingPathComponent("nope")).load().keys.isEmpty)
+        try? FileManager.default.removeItem(at: dir)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

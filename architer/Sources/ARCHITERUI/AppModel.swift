@@ -22,6 +22,9 @@ public final class AppModel: ObservableObject {
     @Published private var undoStacks: [UUID: UndoStack<Character>] = [:]
 
     public let store = CharacterStore.defaultStore()
+    /// Compendium favorites (app-wide, persisted next to the character files).
+    @Published public var favorites = CompendiumFavorites()
+    public var favoritesStore: FavoritesStore { FavoritesStore(directory: store.directory) }
     public var rulesetStore: RulesetStore { RulesetStore(directory: store.directory) }
     /// User-defined ruleset library (persisted).
     @Published public var rulesets: [Ruleset] = []
@@ -47,6 +50,7 @@ public final class AppModel: ObservableObject {
     public func reload() {
         characters = (try? store.loadAll()) ?? []
         rulesets = rulesetStore.load()
+        favorites = favoritesStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
                let uuid = UUID(uuidString: saved),
@@ -88,6 +92,11 @@ public final class AppModel: ObservableObject {
         characters.remove(at: idx)
         undoStacks.removeValue(forKey: id)
         selectedID = characters.first?.id
+    }
+
+    public func toggleFavorite(kind: CompendiumKind, name: String) {
+        favorites.toggle(kind: kind, name: name)
+        favoritesStore.save(favorites)
     }
 
     public func loadSample() {

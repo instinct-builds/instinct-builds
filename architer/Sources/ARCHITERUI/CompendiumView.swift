@@ -10,6 +10,7 @@ struct CompendiumView: View {
     @State private var tab = 0
     @State private var query = ""
     @State private var levelFilter: Int? = nil
+    @State private var favoritesOnly = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,6 +39,14 @@ struct CompendiumView: View {
                     }
                     .frame(width: 130)
                 }
+                Button {
+                    favoritesOnly.toggle()
+                } label: {
+                    Image(systemName: favoritesOnly ? "star.fill" : "star")
+                        .foregroundStyle(favoritesOnly ? Theme.accent : Theme.inkMuted)
+                }
+                .buttonStyle(.plain)
+                .help(favoritesOnly ? "Showing favorites only" : "Show favorites only")
             }
             .padding(.horizontal)
             Divider().overlay(Theme.edge).padding(.top, Theme.Gap.sm)
@@ -59,6 +68,7 @@ struct CompendiumView: View {
 
     @ViewBuilder private var spellsList: some View {
         let matches = SpellLibrary.search(query, level: levelFilter)
+            .filter { !favoritesOnly || model.favorites.contains(kind: .spell, name: $0.name) }
         if matches.isEmpty {
             Text("No library spell matches.")
                 .font(Theme.Typeface.caption)
@@ -73,6 +83,7 @@ struct CompendiumView: View {
                     if spell.ritual { badge("R", Theme.arcana) }
                     if spell.concentration { badge("C", Theme.accent) }
                     Spacer()
+                    starToggle(kind: .spell, name: spell.name)
                     Text(spell.level == 0 ? "Cantrip" : "Level \(spell.level)")
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.arcana)
@@ -102,7 +113,8 @@ struct CompendiumView: View {
     }
 
     @ViewBuilder private var weaponsList: some View {
-        ForEach(EquipmentLibrary.searchWeapons(query)) { w in
+        ForEach(EquipmentLibrary.searchWeapons(query)
+            .filter { !favoritesOnly || model.favorites.contains(kind: .weapon, name: $0.name) }) { w in
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(w.name)
@@ -118,6 +130,7 @@ struct CompendiumView: View {
                     }
                 }
                 Spacer()
+                starToggle(kind: .weapon, name: w.name)
                 Text("\(w.weight, specifier: "%.1f") lb")
                     .font(Theme.Typeface.caption)
                     .foregroundStyle(Theme.inkFaint)
@@ -130,7 +143,8 @@ struct CompendiumView: View {
     }
 
     @ViewBuilder private var armorList: some View {
-        ForEach(EquipmentLibrary.searchArmor(query)) { a in
+        ForEach(EquipmentLibrary.searchArmor(query)
+            .filter { !favoritesOnly || model.favorites.contains(kind: .armor, name: $0.name) }) { a in
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(a.name)
@@ -141,6 +155,7 @@ struct CompendiumView: View {
                         .foregroundStyle(Theme.inkMuted)
                 }
                 Spacer()
+                starToggle(kind: .armor, name: a.name)
                 Text(a.cost)
                     .font(Theme.Typeface.caption)
                     .foregroundStyle(Theme.inkFaint)
@@ -150,6 +165,18 @@ struct CompendiumView: View {
             .padding(Theme.Gap.md)
             .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.md))
         }
+    }
+
+    private func starToggle(kind: CompendiumKind, name: String) -> some View {
+        let isFav = model.favorites.contains(kind: kind, name: name)
+        return Button {
+            model.toggleFavorite(kind: kind, name: name)
+        } label: {
+            Image(systemName: isFav ? "star.fill" : "star")
+                .foregroundStyle(isFav ? Theme.accent : Theme.inkFaint)
+        }
+        .buttonStyle(.plain)
+        .help(isFav ? "Remove from favorites" : "Add to favorites")
     }
 
     private func badge(_ text: String, _ color: Color) -> some View {
