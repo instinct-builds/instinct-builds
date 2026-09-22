@@ -11,6 +11,9 @@ public final class AppModel: ObservableObject {
     @Published private var undoStacks: [UUID: UndoStack<Character>] = [:]
 
     public let store = CharacterStore.defaultStore()
+    public var rulesetStore: RulesetStore { RulesetStore(directory: store.directory) }
+    /// User-defined ruleset library (persisted).
+    @Published public var rulesets: [Ruleset] = []
     public let roller = DiceRoller()
 
     public init() { reload() }
@@ -32,6 +35,7 @@ public final class AppModel: ObservableObject {
 
     public func reload() {
         characters = (try? store.loadAll()) ?? []
+        rulesets = rulesetStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             selectedID = characters.first?.id
         }
@@ -164,6 +168,28 @@ public final class AppModel: ObservableObject {
         guard var c = selected?.wrappedValue, var sc = c.spellcasting else { return }
         sc.useSlot(spellLevel: slotLevel, casterLevel: c.level)
         c.spellcasting = sc
+        selected?.wrappedValue = c
+    }
+
+    // MARK: Ruleset library
+
+    /// Adds or replaces a ruleset in the library (matched by name).
+    public func saveRuleset(_ ruleset: Ruleset) {
+        rulesets.removeAll { $0.name == ruleset.name }
+        rulesets.append(ruleset)
+        rulesets.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        try? rulesetStore.saveAll(rulesets)
+    }
+
+    public func deleteRuleset(named name: String) {
+        rulesets.removeAll { $0.name == name }
+        try? rulesetStore.saveAll(rulesets)
+    }
+
+    /// Applies a library ruleset to the selected character.
+    public func applyRuleset(_ ruleset: Ruleset) {
+        guard var c = selected?.wrappedValue else { return }
+        c.apply(ruleset: ruleset)
         selected?.wrappedValue = c
     }
 

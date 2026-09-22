@@ -69,3 +69,49 @@ public struct CharacterStore: Sendable {
         try FileManager.default.removeItem(at: fileURL(for: character))
     }
 }
+
+/// JSON persistence for user-defined rulesets (the custom-ruleset library).
+/// Stored as one rulesets.json next to the character files.
+public struct RulesetStore: Sendable {
+    public let directory: URL
+
+    public init(directory: URL) { self.directory = directory }
+
+    private var fileURL: URL { directory.appendingPathComponent("rulesets.json") }
+
+    public func load() -> [Ruleset] {
+        guard let data = try? Data(contentsOf: fileURL),
+              let rulesets = try? JSONDecoder().decode([Ruleset].self, from: data) else {
+            return []
+        }
+        return rulesets
+    }
+
+    public func saveAll(_ rulesets: [Ruleset]) throws {
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            let enc = JSONEncoder()
+            enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try enc.encode(rulesets).write(to: fileURL, options: .atomic)
+        } catch {
+            throw CharacterStoreError.writeFailed(error.localizedDescription)
+        }
+    }
+
+    public func delete(name: String) throws {
+        try saveAll(load().filter { $0.name != name })
+    }
+}
+
+extension Character {
+    /// Captures the character's current custom abilities and skills as a
+    /// reusable ruleset template under the given name.
+    public func captureRuleset(named name: String) -> Ruleset {
+        Ruleset(
+            name: name,
+            abilities: customAbilities.map(\.name),
+            skills: customSkills.map { CustomSkillDef(name: $0.name, abilityName: $0.abilityName) }
+        )
+    }
+}

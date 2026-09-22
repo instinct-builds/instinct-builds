@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 0.6.0
+
+- **Ruleset library**: shape your own game - edit a character's custom
+  abilities and skills in the builder, then "Save as ruleset..." to keep the
+  template in a persisted library. Apply any saved ruleset to any character
+  later, or delete it from the library. The built-in Starfarer and Gumshoe
+  examples still ship alongside.
+
 ## What's in 0.5.0
 
 - **Ruleset era presets**: switch the sheet between 2014-style and 2024-style

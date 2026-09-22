@@ -6,6 +6,9 @@ import ArchiterCore
 /// templated blocks; apply a whole custom ruleset to the character.
 public struct BuilderView: View {
     @Binding var character: Character
+    @EnvironmentObject var model: AppModel
+    @State private var rulesetNameDraft = ""
+    @State private var showSaveRuleset = false
 
     public init(character: Binding<Character>) {
         _character = character
@@ -66,6 +69,45 @@ public struct BuilderView: View {
                     HStack {
                         Button("Apply Starfarer (sci-fi)") { apply(Ruleset.starfarer) }
                         Button("Apply Gumshoe (investigation)") { apply(Ruleset.gumshoe) }
+                    }
+                }
+                if !model.rulesets.isEmpty {
+                    Text("Your ruleset library").font(.subheadline).bold()
+                    ForEach(model.rulesets, id: \.name) { ruleset in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ruleset.name).bold()
+                                Text("\(ruleset.abilities.count) abilities · \(ruleset.skills.count) skills")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Apply") { apply(ruleset) }
+                            Button(role: .destructive) {
+                                model.deleteRuleset(named: ruleset.name)
+                            } label: { Image(systemName: "minus.circle") }
+                        }
+                    }
+                }
+                if !character.customAbilities.isEmpty {
+                    if showSaveRuleset {
+                        HStack {
+                            TextField("Ruleset name", text: $rulesetNameDraft)
+                            Button("Save") {
+                                let name = rulesetNameDraft.trimmingCharacters(in: .whitespaces)
+                                guard !name.isEmpty else { return }
+                                model.saveRuleset(character.captureRuleset(named: name))
+                                rulesetNameDraft = ""
+                                showSaveRuleset = false
+                            }
+                            .disabled(rulesetNameDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                            Button("Cancel") {
+                                rulesetNameDraft = ""
+                                showSaveRuleset = false
+                            }
+                        }
+                    } else {
+                        Button("Save as ruleset…") { showSaveRuleset = true }
+                            .help("Save the abilities/skills below as a reusable ruleset in your library")
                     }
                 }
                 if !character.customAbilities.isEmpty {

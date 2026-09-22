@@ -220,6 +220,36 @@ struct CharacterTests {
         #expect(decoded.mastery == .topple)
     }
 
+    @Test func rulesetStoreRoundTrips() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("architer-test-\(UUID().uuidString)")
+        let store = RulesetStore(directory: dir)
+        #expect(store.load().isEmpty)
+        try store.saveAll([.starfarer, .gumshoe])
+        let loaded = store.load()
+        #expect(loaded.count == 2)
+        #expect(loaded.contains(.starfarer))
+        try store.delete(name: "Starfarer")
+        #expect(store.load() == [.gumshoe])
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    @Test func captureRulesetCapturesCustomFields() {
+        var c = Character(name: "T")
+        c.apply(ruleset: .starfarer)
+        c.customAbilities[0].score = 14
+        let captured = c.captureRuleset(named: "My Game")
+        #expect(captured.name == "My Game")
+        #expect(captured.abilities == Ruleset.starfarer.abilities)
+        #expect(captured.skills.count == Ruleset.starfarer.skills.count)
+        // Captured template resets scores to 10 for a fresh character,
+        // but a character carrying the same ability keeps its score.
+        var d = Character(name: "U")
+        d.apply(ruleset: captured)
+        #expect(d.rulesetName == "My Game")
+        #expect(d.customAbilities.map(\.name) == captured.abilities)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",
