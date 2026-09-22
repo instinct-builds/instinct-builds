@@ -60,10 +60,9 @@ final class StudioLibrary: ObservableObject {
 
     private func installBundledLibraryIfNeeded() {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ASSSETS/StarterLibrary", isDirectory: true)
-        guard !FileManager.default.fileExists(atPath: root.path), let archive = Bundle.module.url(forResource: "StarterLibrary", withExtension: "zip") else { return }
+        guard !FileManager.default.fileExists(atPath: root.path), let bundled = Bundle.module.url(forResource: "StarterLibrary", withExtension: nil) else { return }
         try? FileManager.default.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let task = Process(); task.executableURL = URL(fileURLWithPath: "/usr/bin/ditto"); task.arguments = ["-x", "-k", archive.path, root.path]
-        try? task.run(); task.waitUntilExit()
+        try? FileManager.default.copyItem(at: bundled, to: root)
     }
 
     var collections: [String] { ["All Assets", "Favorites"] + Array(Set(assets.map(\.collection))).sorted() }
