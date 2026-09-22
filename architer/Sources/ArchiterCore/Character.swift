@@ -153,6 +153,18 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         ability = try c.decodeIfPresent(Ability.self, forKey: .ability)
         proficient = try c.decodeIfPresent(Bool.self, forKey: .proficient) ?? true
         bonusOverride = try c.decodeIfPresent(Int.self, forKey: .bonusOverride)
+        if bonusOverride == nil {
+            // Legacy 0.1.x sheets pinned `attackBonus`.
+            struct LegacyKeys: CodingKey {
+                var stringValue: String
+                init?(stringValue: String) { self.stringValue = stringValue }
+                var intValue: Int? { nil }
+                init?(intValue: Int) { nil }
+            }
+            if let legacy = try? decoder.container(keyedBy: LegacyKeys.self) {
+                bonusOverride = try legacy.decodeIfPresent(Int.self, forKey: LegacyKeys(stringValue: "attackBonus")!)
+            }
+        }
         damageExpression = try c.decodeIfPresent(String.self, forKey: .damageExpression) ?? "1d6"
         damageType = try c.decodeIfPresent(String.self, forKey: .damageType) ?? ""
         range = try c.decodeIfPresent(String.self, forKey: .range) ?? "5 ft"
