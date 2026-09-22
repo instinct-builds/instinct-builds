@@ -10,19 +10,22 @@ struct DiceInlineBlock: View {
         BlockCard(title: "Dice") {
             HStack {
                 TextField("Dice notation", text: $expression)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(InsetFieldStyle())
                     .frame(width: 160)
                     .onSubmit { model.roll(expression) }
                 Button("Roll") { model.roll(expression) }
+                    .buttonStyle(RollButtonStyle(prominent: true))
                 ForEach(["d4", "d6", "d8", "d10", "d12", "d20"], id: \.self) { d in
-                    Button(d) { model.roll(d) }.controlSize(.small)
+                    Button(d) { model.roll(d) }.buttonStyle(RollButtonStyle())
                 }
             }
             if let last = model.rollHistory.first {
                 HStack {
                     Text(last.label ?? last.expression).foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(last.total)").font(.title2).bold()
+                    Text("\(last.total)")
+                        .font(Theme.Typeface.statBig)
+                        .foregroundStyle(Theme.accent)
                 }
             }
             Text("Full roller and history on the Dice tab.")
@@ -43,10 +46,12 @@ public struct DiceRollerView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 TextField("Dice notation", text: $expression)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(InsetFieldStyle())
                     .frame(width: 200)
                     .onSubmit { model.roll(expression) }
-                Button("Roll") { model.roll(expression) }.keyboardShortcut(.return)
+                Button("Roll") { model.roll(expression) }
+                    .buttonStyle(RollButtonStyle(prominent: true))
+                    .keyboardShortcut(.return)
                 Text("d20 · 2d6+3 · 4d6kh3 · 4d6dl1 · 1d8+1d4+2")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -60,6 +65,7 @@ public struct DiceRollerView: View {
                 .frame(width: 320)
                 Stepper("Modifier \(signed(d20Modifier))", value: $d20Modifier, in: -10...30)
                 Button("Roll d20") { model.rollCheck("d20 roll", bonus: d20Modifier, mode: d20Mode) }
+                    .buttonStyle(RollButtonStyle(prominent: true))
             }
             HStack {
                 Text("History").font(.headline)
@@ -67,6 +73,7 @@ public struct DiceRollerView: View {
                 Button("Clear") { model.rollHistory.removeAll() }.controlSize(.small)
             }
             List(model.rollHistory.indices, id: \.self) { i in
+
                 let r = model.rollHistory[i]
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
@@ -82,11 +89,16 @@ public struct DiceRollerView: View {
                     if let alt = r.alternateTotal {
                         Text("(\(alt))").foregroundStyle(.secondary)
                     }
-                    Text("\(r.total)").bold().font(.title3)
+                    Text("\(r.total)")
+                        .font(Theme.Typeface.headline.monospacedDigit())
+                        .foregroundStyle(Theme.accent)
                 }
+                .listRowBackground(Theme.surfaceRaised)
             }
+            .scrollContentBackground(.hidden)
         }
-        .padding()
+        .padding(Theme.Gap.lg)
+        .background(Theme.surface)
     }
 }
 #endif

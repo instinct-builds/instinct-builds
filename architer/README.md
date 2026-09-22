@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 0.3.0
+
+- **Design language**: dark "ink and brass" tabletop theme, serif display type,
+  4pt spacing grid, custom-styled controls throughout - stat plates, slot and
+  death-save pips, HP resource bar, brass roll buttons, inset fields, elevated
+  block cards, hero identity header with XP progress. All 0.2.0 features intact.
+
 ## What's in 0.2.0
 
 - **Full sheet**: identity (lineage/calling/background/alignment/XP with

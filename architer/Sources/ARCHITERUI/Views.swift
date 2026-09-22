@@ -24,11 +24,14 @@ public struct ContentView: View {
                 ForEach(model.characters) { c in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(c.name)
+                            .font(Theme.Typeface.headline)
+                            .foregroundStyle(Theme.ink)
                         Text("Lvl \(c.level) \(c.lineage) \(c.calling)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
                             .lineLimit(1)
                     }
+                    .padding(.vertical, 2)
                     .tag(c.id)
                 }
             }
@@ -53,6 +56,11 @@ public struct ContentView: View {
             CharacterWizardView()
                 .environmentObject(model)
         }
+        .tint(Theme.accent)
+        .accentColor(Theme.accent)
+        .preferredColorScheme(.dark)
+        .background(Theme.surface)
+        .foregroundStyle(Theme.ink)
     }
 }
 
@@ -69,14 +77,17 @@ struct CharacterDetailView: View {
                 Text("Dice").tag(2)
             }
             .pickerStyle(.segmented)
-            .padding()
-            Divider()
+            .padding(.horizontal, Theme.Gap.lg)
+            .padding(.vertical, Theme.Gap.sm)
             switch tab {
             case 0:
                 ScrollView {
                     SheetColumnView(character: $character)
-                        .padding()
+                        .padding(Theme.Gap.lg)
+                        .frame(maxWidth: 900)
+                        .frame(maxWidth: .infinity)
                 }
+                .background(Theme.surface)
             case 1: BuilderView(character: $character)
             default: DiceRollerView()
             }
@@ -141,9 +152,27 @@ public struct BlockCard<Content: View>: View {
     }
 
     public var body: some View {
-        GroupBox(label: Text(title).font(.headline)) {
-            VStack(alignment: .leading, spacing: 8) { content }.padding(.top, 4)
+        VStack(alignment: .leading, spacing: Theme.Gap.md) {
+            HStack(spacing: Theme.Gap.sm) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Theme.accent)
+                    .frame(width: 3, height: 13)
+                Text(title.uppercased())
+                    .font(Theme.Typeface.headline)
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.inkMuted)
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: Theme.Gap.md) { content }
         }
+        .padding(Theme.Gap.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                .strokeBorder(Theme.edge.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
     }
 }
 
@@ -155,11 +184,10 @@ struct RollChip: View {
 
     var body: some View {
         Button(action: { model.rollCheck(label, bonus: bonus) }) {
-            Text("⚀ \(signed(bonus))")
-                .font(.caption.monospacedDigit())
+            Text("\(signed(bonus)) ⟡")
+                .font(Theme.Typeface.caption.monospacedDigit())
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(RollButtonStyle())
         .help("Roll \(label)")
     }
 }

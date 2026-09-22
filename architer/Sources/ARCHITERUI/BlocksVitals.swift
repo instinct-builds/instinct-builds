@@ -12,32 +12,43 @@ struct VitalsBlock: View {
     var body: some View {
         BlockCard(title: "Vitals") {
             // HP row with damage / heal / temp workflows
-            HStack {
-                Stepper("HP \(character.currentHP)/\(character.maxHP)",
-                        value: $character.currentHP, in: 0...character.maxHP)
-                Stepper("Max \(character.maxHP)", value: $character.maxHP, in: 1...999)
-                if character.tempHP > 0 {
-                    Text("+\(character.tempHP) temp").bold().foregroundStyle(.blue)
+            HStack(spacing: Theme.Gap.md) {
+                StatPlate(label: "Hit Points",
+                          value: "\(character.currentHP)\(character.tempHP > 0 ? "+\(character.tempHP)" : "")",
+                          tint: character.currentHP * 2 > character.maxHP ? Theme.ink : Theme.danger)
+                VStack(spacing: Theme.Gap.xs) {
+                    ResourceBar(current: character.currentHP, max: character.maxHP, temp: character.tempHP)
+                    HStack(spacing: Theme.Gap.sm) {
+                        Stepper("HP", value: $character.currentHP, in: 0...character.maxHP)
+                            .font(Theme.Typeface.caption)
+                        Stepper("Max \(character.maxHP)", value: $character.maxHP, in: 1...999)
+                            .font(Theme.Typeface.caption)
+                    }
+                    .foregroundStyle(Theme.inkMuted)
                 }
             }
-            HStack {
-                TextField("Damage", text: $damageAmount).frame(width: 70).textFieldStyle(.roundedBorder)
+            HStack(spacing: Theme.Gap.sm) {
+                TextField("Damage", text: $damageAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
                 Button("Apply") {
                     if let n = Int(damageAmount) { character.applyDamage(n); damageAmount = "" }
                 }
-                TextField("Heal", text: $healAmount).frame(width: 70).textFieldStyle(.roundedBorder)
+                .buttonStyle(RollButtonStyle(prominent: true))
+                TextField("Heal", text: $healAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
                 Button("Apply") {
                     if let n = Int(healAmount) { character.applyHealing(n); healAmount = "" }
                 }
-                TextField("Temp", text: $tempAmount).frame(width: 70).textFieldStyle(.roundedBorder)
+                .buttonStyle(RollButtonStyle())
+                TextField("Temp", text: $tempAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
                 Button("Gain") {
                     if let n = Int(tempAmount) { character.gainTempHP(n); tempAmount = "" }
                 }
+                .buttonStyle(RollButtonStyle())
             }
-            Divider()
+            Divider().overlay(Theme.edge)
             // Defenses row
-            HStack {
-                Text("AC \(character.computedAC)").font(.title3).bold()
+            HStack(spacing: Theme.Gap.md) {
+                StatPlate(label: "Armor Class", value: "\(character.computedAC)", tint: Theme.accent)
+                    .frame(maxWidth: 110)
                 Picker("Armor", selection: $character.equippedArmor) {
                     Text("Unarmored").tag(String?.none)
                     ForEach(EquipmentLibrary.armors.filter { $0.category != .shield }) { def in
@@ -56,7 +67,7 @@ struct VitalsBlock: View {
                 Text("Initiative \(signed(character.initiative)) · Passive Perception \(character.passivePerception)")
                     .foregroundStyle(.secondary)
             }
-            Divider()
+            Divider().overlay(Theme.edge)
             // Hit dice + death saves + rests
             HStack {
                 Picker("Hit die", selection: $character.hitDiceType) {
@@ -66,36 +77,34 @@ struct VitalsBlock: View {
                 Text("\(character.hitDiceRemaining)/\(character.hitDiceTotal) remaining")
                     .foregroundStyle(.secondary)
                 Button("Spend hit die") { model.spendHitDie() }
+                    .buttonStyle(RollButtonStyle())
                     .disabled(character.hitDiceRemaining == 0)
                 Spacer()
                 Button("Short rest") { model.shortRest() }
+                    .buttonStyle(RollButtonStyle())
                 Button("Long rest") { model.longRest() }
+                    .buttonStyle(RollButtonStyle(prominent: true))
             }
-            HStack {
-                Text("Death saves:").foregroundStyle(.secondary)
-                ForEach(0..<3, id: \.self) { i in
-                    Image(systemName: i < character.deathSaveSuccesses ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(.green)
-                        .onTapGesture {
-                            character.deathSaveSuccesses = i < character.deathSaveSuccesses ? i : i + 1
-                        }
+            HStack(spacing: Theme.Gap.md) {
+                CardSectionLabel(text: "Death saves")
+                Pips(filled: character.deathSaveSuccesses, total: 3, tint: Theme.success) { i in
+                    character.deathSaveSuccesses = i < character.deathSaveSuccesses ? i : i + 1
                 }
-                ForEach(0..<3, id: \.self) { i in
-                    Image(systemName: i < character.deathSaveFailures ? "xmark.circle.fill" : "circle")
-                        .foregroundStyle(.red)
-                        .onTapGesture {
-                            character.deathSaveFailures = i < character.deathSaveFailures ? i : i + 1
-                        }
+                Pips(filled: character.deathSaveFailures, total: 3, tint: Theme.danger) { i in
+                    character.deathSaveFailures = i < character.deathSaveFailures ? i : i + 1
                 }
                 Button("Roll death save") { model.rollDeathSave() }
+                    .buttonStyle(RollButtonStyle())
                     .disabled(character.currentHP > 0)
             }
-            Divider()
+            Divider().overlay(Theme.edge)
             // Conditions + exhaustion
             HStack {
-                Text("Exhaustion").foregroundStyle(.secondary)
+                CardSectionLabel(text: "Exhaustion")
                 Stepper("\(character.exhaustion)", value: $character.exhaustion, in: 0...6)
+                    .font(Theme.Typeface.caption)
             }
+            .foregroundStyle(Theme.inkMuted)
             ConditionGrid(character: $character)
         }
     }

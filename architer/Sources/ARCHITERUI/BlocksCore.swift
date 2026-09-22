@@ -7,29 +7,52 @@ struct IdentityBlock: View {
     @State private var xpToAdd = ""
 
     var body: some View {
-        BlockCard(title: "Identity") {
-            HStack {
-                TextField("Name", text: $character.name).font(.title2)
-                Toggle("Inspiration", isOn: $character.inspiration).toggleStyle(.checkbox)
-                Stepper("Level \(character.level)", value: $character.level, in: 1...20)
-            }
-            HStack {
-                TextField("Lineage", text: $character.lineage)
-                TextField("Calling", text: $character.calling)
-                TextField("Background", text: $character.background)
-                TextField("Alignment", text: $character.alignment)
-            }
-            HStack {
-                Text("XP \(character.experience)").monospacedDigit()
-                if let toNext = character.xpToNextLevel {
-                    Text("(\(toNext) to level \(character.level + 1))")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("(max level)").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: Theme.Gap.md) {
+            HStack(alignment: .firstTextBaseline) {
+                TextField("Name", text: $character.name)
+                    .textFieldStyle(.plain)
+                    .font(Theme.Typeface.display)
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                Button(action: { character.inspiration.toggle() }) {
+                    Image(systemName: character.inspiration ? "star.fill" : "star")
+                        .font(.title3)
+                        .foregroundStyle(character.inspiration ? Theme.accent : Theme.inkFaint)
                 }
+                .buttonStyle(.plain)
+                .help("Inspiration")
+                Stepper(value: $character.level, in: 1...20) {
+                    Text("LVL \(character.level)")
+                        .font(Theme.Typeface.headline.monospacedDigit())
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+            HStack(spacing: Theme.Gap.sm) {
+                TextField("Lineage", text: $character.lineage).textFieldStyle(InsetFieldStyle())
+                TextField("Calling", text: $character.calling).textFieldStyle(InsetFieldStyle())
+                TextField("Background", text: $character.background).textFieldStyle(InsetFieldStyle())
+                TextField("Alignment", text: $character.alignment).textFieldStyle(InsetFieldStyle())
+            }
+            HStack(spacing: Theme.Gap.sm) {
+                Text("XP \(character.experience)")
+                    .font(Theme.Typeface.caption.monospacedDigit())
+                    .foregroundStyle(Theme.inkMuted)
+                if let toNext = character.xpToNextLevel {
+                    ProgressView(value: min(1, Double(character.experience) / Double(character.experience + toNext)))
+                        .tint(Theme.accent)
+                        .frame(maxWidth: 160)
+                    Text("\(toNext) to level \(character.level + 1)")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                } else {
+                    Text("max level")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                }
+                Spacer()
                 TextField("Award XP", text: $xpToAdd)
+                    .textFieldStyle(InsetFieldStyle())
                     .frame(width: 80)
-                    .textFieldStyle(.roundedBorder)
                 Button("Add") {
                     if let amount = Int(xpToAdd), amount > 0 {
                         var c = character
@@ -38,13 +61,28 @@ struct IdentityBlock: View {
                         xpToAdd = ""
                     }
                 }
+                .buttonStyle(RollButtonStyle())
                 .disabled(Int(xpToAdd) == nil)
-                Text("Proficiency \(signed(character.proficiencyBonus))")
-                    .foregroundStyle(.secondary)
+                Text("PROF \(signed(character.proficiencyBonus))")
+                    .font(Theme.Typeface.caption.monospacedDigit())
+                    .foregroundStyle(Theme.accent)
             }
             TextField("Proficiencies & languages", text: $character.proficienciesText)
-                .font(.caption)
+                .textFieldStyle(InsetFieldStyle())
+                .font(Theme.Typeface.caption)
         }
+        .padding(Theme.Gap.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(colors: [Theme.surfaceRaised, Theme.accentSoft.opacity(0.55)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: Theme.Radius.lg)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                .strokeBorder(Theme.accent.opacity(0.35), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
     }
 }
 
@@ -69,34 +107,58 @@ struct AbilityCell: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(ability.abbreviation).font(.caption).foregroundStyle(.secondary)
-            Text(signed(character.scores.modifier(ability))).font(.title).bold()
-            Stepper("\(character.scores[ability])", value: Binding(
+        let modifier = character.scores.modifier(ability)
+        return VStack(spacing: Theme.Gap.xs) {
+            Text(ability.abbreviation)
+                .font(Theme.Typeface.statLabel)
+                .tracking(1.4)
+                .foregroundStyle(Theme.inkMuted)
+            Text(signed(modifier))
+                .font(Theme.Typeface.statBig)
+                .foregroundStyle(Theme.ink)
+            Stepper(value: Binding(
                 get: { character.scores[ability] },
                 set: { character.scores[ability] = min(30, max(1, $0)) }
-            ), in: 1...30).labelsHidden()
+            ), in: 1...30) {
+                Text("\(character.scores[ability])")
+                    .font(Theme.Typeface.caption.monospacedDigit())
+                    .foregroundStyle(Theme.inkMuted)
+            }
+            Divider().overlay(Theme.edge)
+            Button(action: {
+                model.rollCheck("\(ability.abbreviation) check", bonus: modifier)
+            }) {
+                Text("Check \(signed(modifier))")
+            }
+            .buttonStyle(RollButtonStyle())
             HStack(spacing: 4) {
-                Button("Check") {
-                    model.rollCheck("\(ability.abbreviation) check", bonus: character.scores.modifier(ability))
+                Button(action: {
+                    model.rollCheck("\(ability.abbreviation) save", bonus: character.savingThrow(ability))
+                }) {
+                    Text("Save \(signed(character.savingThrow(ability)))")
                 }
-                .controlSize(.small)
-                Toggle("Save \(signed(character.savingThrow(ability)))", isOn: Binding(
-                    get: { character.savingThrowProficiencies.contains(ability) },
-                    set: { on in
-                        if on { character.savingThrowProficiencies.insert(ability) }
-                        else { character.savingThrowProficiencies.remove(ability) }
+                .buttonStyle(RollButtonStyle())
+                Button(action: {
+                    if character.savingThrowProficiencies.contains(ability) {
+                        character.savingThrowProficiencies.remove(ability)
+                    } else {
+                        character.savingThrowProficiencies.insert(ability)
                     }
-                ))
-                .toggleStyle(.checkbox).font(.caption)
+                }) {
+                    Image(systemName: character.savingThrowProficiencies.contains(ability) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(character.savingThrowProficiencies.contains(ability) ? Theme.accent : Theme.inkFaint)
+                }
+                .buttonStyle(.plain)
+                .help("Toggle save proficiency")
             }
-            Button("Roll save") {
-                model.rollCheck("\(ability.abbreviation) save", bonus: character.savingThrow(ability))
-            }
-            .controlSize(.small)
         }
-        .padding(8)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .padding(Theme.Gap.sm)
+        .frame(maxWidth: .infinity)
+        .background(Theme.surfaceInset, in: RoundedRectangle(cornerRadius: Theme.Radius.md))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.md)
+                .strokeBorder(Theme.edge.opacity(0.6), lineWidth: 1)
+        )
     }
 }
 

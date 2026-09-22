@@ -46,7 +46,7 @@ struct SpellcastingBlock: View {
                     Text("Save DC \(sc.spellSaveDC(scores: character.scores, level: character.level))")
                         .foregroundStyle(.secondary)
                 }
-                Divider()
+                Divider().overlay(Theme.edge)
                 // Slots
                 ForEach(1...9, id: \.self) { sl in
                     let maxSlots = sc.slotsMax(spellLevel: sl, casterLevel: character.level)
@@ -54,11 +54,11 @@ struct SpellcastingBlock: View {
                         SlotRow(character: $character, spellLevel: sl, maxSlots: maxSlots)
                     }
                 }
-                Divider()
+                Divider().overlay(Theme.edge)
                 // Library search
                 HStack {
                     TextField("Add spell from the built-in library (\(SpellLibrary.all.count) spells)…", text: $searchText)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(InsetFieldStyle())
                     if !searchText.isEmpty {
                         Button("Clear") { searchText = "" }
                     }
@@ -105,17 +105,20 @@ struct SlotRow: View {
 
     var body: some View {
         let used = character.spellcasting?.slotsUsed[spellLevel - 1] ?? 0
-        HStack {
-            Text("Level \(spellLevel)").frame(width: 70, alignment: .leading)
-            ForEach(0..<maxSlots, id: \.self) { i in
-                Image(systemName: i < (maxSlots - used) ? "circle.fill" : "circle")
-                    .foregroundStyle(i < (maxSlots - used) ? Color.accentColor : Color.secondary)
-            }
-            Text("\(maxSlots - used)/\(maxSlots)").monospacedDigit().foregroundStyle(.secondary)
+        HStack(spacing: Theme.Gap.sm) {
+            Text("LVL \(spellLevel)")
+                .font(Theme.Typeface.statLabel).tracking(1)
+                .foregroundStyle(Theme.inkMuted)
+                .frame(width: 46, alignment: .leading)
+            Pips(filled: maxSlots - used, total: maxSlots, tint: Theme.arcana)
+            Text("\(maxSlots - used)/\(maxSlots)")
+                .font(Theme.Typeface.caption.monospacedDigit())
+                .foregroundStyle(Theme.inkMuted)
             Spacer()
             Button("Cast at level \(spellLevel)") {
                 model.castSpell(atSlotLevel: spellLevel)
             }
+            .buttonStyle(RollButtonStyle())
             .controlSize(.small)
             .disabled(used >= maxSlots)
             Button("Restore one") {
@@ -165,7 +168,7 @@ struct SpellGroup: View {
                             let lvl = spell.level
                             let remaining = character.spellcasting?.slotsRemaining(spellLevel: lvl, casterLevel: character.level) ?? 0
                             Button("Cast") { model.castSpell(atSlotLevel: lvl) }
-                                .controlSize(.small)
+                                .buttonStyle(RollButtonStyle(prominent: true))
                                 .disabled(remaining == 0)
                         }
                         Button(role: .destructive) {
@@ -174,7 +177,7 @@ struct SpellGroup: View {
                     }
                 }
             }
-            Divider()
+            Divider().overlay(Theme.edge)
         }
     }
 }
