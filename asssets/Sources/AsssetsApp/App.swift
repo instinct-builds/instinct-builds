@@ -53,7 +53,18 @@ final class StudioLibrary: ObservableObject {
     private let stateURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("ASSSETS/studio-library.json")
 
-    init() { load() }
+    init() {
+        installBundledLibraryIfNeeded()
+        load()
+    }
+
+    private func installBundledLibraryIfNeeded() {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ASSSETS/StarterLibrary", isDirectory: true)
+        guard !FileManager.default.fileExists(atPath: root.path), let archive = Bundle.module.url(forResource: "StarterLibrary", withExtension: "zip") else { return }
+        try? FileManager.default.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let task = Process(); task.executableURL = URL(fileURLWithPath: "/usr/bin/ditto"); task.arguments = ["-x", "-k", archive.path, root.path]
+        try? task.run(); task.waitUntilExit()
+    }
 
     var collections: [String] { ["All Assets", "Favorites"] + Array(Set(assets.map(\.collection))).sorted() }
     var selected: StudioAsset? { assets.first { $0.id == selectedID } }
@@ -69,7 +80,12 @@ final class StudioLibrary: ObservableObject {
 
     func load() {
         if let data = try? Data(contentsOf: stateURL), let saved = try? JSONDecoder().decode([StudioAsset].self, from: data), !saved.isEmpty { assets = saved }
-        else { assets = Self.starterLibrary(); save() }
+        else {
+            assets = Self.starterLibrary()
+            let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ASSSETS/StarterLibrary")
+            if let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey]) { for case let file as URL in e { importFile(file) } }
+            save()
+        }
         selectedID = assets.first?.id
     }
     func save() {
