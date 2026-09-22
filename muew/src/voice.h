@@ -3,6 +3,7 @@
 #include "filter.h"
 #include "envelope.h"
 #include "lfo.h"
+#include "mseg.h"
 #include <cmath>
 
 namespace muew {
@@ -13,8 +14,8 @@ inline double midiToFreq(int note) {
 
 // Modulation routing: a source scales into a destination.
 struct ModRoute {
-    enum class Source { LFO1, ModEnv, Velocity } source;
-    enum class Dest { Osc1Pitch, Osc2Pitch, FilterCutoff, Osc2Level } dest;
+    enum class Source { LFO1, LFO2, ModEnv, MSEG1, Velocity } source;
+    enum class Dest { Osc1Pitch, Osc2Pitch, FilterCutoff, FilterResonance, Osc2Level, Osc1Warp, Osc2Warp } dest;
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
 };
 
@@ -28,8 +29,12 @@ struct VoiceParams {
     int filterMode = 0;      // SVFilter::Mode
     double ampA = 0.005, ampD = 0.15, ampS = 0.8, ampR = 0.3;
     double modA = 0.01, modD = 0.3, modS = 0.0, modR = 0.2;
-    double lfo1Rate = 5.0;
-    int lfo1Shape = 0;
+    double lfo1Rate = 5.0, lfo2Rate = 0.35;
+    int lfo1Shape = 0, lfo2Shape = 1;
+    int osc1WarpMode = 0, osc2WarpMode = 0;
+    double osc1Warp = 0.0, osc2Warp = 0.0;
+    double mseg1Seconds = 1.0;
+    bool mseg1Loop = false;
 };
 
 class Voice {
@@ -41,7 +46,8 @@ public:
         filter_.setSampleRate(sr);
         ampEnv_.setSampleRate(sr);
         modEnv_.setSampleRate(sr);
-        lfo1_.setSampleRate(sr);
+        lfo1_.setSampleRate(sr); lfo2_.setSampleRate(sr);
+        mseg1_.setSampleRate(sr);
     }
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
@@ -53,6 +59,8 @@ public:
         modEnv_.set(p.modA, p.modD, p.modS, p.modR);
         lfo1_.setRate(p.lfo1Rate);
         lfo1_.setShape(static_cast<LFO::Shape>(p.lfo1Shape));
+        lfo2_.setRate(p.lfo2Rate); lfo2_.setShape(static_cast<LFO::Shape>(p.lfo2Shape));
+        mseg1_.setRate(p.mseg1Seconds); mseg1_.setLoop(1, 3, p.mseg1Loop);
     }
 
     void noteOn(int note, float velocity) {
@@ -61,13 +69,13 @@ public:
         baseFreq_ = midiToFreq(note);
         ampEnv_.noteOn();
         modEnv_.noteOn();
-        lfo1_.reset();
+        lfo1_.reset(); lfo2_.reset(); mseg1_.reset();
         osc1_.reset();
         osc2_.reset();
         age_ = 0;
     }
 
-    void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); }
+    void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); mseg1_.release(); }
 
     bool isActive() const { return ampEnv_.isActive(); }
     int note() const { return note_; }
@@ -75,7 +83,9 @@ public:
 
     inline float process() {
         float lfo = lfo1_.process();
+        float lfo2 = lfo2_.process();
         float modEnv = modEnv_.process();
+        float mseg1 = mseg1_.process();
 
         auto modSum = [&](ModRoute::Dest d) {
             double sum = 0.0;
@@ -84,7 +94,9 @@ public:
                 double src = 0.0;
                 switch (r.source) {
                 case ModRoute::Source::LFO1: src = lfo; break;
+                case ModRoute::Source::LFO2: src = lfo2; break;
                 case ModRoute::Source::ModEnv: src = modEnv; break;
+                case ModRoute::Source::MSEG1: src = mseg1; break;
                 case ModRoute::Source::Velocity: src = velocity_; break;
                 }
                 sum += src * r.amount;
@@ -94,8 +106,12 @@ public:
 
         osc1_.setFrequency(baseFreq_);
         osc1_.setDetuneSemitones(modSum(ModRoute::Dest::Osc1Pitch));
+        osc1_.setWarp(static_cast<Oscillator::WarpMode>(params_.osc1WarpMode),
+                      std::clamp(params_.osc1Warp + modSum(ModRoute::Dest::Osc1Warp), 0.0, 1.0));
         osc2_.setFrequency(baseFreq_);
         osc2_.setDetuneSemitones(params_.osc2Detune + modSum(ModRoute::Dest::Osc2Pitch));
+        osc2_.setWarp(static_cast<Oscillator::WarpMode>(params_.osc2WarpMode),
+                      std::clamp(params_.osc2Warp + modSum(ModRoute::Dest::Osc2Warp), 0.0, 1.0));
 
         float osc2Level = static_cast<float>(
             std::clamp(params_.osc2Level + modSum(ModRoute::Dest::Osc2Level), 0.0, 1.0));
@@ -105,7 +121,8 @@ public:
         // Cutoff modulation is exponential: amount 1.0 = one octave up at full source.
         double cutoffMod = modSum(ModRoute::Dest::FilterCutoff);
         double cutoff = params_.filterCutoff * std::pow(2.0, cutoffMod);
-        filter_.set(cutoff, params_.filterReso);
+        double resonance = std::clamp(params_.filterReso + modSum(ModRoute::Dest::FilterResonance), 0.1, 18.0);
+        filter_.set(cutoff, resonance);
         sig = filter_.process(sig);
 
         float amp = ampEnv_.process();
@@ -122,7 +139,8 @@ private:
     Oscillator osc1_, osc2_;
     SVFilter filter_;
     Envelope ampEnv_, modEnv_;
-    LFO lfo1_;
+    LFO lfo1_, lfo2_;
+    MSEG mseg1_;
     VoiceParams params_;
     std::vector<ModRoute> routes_;
 };

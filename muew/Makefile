@@ -1,7 +1,7 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
 
-all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt
+all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth
 
 build:
 	mkdir -p build out
@@ -28,6 +28,12 @@ build/muew-demo-wt: src/render_demo_wt.cpp src/wavetable_editor.h | build
 	$(CXX) $(CXXFLAGS) -o $@ src/render_demo_wt.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
+build/muew-tests-mod-depth: tests/tests_modulation_depth.cpp src/mseg.h src/oscillator.h src/voice.h | build
+	$(CXX) $(CXXFLAGS) -o $@ tests/tests_modulation_depth.cpp
+
+build/muew-demo-mod-depth: src/render_demo_mod_depth.cpp src/mseg.h src/oscillator.h src/voice.h | build
+	$(CXX) $(CXXFLAGS) -o $@ src/render_demo_mod_depth.cpp
+
 build/muew-license: src/license_tool.cpp src/license.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
@@ -40,6 +46,7 @@ test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-t
 	./build/muew-tests-license
 	./build/muew-tests-bank
 	./build/muew-tests-wt
+	./build/muew-tests-mod-depth
 
 render: build/muew-demo
 	./build/muew-demo

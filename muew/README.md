@@ -97,3 +97,16 @@ simple 3-device license key scheme follow there.
   at 440 Hz and at high pitch). Total suite: 95 checks via make test.
 - Demo: src/render_demo_wt.cpp renders a phrase with the built-in saw vs a
   custom "hollow" table (odd harmonics + 0.15 h2); spectrogram-verified.
+
+## 0.2 modulation-depth milestone
+
+- Seven original oscillator phase-warp modes: Sync, Bend+, Bend-, PWM,
+  Quantize, Fold, and bypass. Warp remains inside the band-limited wavetable
+  path and every mode is bounded under high-frequency stress tests.
+- A point-based MSEG supports authored breakpoints, looping spans, one-shot
+  operation, release, and per-sample interpolation.
+- The matrix now routes LFO1, LFO2, mod envelope, MSEG1, and velocity into
+  both oscillator pitches, both warp amounts, oscillator mix, filter cutoff,
+  and filter resonance.
+- `render_demo_mod_depth.cpp` demonstrates dual oscillator Sync/Fold motion,
+  looping MSEG timbre animation, and the existing stereo FX rack.
