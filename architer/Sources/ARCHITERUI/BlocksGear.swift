@@ -184,4 +184,43 @@ struct NotesBlock: View {
         }
     }
 }
+
+struct JournalBlock: View {
+    @Binding var character: Character
+
+    var body: some View {
+        BlockCard(title: "Journal") {
+            ForEach($character.journal) { $entry in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        TextField("Date", text: $entry.date)
+                            .textFieldStyle(InsetFieldStyle())
+                            .frame(width: 110)
+                        TextField("Title", text: $entry.title)
+                            .textFieldStyle(InsetFieldStyle())
+                        Button(role: .destructive) {
+                            character.journal.removeAll { $0.id == entry.id }
+                        } label: { Image(systemName: "minus.circle") }
+                    }
+                    TextEditor(text: $entry.text)
+                        .frame(minHeight: 44)
+                        .font(.callout)
+                }
+                .padding(.vertical, 2)
+            }
+            Button("Add entry") {
+                character.journal.append(JournalEntry(
+                    date: JournalBlock.todayStamp(),
+                    title: "Session \(character.journal.count + 1)"))
+            }
+            .controlSize(.small)
+        }
+    }
+
+    static func todayStamp() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
+    }
+}
 #endif

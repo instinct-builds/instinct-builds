@@ -153,6 +153,7 @@ public struct SheetColumnView: View {
         case .personality: PersonalityBlock(character: $character)
         case .diceRoller: DiceInlineBlock()
         case .notes: NotesBlock(character: $character)
+        case .journal: JournalBlock(character: $character)
         }
     }
 }

@@ -220,6 +220,29 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// One dated session-log entry on the sheet's journal.
+public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID = UUID()
+    /// Free-form date/session label ("Session 4 - Sep 22").
+    public var date: String
+    public var title: String
+    public var text: String
+
+    public init(date: String = "", title: String = "", text: String = "") {
+        self.date = date
+        self.title = title
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+    }
+}
+
 public struct InventoryItem: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID = UUID()
     public var name: String
@@ -305,6 +328,8 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var overAttuned: Bool { attunedCount > Character.attunementLimit }
     public var currency: Currency
     public var proficienciesText: String
+    /// Dated session-log entries shown in the journal block.
+    public var journal: [JournalEntry]
     public var features: [Feature]
     public var personality: Personality
     public var notes: String
@@ -353,6 +378,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         features: [Feature] = [],
         personality: Personality = Personality(),
         notes: String = "",
+        journal: [JournalEntry] = [],
         layout: SheetLayout = SheetLayout(),
         rulesetName: String? = nil,
         customAbilities: [CustomAbility] = [],
@@ -391,6 +417,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.spellcasting = spellcasting
         self.inventory = inventory
         self.currency = currency
+        self.journal = journal
         self.proficienciesText = proficienciesText
         self.features = features
         self.personality = personality
@@ -439,6 +466,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         spellcasting = try c.decodeIfPresent(Spellcasting.self, forKey: .spellcasting)
         inventory = try c.decode([InventoryItem].self, forKey: .inventory)
         currency = try c.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
+        journal = try c.decodeIfPresent([JournalEntry].self, forKey: .journal) ?? []
         proficienciesText = try c.decodeIfPresent(String.self, forKey: .proficienciesText) ?? ""
         features = try c.decodeIfPresent([Feature].self, forKey: .features) ?? []
         personality = try c.decodeIfPresent(Personality.self, forKey: .personality) ?? Personality()

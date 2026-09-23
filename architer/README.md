@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.5.0
+
+- Journal block: dated session-log entries on the sheet (date, title,
+  text), draggable/hideable like every other block, exported to
+  Markdown, HTML, and PDF. Old saves gain the block on decode.
+
 ## What's in 2.4.0
 
 - Character portraits: pick any image for the identity block (downscaled

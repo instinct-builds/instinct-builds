@@ -557,6 +557,36 @@ struct EquipmentTests {
     }
 }
 
+@Suite("Journal")
+struct JournalTests {
+
+    @Test func journalRoundTripsAndDefaults() throws {
+        var c = Character(name: "Test")
+        #expect(c.journal.isEmpty)
+        c.journal = [JournalEntry(date: "Session 1", title: "Start", text: "It began.")]
+        let data = try JSONEncoder().encode(c)
+        let decoded = try JSONDecoder().decode(Character.self, from: data)
+        #expect(decoded.journal == c.journal)
+        // Old layouts gain the journal block on decode.
+        #expect(decoded.layout.blocks.contains { $0.kind == .journal })
+    }
+
+    @Test func exportsIncludeJournal() {
+        var c = Character(name: "Test")
+        c.journal = [JournalEntry(date: "Session 1", title: "Start", text: "It began.")]
+        let md = SheetExporter.exportMarkdown(c)
+        #expect(md.contains("## Journal"))
+        #expect(md.contains("Session 1 - Start"))
+        let html = SheetExporter.exportHTML(c)
+        #expect(html.contains("<h2>Journal</h2>"))
+        let pdf = String(decoding: SheetPDFExporter.export(c), as: UTF8.self)
+        #expect(pdf.contains("(Journal"))
+        // Empty journal stays out of every export.
+        let empty = SheetExporter.exportMarkdown(Character(name: "Test"))
+        #expect(!empty.contains("## Journal"))
+    }
+}
+
 @Suite("Character portrait")
 struct PortraitTests {
 

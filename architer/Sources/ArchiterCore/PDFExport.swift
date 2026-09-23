@@ -367,6 +367,21 @@ public enum SheetPDFExporter {
                         cursor.line(line, margin: margin)
                     }
                 }
+            case .journal:
+                guard !c.journal.isEmpty else { continue }
+                cursor.section("Journal", margin: margin)
+                for e in c.journal {
+                    let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
+                    for line in wrap(head.isEmpty ? "Entry" : head, width: contentW, size: 9) {
+                        cursor.line(line, margin: margin)
+                    }
+                    for para in e.text.components(separatedBy: "\n") {
+                        for line in wrap(para, width: contentW - 14, size: 9) {
+                            cursor.put(margin + 14, line, size: 9, gray: 0.3)
+                            cursor.advance(13)
+                        }
+                    }
+                }
             }
             cursor.advance(8)
         }

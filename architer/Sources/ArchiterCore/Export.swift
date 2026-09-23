@@ -113,6 +113,16 @@ public enum SheetExporter {
                 out.append("## Dice\n_In-app roller; see the Dice tab._")
             case .notes:
                 if !c.notes.isEmpty { out.append("## Notes\n\(c.notes)") }
+            case .journal:
+                if !c.journal.isEmpty {
+                    var lines = ["## Journal"]
+                    for e in c.journal {
+                        let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
+                        lines.append("### \(head.isEmpty ? "Entry" : head)")
+                        if !e.text.isEmpty { lines.append(e.text) }
+                    }
+                    out.append(lines.joined(separator: "\n"))
+                }
             }
         }
         appendCustomSections(&out, c)
@@ -261,6 +271,18 @@ public enum SheetExporter {
             case .notes:
                 if !c.notes.isEmpty {
                     body.append("<section class=\"block\"><h2>Notes</h2><p>\(esc(c.notes).replacingOccurrences(of: "\n", with: "<br>"))</p></section>")
+                }
+            case .journal:
+                if !c.journal.isEmpty {
+                    var items = ""
+                    for e in c.journal {
+                        let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
+                        items += "<h3>\(esc(head.isEmpty ? "Entry" : head))</h3>"
+                        if !e.text.isEmpty {
+                            items += "<p>\(esc(e.text).replacingOccurrences(of: "\n", with: "<br>"))</p>"
+                        }
+                    }
+                    body.append("<section class=\"block\"><h2>Journal</h2>\(items)</section>")
                 }
             }
         }

@@ -123,7 +123,13 @@ public enum SampleContent {
                 allies: "Archivist Bressa of the Athenaeum; the Lantern Street booksellers' guild.",
                 treasure: "A brass key stamped with an eye, found inside a hollow commentary on planar theory.",
                 age: "127", height: "5'7\"", weight: "132 lb", eyes: "Grey", hair: "Silver-white"),
-            notes: "- Ask Bressa about the brass key.\n- The vault door had no lock from the inside.\n- 50 gp owed to the Lantern Street courier."
+            notes: "- Ask Bressa about the brass key.\n- The vault door had no lock from the inside.\n- 50 gp owed to the Lantern Street courier.",
+            journal: [
+                JournalEntry(date: "Session 1", title: "The singing vault",
+                             text: "The restricted vault sang in a key I almost recognized. I took the commentary on planar theory. I should not have."),
+                JournalEntry(date: "Session 2", title: "Lantern Street",
+                             text: "Bressa says the brass key predates the Athenaeum. The booksellers' guild wants it bought, not borrowed."),
+            ]
         )
         c.armorClass = 15 // Mage Armor active: 13 + DEX
         return c
