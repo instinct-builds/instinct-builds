@@ -690,12 +690,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     for (int i = 0; i < pts; ++i) {
         const double hz = lo * std::pow(hi / lo, i / (double)(pts - 1));
         f.reset();
-        double pk = 0;
-        const int n = comb ? 2600 : 1400;
+        double re = 0, im = 0; // fundamental only (single-bin DFT), so DRIVE's harmonics don't read as gain
+        const int n = comb ? 2600 : 1400, win = 500;
         for (int s2 = 0; s2 < n; ++s2) {
-            float y = f.process((float)(amp * std::sin(2 * M_PI * hz * s2 / sr)));
-            if (s2 > n - 500) pk = std::max(pk, (double)std::fabs(y));
+            const double ph = 2 * M_PI * hz * s2 / sr;
+            float y = f.process((float)(amp * std::sin(ph)));
+            if (s2 >= n - win) { re += y * std::cos(ph); im += y * std::sin(ph); }
         }
+        const double pk = 2 * std::sqrt(re * re + im * im) / win;
         const double db = std::clamp(20 * std::log10(pk / amp + 1e-6), -36.0, 12.0);
         CGFloat x = plot.origin.x + plot.size.width * i / (pts - 1);
         CGFloat y = plot.origin.y + plot.size.height * (db + 36.0) / 48.0;
@@ -718,8 +720,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     const VoiceParams& v = current.voice;
     NSRect mr = [self f1ModelRect];
     FillRound(mr, 4, C(0x1b222c));
-    TextA(@"\u25C2", NSMakeRect(mr.origin.x + 3, mr.origin.y + 2.5, 12, 12), 9, C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
-    TextA(@"\u25B8", NSMakeRect(NSMaxX(mr) - 15, mr.origin.y + 2.5, 12, 12), 9, C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    for (int side = 0; side < 2; ++side) { // model arrows: filled triangles, easy to see and hit
+        const CGFloat ax = side ? NSMaxX(mr) - 10 : mr.origin.x + 10, ay = NSMidY(mr), d = side ? 1 : -1;
+        NSBezierPath* tri = [NSBezierPath bezierPath];
+        [tri moveToPoint:NSMakePoint(ax + 3 * d, ay)];
+        [tri lineToPoint:NSMakePoint(ax - 2.5 * d, ay + 4)];
+        [tri lineToPoint:NSMakePoint(ax - 2.5 * d, ay - 4)];
+        [tri closePath];
+        [C(0xc3cbd6) setFill]; [tri fill];
+    }
     TextA(S(ui::filterModeName(v.filterMode)), NSMakeRect(mr.origin.x + 14, mr.origin.y + 3, mr.size.width - 28, 11), 8.5, C(0xf2ab55),
           NSFontWeightBold, NSTextAlignmentCenter);
     const char* names[3] = {"DRIVE", "KEYTRACK", "MORPH"};
