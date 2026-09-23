@@ -76,8 +76,10 @@ jobs:
           run_once() { open -W -n asssets/out/ASSSETS.app --args -asssets-quit-after 6 || true; sleep 1; }
           rm -rf "$SUP"
           run_once; first=$(count); echo "fresh install: $first assets"
-          test "$first" -ge 99
-          test $(ls "$SUP/StarterLibrary" | wc -l) -ge 27
+          test "$first" -ge 103
+          test $(ls "$SUP/StarterLibrary" | wc -l) -ge 31
+          test $(ls "$SUP/StarterLibrary"/*.psd | wc -l) -eq 4
+          python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["assets"]; p=[x for x in a if (x.get("importedPath") or "").endswith(".psd")]; assert len(p)==4 and all("layers" in x["resolution"] for x in p), [x["resolution"] for x in p]; print("psd metadata ok")' "$SUP/studio-catalog.json"
           run_once; second=$(count); echo "relaunch: $second assets"
           test "$first" = "$second"
           # Simulate a 0.3 catalog: drop the new keys, file starter media under Imported, remove the 0.4 file.
@@ -110,6 +112,7 @@ jobs:
           shoot vectors 1920x1200 vectors
           shoot smart 1920x1200 smart-collection
           shoot smart-editor 1920x1200 smart-editor
+          shoot psd 1920x1200 psd-layers
           for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
       - name: Upload ASSSETS release
         uses: actions/upload-artifact@v4

@@ -112,3 +112,20 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   from any search or media filter, a rules editor with a live match
   preview, rule summary in the browser header, and "In Smart Collections"
   chips in the inspector.
+
+## 0.6.0: PSD layer previews
+
+- `PsdLayers.swift` (core, tested) - reads the PSD layer and mask section
+  (RLE and raw channels, group markers, hidden flags, opacity, blend
+  modes) and rebuilds the composite with any layers switched on or off.
+  `PsdWriter` writes layered PSDs with a merged image, so Finder, Preview
+  and Photoshop show the same result.
+- `MockupFactory.swift` + `asssets-mockgen` - four original layered
+  mockups (phone screen, poster frame, packaging box, business card) at
+  1600 x 1200, with smart-object placeholder layers, shadows, glare and an
+  alternate hidden backdrop. They are drawn from code at build time and
+  added to the bundled starter library, so no binary files live in git.
+- App: a Layers panel in the inspector for any .psd, with eye toggles,
+  blend mode and opacity per layer, a live composite in the preview, and
+  PNG export that honors the toggles. The file on disk is never changed.
+  PSD cards get a PSD badge and real "PSD - W x H - N layers" metadata.

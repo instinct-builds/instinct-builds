@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "AsssetsCore", targets: ["AsssetsCore"]),
         .executable(name: "asssets", targets: ["AsssetsApp"]),
+        .executable(name: "asssets-mockgen", targets: ["AsssetsMockgen"]),
     ],
     targets: [
         .target(name: "AsssetsCore"),
@@ -14,6 +15,7 @@ let package = Package(
             name: "AsssetsApp",
             dependencies: ["AsssetsCore"]
         ),
+        .executableTarget(name: "AsssetsMockgen", dependencies: ["AsssetsCore"]),
         .testTarget(name: "AsssetsCoreTests", dependencies: ["AsssetsCore"]),
     ]
 )

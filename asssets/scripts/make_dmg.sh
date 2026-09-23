@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 APP=ASSSETS
 PRODUCT=asssets
-VERSION=${VERSION:-0.5.0}
+VERSION=${VERSION:-0.6.0}
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 APP_DIR="$STAGE/$APP.app"
@@ -15,6 +15,11 @@ INTEL_DIR=$(swift build -c release --product "$PRODUCT" --arch x86_64 --scratch-
 lipo -create "$ARM_DIR/$PRODUCT" "$INTEL_DIR/$PRODUCT" -output "$APP_DIR/Contents/MacOS/$APP"
 # The physical original starter library is shipped inside the app and copied to Application Support on first launch.
 cp Sources/AsssetsApp/StarterLibrary.zip "$APP_DIR/Contents/Resources/StarterLibrary.zip"
+# Original layered PSD mockups are generated at build time from MockupFactory and added to the archive.
+swift build -c release --product asssets-mockgen --scratch-path .build-mockgen
+"$(swift build -c release --product asssets-mockgen --scratch-path .build-mockgen --show-bin-path)/asssets-mockgen" "$STAGE/mockups"
+(cd "$STAGE/mockups" && zip -q -X "$APP_DIR/Contents/Resources/StarterLibrary.zip" *.psd)
+unzip -l "$APP_DIR/Contents/Resources/StarterLibrary.zip" | grep -c '\.psd$' | grep -qx 4
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -22,7 +27,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>$APP</string><key>CFBundleDisplayName</key><string>$APP</string>
   <key>CFBundleIdentifier</key><string>co.instinct.asssets</string><key>CFBundleExecutable</key><string>$APP</string>
   <key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>6</string><key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>CFBundleVersion</key><string>7</string><key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST

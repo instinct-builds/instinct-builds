@@ -68,6 +68,15 @@ final class StudioLibrary: ObservableObject {
     @Published var toast: String?
     @Published var selectedSmart: UUID?
     @Published var smartEditor: SmartEditorState?
+    /// Per-asset PSD layer visibility flips for this session (layer indices).
+    @Published var psdToggled: [UUID: Set<Int>] = [:]
+
+    func togglePsdLayer(_ index: Int, of id: UUID) {
+        var set = psdToggled[id] ?? []
+        if set.contains(index) { set.remove(index) } else { set.insert(index) }
+        psdToggled[id] = set
+    }
+    func resetPsdLayers(_ id: UUID) { psdToggled[id] = nil }
     private var anchorID: UUID?
 
     let supportRoot: URL
@@ -137,6 +146,11 @@ final class StudioLibrary: ObservableObject {
                     let colors = Array(scene.colors.prefix(5))
                     if colors.count >= 3 { c.assets[i].palette = colors }
                     c.assets[i].resolution = "SVG • \(Int(scene.width)) × \(Int(scene.height))"
+                }
+            case "psd":
+                if !c.assets[i].resolution.hasPrefix("PSD"), let data = try? Data(contentsOf: url), let doc = try? PsdLayers.read(data) {
+                    c.assets[i].resolution = "PSD • \(doc.width) × \(doc.height) • \(doc.panelLayers.count) layers"
+                    if !c.assets[i].tags.contains("layered") { c.assets[i].tags.append("layered") }
                 }
             case "wav":
                 if let data = try? Data(contentsOf: url), let s = AsssetsCore.Waveform.summarize(wav: data, buckets: 8) {
@@ -334,13 +348,13 @@ final class StudioLibrary: ObservableObject {
         if picked.count == 1, let a = picked.first {
             let p = NSSavePanel(); p.nameFieldStringValue = a.title.replacingOccurrences(of: " ", with: "-") + "-\(effect.rawValue.lowercased().replacingOccurrences(of: " ", with: "-")).png"; p.allowedContentTypes = [.png]
             guard p.runModal() == .OK, let url = p.url else { return }
-            let ok = MediaRenderer.exportPNG(a, effect: effect, amount: intensity, to: url)
+            let ok = MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], to: url)
             flash(ok ? "Exported \(url.lastPathComponent)" : "Export failed")
         } else {
             let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true; p.prompt = "Export Here"
             guard p.runModal() == .OK, let dir = p.url else { return }
             var n = 0
-            for a in picked where MediaRenderer.exportPNG(a, effect: effect, amount: intensity, to: dir.appendingPathComponent(a.title.replacingOccurrences(of: " ", with: "-") + ".png")) { n += 1 }
+            for a in picked where MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], to: dir.appendingPathComponent(a.title.replacingOccurrences(of: " ", with: "-") + ".png")) { n += 1 }
             flash("Exported \(n) of \(picked.count) previews")
         }
     }
@@ -359,6 +373,17 @@ final class StudioLibrary: ObservableObject {
             search = "bundled"
             if let v = filtered.first(where: { $0.kind == .texture }) { selection = [v.id]; focusID = v.id }
             effect = .warm; intensity = 0.8
+        case "psd":
+            show(collection: "Device Mockups")
+            search = "layered"
+            if let a = filtered.first(where: { $0.importedPath?.hasSuffix("phone-screen-mockup.psd") == true }) ?? filtered.first {
+                selection = [a.id]; focusID = a.id
+                if let p = a.importedPath, let data = try? Data(contentsOf: URL(fileURLWithPath: p)), let doc = try? PsdLayers.read(data) {
+                    // Swap to the alternate backdrop and switch the glare off, like a user would.
+                    let flips = doc.layers.indices.filter { doc.layers[$0].hidden || doc.layers[$0].name == "Screen Glare" }
+                    psdToggled[a.id] = Set(flips)
+                }
+            }
         case "smart":
             if let s = catalog.smartCollections.first(where: { $0.name == "Warm Palettes" }) {
                 show(smart: s.id)
@@ -759,7 +784,10 @@ struct AssetCard: View {
                     .aspectRatio(1.36, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 11))
                     .overlay(alignment: .bottomLeading) {
-                        if asset.kind == .video || asset.kind == .audio {
+                        if asset.importedPath?.lowercased().hasSuffix(".psd") == true {
+                            Label("PSD", systemImage: "square.3.layers.3d").font(.system(size: 9.5, weight: .bold)).labelStyle(.titleAndIcon)
+                                .padding(.horizontal, 7).padding(.vertical, 4).background(.black.opacity(0.5), in: Capsule()).padding(8)
+                        } else if asset.kind == .video || asset.kind == .audio {
                             Image(systemName: asset.kind == .video ? "play.fill" : "speaker.wave.2.fill").font(.caption.bold())
                                 .padding(6).background(.black.opacity(0.45), in: Circle()).padding(8)
                         }
@@ -966,6 +994,7 @@ struct Inspector: View {
                                 .onTapGesture { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(hex, forType: .string); model.flash("Copied \(hex)") }
                             }
                         }
+                        if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
                         let smarts = model.catalog.smartCollections.filter { $0.rules.matches(asset) }
                         if !smarts.isEmpty {
                             InspectorLabel(text: "IN SMART COLLECTIONS")
@@ -1011,11 +1040,56 @@ struct Inspector: View {
         } else {
             ZStack {
                 Color.black.opacity(0.35)
-                ProcessedPreview(asset: asset, effect: model.effect, amount: model.intensity)
+                ProcessedPreview(asset: asset, effect: model.effect, amount: model.intensity, psdToggled: model.psdToggled[asset.id] ?? [])
                 if asset.kind == .video, asset.importedPath != nil {
                     Button { playing = true } label: { Image(systemName: "play.fill").font(.title2).padding(16).background(.ultraThinMaterial, in: Circle()) }.buttonStyle(.plain)
                 }
                 if asset.kind == .audio, let p = asset.importedPath { AudioButton(url: URL(fileURLWithPath: p)).id(p) }
+            }
+        }
+    }
+}
+
+struct PsdLayersPanel: View {
+    @EnvironmentObject var model: StudioLibrary
+    @ObservedObject private var store = ThumbnailStore.shared
+    let asset: StudioAsset
+    var body: some View {
+        let toggled = model.psdToggled[asset.id] ?? []
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                InspectorLabel(text: "LAYERS")
+                Spacer()
+                if !toggled.isEmpty { Button("Reset") { model.resetPsdLayers(asset.id) }.buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent) }
+            }
+            if let doc = store.psdDocument(asset) {
+                VStack(spacing: 0) {
+                    ForEach(doc.panelLayers, id: \.index) { entry in
+                        let L = entry.layer
+                        let visible = toggled.contains(entry.index) ? L.hidden : !L.hidden
+                        HStack(spacing: 8) {
+                            Button { model.togglePsdLayer(entry.index, of: asset.id) } label: {
+                                Image(systemName: visible ? "eye" : "eye.slash").font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(visible ? Color.primary : Color.secondary).frame(width: 20)
+                            }.buttonStyle(.plain).help(visible ? "Hide layer" : "Show layer")
+                            Image(systemName: L.name.contains("Smart Object") ? "square.on.square.badge.person.crop" : "square.fill.on.square")
+                                .font(.system(size: 10)).foregroundStyle(L.name.contains("Smart Object") ? Theme.accent : Color.secondary).frame(width: 16)
+                            Text(L.name).font(.system(size: 12)).lineLimit(1).foregroundStyle(visible ? Color.primary : Color.secondary)
+                            Spacer(minLength: 4)
+                            Text(L.blendKey == "norm" && L.opacity == 255 ? "" : "\(L.blendName) \(Int((Double(L.opacity) / 255 * 100).rounded()))%")
+                                .font(.system(size: 9.5).monospacedDigit()).foregroundStyle(.tertiary).lineLimit(1)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(visible ? Color.white.opacity(0.035) : Color.clear)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
+                    }
+                }
+                .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.hairline))
+                .clipShape(RoundedRectangle(cornerRadius: 9))
+                Text("Toggles change the preview and PNG export. The file is never modified.").font(.caption2).foregroundStyle(.tertiary)
+            } else {
+                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Reading layers…").font(.caption).foregroundStyle(.secondary) }
             }
         }
     }
@@ -1194,6 +1268,45 @@ final class ThumbnailStore: ObservableObject {
         return nil
     }
 
+    private var psdDocs: [String: PsdDocument] = [:]
+    private var psdImages: [String: CGImage] = [:]
+
+    /// Parsed layer stack for a PSD, loaded off the main thread.
+    func psdDocument(_ asset: StudioAsset) -> PsdDocument? {
+        guard let path = asset.importedPath else { return nil }
+        if let d = psdDocs[path] { return d }
+        let key = "doc|" + path
+        guard !inflight.contains(key) else { return nil }
+        inflight.insert(key)
+        Task.detached(priority: .userInitiated) {
+            let doc = (try? Data(contentsOf: URL(fileURLWithPath: path))).flatMap { try? PsdLayers.read($0) }
+            await MainActor.run {
+                if let doc { self.psdDocs[path] = doc }
+                self.inflight.remove(key); self.revision += 1
+            }
+        }
+        return nil
+    }
+
+    /// Live composite honoring the user's layer toggles.
+    func psdComposite(_ asset: StudioAsset, toggled: Set<Int>, maxPixel: Int) -> CGImage? {
+        guard let path = asset.importedPath else { return nil }
+        let key = path + "|" + toggled.sorted().map(String.init).joined(separator: ",") + "|\(maxPixel)"
+        if let hit = psdImages[key] { return hit }
+        guard let doc = psdDocument(asset) else { return image(for: asset, pixels: maxPixel) }
+        guard !inflight.contains(key) else { return psdImages.first { $0.key.hasPrefix(path + "|") }?.value }
+        inflight.insert(key)
+        Task.detached(priority: .userInitiated) {
+            let img = MediaRenderer.cgImage(doc.composite(toggled: toggled), maxPixel: maxPixel)
+            await MainActor.run {
+                if self.psdImages.count > 60 { self.psdImages.removeAll() }
+                if let img { self.psdImages[key] = img }
+                self.inflight.remove(key); self.revision += 1
+            }
+        }
+        return psdImages.first { $0.key.hasPrefix(path + "|") }?.value
+    }
+
     private var fx: [String: CGImage] = [:]
     func processed(_ base: CGImage, id: String, effect: EffectPreset, amount: Double) -> CGImage {
         guard effect != .original else { return base }
@@ -1229,11 +1342,15 @@ struct ProcessedPreview: View {
     let effect: EffectPreset
     let amount: Double
     var pixels = 1400
+    var psdToggled: Set<Int> = []
     @ObservedObject private var store = ThumbnailStore.shared
     var body: some View {
         GeometryReader { geo in
-            if let base = store.image(for: asset, pixels: pixels) {
-                let cg = store.processed(base, id: asset.id.uuidString, effect: effect, amount: amount)
+            let isPsd = asset.importedPath?.lowercased().hasSuffix(".psd") == true
+            let fetched: CGImage? = isPsd ? store.psdComposite(asset, toggled: psdToggled, maxPixel: pixels) : store.image(for: asset, pixels: pixels)
+            if let base = fetched {
+                let key = isPsd ? asset.id.uuidString + "|" + psdToggled.sorted().map(String.init).joined(separator: ",") : asset.id.uuidString
+                let cg = store.processed(base, id: key, effect: effect, amount: amount)
                 Image(decorative: cg, scale: 1).resizable()
                     .aspectRatio(contentMode: asset.kind == .vector || asset.kind == .mockup ? .fit : .fill)
                     .frame(width: geo.size.width, height: geo.size.height).clipped()
@@ -1405,11 +1522,29 @@ enum MediaRenderer {
     }
 
     /// Full-resolution export: real files are processed at native size, generated studies at 2400 px.
-    static func exportPNG(_ asset: StudioAsset, effect: EffectPreset, amount: Double, to url: URL) -> Bool {
+    /// Converts a core pixel buffer to a CGImage, downscaled so the long side is at most `maxPixel`.
+    static func cgImage(_ buf: PixelBuffer, maxPixel: Int = 0) -> CGImage? {
+        guard let provider = CGDataProvider(data: Data(buf.rgba) as CFData),
+              let full = CGImage(width: buf.width, height: buf.height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: buf.width * 4,
+                                 space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                                 provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { return nil }
+        guard maxPixel > 0, max(buf.width, buf.height) > maxPixel else { return full }
+        let scale = Double(maxPixel) / Double(max(buf.width, buf.height))
+        let w = Int(Double(buf.width) * scale), h = Int(Double(buf.height) * scale)
+        guard let ctx = bitmap(w, h) else { return full }
+        ctx.interpolationQuality = .high
+        ctx.draw(full, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
+    }
+
+    static func exportPNG(_ asset: StudioAsset, effect: EffectPreset, amount: Double, psdToggled: Set<Int> = [], to url: URL) -> Bool {
         var base: CGImage?
         if let p = asset.importedPath {
             let file = URL(fileURLWithPath: p)
             switch file.pathExtension.lowercased() {
+            case "psd":
+                if let doc = (try? Data(contentsOf: file)).flatMap({ try? PsdLayers.read($0) }) { base = cgImage(doc.composite(toggled: psdToggled)) }
+                else if let src = CGImageSourceCreateWithURL(file as CFURL, nil) { base = CGImageSourceCreateImageAtIndex(src, 0, nil) }
             case "svg": base = (try? String(contentsOf: file, encoding: .utf8)).flatMap(VectorScene.parse).flatMap { vector($0, width: 2400) }
             case "mov", "mp4", "m4v", "webm":
                 let gen = AVAssetImageGenerator(asset: AVURLAsset(url: file)); gen.appliesPreferredTrackTransform = true
