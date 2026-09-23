@@ -4,6 +4,19 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.19.0
+
+- Exhaustion meets movement, era-aware: 2014-style step 2 halves every
+  speed and step 5 zeroes them; 2024-style shaves 5 ft per step (floor
+  0) - matching the step notes the tracker already shows. The vitals
+  speed line and every export readout use the adjusted values.
+- Prone costs movement: while prone, the speed line appends "stand up
+  costs X ft, crawl at half", computed from the effective speed (so it
+  composes with exhaustion). Immobilizing conditions still win
+  outright: 0 ft, no partial readout.
+- Sample sheet: Wren is prone with exhaustion 2, showing both
+  interactions (15 ft walk, 15 ft swim, stand up costs 7 ft).
+
 ## What's in 2.18.0
 
 - Per-character dice macros: macros can now bind to a character or stay

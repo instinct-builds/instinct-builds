@@ -148,8 +148,11 @@ public enum SampleContent {
         // Story residue from the singing vault: a homebrew state that hinders
         // ability checks until Wren shakes it.
         c.customConditions = [CustomCondition(name: "Vault-marked", hindersChecks: true)]
-        // Caught by a vine snare in the last scene: speed 0 until freed.
-        c.conditions = [.grappled]
+        // Winded and knocked prone in the last scene: exhaustion 2 halves
+        // every speed under her 2014-style rules, and standing up costs
+        // half of what remains.
+        c.exhaustion = 2
+        c.conditions = [.prone]
         c.armorClass = 15 // Mage Armor active: 13 + DEX
         return c
     }

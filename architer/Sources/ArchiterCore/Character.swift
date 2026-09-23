@@ -309,12 +309,15 @@ public struct MovementSpeed: Codable, Equatable, Sendable, Identifiable {
     }
 
     /// "fly 60 ft (hover)"; label joins the note list when present.
-    public var displayString: String {
+    public var displayString: String { displayString(feet: feet) }
+
+    /// Same readout with an adjusted value (e.g. after exhaustion).
+    public func displayString(feet adjusted: Int) -> String {
         var notes: [String] = []
         if hover { notes.append("hover") }
         if !label.isEmpty { notes.append(label) }
         let suffix = notes.isEmpty ? "" : " (\(notes.joined(separator: ", ")))"
-        return "\(mode.rawValue) \(feet) ft\(suffix)"
+        return "\(mode.rawValue) \(adjusted) ft\(suffix)"
     }
 }
 
@@ -650,10 +653,26 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditions.contains(.grappled) || conditions.contains(.restrained)
             || customConditions.contains(where: \.immobilizes)
     }
-    /// Movement readout after condition effects: "0 ft (immobilized)" when
-    /// immobilized, else the normal summary.
+    /// Walking speed after exhaustion under the current era (immobilizing
+    /// conditions still zero it via effectiveMovementSummary).
+    public var effectiveSpeed: Int {
+        era.speedAfterExhaustion(speed, level: exhaustion)
+    }
+    /// Standing up from prone costs half the effective speed.
+    public var proneStandingCost: Int { effectiveSpeed / 2 }
+    /// Movement readout after condition effects: immobilized zeroes every
+    /// speed; otherwise exhaustion adjusts each mode under the current era,
+    /// and prone appends its stand-up and crawl costs.
     public var effectiveMovementSummary: String {
-        immobilized ? "0 ft (immobilized)" : movementSummary
+        if immobilized { return "0 ft (immobilized)" }
+        var parts = ["\(effectiveSpeed) ft"]
+        parts += extraSpeeds.map {
+            $0.displayString(feet: era.speedAfterExhaustion($0.feet, level: exhaustion))
+        }
+        if conditions.contains(.prone) {
+            parts.append("prone: stand up costs \(proneStandingCost) ft, crawl at half")
+        }
+        return parts.joined(separator: ", ")
     }
     /// Passive value for a skill: 10 + its bonus (raw ability modifier when the
     /// sheet has no such skill). The table standard for noticing without rolling.

@@ -226,6 +226,46 @@ struct CharacterTests {
         #expect(!cc.immobilizes)
     }
 
+    @Test func exhaustionAndProneAdjustMovement() {
+        var c = Character(name: "T", level: 1)
+        c.speed = 30
+        c.extraSpeeds = [MovementSpeed(mode: .fly, feet: 60, hover: true),
+                         MovementSpeed(mode: .swim, feet: 25, label: "clasp")]
+
+        // 2014-style: step 2 halves every speed, step 5 zeroes them.
+        c.era = .era2014
+        c.exhaustion = 1
+        #expect(c.effectiveMovementSummary == "30 ft, fly 60 ft (hover), swim 25 ft (clasp)")
+        c.exhaustion = 2
+        #expect(c.effectiveSpeed == 15)
+        #expect(c.effectiveMovementSummary == "15 ft, fly 30 ft (hover), swim 12 ft (clasp)")
+        c.exhaustion = 5
+        #expect(c.effectiveMovementSummary == "0 ft, fly 0 ft (hover), swim 0 ft (clasp)")
+
+        // 2024-style: each step shaves 5 ft, floored at 0.
+        c.era = .era2024
+        c.exhaustion = 3
+        #expect(c.effectiveMovementSummary == "15 ft, fly 45 ft (hover), swim 10 ft (clasp)")
+        c.exhaustion = 10
+        #expect(c.effectiveSpeed == 0)
+
+        // Prone appends stand-up and crawl costs from the effective speed.
+        c.era = .era2014
+        c.exhaustion = 0
+        c.conditions = [.prone]
+        #expect(c.proneStandingCost == 15)
+        #expect(c.effectiveMovementSummary
+            == "30 ft, fly 60 ft (hover), swim 25 ft (clasp), prone: stand up costs 15 ft, crawl at half")
+        // Prone composes with exhaustion halving.
+        c.exhaustion = 2
+        #expect(c.proneStandingCost == 7)
+        #expect(c.effectiveMovementSummary
+            == "15 ft, fly 30 ft (hover), swim 12 ft (clasp), prone: stand up costs 7 ft, crawl at half")
+        // Immobilize still wins outright: no prone note, no partial speeds.
+        c.conditions = [.prone, .grappled]
+        #expect(c.effectiveMovementSummary == "0 ft (immobilized)")
+    }
+
     @Test func defensesAdjustIncomingDamage() {
         var c = Character(name: "T", level: 1, maxHP: 30)
         c.resistances = [.fire]

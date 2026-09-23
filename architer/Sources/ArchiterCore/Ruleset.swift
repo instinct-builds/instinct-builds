@@ -78,6 +78,23 @@ public enum RulesetVariant: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    // MARK: Movement
+
+    /// Exhaustion's effect on a speed value, era-specific. 2014 era: step 2
+    /// halves every speed, step 5 zeroes them. 2024 era: each step shaves
+    /// 5 ft off, floored at 0. Behavior mirrors exhaustionStepNote.
+    public func speedAfterExhaustion(_ feet: Int, level: Int) -> Int {
+        guard level > 0 else { return feet }
+        switch self {
+        case .era2014:
+            if level >= 5 { return 0 }
+            if level >= 2 { return feet / 2 }
+            return feet
+        case .era2024:
+            return max(0, feet - 5 * level)
+        }
+    }
+
     // MARK: Weapon handling
 
     /// The 2024 era lets each weapon carry one mastery trait; the 2014 era
