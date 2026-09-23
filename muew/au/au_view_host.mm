@@ -282,7 +282,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             muew::Preset before;
             State(before);
-            NSPoint badge = NSMakePoint(304 + 2 * 21.5 + 9.5, 216 + 7.5); // LFO3 source badge
+            NSPoint badge = NSMakePoint(304 + 2 * 22 + 10.25, 216 + 7.5); // LFO3 source badge
             NSPoint cut = NSMakePoint(536, t - 94);                      // CUTOFF knob
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, badge, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(450, 300), w)];
@@ -452,7 +452,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
             auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
-            auto badge = [&](int i) { return NSMakePoint(304 + (i % 7) * 21.5 + 9.5, (i < 7 ? 216 : 198) + 7.5); };
+            auto badge = [&](int i) { return NSMakePoint(304 + (i % 7) * 22 + 10.25, (i < 7 ? 216 : 198) + 7.5); };
             auto dropOn = [&](NSPoint from, NSPoint to) {
                 [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
                 [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];

@@ -260,7 +260,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)routeBar:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 28, r.origin.y + 4, 150, 14); }
 - (NSRect)pageTab:(int)i { return NSMakeRect(172 + i * 30, 234, 28, 14); }
 // Right: 14 source badges (2 x 7), preview, and the selected modulator's controls.
-- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 7) * 21.5, i < 7 ? 216 : 198, 19, 15); }
+- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 7) * 22, i < 7 ? 216 : 198, 20.5, 15); }
 - (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
 // 0.9.0 oscillator displays and the wavetable editor that opens over the
 // OSCILLATORS panel.
@@ -957,7 +957,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         for (const auto& rt : current.routes) used |= rt.source == srcs[i];
         FillRound(bdg, 3, i == modSel ? [col colorWithAlphaComponent:.85] : C(0x202630));
         if (used && i != modSel) FillRound(NSMakeRect(NSMidX(bdg) - 5, bdg.origin.y + 1, 10, 1.5), .75, col);
-        TextA(S(ui::sourceBadge(srcs[i])), NSMakeRect(bdg.origin.x, bdg.origin.y + 2, bdg.size.width, 11), 7.5,
+        // 14 badges share 152 pt: 6.5 pt labels drawn in a rect a little wider than the chip so four-letter
+        // names (LFO1, ENV2, MSEG, FXL2) never truncate.
+        TextA(S(ui::sourceBadge(srcs[i])), NSMakeRect(bdg.origin.x - 3, bdg.origin.y + 2.5, bdg.size.width + 6, 10), 6.5,
               i == modSel ? C(0x0b0e13) : col, NSFontWeightBold, NSTextAlignmentCenter);
     }
     ModRoute::Source sel = srcs[modSel];
@@ -1087,7 +1089,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                 if (lfo != 0) {
                     double span = std::fabs(lfo * unit);
                     double m0 = std::clamp(n - span, 0.0, 1.0), m1 = std::clamp(n + span, 0.0, 1.0);
-                    FillRound(NSMakeRect(track.origin.x + track.size.width * m0, track.origin.y + 5, track.size.width * (m1 - m0), 2), 1,
+                    FillRound(NSMakeRect(track.origin.x + track.size.width * m0, track.origin.y + 6.5, track.size.width * (m1 - m0), 2), 1,
                               C(0xb68cff, 0.9));
                 }
             }
