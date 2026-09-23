@@ -51,6 +51,18 @@ public extension Array where Element == RollResult {
         return filter { $0.characterName == name }
     }
 
+    /// One line per roll, oldest first, for sharing a session log:
+    /// "Stealth check: 25 (1d20+7)" when labeled, "2d6+3: 13" when not.
+    /// Pairs with forCharacter/matching - export exactly what you see.
+    var historyText: String {
+        reversed().map { roll in
+            if let label = roll.label {
+                return "\(label): \(roll.total) (\(roll.expression))"
+            }
+            return "\(roll.expression): \(roll.total)"
+        }.joined(separator: "\n")
+    }
+
     /// Rolls whose label or expression contains the query, case- and
     /// diacritic-insensitive. A blank query returns everything, so the
     /// filter composes freely after forCharacter.

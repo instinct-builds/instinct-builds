@@ -143,6 +143,21 @@ struct RollHistoryFilterTests {
         return r
     }
 
+    @Test func historyTextFormatsOldestFirst() throws {
+        let rolls = [
+            roll("1d20+7", label: "Stealth check"),
+            roll("2d10+3", label: "Fire Bolt damage (fire: resist 7 - immune 0 - vuln 28)"),
+            roll("2d6+3"),
+        ]
+        // History is newest-first; export reads oldest first.
+        #expect(rolls.historyText == """
+            2d6+3: 10
+            Fire Bolt damage (fire: resist 7 - immune 0 - vuln 28): 10 (2d10+3)
+            Stealth check: 10 (1d20+7)
+            """)
+        #expect([RollResult]().historyText == "")
+    }
+
     @Test func matchesLabelsAndExpressions() throws {
         let rolls = [
             roll("2d10+3", label: "Fire Bolt damage (fire: resist 7 - immune 0 - vuln 28)", character: "Wren"),

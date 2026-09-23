@@ -171,6 +171,14 @@ public final class AppModel: ObservableObject {
 
     // MARK: Rolling
 
+    /// Copies the given rolls (already scoped/filtered by the view) to the
+    /// pasteboard as one line per roll, oldest first.
+    public func copyRollsToPasteboard(_ rolls: [RollResult]) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(rolls.historyText, forType: .string)
+    }
+
     public func clearRollHistory() {
         rollHistory.removeAll()
         rollHistoryStore.save(rollHistory)

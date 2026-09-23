@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.32.0
+
+- Roll history export: a Copy button on the Dice tab History row copies
+  the shown rolls to the clipboard as text - one line per roll, oldest
+  first ("Stealth check: 25 (1d20+7)"), ready to paste into session
+  notes. It exports exactly what you see: the All/character scope and
+  2.29.0's text filter both apply.
+
 ## What's in 2.31.0
 
 - Compact-PDF landscape export: File > Export Compact PDF (Landscape)...

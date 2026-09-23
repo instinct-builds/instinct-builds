@@ -142,6 +142,10 @@ public struct DiceRollerView: View {
                         .foregroundStyle(Theme.inkMuted)
                 }
                 Spacer()
+                Button("Copy") { model.copyRollsToPasteboard(visibleHistory) }
+                    .controlSize(.small)
+                    .disabled(visibleHistory.isEmpty)
+                    .help("Copy the shown rolls (scope and filter applied) as text, oldest first")
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }
             ScrollView {
