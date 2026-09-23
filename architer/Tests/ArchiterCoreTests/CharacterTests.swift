@@ -787,6 +787,19 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func damageTypeRawValuesStayStableForPersistence() throws {
+        // The free-roller type picker persists rawValue strings in
+        // user defaults; renaming a case would silently drop the saved
+        // selection, so the persisted vocabulary is pinned here.
+        #expect(DamageType.allCases.map(\.rawValue) == [
+            "acid", "bludgeoning", "cold", "fire", "force", "lightning",
+            "necrotic", "piercing", "poison", "psychic", "radiant",
+            "slashing", "thunder",
+        ])
+        #expect(DamageType(rawValue: "fire") == .fire)
+        #expect(DamageType(rawValue: "bogus") == nil)
+    }
+
     @Test func macroDuplicateCopiesAndBumpsNames() throws {
         let fireball = DiceMacro(name: "Fireball", expression: "8d6")
 

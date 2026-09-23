@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.30.0
+
+- The free-roller damage-type picker now remembers its selection across
+  app launches (persisted like the last-selected character). Pick "fire"
+  once and every free roll stays typed until you switch back to "No
+  type". The saved raw-value vocabulary is pinned by a test so a future
+  case rename can't silently drop the selection.
+
 ## What's in 2.29.0
 
 - Dice history filters: a "Filter rolls" field on the Dice tab narrows

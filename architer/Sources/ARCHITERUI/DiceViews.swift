@@ -37,8 +37,11 @@ public struct DiceRollerView: View {
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
     @State private var macroNameDraft = ""
-    /// Free-roller damage type; nil keeps rolls untyped (no defense note).
-    @State private var damageType: DamageType? = nil
+    /// Free-roller damage type, persisted on the model across launches;
+    /// nil keeps rolls untyped (no defense note).
+    private var damageType: Binding<DamageType?> {
+        Binding(get: { model.freeRollerDamageType }, set: { model.freeRollerDamageType = $0 })
+    }
     /// Save scope for new macros: true binds them to the selected character.
     @State private var saveForCharacter = true
     /// History scope: false = whole table, true = selected character only.
@@ -57,11 +60,11 @@ public struct DiceRollerView: View {
                 TextField("Dice notation", text: $expression)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 200)
-                    .onSubmit { model.rollFree(expression, type: damageType) }
-                Button("Roll") { model.rollFree(expression, type: damageType) }
+                    .onSubmit { model.rollFree(expression, type: damageType.wrappedValue) }
+                Button("Roll") { model.rollFree(expression, type: damageType.wrappedValue) }
                     .buttonStyle(RollButtonStyle(prominent: true))
                     .keyboardShortcut(.return)
-                Picker("", selection: $damageType) {
+                Picker("", selection: damageType) {
                     Text("No type").tag(DamageType?.none)
                     ForEach(DamageType.allCases, id: \.self) { Text($0.displayName).tag(DamageType?.some($0)) }
                 }

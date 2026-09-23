@@ -17,6 +17,20 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let lastSelectedKey = "architer.lastSelectedCharacterID"
+    /// Free-roller damage-type selection (Dice tab), persisted across
+    /// launches like the session restore above. nil means untyped rolls.
+    @Published public var freeRollerDamageType: DamageType? =
+        UserDefaults.standard.string(forKey: AppModel.freeRollerTypeKey)
+            .flatMap(DamageType.init(rawValue:)) {
+        didSet {
+            if let type = freeRollerDamageType {
+                UserDefaults.standard.set(type.rawValue, forKey: AppModel.freeRollerTypeKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: AppModel.freeRollerTypeKey)
+            }
+        }
+    }
+    private static let freeRollerTypeKey = "architer.freeRollerDamageType"
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
     @Published public var showCompendium = false
