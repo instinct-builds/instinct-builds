@@ -61,7 +61,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -188,7 +188,7 @@ static NSUserDefaults* MUEWDefaults() {
     return (k == ui::Cutoff || k == ui::Resonance || k == ui::F2Cutoff || k == ui::F2Reso) ? 30 : 25;
 }
 // Unison strip under each oscillator display: 8 voice pips + readout.
-- (NSRect)unisonStrip:(int)osc { return NSMakeRect(osc ? 252 : 46, [self top] - 151, 190, 18); }
+- (NSRect)unisonStrip:(int)osc { return NSMakeRect(osc ? 252 : 46, [self top] - 137, 190, 18); } // 0.19.0: up 14 pt for the warp strip
 - (NSRect)unisonPip:(int)osc voice:(int)i {
     NSRect r = [self unisonStrip:osc];
     return NSMakeRect(r.origin.x + 6 + i * 13, r.origin.y, 13, r.size.height);
@@ -278,7 +278,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)msegModePill:(int)i { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 12 + i * 58, r.origin.y + 10, 54, 17); }
 - (NSRect)msegGridPill:(int)i {
     NSRect r = [self msegPanel];
-    if (msegEdit >= 2) return NSMakeRect(r.origin.x + 252 + i * 20, r.origin.y + 10, 18, 17);
+    if (msegEdit >= 2 && msegEdit < 6) return NSMakeRect(r.origin.x + 252 + i * 20, r.origin.y + 10, 18, 17);
     return NSMakeRect(r.origin.x + 216 + i * 27, r.origin.y + 10, 25, 17);
 }
 // 0.18.0 LFO editor: LFO 1-4 tabs, CUSTOM toggle, RETRIG/FREE and PHASE/DELAY/RISE pills.
@@ -291,7 +291,13 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
 // 0.9.0 oscillator displays and the wavetable editor that opens over the
 // OSCILLATORS panel.
-- (NSRect)oscDisplay:(int)o { return NSMakeRect(o ? 252 : 46, [self top] - 125, 190, 76); }
+- (NSRect)oscDisplay:(int)o { return NSMakeRect(o ? 252 : 46, [self top] - 111, 190, 62); }
+// 0.19.0 warp strip under each oscillator: two slot chips [n][<][MODE][>][amount].
+- (NSRect)warpChip:(int)o slot:(int)s { return NSMakeRect((o ? 252 : 46) + s * 96, [self top] - 157, s ? 94 : 92, 16); }
+- (NSRect)warpArrow:(int)o slot:(int)s dir:(int)d { NSRect c = [self warpChip:o slot:s]; return NSMakeRect(c.origin.x + 10 + (d > 0 ? 46 : 0), c.origin.y, 10, c.size.height); }
+- (NSRect)warpName:(int)o slot:(int)s { NSRect c = [self warpChip:o slot:s]; return NSMakeRect(c.origin.x + 20, c.origin.y, 36, c.size.height); }
+- (NSRect)warpAmt:(int)o slot:(int)s { NSRect c = [self warpChip:o slot:s]; return NSMakeRect(c.origin.x + 67, c.origin.y + 3, c.size.width - 70, c.size.height - 6); }
+- (NSRect)remapChip:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 17, 40, 13); }
 - (NSRect)oscTitle:(int)o { return NSMakeRect(o ? 256 : 50, [self top] - 47, 186, 16); }
 - (NSRect)wtPosBar:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(r.origin.x + 10, r.origin.y + 5, r.size.width - 20, 7); }
 - (NSRect)filterTab:(int)i { return NSMakeRect(i ? 556 : 492, [self top] - 29, i ? 92 : 60, 17); }
@@ -428,8 +434,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [mid moveToPoint:NSMakePoint(r.origin.x + 6, NSMidY(r))]; [mid lineToPoint:NSMakePoint(NSMaxX(r) - 6, NSMidY(r))];
     mid.lineWidth = 1; [mid stroke];
     const bool user = shape == kCustomShape;
-    std::vector<float> wv = user ? ui::waveformUser(current.tables[o], OscWtPos(current.voice, o), wm, w, 240)
-                                 : ui::waveform(table, shape, wm, w, 240);
+    const auto wx = ui::warpExtras(current.voice, o); // 0.19.0: second slot + REMAP curve
+    std::vector<float> wv = user ? ui::waveformUser(current.tables[o], OscWtPos(current.voice, o), wm, w, 240, &wx)
+                                 : ui::waveform(table, shape, wm, w, 240, &wx);
     NSBezierPath* p = [NSBezierPath bezierPath];
     for (int i = 0; i < 240; ++i) {
         CGFloat x = r.origin.x + 8 + (r.size.width - 16) * i / 239.0;
@@ -443,6 +450,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     FillRound(pill, 4, user ? [col colorWithAlphaComponent:.22] : C(0x161c25));
     TextA(@"EDIT", NSMakeRect(pill.origin.x, pill.origin.y + 1.5, pill.size.width, 10), 7.5, user ? col : C(0x6f7b8b),
           NSFontWeightBold, NSTextAlignmentCenter);
+    if (ui::usesRemap(current.voice, o)) { // opens this oscillator's REMAP curve
+        NSRect rc = [self remapChip:o];
+        bool open = msegEdit == 6 + o;
+        FillRound(rc, 4, open ? [col colorWithAlphaComponent:.85] : [col colorWithAlphaComponent:.22]);
+        TextA(@"CURVE", NSMakeRect(rc.origin.x, rc.origin.y + 1.5, rc.size.width, 10), 7.5, open ? C(0x0b0e13) : col, NSFontWeightBold, NSTextAlignmentCenter);
+    }
     if (user) {
         const TableFrames& t = current.tables[o];
         const double pos = OscWtPos(current.voice, o);
@@ -689,7 +702,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
     // Oscillators
     const VoiceParams& v = current.voice;
-    NSRect wa = NSMakeRect(46, top - 125, 190, 76), wb = NSMakeRect(252, top - 125, 190, 76);
+    NSRect wa = [self oscDisplay:0], wb = [self oscDisplay:1];
     [self waveIn:wa osc:0 shape:v.osc1Shape warpMode:v.osc1WarpMode warp:v.osc1Warp color:C(0x5adac8)];
     [self waveIn:wb osc:1 shape:v.osc2Shape warpMode:v.osc2WarpMode warp:v.osc2Warp color:C(0x9d7df2)];
     Text([NSString stringWithFormat:@"OSC A  \u2022  %s%@  \u2022  %s", ui::shapeName(v.osc1Shape),
@@ -714,6 +727,35 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextA(ro, NSMakeRect(st.origin.x + 110, st.origin.y + 3, 74, 12), 8, n > 1 ? col : C(0x5f6b7b),
               NSFontWeightSemibold, NSTextAlignmentRight);
     }
+    for (int o = 0; o < 2; ++o) // 0.19.0 warp slots
+        for (int sl = 0; sl < 2; ++sl) {
+            NSColor* col = o ? C(0x9d7df2) : C(0x5adac8);
+            VoiceParams& vv = current.voice;
+            const int mode = ui::warpMode(vv, o, sl);
+            const double amt = ui::warpAmount(vv, o, sl);
+            NSRect c = [self warpChip:o slot:sl];
+            FillRound(c, 4, C(0x0f141b));
+            FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 3, 8, 10), 2, mode ? [col colorWithAlphaComponent:.8] : C(0x2a323e));
+            TextA(sl ? @"2" : @"1", NSMakeRect(c.origin.x + 2, c.origin.y + 4, 8, 9), 7, mode ? C(0x0b0e13) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+            for (int d = -1; d <= 1; d += 2)
+                TextA(d < 0 ? @"\u2039" : @"\u203A", NSMakeRect([self warpArrow:o slot:sl dir:d].origin.x, c.origin.y + 1.5, 10, 13), 10, C(0x6f7b8b),
+                      NSFontWeightBold, NSTextAlignmentCenter);
+            NSRect nm = [self warpName:o slot:sl];
+            TextFit(S(ui::warpName(mode)), NSMakeRect(nm.origin.x, c.origin.y + 3.5, nm.size.width, 10), 7.5, 5.5, mode ? col : C(0x6f7b8b),
+                    NSFontWeightBold, NSTextAlignmentCenter);
+            NSRect ab = [self warpAmt:o slot:sl];
+            if (sl == 0) { // slot 1's amount is the WARP knob; show its value
+                char b[8]; snprintf(b, sizeof b, "%.0f%%", amt * 100);
+                TextA(S(b), NSMakeRect(ab.origin.x - 2, c.origin.y + 3.5, ab.size.width + 2, 10), 7.5, mode ? C(0xd5dce5) : C(0x5f6b7b),
+                      NSFontWeightSemibold, NSTextAlignmentRight);
+            } else { // slot 2 has its own amount bar (drag)
+                FillRound(ab, 2, C(0x1c232d));
+                if (amt > 0) FillRound(NSMakeRect(ab.origin.x, ab.origin.y, ab.size.width * amt, ab.size.height), 2, mode ? col : C(0x4a5462));
+                char b[8]; snprintf(b, sizeof b, "%.0f", amt * 100);
+                TextA(S(b), NSMakeRect(ab.origin.x, ab.origin.y + 0.5, ab.size.width - 2, 9), 6.5, amt > .55 ? C(0x0b0e13) : C(0xd5dce5), NSFontWeightBold,
+                      NSTextAlignmentRight);
+            }
+        }
     [self knob:ui::WarpA accent:C(0x5adac8)];
     [self knob:ui::UniDetuneA accent:C(0x5adac8)];
     [self knob:ui::Mix accent:C(0x5adac8)];
@@ -1111,17 +1153,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 }
 - (void)drawMsegEditor {
     const int k = msegEdit;
-    const bool isLfo = k >= 2;
+    const bool isRemap = k >= 6; // 0.19.0: oscillator REMAP curve (x = input phase, y = output phase)
+    const bool isLfo = k >= 2 && !isRemap;
     auto mv = ui::editView(current.voice, k);
     const auto& pts = *mv.points;
-    NSColor* acc = SourceColor(EditSource(k));
+    NSColor* acc = isRemap ? (k == 7 ? C(0x9d7df2) : C(0x5adac8)) : SourceColor(EditSource(k));
     const bool drawn = !isLfo || current.voice.lfoCustom[k - 2]; // an LFO plays its drawing only with CUSTOM on
     NSRect P = [self msegPanel];
     FillRound(P, 10, C(0x19202a));
     NSBezierPath* edge = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(P, 0.5, 0.5) xRadius:10 yRadius:10];
     [[acc colorWithAlphaComponent:.45] setStroke]; edge.lineWidth = 1; [edge stroke];
     FillRound(NSMakeRect(P.origin.x + 12, NSMaxY(P) - 22, 3, 12), 1.5, acc);
-    Text(isLfo ? @"LFO EDITOR" : @"MSEG EDITOR", NSMakeRect(P.origin.x + 21, NSMaxY(P) - 24, 120, 15), 11, acc, NSFontWeightBold);
+    Text(isRemap ? @"REMAP CURVE" : isLfo ? @"LFO EDITOR" : @"MSEG EDITOR", NSMakeRect(P.origin.x + 21, NSMaxY(P) - 24, 120, 15), 11, acc, NSFontWeightBold);
     if (isLfo) {
         for (int i = 0; i < 4; ++i) {
             NSRect t = [self lfoTab:i];
@@ -1137,6 +1180,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             [[acc colorWithAlphaComponent:.5] setStroke]; o.lineWidth = 1; [o stroke];
         }
         TextA(@"CUSTOM", NSMakeRect(cc.origin.x, cc.origin.y + 3.5, cc.size.width, 10), 7.5, drawn ? C(0x0b0e13) : acc, NSFontWeightBold, NSTextAlignmentCenter);
+    } else if (isRemap) {
+        for (int i = 0; i < 2; ++i) {
+            NSRect t = [self msegTab:i];
+            NSColor* tc = i ? C(0x9d7df2) : C(0x5adac8);
+            bool on = 6 + i == k, live = ui::usesRemap(current.voice, i);
+            FillRound(t, 4, on ? [tc colorWithAlphaComponent:.22] : C(0x131820));
+            TextA(i ? @"OSC B" : @"OSC A", NSMakeRect(t.origin.x, t.origin.y + 3, t.size.width, 11), 8, on ? tc : live ? C(0x8793a3) : C(0x3d4653),
+                  NSFontWeightBold, NSTextAlignmentCenter);
+        }
     } else
     for (int i = 0; i < 2; ++i) {
         NSRect t = [self msegTab:i];
@@ -1155,6 +1207,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(NSMakeRect(x - 0.5, c.origin.y + 3, 1, c.size.height - 6), 0, divs && (i % (divs / 4 ? divs / 4 : 1)) == 0 ? C(0x222a35) : C(0x161c24));
     }
     FillRound(NSMakeRect(c.origin.x + 3, NSMidY(c) - 0.5, c.size.width - 6, 1), 0, C(0x222a35));
+    if (isRemap) { // dashed identity line: a curve on it leaves the phase unchanged
+        NSBezierPath* id = [NSBezierPath bezierPath];
+        [id moveToPoint:[self msegPointAt:0 value:-1]]; [id lineToPoint:[self msegPointAt:1 value:1]];
+        CGFloat dash[2] = {3, 3}; [id setLineDash:dash count:2 phase:0];
+        [C(0x3a4452) setStroke]; id.lineWidth = 1; [id stroke];
+    }
     const int mode = mv.mode(), ls = *mv.loopStart, le = mv.loopEndIndex();
     const bool loopOk = mode != 0 && ls >= 0 && le > ls && le < (int)pts.size();
     if (loopOk) {
@@ -1198,11 +1256,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [acc setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(q.x - 1.5, q.y - 1.5, 3, 3)] fill];
     }
     // Hint on its own line under the canvas so the shape never runs through it (0.18.0).
-    Text(isLfo && !drawn ? @"EDITING TURNS CUSTOM ON  \u2022  CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND"
+    Text(isRemap ? @"X = INPUT PHASE  \u2022  Y = OUTPUT PHASE  \u2022  CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND" :
+         isLfo && !drawn ? @"EDITING TURNS CUSTOM ON  \u2022  CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND"
                          : @"CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND",
          NSMakeRect(c.origin.x + 2, P.origin.y + 32, 380, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
     if (msegPt >= 0 && msegPt < (int)pts.size()) {
-        char b[48]; snprintf(b, sizeof b, "%.0f%%  \u2192  %+.2f", pts[msegPt].time * 100, pts[msegPt].value);
+        char b[48];
+        if (isRemap) snprintf(b, sizeof b, "IN %.0f%%  \u2192  OUT %.0f%%", pts[msegPt].time * 100, (pts[msegPt].value + 1) * 50);
+        else snprintf(b, sizeof b, "%.0f%%  \u2192  %+.2f", pts[msegPt].time * 100, pts[msegPt].value);
         TextA(S(b), NSMakeRect(NSMaxX(c) - 100, P.origin.y + 32, 100, 10), 7, acc, NSFontWeightBold, NSTextAlignmentRight);
     } else if (msegSeg >= 0 && msegSeg < (int)pts.size()) {
         TextA(S(ui::curveReadout(pts[msegSeg].curve)), NSMakeRect(NSMaxX(c) - 100, P.origin.y + 32, 100, 10), 7, acc, NSFontWeightBold, NSTextAlignmentRight);
@@ -1223,17 +1284,24 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             double val = j == 0 ? v.lfoPhase[li] : j == 1 ? v.lfoDelay[li] : v.lfoRise[li];
             bool live = lfoXDrag == j;
             FillRound(r, 4, live ? C(0x26303c) : C(0x131820));
-            Text(xl[j], NSMakeRect(r.origin.x + 4, r.origin.y + 5, 20, 8), 5.5, C(0x5f6b7b), NSFontWeightBold);
+            // 0.19.0: label stacked over the value so both read at full size
+            TextA(xl[j], NSMakeRect(r.origin.x, NSMaxY(r) - 1, r.size.width, 8), 6.5, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
             std::string ro = j == 0 ? ui::lfoPhaseReadout(val) : ui::lfoFadeReadout(val);
-            TextFit(S(ro), NSMakeRect(r.origin.x + 21, r.origin.y + 4, r.size.width - 24, 10), 7.5, 5.5, live ? acc : (val > 0 ? C(0xd5dce5) : C(0x6f7b8b)),
-                    NSFontWeightSemibold, NSTextAlignmentRight);
+            TextFit(S(ro), NSMakeRect(r.origin.x + 2, r.origin.y + 3.5, r.size.width - 4, 11), 8.5, 7, live ? acc : (val > 0 ? C(0xd5dce5) : C(0x6f7b8b)),
+                    NSFontWeightSemibold, NSTextAlignmentCenter);
         }
     } else
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 3 && !isRemap; ++i) {
         NSRect r = [self msegModePill:i];
         FillRound(r, 4, mode == i ? [acc colorWithAlphaComponent:.22] : C(0x131820));
         TextA(S(ui::msegModeName(i)), NSMakeRect(r.origin.x, r.origin.y + 4, r.size.width, 10), 7.5, mode == i ? acc : C(0x6f7b8b),
               NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    if (isRemap) { // curve reset + output range readout where the MSEG mode pills sit
+        NSRect r = [self msegModePill:0];
+        FillRound(r, 4, C(0x131820));
+        TextA(@"RESET", NSMakeRect(r.origin.x, r.origin.y + 4, r.size.width, 10), 7.5, C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+        Text([NSString stringWithFormat:@"%d POINTS", (int)pts.size()], NSMakeRect(r.origin.x + 64, r.origin.y + 5, 80, 10), 7.5, C(0x5f6b7b), NSFontWeightSemibold);
     }
     if (!isLfo) TextA(@"GRID", NSMakeRect(P.origin.x + 182, P.origin.y + 14, 30, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentRight);
     static NSString* grids[4] = {@"OFF", @"4", @"8", @"16"};
@@ -1243,6 +1311,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextA(grids[i], NSMakeRect(r.origin.x, r.origin.y + 4, r.size.width, 10), 7.5, msegGrid == i ? C(0xeaf1f8) : C(0x6f7b8b),
               NSFontWeightBold, NSTextAlignmentCenter);
     }
+    if (isRemap) return; // a REMAP curve has no length or sync
     NSRect lp = [self msegLenPill], sp = [self msegSyncPill];
     FillRound(lp, 4, modFieldDrag == 1 ? C(0x26303c) : C(0x131820));
     TextFit(S(isLfo ? ui::lfoRateReadout(current.voice, k - 2) : ui::msegLengthReadout(mv)), NSMakeRect(lp.origin.x + 2, lp.origin.y + 3.5, lp.size.width - 4, 11), 8.5, 6.5,
@@ -1255,9 +1324,17 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     if (msegEdit < 0 || !NSPointInRect(p, [self msegPanel])) return NO;
     auto mv = ui::editView(current.voice, msegEdit);
     auto& pts = *mv.points;
-    const int li = msegEdit - 2; // LFO index when >= 0
+    const bool isRemap = msegEdit >= 6;
+    const int li = isRemap ? -1 : msegEdit - 2; // LFO index when >= 0
     if (NSPointInRect(p, NSInsetRect([self msegClose], -4, -4))) { msegEdit = -1; [self setNeedsDisplay:YES]; return YES; }
-    if (li >= 0) {
+    if (isRemap) {
+        for (int i = 0; i < 2; ++i)
+            if (NSPointInRect(p, [self msegTab:i])) { msegEdit = 6 + i; msegPt = msegSeg = -1; [self setNeedsDisplay:YES]; return YES; }
+        if (NSPointInRect(p, [self msegModePill:0])) {
+            current.voice.remapPoints[msegEdit - 6] = VoiceParams::kDefaultRemap(); msegPt = msegSeg = -1;
+            edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
+        }
+    } else if (li >= 0) {
         VoiceParams& v = current.voice;
         auto selectEditor = [&](int k) {
             msegEdit = k;
@@ -1285,12 +1362,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             [self setNeedsDisplay:YES];
             return YES;
         }
-    for (int i = 0; i < 3 && li < 0; ++i)
+    for (int i = 0; i < 3 && li < 0 && !isRemap; ++i)
         if (NSPointInRect(p, [self msegModePill:i])) { mv.setMode(i); edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES; }
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self msegGridPill:i])) { msegGrid = i; [self setNeedsDisplay:YES]; return YES; }
-    if (NSPointInRect(p, [self msegSyncPill])) { *mv.sync = *mv.sync ? 0 : 3; edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES; }
-    if (NSPointInRect(p, [self msegLenPill])) { // drag like the LENGTH field (modSel is this MSEG while the editor is open)
+    if (!isRemap && NSPointInRect(p, [self msegSyncPill])) { *mv.sync = *mv.sync ? 0 : 3; edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES; }
+    if (!isRemap && NSPointInRect(p, [self msegLenPill])) { // drag like the LENGTH field (modSel is this MSEG while the editor is open)
         modFieldDrag = 1;
         dragValue = *mv.sync ? (*mv.sync - 1) / (double)(kSyncCount - 2) : li >= 0 ? RateTo01(ui::lfoRate(current.voice, li)) : TimeTo01(*mv.seconds);
         [self setNeedsDisplay:YES];
@@ -1338,7 +1415,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
 - (void)msegDragTo:(NSPoint)p shift:(bool)fine {
     auto mv = ui::editView(current.voice, msegEdit);
-    if (msegEdit >= 2 && (msegPt >= 0 || msegSeg >= 0)) current.voice.lfoCustom[msegEdit - 2] = true; // drawing turns CUSTOM on
+    if (msegEdit >= 2 && msegEdit < 6 && (msegPt >= 0 || msegSeg >= 0)) current.voice.lfoCustom[msegEdit - 2] = true; // drawing turns CUSTOM on
     auto& pts = *mv.points;
     NSRect c = [self msegCanvas];
     double t = std::clamp((p.x - c.origin.x) / c.size.width, 0.0, 1.0);
@@ -1910,6 +1987,26 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             if (host) host->parameterGesture(o ? params::WtPosB : params::WtPosA, true);
             return YES;
         }
+        for (int sl = 0; sl < 2; ++sl) { // 0.19.0 warp slots: arrows/name step the mode, slot 2's bar drags its amount
+            if (!NSPointInRect(p, [self warpChip:o slot:sl])) continue;
+            if (sl == 1 && NSPointInRect(p, NSInsetRect([self warpAmt:o slot:sl], -2, -3))) {
+                if (NSApp.currentEvent.clickCount == 2) { ui::warpAmount(v, o, 1) = 0; edited = true; [self applySound]; }
+                else { warpAmtDrag = o; dragValue = ui::warpAmount(v, o, 1); }
+                [self setNeedsDisplay:YES];
+                return YES;
+            }
+            ui::stepWarpMode(v, o, sl, NSPointInRect(p, [self warpArrow:o slot:sl dir:-1]) ? -1 : 1);
+            if (msegEdit >= 6 && !ui::usesRemap(v, msegEdit - 6)) msegEdit = -1; // its curve no longer plays
+            edited = true; [self applySound]; [self setNeedsDisplay:YES];
+            return YES;
+        }
+        if (ui::usesRemap(v, o) && NSPointInRect(p, NSInsetRect([self remapChip:o], -2, -2))) {
+            msegEdit = msegEdit == 6 + o ? -1 : 6 + o;
+            if (msegEdit >= 0) fxDetail = -1;
+            msegPt = msegSeg = -1;
+            [self setNeedsDisplay:YES];
+            return YES;
+        }
         if (NSPointInRect(p, [self oscDisplay:o])) { [self openTableEditor:o]; return YES; }
     }
     return NO;
@@ -2304,7 +2401,13 @@ static int SortForColumn(int c) {
         return;
     }
     if (msegEdit >= 0 && (msegPt >= 0 || msegSeg >= 0 || msegLoopEdge >= 0)) { [self msegDragTo:p shift:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return; }
-    if (msegEdit >= 2 && lfoXDrag >= 0) { // PHASE 0..360 degrees, DELAY/RISE off .. 8 s
+    if (warpAmtDrag >= 0) { // WARP 2 amount: the full bar width is 0..100%
+        ui::warpAmount(current.voice, warpAmtDrag, 1) =
+            std::clamp(dragValue + (p.x - dragStart.x) / ([self warpAmt:warpAmtDrag slot:1].size.width * scale / 150.0), 0.0, 1.0);
+        edited = true; [self applySound]; [self setNeedsDisplay:YES];
+        return;
+    }
+    if (msegEdit >= 2 && msegEdit < 6 && lfoXDrag >= 0) { // PHASE 0..360 degrees, DELAY/RISE off .. 8 s
         VoiceParams& v = current.voice;
         const int li = msegEdit - 2;
         double x = std::clamp(dragValue + (p.y - dragStart.y) / scale, 0.0, 1.0);
@@ -2405,7 +2508,7 @@ static int SortForColumn(int c) {
         fxRowDrag = -1;
     }
     dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
-    msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1;
+    msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];

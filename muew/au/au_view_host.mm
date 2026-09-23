@@ -248,7 +248,7 @@ int main() {
         After(5.5, ^{ SelectPreset(34); }); // host switches to Fold Screamer (unison + distortion/EQ/compressor)
         After(5.8, ^{
             CGFloat t = view.bounds.size.height - 100;
-            NSPoint pip = NSMakePoint(46 + 6 + 4 * 13 + 6.5, t - 142); // osc A unison pip 5
+            NSPoint pip = NSMakePoint(46 + 6 + 4 * 13 + 6.5, t - 128); // osc A unison pip 5 (strip moved up for the 0.19.0 warp slots)
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, pip, w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, pip, w)];
             NSPoint wk = NSMakePoint(250, t - 192); // WIDTH knob: drag down 30 pt = -20%
@@ -620,6 +620,48 @@ int main() {
             std::string txt = ok ? st.serialize() : "";
             Check(ok && back.parse(txt) && back == st && txt.find("\nlfox 2 1 ") != std::string::npos && txt.find("\nlfopts 2 6 ") != std::string::npos,
                   "the AU state saves the drawn LFO 3 with the sound");
+            Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the editor
+            Click(view, w, card(3));                                     // DELAY detail for the editor snapshot
+            fflush(stdout);
+        });
+        After(6.997, ^{ // 0.19.0 warp depth: OSC A WARP 2 = REMAP at 50% with a drawn curve, OSC B WARP 2 = FM B
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 152 + 54 * v); };
+            muew::Preset before;
+            bool ok0 = State(before);
+            Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the DELAY detail
+            Click(view, w, NSMakePoint(46 + 96 + 15, t - 149));          // OSC A slot 2 back arrow: CLEAN -> REMAP
+            for (int i = 0; i < 7; ++i) Click(view, w, NSMakePoint(252 + 96 + 61, t - 149)); // OSC B slot 2 forward x7: FM B
+            NSPoint a0 = NSMakePoint(46 + 96 + 67 + 3, t - 149);        // OSC A slot 2 amount bar (24 pt = 100%)
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, a0, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(a0.x + 6, a0.y), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(a0.x + 12, a0.y), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(a0.x + 12, a0.y), w)];
+            NSPoint b0 = NSMakePoint(252 + 96 + 67 + 3, t - 149);       // OSC B slot 2 amount: +9 pt = 37.5%
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, b0, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(b0.x + 9, b0.y), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(b0.x + 9, b0.y), w)];
+            Click(view, w, NSMakePoint(46 + 190 - 84 + 20, t - 49 - 17 + 6.5)); // OSC A CURVE chip opens the REMAP editor
+            Click(view, w, canvas(0.25, 0.5));                           // add a point at 1/4 -> +0.5
+            Click(view, w, canvas(0.75, -0.5));                          // add a point at 3/4 -> -0.5 (a fold)
+            Snapshot(view, "MUEW_WARP_PNG", "OSC warp slots + REMAP editor snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            const auto& v = st.voice;
+            const auto& rp = v.remapPoints[0];
+            printf("warp 2: A mode %d amt %.3f, B mode %d amt %.3f; remap A %zu points\n", v.osc1Warp2Mode, v.osc1Warp2, v.osc2Warp2Mode, v.osc2Warp2, rp.size());
+            Check(ok0 && ok && before.voice.osc1Warp2Mode == 0 && v.osc1Warp2Mode == 10 && v.osc2Warp2Mode == 7,
+                  "warp slot arrows set OSC A WARP 2 to REMAP and OSC B WARP 2 to FM B in the AU's sound");
+            Check(ok && std::fabs(v.osc1Warp2 - 0.5) < 0.02 && std::fabs(v.osc2Warp2 - 0.375) < 0.02, "WARP 2 amount bars reached the AU's sound");
+            bool pts = ok && rp.size() == 4 && std::fabs(rp[1].time - 0.25) < 1e-9 && std::fabs(rp[1].value - 0.5) < 1e-3
+                       && std::fabs(rp[2].time - 0.75) < 1e-9 && std::fabs(rp[2].value + 0.5) < 1e-3;
+            Check(pts, "CURVE chip opened the REMAP editor and canvas clicks drew OSC A's curve in the AU's sound");
+            muew::Preset back;
+            std::string txt = ok ? st.serialize() : "";
+            Check(ok && back.parse(txt) && back == st && txt.find("\nwarpx 10 ") != std::string::npos && txt.find("\nremap 0 4 ") != std::string::npos,
+                  "the AU state saves both warp slots and the REMAP curve with the sound");
             Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the editor
             Click(view, w, card(3));                                     // DELAY detail for the editor snapshot
             fflush(stdout);

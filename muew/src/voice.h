@@ -29,7 +29,8 @@ struct ModRoute {
                       Osc1WtPos = 11, Osc2WtPos = 12,                   // 0.9.0: user-table frame position (0..1 units)
                       SubLevel = 13, NoiseLevel = 14, Filter2Cutoff = 15, // 0.10.0 (0..1 levels, octaves)
                       // 0.14.0: FX detail controls, macro sources only (global FX)
-                      FxDelayFeedback = 16, FxReverbDecay = 17, FxPhaserDepth = 18, FxFlangerDepth = 19, FxChorusDepth = 20 } dest;
+                      FxDelayFeedback = 16, FxReverbDecay = 17, FxPhaserDepth = 18, FxFlangerDepth = 19, FxChorusDepth = 20,
+                      Osc1Warp2 = 21, Osc2Warp2 = 22 } dest;          // 0.19.0: second warp slot amounts (0..1)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -66,6 +67,13 @@ struct VoiceParams {
     int lfo1Shape = 0, lfo2Shape = 1;
     int osc1WarpMode = 0, osc2WarpMode = 0;
     double osc1Warp = 0.0, osc2Warp = 0.0;
+    // 0.19.0 second warp slot per oscillator (runs after the first; 0 = off)
+    // and each oscillator's REMAP curve (time = phase in, value -1..1 = phase
+    // out), used by a REMAP warp in either slot. Defaults change nothing.
+    int osc1Warp2Mode = 0, osc2Warp2Mode = 0;
+    double osc1Warp2 = 0.0, osc2Warp2 = 0.0;
+    std::vector<MSEG::Point> remapPoints[2] = {kDefaultRemap(), kDefaultRemap()};
+    static std::vector<MSEG::Point> kDefaultRemap() { return {{0.0, -1.0, 0.0}, {1.0, 1.0, 0.0}}; }
     double mseg1Seconds = 1.0;
     bool mseg1Loop = false;
     // Breakpoints (time 0..1, value -1..1). Defaults match MSEG's built-in
@@ -175,6 +183,7 @@ public:
         lfo3_.setShape(static_cast<LFO::Shape>(std::clamp(p.lfo3Shape, 0, 3)));
         lfo4_.setShape(static_cast<LFO::Shape>(std::clamp(p.lfo4Shape, 0, 3)));
         applyLfoExtras();
+        applyWarpX();
         applyRates();
         env3_.set(p.env3A, p.env3D, p.env3S, p.env3R);
         usesLfo3_ = usesLfo4_ = false;
@@ -280,6 +289,18 @@ public:
         const auto wm2 = static_cast<Oscillator::WarpMode>(params_.osc2WarpMode);
         const double warp1 = std::clamp(params_.osc1Warp + modSum(ModRoute::Dest::Osc1Warp), 0.0, 1.0);
         const double warp2 = std::clamp(params_.osc2Warp + modSum(ModRoute::Dest::Osc2Warp), 0.0, 1.0);
+        if (usesWarpX_) { // 0.19.0: second slots, oscillator B feed for FM B / AM B
+            const auto m1 = static_cast<Oscillator::WarpMode>(std::clamp(params_.osc1Warp2Mode, 0, Oscillator::kWarpModes - 1));
+            const auto m2 = static_cast<Oscillator::WarpMode>(std::clamp(params_.osc2Warp2Mode, 0, Oscillator::kWarpModes - 1));
+            const double a1 = std::clamp(params_.osc1Warp2 + modSum(ModRoute::Dest::Osc1Warp2), 0.0, 1.0);
+            const double a2 = std::clamp(params_.osc2Warp2 + modSum(ModRoute::Dest::Osc2Warp2), 0.0, 1.0);
+            w2a_ = a1; w2b_ = a2;
+            const float mB = osc2_[0].lastOut();
+            for (int i = 0; i < kMaxUnison; ++i) {
+                osc1_[i].setWarp2(m1, a1); osc2_[i].setWarp2(m2, a2);
+                osc1_[i].setModInput(mB); osc2_[i].setModInput(mB);
+            }
+        }
         float osc2Level = static_cast<float>(
             std::clamp(params_.osc2Level + modSum(ModRoute::Dest::Osc2Level), 0.0, 1.0));
         const float g1 = 1.0f - osc2Level * 0.5f, g2 = osc2Level;
@@ -289,6 +310,8 @@ public:
         if (!dcOn_ && ((shapeProne(params_.osc1Shape) || (warpProne(params_.osc1WarpMode) && warp1 > 0))
                        || (g2 > 0 && (shapeProne(params_.osc2Shape) || (warpProne(params_.osc2WarpMode) && warp2 > 0)))))
             dcOn_ = true;
+        if (!dcOn_ && usesWarpX_ && ((warp2Prone(params_.osc1Warp2Mode) && w2a_ > 0) || (g2 > 0 && warp2Prone(params_.osc2Warp2Mode) && w2b_ > 0)))
+            dcOn_ = true; // 0.19.0: a second slot can carry DC once its amount is above 0
 
         const int n1 = std::clamp(params_.osc1Unison, 1, kMaxUnison);
         const int n2 = std::clamp(params_.osc2Unison, 1, kMaxUnison);
@@ -436,7 +459,7 @@ public:
     // Per oscillator: the PULSE shape and user tables can always carry DC;
     // BEND+/BEND-/PWM only once their warp amount is above 0.
     static bool shapeProne(int shape) { return shape == 4 || shape == kCustomShape; }
-    static bool warpProne(int mode) { return mode == 2 || mode == 3 || mode == 4; }
+    static bool warpProne(int mode) { return mode == 2 || mode == 3 || mode == 4 || mode >= 7; } // 0.19.0: FM/AM/WINDOW/REMAP too
 private:
     void applyCustom() {
         active1_ = params_.osc1Shape == kCustomShape; active2_ = params_.osc2Shape == kCustomShape;
@@ -455,6 +478,26 @@ private:
             } else lfo(i).reset();
         }
     }
+    void applyWarpX() {
+        const auto& v = params_;
+        usesWarpX_ = v.osc1Warp2Mode != 0 || v.osc2Warp2Mode != 0 || v.osc1WarpMode >= 7 || v.osc2WarpMode >= 7;
+        for (int o = 0; o < 2; ++o) {
+            const bool used = (o ? v.osc2WarpMode : v.osc1WarpMode) == 10 || (o ? v.osc2Warp2Mode : v.osc1Warp2Mode) == 10;
+            if (used && !(remapValid_[o] && remapPts_[o].size() == v.remapPoints[o].size() && samePoints(remapPts_[o], v.remapPoints[o]))) {
+                MSEG m; m.setPoints(v.remapPoints[o]);
+                for (int k = 0; k <= Oscillator::kRemapTable; ++k) remapTable_[o][k] = static_cast<float>(m.valueAt((double)k / Oscillator::kRemapTable));
+                remapPts_[o] = v.remapPoints[o]; remapValid_[o] = true;
+            }
+            for (int i = 0; i < kMaxUnison; ++i) (o ? osc2_[i] : osc1_[i]).setRemap(used ? remapTable_[o] : nullptr);
+        }
+        if (!usesWarpX_) for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setWarp2(Oscillator::WarpMode::Off, 0); osc2_[i].setWarp2(Oscillator::WarpMode::Off, 0); }
+    }
+    float remapTable_[2][Oscillator::kRemapTable + 1] = {};
+    std::vector<MSEG::Point> remapPts_[2];
+    bool remapValid_[2] = {false, false};
+    bool usesWarpX_ = false;
+    double w2a_ = 0.0, w2b_ = 0.0;
+    static bool warp2Prone(int mode) { return mode >= 2 && mode != 5 && mode != 6 ? true : false; }
     void applyLfoExtras() {
         for (int i = 0; i < 4; ++i) {
             LFO& l = lfo(i);

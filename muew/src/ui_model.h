@@ -21,8 +21,8 @@ inline const char* shapeName(int s) {
     return (s >= 0 && s < 6) ? n[s] : "?";
 }
 inline const char* warpName(int w) {
-    static const char* n[] = {"CLEAN", "SYNC", "BEND+", "BEND-", "PWM", "QUANTIZE", "FOLD"};
-    return (w >= 0 && w < 7) ? n[w] : "?";
+    static const char* n[] = {"CLEAN", "SYNC", "BEND+", "BEND-", "PWM", "QUANTIZE", "FOLD", "FM B", "AM B", "WINDOW", "REMAP"};
+    return (w >= 0 && w < 11) ? n[w] : "?";
 }
 inline const char* sourceName(ModRoute::Source s) {
     switch (s) {
@@ -67,6 +67,8 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::FxPhaserDepth: return "PH DEPTH";
     case ModRoute::Dest::FxFlangerDepth: return "FL DEPTH";
     case ModRoute::Dest::FxChorusDepth: return "CH DEPTH";
+    case ModRoute::Dest::Osc1Warp2: return "WARP 2 A";
+    case ModRoute::Dest::Osc2Warp2: return "WARP 2 B";
     }
     return "?";
 }
@@ -97,7 +99,7 @@ inline double routeDisplayAmount(const ModRoute& r) { return std::clamp(r.amount
 inline void setRouteDisplayAmount(ModRoute& r, double n) { r.amount = std::clamp(n, -1.0, 1.0) * routeScale(r.dest); }
 // The FX rack is shared by every voice, so FX destinations follow only the
 // macro knobs (global sources); other sources show that instead of an amount.
-inline bool isFxDest(ModRoute::Dest d) { return d == ModRoute::Dest::DistDrive || (int)d >= (int)ModRoute::Dest::FxDelayFeedback; }
+inline bool isFxDest(ModRoute::Dest d) { return d == ModRoute::Dest::DistDrive || ((int)d >= (int)ModRoute::Dest::FxDelayFeedback && (int)d <= (int)ModRoute::Dest::FxChorusDepth); }
 inline bool isMacroSource(ModRoute::Source s) { return (int)s >= (int)ModRoute::Source::Macro1 && (int)s <= (int)ModRoute::Source::Macro4; }
 inline bool isRackLfo(ModRoute::Source s) { return s == ModRoute::Source::FxLfo1 || s == ModRoute::Source::FxLfo2; }
 // Global sources (macros, rack LFOs) can drive the FX rack; the rack LFOs
@@ -184,7 +186,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
     static const std::vector<D> v{D::Osc1Pitch, D::Osc1Warp, D::Osc1Unison, D::Osc2Pitch, D::Osc2Warp, D::Osc2Unison,
                                   D::Osc2Level, D::UnisonWidth, D::FilterCutoff, D::FilterResonance, D::DistDrive,
                                   D::Osc1WtPos, D::Osc2WtPos, D::SubLevel, D::NoiseLevel, D::Filter2Cutoff,
-                                  D::FxDelayFeedback, D::FxReverbDecay, D::FxPhaserDepth, D::FxFlangerDepth, D::FxChorusDepth};
+                                  D::FxDelayFeedback, D::FxReverbDecay, D::FxPhaserDepth, D::FxFlangerDepth, D::FxChorusDepth,
+                                  D::Osc1Warp2, D::Osc2Warp2}; // 0.19.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.
@@ -520,22 +523,38 @@ inline double fxRouteSum(const std::vector<ModRoute>& routes, int dest, int* cou
 
 // One cycle of the engine's own oscillator output (band-limited table,
 // same warp algorithm) for the oscillator displays.
-inline std::vector<float> waveform(const Wavetable& table, int shape, int warpMode, double warp, int n) {
+// 0.19.0: the oscillator's second warp slot and REMAP curve, for displays.
+// FM B / AM B preview against a sine at the same pitch.
+struct WarpExtras { int mode2 = 0; double amt2 = 0; std::vector<float> remap; };
+inline WarpExtras warpExtras(const VoiceParams& v, int o) {
+    WarpExtras x; x.mode2 = o ? v.osc2Warp2Mode : v.osc1Warp2Mode; x.amt2 = o ? v.osc2Warp2 : v.osc1Warp2;
+    MSEG m; m.setPoints(v.remapPoints[o & 1]);
+    x.remap.resize(Oscillator::kRemapTable + 1);
+    for (int k = 0; k <= Oscillator::kRemapTable; ++k) x.remap[k] = static_cast<float>(m.valueAt((double)k / Oscillator::kRemapTable));
+    return x;
+}
+inline void applyExtras(Oscillator& osc, const WarpExtras* x) {
+    if (!x) return;
+    osc.setWarp2(static_cast<Oscillator::WarpMode>(std::clamp(x->mode2, 0, Oscillator::kWarpModes - 1)), x->amt2);
+    osc.setRemap(x->remap.data());
+}
+inline std::vector<float> waveform(const Wavetable& table, int shape, int warpMode, double warp, int n, const WarpExtras* x = nullptr) {
     Oscillator osc;
     osc.setTable(&table);
     osc.setSampleRate(200.0 * n);
     osc.setFrequency(200.0);
     osc.setShape(shape);
     osc.setWarp(static_cast<Oscillator::WarpMode>(warpMode), warp);
+    applyExtras(osc, x);
     osc.reset();
     std::vector<float> out(n);
-    for (int i = 0; i < n; ++i) out[i] = osc.process();
+    for (int i = 0; i < n; ++i) { if (x) osc.setModInput(static_cast<float>(std::sin(2 * M_PI * i / n))); out[i] = osc.process(); }
     return out;
 }
 
 // 0.9.0: one cycle of a user wavetable at frame position pos (0..1), with
 // the same warp the engine applies, for the oscillator displays.
-inline std::vector<float> waveformUser(const TableFrames& frames, double pos, int warpMode, double warp, int n) {
+inline std::vector<float> waveformUser(const TableFrames& frames, double pos, int warpMode, double warp, int n, const WarpExtras* x = nullptr) {
     CustomTable ct(frames);
     Oscillator osc;
     osc.setCustom(&ct);
@@ -544,9 +563,10 @@ inline std::vector<float> waveformUser(const TableFrames& frames, double pos, in
     osc.setShape(kCustomShape);
     osc.setWtPos(pos);
     osc.setWarp(static_cast<Oscillator::WarpMode>(warpMode), warp);
+    applyExtras(osc, x);
     osc.reset();
     std::vector<float> out(n);
-    for (int i = 0; i < n; ++i) out[i] = osc.process();
+    for (int i = 0; i < n; ++i) { if (x) osc.setModInput(static_cast<float>(std::sin(2 * M_PI * i / n))); out[i] = osc.process(); }
     return out;
 }
 
@@ -772,8 +792,21 @@ inline MsegView lfoEditView(VoiceParams& v, int li) {
     mode[li] = 0;
     return {&secs[li], &v.lfoSync[li], &ls[li], &le[li], &v.lfoPoints[li], nullptr, nullptr, &mode[li]};
 }
-// Editor index: 0-1 MSEG 1/2, 2-5 LFO 1-4.
-inline MsegView editView(VoiceParams& v, int k) { return k >= 2 ? lfoEditView(v, k - 2) : msegView(v, k); }
+// 0.19.0: oscillator A/B REMAP curve (value -1..1 = output phase 0..1), same scratch idea.
+inline MsegView remapEditView(VoiceParams& v, int o) {
+    static double secs[2] = {1, 1};
+    static int sy[2] = {0, 0}, ls[2] = {0, 0}, le[2] = {-1, -1}, mode[2] = {0, 0};
+    o = std::clamp(o, 0, 1);
+    mode[o] = 0; sy[o] = 0;
+    return {&secs[o], &sy[o], &ls[o], &le[o], &v.remapPoints[o], nullptr, nullptr, &mode[o]};
+}
+// Editor index: 0-1 MSEG 1/2, 2-5 LFO 1-4, 6-7 REMAP A/B.
+inline MsegView editView(VoiceParams& v, int k) { return k >= 6 ? remapEditView(v, k - 6) : k >= 2 ? lfoEditView(v, k - 2) : msegView(v, k); }
+// Warp slot mode/amount access (osc 0/1, slot 0/1).
+inline int& warpMode(VoiceParams& v, int o, int s) { return s ? (o ? v.osc2Warp2Mode : v.osc1Warp2Mode) : (o ? v.osc2WarpMode : v.osc1WarpMode); }
+inline double& warpAmount(VoiceParams& v, int o, int s) { return s ? (o ? v.osc2Warp2 : v.osc1Warp2) : (o ? v.osc2Warp : v.osc1Warp); }
+inline void stepWarpMode(VoiceParams& v, int o, int s, int dir) { int& m = warpMode(v, o, s); m = ((std::clamp(m, 0, 10) + dir) % 11 + 11) % 11; }
+inline bool usesRemap(const VoiceParams& v, int o) { return (o ? v.osc2WarpMode : v.osc1WarpMode) == 10 || (o ? v.osc2Warp2Mode : v.osc1Warp2Mode) == 10; }
 inline std::string lfoPhaseReadout(double ph) { char b[16]; snprintf(b, sizeof b, "%.0f\u00B0", std::clamp(ph, 0.0, 1.0) * 360.0); return b; }
 inline std::string lfoFadeReadout(double sec) {
     if (sec <= 0) return "OFF";

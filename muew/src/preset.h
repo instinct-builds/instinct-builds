@@ -45,6 +45,8 @@ struct PresetInfo {
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
+//                  0.19.0 adds optional `warpx <modeA> <amtA> <modeB> <amtB>` (second
+//                  warp slots) and `remap <osc> <n> (<t> <v> <c>)*` lines.
 //                  0.16.0 adds optional `curve <c>` / `aux <source>` suffixes
 //                  on `route` lines (older builds read the first three fields).
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
@@ -194,6 +196,26 @@ struct Preset {
             else if (key == "lfo2") ls >> voice.lfo2Rate >> voice.lfo2Shape;
             else if (key == "warp1") ls >> voice.osc1WarpMode >> voice.osc1Warp;
             else if (key == "warp2") ls >> voice.osc2WarpMode >> voice.osc2Warp;
+            else if (key == "warpx") { // 0.19.0
+                int m1 = 0, m2 = 0; double a1 = 0, a2 = 0;
+                if (ls >> m1 >> a1 >> m2 >> a2 && std::isfinite(a1) && std::isfinite(a2)) {
+                    voice.osc1Warp2Mode = std::clamp(m1, 0, 10); voice.osc1Warp2 = std::clamp(a1, 0.0, 1.0);
+                    voice.osc2Warp2Mode = std::clamp(m2, 0, 10); voice.osc2Warp2 = std::clamp(a2, 0.0, 1.0);
+                }
+            }
+            else if (key == "remap") {
+                int o = -1; size_t n = 0;
+                if (ls >> o >> n && o >= 0 && o < 2 && n >= 2 && n <= 64) {
+                    std::vector<MSEG::Point> pts;
+                    for (size_t k = 0; k < n; ++k) {
+                        MSEG::Point p;
+                        if (!(ls >> p.time >> p.value >> p.curve) || !std::isfinite(p.time) || !std::isfinite(p.value) || !std::isfinite(p.curve)) break;
+                        p.time = std::clamp(p.time, 0.0, 1.0); p.value = std::clamp(p.value, -1.0, 1.0); p.curve = std::clamp(p.curve, -1.0, 1.0);
+                        pts.push_back(p);
+                    }
+                    if (pts.size() == n) voice.remapPoints[o] = pts;
+                }
+            }
             else if (key == "mseg") {
                 int loop = 0; size_t n = 0;
                 ls >> voice.mseg1Seconds >> loop >> n;
@@ -377,7 +399,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::MSEG2 && d >= 0 && d <= (int)ModRoute::Dest::FxChorusDepth) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::MSEG2 && d >= 0 && d <= (int)ModRoute::Dest::Osc2Warp2) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
                     std::string k2;
@@ -447,6 +469,8 @@ struct Preset {
             && tables[0] == o.tables[0] && tables[1] == o.tables[1];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;
+        if (a.osc1Warp2Mode != b.osc1Warp2Mode || a.osc1Warp2 != b.osc1Warp2 || a.osc2Warp2Mode != b.osc2Warp2Mode || a.osc2Warp2 != b.osc2Warp2
+            || !pointsEq(a.remapPoints[0], b.remapPoints[0]) || !pointsEq(a.remapPoints[1], b.remapPoints[1])) return false;
         for (int i = 0; i < 4; ++i)
             if (a.lfoCustom[i] != b.lfoCustom[i] || a.lfoPhase[i] != b.lfoPhase[i] || a.lfoDelay[i] != b.lfoDelay[i] || a.lfoRise[i] != b.lfoRise[i]
                 || a.lfoFree[i] != b.lfoFree[i] || !pointsEq(a.lfoPoints[i], b.lfoPoints[i])) return false;
@@ -517,6 +541,14 @@ private:
             for (const auto& p : v.mseg2Points) o << " " << p.time << " " << p.value << " " << p.curve;
             o << "\n";
         }
+        if (v.osc1Warp2Mode != 0 || v.osc1Warp2 != 0 || v.osc2Warp2Mode != 0 || v.osc2Warp2 != 0) // 0.19.0
+            o << "warpx " << v.osc1Warp2Mode << " " << v.osc1Warp2 << " " << v.osc2Warp2Mode << " " << v.osc2Warp2 << "\n";
+        for (int k = 0; k < 2; ++k)
+            if (!pointsEq(v.remapPoints[k], VoiceParams::kDefaultRemap())) {
+                o << "remap " << k << " " << v.remapPoints[k].size();
+                for (const auto& p : v.remapPoints[k]) o << " " << p.time << " " << p.value << " " << p.curve;
+                o << "\n";
+            }
         for (int i = 0; i < 4; ++i) { // 0.18.0
             if (v.lfoCustom[i] || v.lfoPhase[i] != 0 || v.lfoDelay[i] != 0 || v.lfoRise[i] != 0 || v.lfoFree[i])
                 o << "lfox " << i << " " << (v.lfoCustom[i] ? 1 : 0) << " " << v.lfoPhase[i] << " " << v.lfoDelay[i] << " " << v.lfoRise[i]
