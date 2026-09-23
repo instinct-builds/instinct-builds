@@ -233,3 +233,24 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   panel with the planned name.
 - Logic and tests: `syncWatch`, `addWatchFolder`, `missingIDs` in
   `Studio.swift`, with tests in `WatchFolderTests.swift`.
+
+## 1.3.0: duplicates, sharing, collapsible sidebar
+
+- File > Find Duplicates… (⌥⌘D) compares file contents across imports,
+  watch folders and the bundled library. Only files with the same size get
+  a SHA-256 hash, and it runs in the background. Each set of identical files
+  shows the copies side by side with their collection and path. "Keep This"
+  keeps one copy; the kept copy picks up the others' tags, favorite, and
+  collection (if it was only sitting in Imported or Inbox). The other
+  copies leave the library, but files on disk are never touched. "Keep
+  Suggested for All" picks a favorite first, then a copy filed in a real
+  collection, then the bundled original, then the oldest. Removed copies
+  never come back through watch folders.
+- Share: the system share menu (AirDrop, Mail, Messages, Notes and so on)
+  is in the inspector, the batch inspector, the selection bar and the
+  right-click menu. It shares the same files as drag-out: the original, or
+  a PNG of the preview.
+- Sidebar sections collapse when you click their header, and stay that way
+  across launches, so WATCH FOLDERS and the rest are reachable on small
+  screens.
+- Logic and tests: `Duplicates.swift` and `DuplicateTests.swift`.

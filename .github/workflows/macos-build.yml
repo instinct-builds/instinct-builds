@@ -118,6 +118,7 @@ jobs:
           shoot seam-fix 1920x1200 seam-fix
           shoot viewer 1920x1200 viewer
           shoot watch 1920x1200 watch-folders
+          shoot duplicates 1920x1200 duplicates
           for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
       - name: Upload ASSSETS release
         uses: actions/upload-artifact@v4

@@ -7,6 +7,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import ImageIO
 import UniformTypeIdentifiers
+import CryptoKit
 import AsssetsCore
 
 @main
@@ -24,6 +25,7 @@ struct ASSSETSApp: App {
             CommandGroup(after: .newItem) {
                 Button("Import Files…") { library.importFiles() }.keyboardShortcut("i")
                 Button("Watch Folder…") { library.addWatchFolder() }.keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Find Duplicates…") { library.findDuplicates() }.keyboardShortcut("d", modifiers: [.command, .option])
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(after: .pasteboard) {
@@ -92,7 +94,7 @@ final class StudioLibrary: ObservableObject {
     private var keyMonitor: Any?
 
     func openViewer() {
-        guard smartEditor == nil else { return }
+        guard smartEditor == nil, duplicates == nil else { return }
         viewerID = focusID ?? selection.first ?? filtered.first?.id
     }
     func closeViewer() { viewerID = nil }
@@ -112,7 +114,7 @@ final class StudioLibrary: ObservableObject {
     }
 
     private func handleKey(_ e: NSEvent) -> Bool {
-        guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil else { return false }
+        guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil, duplicates == nil else { return false }
         if viewerID == nil, NSApp.keyWindow?.firstResponder is NSText { return false }
         switch e.keyCode {
         case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
@@ -358,6 +360,73 @@ final class StudioLibrary: ObservableObject {
         let ids = missing
         guard !ids.isEmpty else { return }
         pendingRemoval = ids
+    }
+
+    // MARK: Duplicates and sharing (1.3)
+
+    @Published var duplicates: DuplicateScan?
+
+    /// Sizes every real file, hashes only same-size candidates (SHA-256, streamed) off the main thread,
+    /// then shows groups of identical files.
+    func findDuplicates() {
+        let order = catalog.assets.map(\.id)
+        let paths = Dictionary(uniqueKeysWithValues: catalog.assets.compactMap { a in a.importedPath.map { (a.id, $0) } })
+        duplicates = DuplicateScan(scanning: true)
+        Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            var sizes: [UUID: Int64] = [:]
+            for (id, p) in paths { if let n = (try? fm.attributesOfItem(atPath: p))?[.size] as? NSNumber { sizes[id] = n.int64Value } }
+            let candidates = Duplicates.needsHash(sizes: sizes)
+            var hashes: [UUID: String] = [:]
+            for id in candidates { if let p = paths[id], let h = Self.sha256(path: p) { hashes[id] = "\(sizes[id] ?? 0)-\(h)" } }
+            let groups = Duplicates.groups(hashes: hashes, order: order)
+            let checked = sizes.count
+            await MainActor.run {
+                guard self.duplicates != nil else { return }
+                self.duplicates = DuplicateScan(scanning: false, groups: groups, checked: checked)
+            }
+        }
+    }
+
+    nonisolated static func sha256(path: String) -> String? {
+        guard let h = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? h.close() }
+        var hasher = SHA256()
+        while let chunk = try? h.read(upToCount: 1 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    func keep(_ keeper: UUID, in group: [UUID]) {
+        var removed = 0
+        mutate { removed = $0.mergeDuplicates(keep: keeper, remove: Set(group)) }
+        duplicates?.groups.removeAll { $0.contains(keeper) }
+        flash("Kept 1, removed \(removed) duplicate\(removed == 1 ? "" : "s"). Files on disk are untouched.")
+    }
+
+    func keepSuggestedForAll() {
+        guard let groups = duplicates?.groups else { return }
+        var removed = 0
+        mutate { c in
+            for g in groups {
+                let members = g.compactMap { id in c.assets.first { $0.id == id } }
+                if let k = Duplicates.suggestedKeeper(members) { removed += c.mergeDuplicates(keep: k, remove: Set(g)) }
+            }
+        }
+        duplicates?.groups = []
+        flash("Removed \(removed) duplicates from the library. Files on disk are untouched.")
+    }
+
+    /// System share menu (AirDrop, Mail, Messages, Notes...) with the same files a drag-out would give.
+    func share(_ ids: Set<UUID>, anchor: NSView? = nil) {
+        let urls = dragFiles(for: ids)
+        guard !urls.isEmpty else { flash("Nothing to share"); return }
+        let picker = NSSharingServicePicker(items: urls)
+        if let anchor {
+            picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        } else if let view = NSApp.keyWindow?.contentView, let window = view.window {
+            let p = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            picker.show(relativeTo: NSRect(x: p.x, y: p.y, width: 1, height: 1), of: view, preferredEdge: .minY)
+        }
     }
 
     // MARK: Smart collections
@@ -608,6 +677,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
+        if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
             show(collection: "Material Textures")
@@ -672,6 +742,18 @@ final class StudioLibrary: ObservableObject {
             scanWatchFolders()
             show(collection: StudioCatalog.inboxCollection)
             if let a = filtered.first(where: { missing.contains($0.id) }) { selection = [a.id]; focusID = a.id }
+        case "duplicates":
+            // A drop folder holding a copy of a bundled texture and the same PSD twice.
+            let fm = FileManager.default
+            let drop = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Client Drops", isDirectory: true)
+            try? fm.removeItem(at: drop)
+            try? fm.createDirectory(at: drop.appendingPathComponent("Round 2"), withIntermediateDirectories: true)
+            for (src, dst) in [("terrazzo-texture.png", "Lobby Floor Reference.png"), ("phone-screen-mockup.psd", "App Store Hero.psd"),
+                               ("phone-screen-mockup.psd", "Round 2/App Store Hero final.psd"), ("coffee-cup-mockup.psd", "Cafe Menu Cup.psd")] {
+                try? fm.copyItem(at: starterRoot.appendingPathComponent(src), to: drop.appendingPathComponent(dst))
+            }
+            watch([drop.path])
+            findDuplicates()
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -728,6 +810,9 @@ struct StudioView: View {
             Button("Cancel", role: .cancel) { model.pendingRemoval = [] }
         } message: { Text("Files on disk stay where they are.") }
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
+        .sheet(isPresented: Binding(get: { model.duplicates != nil }, set: { if !$0 { model.duplicates = nil } })) {
+            DuplicatesSheet().environmentObject(model)
+        }
         .overlay {
             if let id = model.viewerID, let asset = model.catalog.assets.first(where: { $0.id == id }) {
                 AssetViewer(asset: asset).transition(.opacity)
@@ -859,15 +944,34 @@ struct SidebarSection<Content: View>: View {
     let title: String
     var trailing: AnyView? = nil
     @ViewBuilder let content: Content
+    /// Collapsed section titles, remembered across launches.
+    @AppStorage(SidebarSections.key) private var collapsedRaw = ""
+    private var collapsed: Bool { SidebarSections.decode(collapsedRaw).contains(title) }
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(collapsed ? 0 : 90))
                 Text(title).font(.system(size: 10, weight: .bold)).tracking(1.4).foregroundStyle(.secondary)
                 Spacer()
-                if let trailing { trailing }
-            }.padding(.horizontal, 8).padding(.bottom, 4)
-            content
+                if let trailing, !collapsed { trailing }
+            }
+            .padding(.horizontal, 8).padding(.bottom, 4)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { collapsedRaw = SidebarSections.toggle(title, in: collapsedRaw) } }
+            .help(collapsed ? "Show \(title.capitalized)" : "Hide \(title.capitalized)")
+            if !collapsed { content }
         }
+    }
+}
+
+enum SidebarSections {
+    static let key = "sidebar.collapsed"
+    static func decode(_ raw: String) -> Set<String> { Set(raw.split(separator: "|").map(String.init)) }
+    static func toggle(_ title: String, in raw: String) -> String {
+        var set = decode(raw)
+        if set.contains(title) { set.remove(title) } else { set.insert(title) }
+        return set.sorted().joined(separator: "|")
     }
 }
 
@@ -1020,6 +1124,7 @@ struct SelectionBar: View {
             } label: {
                 if compact { Image(systemName: "square.and.arrow.up") } else { Label("Export", systemImage: "square.and.arrow.up") }
             }.menuStyle(.borderlessButton).fixedSize().help("Export the selection to a folder")
+            ShareButton(ids: model.selection, compact: true)
             MultiDragHandle(count: model.selection.count, compact: compact) { model.dragFiles(for: model.selection) }
                 .fixedSize()
             Spacer(minLength: 0)
@@ -1118,6 +1223,7 @@ struct AssetMenu: View {
             Button("Open") { model.open(primary) }
             Button("Reveal in Finder") { model.reveal(ids) }
         }
+        Button("Share…") { model.share(ids) }
         Button("Copy Keywords") { model.copyKeywords(ids) }
         Menu(many ? "Export \(ids.count) Assets" : "Export") {
             Button("As Shown…") { model.exportToFolder(ids, mode: .asShown) }
@@ -1327,6 +1433,119 @@ struct ExportMenuButton: View {
     }
 }
 
+/// Opens the system share menu anchored on itself.
+struct ShareButton: View {
+    @EnvironmentObject var model: StudioLibrary
+    let ids: Set<UUID>
+    var compact = false
+    @State private var anchor = AnchorBox()
+    var body: some View {
+        Button { model.share(ids, anchor: anchor.view) } label: {
+            if compact { Image(systemName: "square.and.arrow.up.on.square") } else { Label("Share", systemImage: "square.and.arrow.up.on.square") }
+        }
+        .modifier(ShareStyle(compact: compact))
+        .background(AnchorView(box: anchor))
+        .help("Share with AirDrop, Mail, Messages and more")
+    }
+}
+
+private struct ShareStyle: ViewModifier {
+    let compact: Bool
+    func body(content: Content) -> some View {
+        if compact { content.buttonStyle(.borderless) } else { content.buttonStyle(.bordered) }
+    }
+}
+
+final class AnchorBox { weak var view: NSView? }
+
+struct AnchorView: NSViewRepresentable {
+    let box: AnchorBox
+    func makeNSView(context: Context) -> NSView { let v = NSView(); box.view = v; return v }
+    func updateNSView(_ v: NSView, context: Context) { box.view = v }
+}
+
+struct DuplicateScan: Equatable {
+    var scanning: Bool
+    var groups: [[UUID]] = []
+    var checked = 0
+}
+
+struct DuplicatesSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    var body: some View {
+        let scan = model.duplicates ?? DuplicateScan(scanning: false)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Duplicates").font(.system(size: 20, weight: .bold))
+                    Text(scan.scanning ? "Comparing file contents…"
+                         : scan.groups.isEmpty ? "No identical files among \(scan.checked) files."
+                         : "\(scan.groups.count) \(scan.groups.count == 1 ? "set" : "sets") of identical files among \(scan.checked). Keep one per set; the others leave the library, files on disk stay.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if scan.scanning { ProgressView().controlSize(.small) }
+            }
+            .padding(20)
+            Divider().overlay(Theme.hairline)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(scan.groups, id: \.self) { group in DuplicateGroupRow(group: group) }
+                    if !scan.scanning && scan.groups.isEmpty {
+                        ContentUnavailableView("All clear", systemImage: "checkmark.seal", description: Text("Every file in ASSSETS is unique."))
+                            .frame(maxWidth: .infinity).padding(.top, 40)
+                    }
+                }.padding(20)
+            }
+            Divider().overlay(Theme.hairline)
+            HStack {
+                if !scan.groups.isEmpty {
+                    Button { model.keepSuggestedForAll() } label: { Label("Keep Suggested for All \(scan.groups.count)", systemImage: "checkmark.circle") }
+                        .buttonStyle(.borderedProminent)
+                }
+                Spacer()
+                Button("Done") { model.duplicates = nil }.keyboardShortcut(.cancelAction)
+            }.padding(16)
+        }
+        .frame(minWidth: 760, idealWidth: 860, minHeight: 520, idealHeight: 620)
+        .background(Theme.panel)
+    }
+}
+
+struct DuplicateGroupRow: View {
+    @EnvironmentObject var model: StudioLibrary
+    let group: [UUID]
+    var body: some View {
+        let members = group.compactMap { id in model.catalog.assets.first { $0.id == id } }
+        let suggested = Duplicates.suggestedKeeper(members)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(members) { a in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Thumbnail(asset: a, pixels: 320).frame(width: 170, height: 118).clipShape(RoundedRectangle(cornerRadius: 9))
+                            .overlay(alignment: .topLeading) {
+                                if a.id == suggested {
+                                    Label("Suggested", systemImage: "star.fill").font(.system(size: 9.5, weight: .bold))
+                                        .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.accent, in: Capsule()).padding(6)
+                                }
+                            }
+                        Text(a.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Label(a.collection, systemImage: a.isStarter ? "shippingbox" : "folder").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        Text(a.importedPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "").font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                            .lineLimit(1).truncationMode(.middle)
+                        Button { model.keep(a.id, in: group) } label: { Text("Keep This").frame(maxWidth: .infinity) }
+                            .buttonStyle(.bordered).tint(a.id == suggested ? Theme.accent : nil).controlSize(.small)
+                    }
+                    .frame(width: 170)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Theme.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(a.id == suggested ? Theme.accent : Theme.hairline, lineWidth: a.id == suggested ? 1.5 : 1))
+                }
+            }
+        }
+    }
+}
+
 /// Shown in the inspector when an imported file has moved or been deleted.
 struct MissingBanner: View {
     @EnvironmentObject var model: StudioLibrary
@@ -1430,6 +1649,7 @@ struct Inspector: View {
                         }
                         HStack(spacing: 8) {
                             ExportMenuButton(ids: [asset.id], title: "Export")
+                            ShareButton(ids: [asset.id])
                             Button { model.copyKeywords([asset.id]) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
                             if asset.importedPath != nil { Button { model.reveal([asset.id]) } label: { Image(systemName: "folder") }.buttonStyle(.bordered).help("Reveal in Finder") }
                         }
@@ -1716,6 +1936,7 @@ struct BatchInspector: View {
                 InspectorLabel(text: "OUTPUT")
                 HStack(spacing: 8) {
                     ExportMenuButton(ids: ids, title: "Export \(ids.count)")
+                    ShareButton(ids: ids)
                     Button { model.copyKeywords(ids) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
                 }
                 Button(role: .destructive) { model.pendingRemoval = ids } label: { Label("Remove from Library…", systemImage: "trash") }.buttonStyle(.borderless).padding(.top, 4)
