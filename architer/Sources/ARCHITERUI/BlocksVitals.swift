@@ -181,7 +181,8 @@ struct AttacksBlock: View {
                                 damageType: w.damageType,
                                 range: w.range,
                                 notes: w.properties,
-                                versatileExpression: w.versatileDamageExpression))
+                                versatileExpression: w.versatileDamageExpression,
+                                ammunition: w.properties.localizedCaseInsensitiveContains("ammunition") ? 20 : nil))
                         }
                     }
                 }
@@ -231,6 +232,7 @@ struct AttackRow: View {
                     .frame(width: 40)
                 Button("Attack") { model.rollAttack(attack, for: character, mode: rollMode) }
                     .controlSize(.small)
+                    .disabled(attack.ammunition == 0)
                 Button(role: .destructive) {
                     character.attacks.removeAll { $0.id == attack.id }
                 } label: { Image(systemName: "minus.circle") }
@@ -250,6 +252,18 @@ struct AttackRow: View {
                     .font(.caption).foregroundStyle(.secondary)
                 TextField("Type", text: $attack.damageType).frame(width: 100)
                 TextField("Range", text: $attack.range).frame(width: 130)
+                Toggle("Ammo", isOn: Binding(
+                    get: { attack.ammunition != nil },
+                    set: { attack.ammunition = $0 ? (attack.ammunition ?? 20) : nil }))
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                if attack.ammunition != nil {
+                    Stepper("\(attack.ammunition ?? 0)", value: Binding(
+                        get: { attack.ammunition ?? 0 },
+                        set: { attack.ammunition = max(0, $0) }), in: 0...999)
+                        .font(.caption)
+                        .frame(maxWidth: 110)
+                }
                 TextField("Notes", text: $attack.notes)
                 Button("Damage") {
                     model.rollLabeled("\(attack.name) damage", attack.damageString(scores: character.scores))

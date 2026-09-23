@@ -209,6 +209,10 @@ public final class AppModel: ObservableObject {
         } else {
             rollLabeled("\(attack.name) damage\(grip)", damageExpr)
         }
+        if attack.ammunition != nil, var sel = selected?.wrappedValue {
+            _ = sel.spendAmmunition(attackID: attack.id)
+            selected?.wrappedValue = sel
+        }
     }
 
     public func rollDeathSave() {

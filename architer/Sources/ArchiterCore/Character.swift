@@ -132,12 +132,14 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
     public var versatileExpression: String?
     /// Whether the weapon is currently wielded two-handed.
     public var twoHanded: Bool
+    /// Remaining ammunition; nil = the attack does not consume ammo.
+    public var ammunition: Int?
 
     public init(name: String, ability: Ability? = .strength, proficient: Bool = true,
                 bonusOverride: Int? = nil, damageExpression: String = "1d6",
                 damageType: String = "", range: String = "5 ft", notes: String = "",
                 mastery: WeaponMastery? = nil, versatileExpression: String? = nil,
-                twoHanded: Bool = false) {
+                twoHanded: Bool = false, ammunition: Int? = nil) {
         self.name = name
         self.ability = ability
         self.proficient = proficient
@@ -149,6 +151,7 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         self.mastery = mastery
         self.versatileExpression = versatileExpression
         self.twoHanded = twoHanded
+        self.ammunition = ammunition
     }
 
     /// Back-compatible: old sheets pinned `attackBonus` (0.1.x format).
@@ -183,6 +186,7 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         mastery = try c.decodeIfPresent(WeaponMastery.self, forKey: .mastery)
         versatileExpression = try c.decodeIfPresent(String.self, forKey: .versatileExpression)
         twoHanded = try c.decodeIfPresent(Bool.self, forKey: .twoHanded) ?? false
+        ammunition = try c.decodeIfPresent(Int.self, forKey: .ammunition)
     }
 
     /// The ability actually rolled: the set ability, or the better of
@@ -681,6 +685,18 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var levelUpRollExpression: String {
         let con = scores.modifier(.constitution)
         return "1d\(hitDiceType)" + (con >= 0 ? "+\(con)" : "\(con)")
+    }
+
+    // MARK: Ammunition
+
+    /// Spend one unit of ammunition for an attack. Returns false when the
+    /// attack is untracked or already empty. Floors at zero.
+    @discardableResult
+    public mutating func spendAmmunition(attackID: UUID) -> Bool {
+        guard let idx = attacks.firstIndex(where: { $0.id == attackID }),
+              let ammo = attacks[idx].ammunition, ammo > 0 else { return false }
+        attacks[idx].ammunition = ammo - 1
+        return true
     }
 
     // MARK: Experience

@@ -45,7 +45,7 @@ public enum SheetExporter {
             case .attacks:
                 var lines = ["## Attacks", "| Attack | Bonus | Damage | Type | Range |", "|---|---|---|---|---|"]
                 for a in c.attacks {
-                    lines.append("| \(a.name) | \(signed(a.attackBonus(scores: c.scores, level: c.level))) | \(a.damageString(scores: c.scores)) | \(a.damageType) | \(a.range) |")
+                    lines.append("| \(a.name)\(a.ammunition.map { " (ammo \($0))" } ?? "") | \(signed(a.attackBonus(scores: c.scores, level: c.level))) | \(a.damageString(scores: c.scores)) | \(a.damageType) | \(a.range) |")
                 }
                 if c.attacks.isEmpty { lines.append("| — | — | — | — | — |") }
                 if let sc = c.spellcasting {
@@ -204,7 +204,7 @@ public enum SheetExporter {
             case .attacks:
                 var rows = ""
                 for a in c.attacks {
-                    rows += "<tr><td>\(esc(a.name))</td><td>\(signed(a.attackBonus(scores: c.scores, level: c.level)))</td><td>\(esc(a.damageString(scores: c.scores)))</td><td>\(esc(a.damageType))</td><td>\(esc(a.range))</td></tr>"
+                    rows += "<tr><td>\(esc(a.name + (a.ammunition.map { " (ammo \($0))" } ?? "")))</td><td>\(signed(a.attackBonus(scores: c.scores, level: c.level)))</td><td>\(esc(a.damageString(scores: c.scores)))</td><td>\(esc(a.damageType))</td><td>\(esc(a.range))</td></tr>"
                 }
                 if rows.isEmpty { rows = "<tr><td colspan=\"5\" class=\"dim\">No attacks</td></tr>" }
                 var spellLine = ""

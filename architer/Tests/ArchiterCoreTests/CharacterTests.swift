@@ -86,6 +86,23 @@ struct CharacterTests {
         #expect(c.features[1].usesRemaining == 0)
     }
 
+    @Test func ammunitionSpendsAndFloors() {
+        var c = Character(name: "T", level: 1)
+        c.attacks = [Attack(name: "Shortbow", damageExpression: "1d6", ammunition: 2),
+                     Attack(name: "Dagger", damageExpression: "1d4")]
+        let bow = c.attacks[0].id
+        #expect(c.spendAmmunition(attackID: bow))
+        #expect(c.attacks[0].ammunition == 1)
+        #expect(c.spendAmmunition(attackID: bow))
+        #expect(c.attacks[0].ammunition == 0)
+        // Empty: no spend, no negative count.
+        #expect(!c.spendAmmunition(attackID: bow))
+        #expect(c.attacks[0].ammunition == 0)
+        // Untracked attacks never spend.
+        #expect(!c.spendAmmunition(attackID: c.attacks[1].id))
+        #expect(c.attacks[1].ammunition == nil)
+    }
+
     @Test func passiveSensesDeriveFromSkills() {
         var c = Character(name: "T", level: 5)
         c.scores = AbilityScores([.strength: 10, .dexterity: 10, .constitution: 10,

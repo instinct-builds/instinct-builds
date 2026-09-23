@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.7.0
+
+- Ammunition tracking: opt-in ammo counter per attack, spent
+  automatically on each attack roll (floor zero, attack disabled when
+  empty). Library bows and crossbows start tracked at 20. Ammo counts
+  appear in Markdown, HTML, and PDF exports. Old saves decode with
+  tracking off.
+
 ## What's in 2.6.0
 
 - Passive senses: Perception, Investigation, and Insight computed as

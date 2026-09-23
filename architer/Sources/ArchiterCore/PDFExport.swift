@@ -249,7 +249,7 @@ public enum SheetPDFExporter {
                 }
                 for a in c.attacks {
                     cursor.ensure(14)
-                    cursor.put(margin + 4, a.name, size: 9)
+                    cursor.put(margin + 4, a.name + (a.ammunition.map { " (ammo \($0))" } ?? ""), size: 9)
                     if showMastery {
                         cursor.put(margin + 4 + 150, signed(a.attackBonus(scores: c.scores, level: c.level)), size: 9)
                         cursor.put(margin + 4 + 205, a.damageString(scores: c.scores), size: 9)
