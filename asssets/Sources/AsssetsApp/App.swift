@@ -115,6 +115,13 @@ final class StudioLibrary: ObservableObject {
     @Published var renamingCollection: String?
     @Published var toast: String?
     @Published var selectedSmart: UUID?
+    /// Moodboard shown in place of the grid (1.16), its selected card, and the note being edited.
+    @Published var selectedBoard: UUID?
+    @Published var boardItem: UUID?
+    @Published var editingNote: UUID?
+    @Published var renamingBoard: UUID?
+    @Published var boardZoom = 1.0
+    @Published var fitBoardRequest = 0
     @Published var smartEditor: SmartEditorState?
     /// Per-asset PSD layer visibility flips for this session (layer indices).
     @Published var psdToggled: [UUID: Set<Int>] = [:]
@@ -401,6 +408,9 @@ final class StudioLibrary: ObservableObject {
             guard !ids.isEmpty else { return false }
             if d <= 5 { rate(ids, d) } else if let l = ColorLabel.forKey(d) { label(ids, l) }
             return true
+        }
+        if selectedBoard != nil, viewerID == nil, let item = boardItem, e.keyCode == 51 || e.keyCode == 117 {
+            removeFromBoard([item]); return true
         }
         switch e.keyCode {
         case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
@@ -816,8 +826,8 @@ final class StudioLibrary: ObservableObject {
         openCompare(pair.count == 2 ? pair : [a, b])
     }
 
-    func show(collection: String) { similarTo = nil; selectedCollection = collection; selectedSmart = nil; anchorID = nil }
-    func show(smart id: UUID) { similarTo = nil; selectedSmart = id; selectedCollection = StudioCatalog.allAssets; anchorID = nil }
+    func show(collection: String) { selectedBoard = nil; similarTo = nil; selectedCollection = collection; selectedSmart = nil; anchorID = nil }
+    func show(smart id: UUID) { selectedBoard = nil; similarTo = nil; selectedSmart = id; selectedCollection = StudioCatalog.allAssets; anchorID = nil }
 
     // MARK: Watch folders and missing files (1.2)
 
@@ -1707,6 +1717,24 @@ final class StudioLibrary: ObservableObject {
                 runPresetExport(st, to: out)
                 presetExport = keep
             }
+        case "board", "board-export":
+            let id = makeDemoBoard()
+            show(board: id)
+            if demo == "board" {
+                // An asset card is selected so the resize handle and card chrome show in the shot.
+                if let b = catalog.board(id), let first = b.items.first(where: { $0.kind == .asset }) {
+                    boardItem = first.id; if let a = first.assetID { selection = [a]; focusID = a }
+                }
+            } else {
+                let out = supportRoot.appendingPathComponent("demo-board.png")
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    let size = await self.writeBoard(id, pdf: false, to: out)
+                    let pdf = await self.writeBoard(id, pdf: true, to: self.supportRoot.appendingPathComponent("demo-board.pdf"))
+                    let items = self.catalog.board(id)?.items.count ?? 0
+                    try? "done \(Int(size?.width ?? 0))x\(Int(size?.height ?? 0)) \(items) items pdf=\(pdf != nil)".write(to: self.supportRoot.appendingPathComponent("demo-board.txt"), atomically: true, encoding: .utf8)
+                }
+            }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -1726,6 +1754,478 @@ final class StudioLibrary: ObservableObject {
     }
 }
 
+// MARK: - Moodboards (1.16)
+
+extension StudioLibrary {
+    var currentBoard: Moodboard? { selectedBoard.flatMap { catalog.board($0) } }
+
+    func show(board id: UUID) {
+        guard catalog.board(id) != nil else { return }
+        similarTo = nil; selectedSmart = nil; boardItem = nil; editingNote = nil
+        selectedBoard = id
+        fitBoardRequest += 1
+    }
+
+    /// Records one undo step for any board edit.
+    func updateBoard(_ id: UUID, _ undo: String, _ change: (inout Moodboard) -> Void) {
+        mutate(undo) { _ = $0.updateBoard(id, change) }
+    }
+
+    func newBoard(with ids: Set<UUID>) {
+        var id = UUID()
+        let ordered = filtered.map(\.id).filter(ids.contains) + ids.filter { i in !filtered.contains { $0.id == i } }
+        mutate("New Board") { c in
+            id = c.createBoard(named: "New Board")
+            _ = c.addToBoard(id, assets: ordered)
+        }
+        show(board: id)
+        renamingBoard = id
+    }
+
+    func addToBoard(_ id: UUID, ids: Set<UUID>, at point: (x: Double, y: Double)? = nil) {
+        let ordered = filtered.map(\.id).filter(ids.contains) + ids.filter { i in !filtered.contains { $0.id == i } }
+        var n = 0
+        mutate("Add to Board") { n = $0.addToBoard(id, assets: ordered, at: point) }
+        let name = catalog.board(id)?.name ?? "board"
+        flash(n == 0 ? "Already on \(name)" : "Added \(n) to \(name)")
+    }
+
+    func renameBoard(_ id: UUID, to name: String) {
+        var ok = false
+        mutate("Rename Board") { ok = $0.renameBoard(id, to: name) }
+        if !ok { flash("A board with that name already exists") }
+    }
+
+    func deleteBoard(_ id: UUID) {
+        let name = catalog.board(id)?.name ?? "board"
+        mutate("Delete Board") { _ = $0.deleteBoard(id) }
+        if selectedBoard == id { show(collection: StudioCatalog.allAssets) }
+        flash("Deleted \(name) · ⌘Z to undo")
+    }
+
+    func removeFromBoard(_ items: Set<UUID>) {
+        guard let id = selectedBoard else { return }
+        updateBoard(id, "Remove from Board") { _ = $0.remove(items) }
+        if let b = boardItem, items.contains(b) { boardItem = nil }
+    }
+
+    func dragIDs(_ text: String) -> [UUID] {
+        guard text.hasPrefix(Self.dragPrefix) else { return [] }
+        return text.dropFirst(Self.dragPrefix.count).split(separator: ",").compactMap { UUID(uuidString: String($0)) }
+    }
+
+    func dropSelection(_ providers: [NSItemProvider], onBoard id: UUID, at point: CGPoint?) -> Bool {
+        guard let p = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.asssetsSelection.identifier) }) else { return false }
+        _ = p.loadDataRepresentation(forTypeIdentifier: UTType.asssetsSelection.identifier) { data, _ in
+            guard let data, let text = String(data: data, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                let ids = self.dragIDs(text)
+                guard !ids.isEmpty else { return }
+                self.addToBoard(id, ids: Set(ids), at: point.map { (x: Double($0.x), y: Double($0.y)) })
+            }
+        }
+        return true
+    }
+
+    /// Palette card from an asset on the board, placed beside it.
+    func addPaletteCard(for item: BoardItem) {
+        guard let id = selectedBoard, let aid = item.assetID, let a = catalog.assets.first(where: { $0.id == aid }) else { return }
+        var made: UUID?
+        updateBoard(id, "Add Palette Card") { made = $0.addPalette(a.palette, from: aid, at: (x: item.x + item.w + 20, y: item.y)) }
+        if let made { boardItem = made } else { flash("No palette for this asset yet") }
+    }
+
+    func addNote() {
+        guard let id = selectedBoard else { return }
+        var made = UUID()
+        updateBoard(id, "Add Note") { made = $0.addNote("New note") }
+        boardItem = made; editingNote = made
+    }
+
+    func searchFromBoard(_ hex: String) {
+        show(collection: StudioCatalog.allAssets)
+        searchColor(hex)
+    }
+
+    // MARK: Export
+
+    /// Draws the board at 2x with real thumbnails (the live canvas loads them lazily, so they are fetched first).
+    func renderBoard(_ id: UUID) async -> (ImageRenderer<BoardExportView>, BoardRect)? {
+        guard let board = catalog.board(id) else { return nil }
+        var images: [UUID: CGImage] = [:]
+        for it in board.items where it.kind == .asset {
+            guard let aid = it.assetID, let a = catalog.assets.first(where: { $0.id == aid }) else { continue }
+            let px = Int(max(it.w, it.h) * 2)
+            let thumb = await MediaRenderer.thumbnail(for: a, maxPixel: px)
+            images[aid] = thumb ?? MediaRenderer.generated(a, width: px)
+        }
+        let assets = Dictionary(uniqueKeysWithValues: catalog.assets.filter { a in board.items.contains { $0.assetID == a.id } }.map { ($0.id, $0) })
+        let rect = board.exportRect
+        let r = ImageRenderer(content: BoardExportView(board: board, assets: assets, images: images, rect: rect))
+        r.scale = 2
+        return (r, rect)
+    }
+
+    func writeBoard(_ id: UUID, pdf: Bool, to url: URL) async -> CGSize? {
+        guard let rendered = await renderBoard(id) else { return nil }
+        let (r, rect) = rendered
+        if pdf {
+            var ok = false
+            r.render { size, draw in
+                var box = CGRect(origin: .zero, size: size)
+                guard let ctx = CGContext(url as CFURL, mediaBox: &box, nil) else { return }
+                ctx.beginPDFPage(nil); draw(ctx); ctx.endPDFPage(); ctx.closePDF(); ok = true
+            }
+            return ok ? CGSize(width: rect.w, height: rect.h) : nil
+        }
+        guard let cg = r.cgImage, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]),
+              (try? data.write(to: url, options: .atomic)) != nil else { return nil }
+        return CGSize(width: cg.width, height: cg.height)
+    }
+
+    func exportBoard(_ id: UUID, pdf: Bool) {
+        guard let board = catalog.board(id) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [pdf ? UTType.pdf : UTType.png]
+        panel.nameFieldStringValue = board.name + (pdf ? ".pdf" : ".png")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { @MainActor in
+            if await writeBoard(id, pdf: pdf, to: url) != nil { flash("Exported \(url.lastPathComponent)") } else { flash("Couldn't export \(board.name)") }
+        }
+    }
+
+    /// Demo board: mockups, textures and a loop with notes and a palette card, laid out by hand.
+    func makeDemoBoard() -> UUID {
+        let all = catalog.assets
+        func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
+        var id = UUID()
+        mutate { c in
+            id = c.createBoard(named: "Lobby Refresh")
+            _ = c.updateBoard(id) { b in
+                let place: [(String, Double, Double, Double)] = [
+                    ("cosmetic-plinth-mockup.png", 40, 40, 440), ("device-stage-mockup.png", 500, 40, 300),
+                    ("album-gatefold-mockup.png", 500, 260, 300), ("sandstone-4k.png", 820, 40, 200),
+                    ("prismatic-foil-4k.png", 820, 260, 200), ("paper-grain-4k.png", 40, 360, 200), ("motion-loop-01.mp4", 260, 360, 220)]
+                for (f, x, y, w) in place { if let a = find(f) { b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y)) } }
+                b.addNote("Warm stone, brass and soft foil. Keep the lobby calm - no neon.", at: (x: 1040, y: 40))
+                if let a = find("sandstone-4k.png") { b.addPalette(a.palette, from: a.id, at: (x: 1040, y: 260)) }
+                b.addNote("Signage: gatefold type, cream on stone", at: (x: 500, y: 480))
+            }
+        }
+        return id
+    }
+}
+
+// MARK: - Board canvas
+
+struct BoardCanvas: View {
+    @EnvironmentObject var model: StudioLibrary
+    let board: Moodboard
+    @State private var drag: (id: UUID, dx: Double, dy: Double)?
+    @State private var sizing: (id: UUID, dw: Double, dh: Double)?
+    @State private var viewport: CGSize = .zero
+    @State private var dropTargeted = false
+
+    private var z: Double { model.boardZoom }
+    private var canvas: CGSize {
+        let b = board.bounds
+        return CGSize(width: max(1600.0, (b?.maxX ?? 0) + 400), height: max(1100.0, (b?.maxY ?? 0) + 400))
+    }
+    private var zf: CGFloat { CGFloat(model.boardZoom) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider().overlay(Theme.hairline)
+            GeometryReader { geo in
+                ScrollView([.horizontal, .vertical]) {
+                    ZStack(alignment: .topLeading) {
+                        BoardGrid(step: board.grid).frame(width: canvas.width, height: canvas.height)
+                            .contentShape(Rectangle())
+                            .onTapGesture { model.boardItem = nil; model.editingNote = nil }
+                        ForEach(board.layered) { item in card(item) }
+                        if board.items.isEmpty { emptyHint }
+                    }
+                    .frame(width: canvas.width, height: canvas.height, alignment: .topLeading)
+                    .scaleEffect(zf, anchor: .topLeading)
+                    .frame(width: canvas.width * zf, height: canvas.height * zf, alignment: .topLeading)
+                    .onDrop(of: [UTType.asssetsSelection], isTargeted: $dropTargeted) { providers, loc in
+                        model.dropSelection(providers, onBoard: board.id, at: CGPoint(x: loc.x / zf, y: loc.y / zf))
+                    }
+                }
+                .background(Theme.ink)
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(dropTargeted ? Theme.accent : .clear, lineWidth: 2))
+                .onAppear { viewport = geo.size; fit() }
+                .onChange(of: geo.size) { _, s in viewport = s }
+                .onChange(of: model.fitBoardRequest) { _, _ in fit() }
+            }
+        }
+        .background(Theme.backdrop)
+    }
+
+    private func fit() {
+        guard let b = board.bounds, viewport.width > 50 else { model.boardZoom = 1; return }
+        let zx = (Double(viewport.width) - 24) / (b.maxX + Moodboard.margin), zy = (Double(viewport.height) - 24) / (b.maxY + Moodboard.margin)
+        model.boardZoom = max(0.25, min(1, min(zx, zy)))
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "rectangle.3.group").foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(board.name).font(.system(size: 15, weight: .bold)).lineLimit(1)
+                Text("\(board.items.count) item\(board.items.count == 1 ? "" : "s") · drag assets onto the board in the sidebar").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }.layoutPriority(1)
+            Spacer(minLength: 8)
+            Button { model.addNote() } label: { Image(systemName: "note.text.badge.plus") }.help("Add a note")
+            Button { model.updateBoard(board.id, "Tidy Board") { $0.tidy() }; model.fitBoardRequest += 1 } label: { Image(systemName: "rectangle.grid.2x2") }.help("Tidy into rows")
+            Toggle(isOn: Binding(get: { board.snap }, set: { v in model.updateBoard(board.id, v ? "Snap On" : "Snap Off") { $0.snap = v } })) { Image(systemName: "grid") }
+                .toggleStyle(.button).help("Snap to grid")
+            HStack(spacing: 4) {
+                Button { model.boardZoom = max(0.25, z / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
+                Button { fit() } label: { Text("\(Int((z * 100).rounded()))%").font(.caption.monospacedDigit()).frame(minWidth: 34) }.help("Fit the board")
+                Button { model.boardZoom = min(2, z * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
+            }
+            Menu {
+                Button("PNG…") { model.exportBoard(board.id, pdf: false) }
+                Button("PDF…") { model.exportBoard(board.id, pdf: true) }
+            } label: { Label("Export", systemImage: "square.and.arrow.up") }.fixedSize().help("Export the board")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Theme.panel)
+    }
+
+    private var emptyHint: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "rectangle.3.group").font(.system(size: 34)).foregroundStyle(.tertiary)
+            Text("Drop assets here").font(.headline)
+            Text("Drag from the grid onto this board in the sidebar, or use Add to Board in any asset's menu.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }.frame(width: 360).offset(x: 80, y: 80)
+    }
+
+    private func itemRect(_ item: BoardItem) -> BoardRect {
+        var r = item.rect
+        if let d = drag, d.id == item.id { r.x = max(0, r.x + d.dx); r.y = max(0, r.y + d.dy) }
+        if let s = sizing, s.id == item.id {
+            r.w = max(Moodboard.minSize, r.w + s.dw)
+            r.h = item.kind == .asset ? r.w * item.h / max(1, item.w) : max(Moodboard.minSize, r.h + s.dh)
+        }
+        return r
+    }
+
+    @ViewBuilder private func card(_ item: BoardItem) -> some View {
+        let r = itemRect(item)
+        let selected = model.boardItem == item.id
+        BoardItemView(item: item, asset: item.assetID.flatMap { id in model.catalog.assets.first { $0.id == id } }, selected: selected, editing: model.editingNote == item.id)
+            .frame(width: r.w, height: r.h)
+            .overlay(alignment: .bottomTrailing) {
+                if selected {
+                    RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 12, height: 12)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(.white, lineWidth: 1.5))
+                        .offset(x: 5, y: 5)
+                        .gesture(DragGesture(minimumDistance: 1)
+                            .onChanged { v in sizing = (item.id, Double(v.translation.width) / z, Double(v.translation.height) / z) }
+                            .onEnded { v in
+                                let w = item.w + Double(v.translation.width) / z, h = item.h + Double(v.translation.height) / z
+                                sizing = nil
+                                model.updateBoard(board.id, "Resize") { $0.resize(item.id, w: w, h: h) }
+                            })
+                        .help("Drag to resize")
+                }
+            }
+            .offset(x: r.x, y: r.y)
+            .gesture(DragGesture(minimumDistance: 3)
+                .onChanged { v in
+                    if model.boardItem != item.id { select(item) }
+                    drag = (item.id, Double(v.translation.width) / z, Double(v.translation.height) / z)
+                }
+                .onEnded { v in
+                    drag = nil
+                    let x = item.x + Double(v.translation.width) / z, y = item.y + Double(v.translation.height) / z
+                    model.updateBoard(board.id, "Move") { $0.move(item.id, x: x, y: y); $0.bringToFront(item.id) }
+                })
+            .onTapGesture(count: 2) {
+                if item.kind == .note { select(item); model.editingNote = item.id }
+                else if item.kind == .asset, let a = item.assetID { select(item); model.viewerID = a }
+            }
+            .onTapGesture { select(item) }
+            .contextMenu { menu(item) }
+    }
+
+    private func select(_ item: BoardItem) {
+        model.boardItem = item.id
+        if model.editingNote != item.id { model.editingNote = nil }
+        if let a = item.assetID, item.kind == .asset { model.selection = [a]; model.focusID = a }
+    }
+
+    @ViewBuilder private func menu(_ item: BoardItem) -> some View {
+        Button("Bring to Front") { model.updateBoard(board.id, "Bring to Front") { $0.bringToFront(item.id) } }
+        Button("Send to Back") { model.updateBoard(board.id, "Send to Back") { $0.sendToBack(item.id) } }
+        Divider()
+        switch item.kind {
+        case .asset:
+            Button("Add Palette Card") { model.addPaletteCard(for: item) }
+            if let a = item.assetID, let asset = model.catalog.assets.first(where: { $0.id == a }), let hex = asset.palette.first {
+                Button("Search Library by Its Color") { model.searchFromBoard(hex) }
+            }
+            if let a = item.assetID { Button("Quick Look") { model.viewerID = a } }
+        case .note:
+            Button("Edit Note") { select(item); model.editingNote = item.id }
+        case .palette:
+            Menu("Search Library by Color") {
+                ForEach(item.colors, id: \.self) { h in Button(h) { model.searchFromBoard(h) } }
+            }
+            Button("Copy Hex Codes") {
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(item.colors.joined(separator: " "), forType: .string)
+            }
+        }
+        Divider()
+        Button("Remove from Board", role: .destructive) { model.removeFromBoard([item.id]) }
+    }
+}
+
+struct BoardGrid: View {
+    let step: Double
+    var body: some View {
+        Canvas { ctx, size in
+            let s = max(10.0, step)
+            let W = Double(size.width), H = Double(size.height)
+            var y = 0.0
+            while y <= H {
+                var x = 0.0
+                while x <= W {
+                    let major = Int((x / s).rounded()) % 5 == 0 && Int((y / s).rounded()) % 5 == 0
+                    let d = major ? 2.2 : 1.2
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - d / 2, y: y - d / 2, width: d, height: d)), with: .color(.white.opacity(major ? 0.13 : 0.06)))
+                    x += s
+                }
+                y += s
+            }
+        }
+    }
+}
+
+struct BoardItemView: View {
+    @EnvironmentObject var model: StudioLibrary
+    let item: BoardItem
+    let asset: StudioAsset?
+    let selected: Bool
+    let editing: Bool
+    @State private var draft = ""
+    @State private var hovering = false
+
+    var body: some View {
+        content
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Theme.accent : Color.white.opacity(hovering ? 0.18 : 0.08), lineWidth: selected ? 2 : 1))
+            .shadow(color: .black.opacity(0.45), radius: selected ? 14 : 8, y: 4)
+            .onHover { hovering = $0 }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch item.kind {
+        case .asset:
+            ZStack(alignment: .bottomLeading) {
+                if let asset {
+                    Thumbnail(asset: asset, pixels: Int(min(1200, max(item.w, item.h) * 2)))
+                } else { Theme.panel }
+                if let asset, hovering || selected {
+                    Text(asset.title).font(.caption.weight(.semibold)).lineLimit(1).padding(.horizontal, 8).padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        case .note:
+            BoardNote(text: item.text, editing: editing, draft: $draft) { text in
+                guard let b = model.selectedBoard else { return }
+                if text != item.text { model.updateBoard(b, "Edit Note") { $0.setText(item.id, text) } }
+                model.editingNote = nil
+            }
+            .onAppear { draft = item.text }
+            .onChange(of: editing) { _, e in if e { draft = item.text } }
+        case .palette:
+            BoardPalette(colors: item.colors)
+        }
+    }
+}
+
+struct BoardNote: View {
+    let text: String
+    let editing: Bool
+    @Binding var draft: String
+    let commit: (String) -> Void
+    @FocusState private var focused: Bool
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.99, green: 0.93, blue: 0.72))
+            if editing {
+                TextEditor(text: $draft).font(.system(size: 14, weight: .medium)).scrollContentBackground(.hidden)
+                    .foregroundStyle(Color(red: 0.2, green: 0.16, blue: 0.08)).padding(10).focused($focused)
+                    .onAppear { focused = true }
+                    .onChange(of: focused) { _, f in if !f { commit(draft) } }
+                    .onExitCommand { commit(draft) }
+                Button("Done") { commit(draft) }.buttonStyle(.borderedProminent).controlSize(.small)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(8)
+            } else {
+                Text(text.isEmpty ? "Double-click to write" : text).font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color(red: 0.2, green: 0.16, blue: 0.08).opacity(text.isEmpty ? 0.5 : 1)).padding(14)
+            }
+        }
+    }
+}
+
+struct BoardPalette: View {
+    let colors: [String]
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) { ForEach(colors, id: \.self) { h in Color(hex: h) } }
+            HStack(spacing: 0) {
+                ForEach(colors, id: \.self) { h in
+                    Text(h).font(.system(size: 9, weight: .semibold, design: .monospaced)).foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.6).frame(maxWidth: .infinity)
+                }
+            }.frame(height: 24).background(Theme.panel)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Static board for PNG/PDF export: dark backdrop, cards back to front, no grid or selection.
+struct BoardExportView: View {
+    let board: Moodboard
+    let assets: [UUID: StudioAsset]
+    let images: [UUID: CGImage]
+    let rect: BoardRect
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color(red: 0.045, green: 0.05, blue: 0.08)
+            ForEach(board.layered) { item in
+                piece(item).frame(width: item.w, height: item.h)
+                    .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
+                    .offset(x: item.x - rect.x, y: item.y - rect.y)
+            }
+        }
+        .frame(width: rect.w, height: rect.h, alignment: .topLeading)
+        .environment(\.colorScheme, .dark)
+    }
+    @ViewBuilder private func piece(_ item: BoardItem) -> some View {
+        switch item.kind {
+        case .asset:
+            Group {
+                if let id = item.assetID, let cg = images[id] { Image(decorative: cg, scale: 1).resizable().scaledToFill() }
+                else { Color.gray.opacity(0.2) }
+            }
+            .frame(width: item.w, height: item.h).clipShape(RoundedRectangle(cornerRadius: 10))
+        case .note:
+            BoardNote(text: item.text, editing: false, draft: .constant(item.text)) { _ in }
+        case .palette:
+            BoardPalette(colors: item.colors)
+        }
+    }
+}
+
 // MARK: - Layout
 
 struct StudioView: View {
@@ -1734,7 +2234,9 @@ struct StudioView: View {
         NavigationSplitView {
             Sidebar().navigationSplitViewColumnWidth(min: 246, ideal: 258, max: 320)
         } content: {
-            AssetBrowser().navigationSplitViewColumnWidth(min: 400, ideal: 600)
+            Group {
+                if let id = model.selectedBoard, let board = model.catalog.board(id) { BoardCanvas(board: board) } else { AssetBrowser() }
+            }.navigationSplitViewColumnWidth(min: 400, ideal: 600)
         } detail: {
             Group {
                 if model.selection.count > 1 { BatchInspector(assets: model.selectedAssets) }
@@ -1798,6 +2300,7 @@ struct Sidebar: View {
     @EnvironmentObject var model: StudioLibrary
     @State private var renameText = ""
     @State private var renameKeywordText = ""
+    @State private var renameBoardText = ""
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -1813,10 +2316,10 @@ struct Sidebar: View {
                 }.padding(.horizontal, 6).padding(.top, 4)
 
                 SidebarSection(title: "LIBRARY") {
-                    SidebarRow(title: StudioCatalog.allAssets, symbol: "square.grid.2x2", count: model.catalog.count(in: StudioCatalog.allAssets), selected: model.selectedSmart == nil && model.selectedCollection == StudioCatalog.allAssets) { model.show(collection: StudioCatalog.allAssets) }
-                    SidebarRow(title: StudioCatalog.favorites, symbol: "heart.fill", count: model.catalog.count(in: StudioCatalog.favorites), selected: model.selectedSmart == nil && model.selectedCollection == StudioCatalog.favorites, dropTarget: StudioCatalog.favorites) { model.show(collection: StudioCatalog.favorites) }
+                    SidebarRow(title: StudioCatalog.allAssets, symbol: "square.grid.2x2", count: model.catalog.count(in: StudioCatalog.allAssets), selected: model.selectedBoard == nil && model.selectedSmart == nil && model.selectedCollection == StudioCatalog.allAssets) { model.show(collection: StudioCatalog.allAssets) }
+                    SidebarRow(title: StudioCatalog.favorites, symbol: "heart.fill", count: model.catalog.count(in: StudioCatalog.favorites), selected: model.selectedBoard == nil && model.selectedSmart == nil && model.selectedCollection == StudioCatalog.favorites, dropTarget: StudioCatalog.favorites) { model.show(collection: StudioCatalog.favorites) }
                     if !model.missing.isEmpty {
-                        SidebarRow(title: StudioLibrary.missingCollection, symbol: "exclamationmark.triangle", count: model.missing.count, selected: model.selectedSmart == nil && model.selectedCollection == StudioLibrary.missingCollection, accent: .warning) { model.show(collection: StudioLibrary.missingCollection) }
+                        SidebarRow(title: StudioLibrary.missingCollection, symbol: "exclamationmark.triangle", count: model.missing.count, selected: model.selectedBoard == nil && model.selectedSmart == nil && model.selectedCollection == StudioLibrary.missingCollection, accent: .warning) { model.show(collection: StudioLibrary.missingCollection) }
                             .contextMenu { Button("Remove All Missing from Library…", role: .destructive) { model.removeMissing() } }
                     }
                 }
@@ -1825,12 +2328,30 @@ struct Sidebar: View {
                     Button { model.newCollection(with: []) } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("New collection")
                 )) {
                     ForEach(model.catalog.collections.filter { $0 != StudioCatalog.allAssets && $0 != StudioCatalog.favorites }, id: \.self) { name in
-                        SidebarRow(title: name, symbol: symbol(for: name), count: model.catalog.count(in: name), selected: model.selectedSmart == nil && model.selectedCollection == name, dropTarget: name) { model.show(collection: name) }
+                        SidebarRow(title: name, symbol: symbol(for: name), count: model.catalog.count(in: name), selected: model.selectedBoard == nil && model.selectedSmart == nil && model.selectedCollection == name, dropTarget: name) { model.show(collection: name) }
                             .contextMenu {
                                 Button("Rename…") { renameText = name; model.renamingCollection = name }
                                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name) }
                                 Button("Show") { model.show(collection: name) }
                             }
+                    }
+                }
+
+                SidebarSection(title: "BOARDS", trailing: AnyView(
+                    Button { model.newBoard(with: []) } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("New moodboard")
+                )) {
+                    ForEach(model.catalog.boards) { board in
+                        SidebarRow(title: board.name, symbol: "rectangle.3.group", count: board.items.count, selected: model.selectedBoard == board.id, boardDrop: board.id) { model.show(board: board.id) }
+                            .contextMenu {
+                                Button("Rename…") { renameBoardText = board.name; model.renamingBoard = board.id }
+                                Button("Export PNG…") { model.exportBoard(board.id, pdf: false) }
+                                Button("Export PDF…") { model.exportBoard(board.id, pdf: true) }
+                                Divider()
+                                Button("Delete Board", role: .destructive) { model.deleteBoard(board.id) }
+                            }
+                    }
+                    if model.catalog.boards.isEmpty {
+                        Text("Lay out assets, notes and palettes on a free canvas.").font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 9)
                     }
                 }
 
@@ -1898,6 +2419,11 @@ struct Sidebar: View {
             Button("Cancel", role: .cancel) { model.renamingKeyword = nil }
         } message: { Text("Every asset tagged \"\(model.renamingKeyword ?? "")\" is updated. Using an existing keyword merges the two. ⌘Z undoes it.") }
         .onChange(of: model.renamingKeyword) { _, k in if let k { renameKeywordText = k } }
+        .alert("Rename Board", isPresented: Binding(get: { model.renamingBoard != nil }, set: { if !$0 { model.renamingBoard = nil } })) {
+            TextField("Board name", text: $renameBoardText)
+            Button("Rename") { if let id = model.renamingBoard { model.renameBoard(id, to: renameBoardText) }; model.renamingBoard = nil }
+            Button("Cancel", role: .cancel) { model.renamingBoard = nil }
+        }
     }
 
     private func symbol(for name: String) -> String {
@@ -2000,6 +2526,7 @@ struct SidebarRow: View {
     let count: Int?
     let selected: Bool
     var dropTarget: String? = nil
+    var boardDrop: UUID? = nil
     var accent: RowAccent = .standard
     let action: () -> Void
     @State private var targeted = false
@@ -2023,7 +2550,9 @@ struct SidebarRow: View {
         .onTapGesture(perform: action)
         .onHover { hovering = $0 }
         .help(title)
-        if let dropTarget {
+        if let boardDrop {
+            row.onDrop(of: [UTType.asssetsSelection], isTargeted: $targeted) { providers in model.dropSelection(providers, onBoard: boardDrop, at: nil) }
+        } else if let dropTarget {
             row.onDrop(of: [UTType.asssetsSelection], isTargeted: $targeted) { providers in model.dropSelection(providers, on: dropTarget) }
         } else { row }
     }
@@ -2526,6 +3055,11 @@ struct AssetMenu: View {
             Button("New Collection…") { model.newCollection(with: ids) }
         }
         Button("New Collection from \(many ? "Selection" : "Asset")") { model.newCollection(with: ids) }
+        Menu("Add to Board") {
+            ForEach(model.catalog.boards) { b in Button(b.name) { model.addToBoard(b.id, ids: ids) } }
+            if !model.catalog.boards.isEmpty { Divider() }
+            Button("New Board from \(many ? "Selection" : "Asset")") { model.newBoard(with: ids) }
+        }
         Divider()
         if primary.importedPath != nil {
             Button("Open") { model.open(primary) }
@@ -3506,7 +4040,7 @@ struct ColorSearchPopover: View {
                 HStack(spacing: 8) { ForEach(model.catalog.recentColors, id: \.self) { h in swatch(h, size: 22) } }
             }
             HStack(spacing: 8) {
-                Button { model.sampleScreenColor() } label: { Label("Eyedropper", systemImage: "eyedropper") }.help("Pick a color anywhere on screen")
+                Button { model.sampleScreenColor() } label: { Label("Pick", systemImage: "eyedropper").fixedSize() }.help("Pick a color anywhere on screen")
                 ColorPicker("", selection: Binding(
                     get: { Color(hex: q?.hex ?? "#808080") },
                     set: { model.searchColor(StudioLibrary.hex(NSColor($0)), remember: false) }), supportsOpacity: false)
@@ -3530,7 +4064,7 @@ struct ColorSearchPopover: View {
             }
         }
         .padding(16)
-        .frame(width: 262)
+        .frame(width: 272)
         .onAppear { hexText = q?.hex ?? "" }
         .onChange(of: model.colorQuery?.hex) { _, h in hexText = h ?? "" }
     }

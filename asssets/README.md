@@ -538,3 +538,30 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Logic and tests: `ColorSearch.swift` and `ColorSearchTests.swift`
   (Lab conversion, the published CIEDE2000 reference pairs, ranking,
   the smart rule and old-catalog decoding, recent colors).
+
+## 1.16.0: moodboards
+
+- BOARDS in the sidebar holds free-form moodboards. Press + or use
+  Add to Board > New Board from Selection in any asset's menu. Drag
+  assets from the grid onto a board in the sidebar to add them.
+- Selecting a board swaps the grid for a canvas on a dot grid. Drag cards
+  to move them, drag the corner handle to resize (images keep their
+  shape; notes and palette cards resize freely). Snap to grid is on by
+  default and can be turned off per board.
+- Notes: double-click to write, Done or click away to save. Palette cards:
+  right-click an image > Add Palette Card, then right-click a swatch card
+  to search the library by any of its colors or copy the hex codes.
+- Right-click any card to bring it to front, send it to back or remove it.
+  Delete removes the selected card. Tidy lays the board out in rows. Zoom
+  buttons and a click on the percentage fit the whole board.
+- Export the board as a 2x PNG or a PDF from the header or
+  the sidebar menu. Real thumbnails are rendered before export, so video
+  and vector cards come out as images, not placeholders.
+- Every board edit is one undo step. Removing an asset from the library
+  takes it off every board; palette cards made from it stay.
+- The Search by Color popover's eyedropper button now reads "Pick" and
+  no longer clips.
+- Logic and tests: `Moodboard.swift` and `MoodboardTests.swift` (flow
+  layout and wrapping, snapping, drop points, aspect-locked resize,
+  z-order, palette cards, tidy and export bounds, catalog round-trip, and
+  catalogs from before 1.16).

@@ -173,6 +173,12 @@ jobs:
           n=$(head -1 "$C" | sed -E 's/.* ([0-9]+) matches/\1/'); test "$n" -ge 8 || { echo "color search found only $n"; exit 1; }
           awk -F'\t' 'NR>1 && $3+0 > 12.0 { bad=1 } END { exit bad }' "$C" || { echo "a ranked result is outside the tolerance"; exit 1; }
           shoot color-smart 1920x1200 color-smart
+          shoot board 1920x1200 board
+          shoot board-export 1920x1200 board-export demo-board.txt
+          cat "$SUP/demo-board.txt"; grep -q '^done' "$SUP/demo-board.txt" || { echo "board export did not finish"; exit 1; }
+          B="ASSSETS-$ASSSETS_VERSION-board-render.png"; cp "$SUP/demo-board.png" "$B"; cp "$SUP/demo-board.pdf" "ASSSETS-$ASSSETS_VERSION-board-render.pdf"
+          bw=$(sips -g pixelWidth "$B" | awk '/pixelWidth/ {print $2}'); bh=$(sips -g pixelHeight "$B" | awk '/pixelHeight/ {print $2}')
+          echo "board PNG ${bw}x${bh}"; test "$bw" -ge 1600 -a "$bh" -ge 800 || { echo "board PNG too small"; exit 1; }
           shoot color-smart-editor 1920x1200 color-smart-editor
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
@@ -207,6 +213,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-color-search.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf
 
   au:
     runs-on: macos-latest

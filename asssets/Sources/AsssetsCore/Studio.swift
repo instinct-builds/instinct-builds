@@ -138,8 +138,10 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var viewSorts: [String: AssetSort] = [:]
     /// Colors searched lately, newest first (1.15).
     public var recentColors: [String] = []
+    /// Moodboards (1.16).
+    public var boards: [Moodboard] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts, recentColors }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts, recentColors, boards }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -152,6 +154,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         watchFolders = try c.decodeIfPresent([String].self, forKey: .watchFolders) ?? []
         viewSorts = ((try? c.decodeIfPresent([String: String].self, forKey: .viewSorts)) ?? [:]).compactMapValues(AssetSort.init(rawValue:))
         recentColors = ((try? c.decodeIfPresent([String].self, forKey: .recentColors)) ?? []).compactMap(ColorSearch.normalize)
+        boards = (try? c.decodeIfPresent([Moodboard].self, forKey: .boards)) ?? []
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {
@@ -330,6 +333,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
             if a.sourceKey == nil, let p = a.importedPath, isWatched(p), !dismissedKeys.contains("file:" + p) { dismissedKeys.append("file:" + p) }
         }
         assets.removeAll { ids.contains($0.id) }
+        for i in boards.indices { boards[i].forgetAssets(ids) }
         return before - assets.count
     }
 
