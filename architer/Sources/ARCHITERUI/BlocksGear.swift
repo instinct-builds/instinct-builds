@@ -20,10 +20,18 @@ struct InventoryBlock: View {
                     .help("Convert loose change into the fewest coins (same total value)")
             }
             .font(.caption)
-            // Weight
+            // Weight + attunement
             HStack {
                 Text("Carried \(fmtWeight(character.totalWeight)) / \(character.carryingCapacity) lb")
                     .monospacedDigit()
+                Text("Attuned \(character.attunedCount)/\(Character.attunementLimit)")
+                    .monospacedDigit()
+                    .foregroundStyle(character.overAttuned ? Theme.danger : Theme.inkMuted)
+                if character.overAttuned {
+                    Text("OVER LIMIT")
+                        .font(.caption).bold()
+                        .foregroundStyle(Theme.danger)
+                }
                 if character.encumbrance != .normal {
                     Text(character.encumbrance == .overCapacity ? "OVER CAPACITY" :
                             (character.encumbrance == .heavilyEncumbered ? "Heavily encumbered" : "Encumbered"))

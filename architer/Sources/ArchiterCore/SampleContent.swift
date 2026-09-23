@@ -86,7 +86,7 @@ public enum SampleContent {
                           detail: "Interrupt a casting; check for 4th+."),
                 ]),
             inventory: [
-                InventoryItem(name: "Quarterstaff", quantity: 1, weight: 4, equipped: true, category: "Weapon"),
+                InventoryItem(name: "Quarterstaff", quantity: 1, weight: 4, equipped: true, attuned: true, category: "Weapon"),
                 InventoryItem(name: "Dagger", quantity: 2, weight: 1, category: "Weapon"),
                 InventoryItem(name: "Spellbook", quantity: 1, weight: 3, category: "Focus"),
                 InventoryItem(name: "Component pouch", quantity: 1, weight: 2, equipped: true, category: "Focus"),

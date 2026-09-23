@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.3.0
+
+- Attunement tracker: the inventory header shows attuned items against
+  the genre-standard cap of 3 ("Attuned 2/3") and flags the sheet when a
+  character is over the limit.
+
 ## What's in 2.2.0
 
 - Per-character roll history: every roll is tagged with the selected

@@ -294,6 +294,12 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var spellcasting: Spellcasting?
     // Gear & story
     public var inventory: [InventoryItem]
+    /// Genre-standard cap on simultaneously attuned magic items.
+    public static let attunementLimit = 3
+    /// Items currently attuned.
+    public var attunedCount: Int { inventory.filter(\.attuned).count }
+    /// True when attuned beyond the cap (allowed, but flagged in the UI).
+    public var overAttuned: Bool { attunedCount > Character.attunementLimit }
     public var currency: Currency
     public var proficienciesText: String
     public var features: [Feature]

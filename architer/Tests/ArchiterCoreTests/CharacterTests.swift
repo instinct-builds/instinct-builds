@@ -556,6 +556,31 @@ struct EquipmentTests {
     }
 }
 
+@Suite("Attunement tracking")
+struct AttunementTests {
+
+    @Test func countsAttunedItems() {
+        var c = Character(name: "Test")
+        #expect(c.attunedCount == 0)
+        #expect(!c.overAttuned)
+        c.inventory = [
+            InventoryItem(name: "Ring", attuned: true),
+            InventoryItem(name: "Cloak", attuned: true),
+            InventoryItem(name: "Rations"),
+        ]
+        #expect(c.attunedCount == 2)
+        #expect(!c.overAttuned)
+    }
+
+    @Test func overLimitFlagsAtFour() {
+        var c = Character(name: "Test")
+        c.inventory = (1...4).map { InventoryItem(name: "Item \($0)", attuned: true) }
+        #expect(c.attunedCount == 4)
+        #expect(c.overAttuned)
+        #expect(Character.attunementLimit == 3)
+    }
+}
+
 @Suite("Versatile weapons")
 struct VersatileTests {
 
