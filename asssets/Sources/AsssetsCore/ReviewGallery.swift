@@ -161,6 +161,7 @@ extension StudioCatalog {
     public struct FeedbackResult: Equatable, Sendable {
         public var favorites = 0, notes = 0, unknown = 0
         public var smartCollection: UUID?
+        public init() {}
     }
 
     /// Applies a client's feedback: favorites get "client-pick", notes are stored per reviewer and gallery.
