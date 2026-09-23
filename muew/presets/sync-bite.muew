@@ -16,12 +16,18 @@ lfo1Rate 4
 lfo1Shape 0
 lfo2 0.35 1
 warp1 1 0.1
-warp2 0 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 3
+routes 9
 route 1 5 0.8
 route 1 2 1.8
 route 2 2 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28

@@ -30,6 +30,10 @@ inline const char* sourceName(ModRoute::Source s) {
     case ModRoute::Source::Velocity: return "VELOCITY";
     case ModRoute::Source::LFO2: return "LFO 2";
     case ModRoute::Source::MSEG1: return "MSEG 1";
+    case ModRoute::Source::Macro1: return "MACRO 1";
+    case ModRoute::Source::Macro2: return "MACRO 2";
+    case ModRoute::Source::Macro3: return "MACRO 3";
+    case ModRoute::Source::Macro4: return "MACRO 4";
     }
     return "?";
 }
@@ -62,17 +66,30 @@ inline double routeDisplayAmount(const ModRoute& r) {
     return std::clamp(r.amount / scale, -1.0, 1.0);
 }
 
-enum Knob { WarpA, Mix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime, KnobCount };
+enum Knob { WarpA, Mix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime,
+            Macro1, Macro2, Macro3, Macro4, KnobCount };
+
+// What the factory presets assign each macro to (see presets/*.muew).
+inline const char* macroName(int i) {
+    static const char* n[] = {"BRIGHT", "WARP", "RESO", "SPREAD"};
+    return (i >= 0 && i < 4) ? n[i] : "";
+}
+inline bool isMacro(int k) { return k >= Macro1 && k <= Macro4; }
 
 inline const char* knobLabel(int k) {
-    static const char* n[] = {"WARP A", "MIX", "WARP B", "DETUNE", "CUTOFF", "RESONANCE", "ATTACK", "RELEASE", "MSEG TIME"};
+    static const char* n[] = {"WARP A", "MIX", "WARP B", "DETUNE", "CUTOFF", "RESONANCE", "ATTACK", "RELEASE", "MSEG TIME",
+                              "BRIGHT", "WARP", "RESO", "SPREAD"};
     return (k >= 0 && k < KnobCount) ? n[k] : "";
 }
+
+// AU parameter ID behind a knob (muew::params): knobs 0-8 are params 0-8,
+// macros are params 12-15.
+inline int knobParam(int k) { return isMacro(k) ? 12 + (k - Macro1) : k; }
 
 struct Range { double lo, hi; bool log; };
 inline Range knobRange(int k) {
     switch (k) {
-    case WarpA: case Mix: case WarpB: return {0.0, 1.0, false};
+    case WarpA: case Mix: case WarpB: case Macro1: case Macro2: case Macro3: case Macro4: return {0.0, 1.0, false};
     case Detune: return {-24.0, 24.0, false};
     case Cutoff: return {40.0, 18000.0, true};
     case Resonance: return {0.1, 8.0, false};
@@ -104,6 +121,7 @@ inline double& knobField(VoiceParams& p, int k) {
     case Resonance: return p.filterReso;
     case Attack: return p.ampA;
     case Release: return p.ampR;
+    case Macro1: case Macro2: case Macro3: case Macro4: return p.macros[k - Macro1];
     default: return p.mseg1Seconds;
     }
 }
@@ -140,13 +158,48 @@ inline std::vector<float> waveform(const Wavetable& table, int shape, int warpMo
     return out;
 }
 
-// Indices into factoryPresets() visible under a browser filter.
-inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites) {
+// Everything the browser can show: the factory bank (indices 0..N-1, equal to
+// AU preset numbers) followed by the user's saved presets.
+struct Library {
+    std::vector<Preset> user;
+    std::vector<std::string> userFiles; // file names, parallel to `user`
+
+    int count() const { return kFactoryPresetCount + (int)user.size(); }
+    bool isUser(int i) const { return i >= kFactoryPresetCount && i < count(); }
+    const Preset& at(int i) const {
+        return isUser(i) ? user[(size_t)(i - kFactoryPresetCount)] : factoryPresets()[(size_t)std::clamp(i, 0, kFactoryPresetCount - 1)];
+    }
+    // Stable key for favorites. User presets are keyed by file name.
+    std::string slug(int i) const {
+        return isUser(i) ? "user/" + userFiles[(size_t)(i - kFactoryPresetCount)]
+                         : std::string(kFactoryPresetTexts[std::clamp(i, 0, kFactoryPresetCount - 1)].slug);
+    }
+    // Factory number (AU preset number) or -1 for user presets.
+    int factoryNumber(int i) const { return (i >= 0 && i < kFactoryPresetCount) ? i : -1; }
+    int indexOfUserFile(const std::string& file) const {
+        for (size_t i = 0; i < userFiles.size(); ++i) if (userFiles[i] == file) return kFactoryPresetCount + (int)i;
+        return -1;
+    }
+    // Library index whose display name matches: factory first, then user.
+    int indexOfName(const std::string& name) const {
+        for (int i = 0; i < count(); ++i) if (at(i).info.name == name) return i;
+        return -1;
+    }
+};
+
+inline Library& library() { static Library lib; return lib; }
+
+// Library indices visible under a browser filter. userOnly shows only saved
+// presets; otherwise factory and user presets are listed together.
+inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites,
+                                       const Library& lib, bool userOnly = false) {
     std::vector<int> out;
-    const auto& bank = factoryPresets();
-    for (int i = 0; i < (int)bank.size(); ++i)
-        if (presetMatches(bank[i], kFactoryPresetTexts[i].slug, f, favorites)) out.push_back(i);
+    for (int i = userOnly ? kFactoryPresetCount : 0; i < lib.count(); ++i)
+        if (presetMatches(lib.at(i), lib.slug(i), f, favorites)) out.push_back(i);
     return out;
+}
+inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites) {
+    return visiblePresets(f, favorites, library());
 }
 
 inline int indexOfSlug(const std::string& slug) {

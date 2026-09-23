@@ -1,6 +1,7 @@
 #pragma once
 #include "synth.h"
 #include "fx.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -58,6 +59,9 @@ struct Preset {
           << voice.mseg1Points.size();
         for (const auto& p : voice.mseg1Points) o << " " << p.time << " " << p.value;
         o << "\n";
+        // Only when set, so factory files (all macros at 0) round-trip unchanged.
+        if (voice.macros[0] != 0 || voice.macros[1] != 0 || voice.macros[2] != 0 || voice.macros[3] != 0)
+            o << "macros " << voice.macros[0] << " " << voice.macros[1] << " " << voice.macros[2] << " " << voice.macros[3] << "\n";
         writeRoutesAndFX(o);
         return o.str();
     }
@@ -115,6 +119,7 @@ struct Preset {
                 if (pts.size() < 2) return false;
                 voice.mseg1Points = pts;
             }
+            else if (key == "macros") { for (double& m : voice.macros) { double v = 0; if (ls >> v) m = std::clamp(v, 0.0, 1.0); } }
             else if (key == "routes") { size_t n; ls >> n; } // count is advisory
             else if (key == "route") {
                 ModRoute r; int s, d;
@@ -157,7 +162,9 @@ struct Preset {
             && a.osc1WarpMode == b.osc1WarpMode && a.osc1Warp == b.osc1Warp
             && a.osc2WarpMode == b.osc2WarpMode && a.osc2Warp == b.osc2Warp
             && a.mseg1Seconds == b.mseg1Seconds && a.mseg1Loop == b.mseg1Loop
-            && a.mseg1Points.size() == b.mseg1Points.size();
+            && a.mseg1Points.size() == b.mseg1Points.size()
+            && a.macros[0] == b.macros[0] && a.macros[1] == b.macros[1]
+            && a.macros[2] == b.macros[2] && a.macros[3] == b.macros[3];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         for (size_t i = 0; i < a.mseg1Points.size(); ++i)
             if (a.mseg1Points[i].time != b.mseg1Points[i].time

@@ -3,6 +3,8 @@
 #include "../src/ui_model.h"
 #include <cassert>
 #include <cstdio>
+#include <algorithm>
+#include <vector>
 
 using namespace muew;
 
@@ -10,17 +12,19 @@ static int failures = 0;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); ++failures; } } while (0)
 
 int main() {
-    static_assert(params::Count == 12, "parameter IDs are append-only");
+    static_assert(params::Count == 16, "parameter IDs are append-only");
+    CHECK(params::Macro1 == 12 && params::ReverbMix == 11);
     CHECK((int)params::WarpA == (int)ui::WarpA && (int)params::MsegTime == (int)ui::MsegTime);
     // Knob params cover the same range as the editor knobs.
     for (int k = 0; k < ui::KnobCount; ++k) {
         ui::Range r = ui::knobRange(k);
-        const auto& d = params::def(k);
+        int id = ui::knobParam(k);
+        const auto& d = params::def(id);
         double scale = d.unit == params::Percent ? 100.0 : 1.0;
         CHECK(std::fabs(d.lo - r.lo * scale) < 1e-9 && std::fabs(d.hi - r.hi * scale) < 1e-9);
         CHECK(d.log == r.log);
         Preset p = factoryPresets()[3];
-        CHECK(&params::field(p, k) == &ui::knobField(p.voice, k));
+        CHECK(&params::field(p, id) == &ui::knobField(p.voice, k));
     }
     // Every factory preset's values sit inside the published ranges; set/get round-trips.
     for (const auto& fp : factoryPresets()) {
@@ -51,6 +55,39 @@ int main() {
     Preset q; CHECK(q.parse(p.serialize()));
     for (int id = 0; id < params::Count; ++id) CHECK(std::fabs(params::get(q, id) - params::get(p, id)) < 1e-6 * std::max(1.0, params::get(p, id)));
     CHECK(params::defaultValue(params::Cutoff) == params::get(factoryPresets()[7], params::Cutoff));
+    // Macros: silent at 0 (factory sound unchanged), audible when turned.
+    auto brightness = [](const Preset& pr) {
+        Synth syn(4); syn.init(44100); syn.setParams(pr.voice, pr.routes); syn.setFX(FXParams{});
+        syn.noteOn(48, 0.9f);
+        std::vector<float> l(44100 / 2), r(l.size());
+        syn.renderPlanar(l.data(), r.data(), (int)l.size());
+        double tot = 0, hf = 0;
+        for (size_t i = 2205; i < l.size(); ++i) { tot += l[i] * l[i]; double d = l[i] - l[i - 1]; hf += d * d; }
+        return tot > 0 ? hf / tot : 0.0;
+    };
+    auto rms = [](const Preset& pr) {
+        Synth syn(4); syn.init(44100); syn.setParams(pr.voice, pr.routes); syn.setFX(FXParams{});
+        syn.noteOn(48, 0.9f);
+        std::vector<float> l(22050), r(l.size());
+        syn.renderPlanar(l.data(), r.data(), (int)l.size());
+        return l;
+    };
+    Preset dark = factoryPresets()[ui::indexOfSlug("warm-pad")];
+    Preset stripped = dark;
+    stripped.routes.erase(std::remove_if(stripped.routes.begin(), stripped.routes.end(),
+        [](const ModRoute& rt) { return (int)rt.source >= (int)ModRoute::Source::Macro1; }), stripped.routes.end());
+    CHECK(rms(dark) == rms(stripped)); // macro routes add exactly nothing at 0
+    for (const auto& fp : factoryPresets()) {
+        int macroRoutes = 0;
+        for (const auto& rt : fp.routes) if ((int)rt.source >= (int)ModRoute::Source::Macro1) ++macroRoutes;
+        CHECK(macroRoutes == 6 && fp.voice.macros[0] == 0 && fp.voice.macros[3] == 0);
+    }
+    Preset bright = dark; params::set(bright, params::Macro1, 100);
+    double b0 = brightness(dark), b1 = brightness(bright);
+    std::printf("macro 1 (Bright) on Warm Pad: brightness %.4f -> %.4f\n", b0, b1);
+    CHECK(b1 > b0 * 2);
+    Preset warped = dark; params::set(warped, params::Macro2, 100);
+    CHECK(rms(warped) != rms(dark));
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
     std::printf("params tests passed (%d parameters)\n", (int)params::Count);
     return 0;

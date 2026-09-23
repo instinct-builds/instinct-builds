@@ -18,13 +18,14 @@
 
 struct MUEWEditorHost {
     virtual ~MUEWEditorHost() {}
-    // factoryIndex is the bank/AU number the sound came from (-1 if none);
+    // factoryIndex is the bank/AU number the sound came from (-1 for user
+    // presets and anything else outside the factory bank);
     // edited is true once a knob has changed it.
     virtual void applyPreset(const muew::Preset& p, int factoryIndex, bool edited) = 0;
     // Knob edits. A host that publishes parameters (the AU) takes the edit as
     // a parameter change so the DAW can record automation, and returns true;
-    // otherwise the editor falls back to applyPreset. Knob ids match
-    // muew::params IDs 0-8. Gestures bracket a drag.
+    // otherwise the editor falls back to applyPreset. Ids are muew::params
+    // IDs (ui::knobParam). Gestures bracket a drag.
     virtual bool editParameter(int, const muew::Preset&) { return false; }
     virtual void parameterGesture(int, bool /*begin*/) {}
     virtual bool playsNotes() const { return false; }
@@ -54,4 +55,7 @@ struct MUEWEditorHost {
 // Show a sound that came from the engine side (host recall, host preset menu)
 // without echoing it back to the engine.
 - (void)adoptPreset:(const muew::Preset&)p index:(int)index edited:(bool)wasEdited;
+// Saves the current sound as a user preset and selects it (the + Save button
+// after its name prompt). Returns NO if the file could not be written.
+- (BOOL)saveUserPresetNamed:(NSString*)name;
 @end

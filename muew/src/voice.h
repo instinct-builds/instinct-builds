@@ -14,7 +14,9 @@ inline double midiToFreq(int note) {
 
 // Modulation routing: a source scales into a destination.
 struct ModRoute {
-    enum class Source { LFO1 = 0, ModEnv = 1, Velocity = 2, LFO2 = 3, MSEG1 = 4 } source;
+    // Append only: values are stored in presets and host projects.
+    enum class Source { LFO1 = 0, ModEnv = 1, Velocity = 2, LFO2 = 3, MSEG1 = 4,
+                        Macro1 = 5, Macro2 = 6, Macro3 = 7, Macro4 = 8 } source;
     enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6 } dest;
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
 };
@@ -38,6 +40,9 @@ struct VoiceParams {
     // Breakpoints (time 0..1, value -1..1). Defaults match MSEG's built-in
     // shape so presets written before points were stored sound identical.
     std::vector<MSEG::Point> mseg1Points{{0.0, 0.0}, {0.15, 1.0}, {0.55, -0.3}, {1.0, 0.0}};
+    // Macro knobs, 0..1. Unipolar mod sources: a route from a macro adds
+    // nothing at 0, so presets sound as authored until a macro is turned.
+    double macros[4] = {0.0, 0.0, 0.0, 0.0};
 };
 
 class Voice {
@@ -102,6 +107,10 @@ public:
                 case ModRoute::Source::ModEnv: src = modEnv; break;
                 case ModRoute::Source::MSEG1: src = mseg1; break;
                 case ModRoute::Source::Velocity: src = velocity_; break;
+                case ModRoute::Source::Macro1: src = params_.macros[0]; break;
+                case ModRoute::Source::Macro2: src = params_.macros[1]; break;
+                case ModRoute::Source::Macro3: src = params_.macros[2]; break;
+                case ModRoute::Source::Macro4: src = params_.macros[3]; break;
                 }
                 sum += src * r.amount;
             }

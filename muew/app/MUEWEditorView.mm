@@ -1,5 +1,6 @@
 // MUEWEditorView.mm - shared MUEW editor implementation (see MUEWEditorView.h).
 #import "MUEWEditorView.h"
+#include "user_presets.h"
 #include <cmath>
 
 using namespace muew;
@@ -26,7 +27,18 @@ static void FillRound(NSRect r, CGFloat rad, NSColor* c) {
 
 static const CGFloat kRowH = 18;
 static NSArray<NSString*>* ChipLabels() {
-    return @[@"All", @"Bass", @"Lead", @"Pad", @"Keys", @"Pluck", @"Texture", @"FX", @"\u2605 Favs"];
+    return @[@"All", @"Bass", @"Lead", @"Pad", @"Keys", @"Pluck", @"Texture", @"FX", @"\u2605 Favs", @"User"];
+}
+static const int kUserChip = 9;
+
+// User presets: plain .muew files in ~/Music/MUEW/Presets, shared by the app
+// and the AU. MUEW_USER_PRESETS overrides the folder (tests).
+static std::string UserPresetDir() {
+    const char* env = getenv("MUEW_USER_PRESETS");
+    if (env && *env) return env;
+    NSArray* music = NSSearchPathForDirectoriesInDomains(NSMusicDirectory, NSUserDomainMask, YES);
+    NSString* base = music.firstObject ?: [NSHomeDirectory() stringByAppendingPathComponent:@"Music"];
+    return std::string([[base stringByAppendingPathComponent:@"MUEW/Presets"] fileSystemRepresentation]);
 }
 
 // Favorites live in MUEW's own defaults suite so the standalone app and the
@@ -44,6 +56,7 @@ static NSUserDefaults* MUEWDefaults() {
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
+        user::load(UserPresetDir(), ui::library());
         CGFloat top = f.size.height - 100;
         search = [[NSSearchField alloc] initWithFrame:NSMakeRect(812, top - 64, 150, 24)];
         search.placeholderString = @"Search presets";
@@ -66,7 +79,7 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)refilter {
-    visible = ui::visiblePresets(filter, favorites);
+    visible = ui::visiblePresets(filter, favorites, ui::library(), chip == kUserChip);
     int rows = [self listRows];
     int maxScroll = std::max(0, (int)visible.size() - rows);
     scroll = std::clamp(scroll, 0, maxScroll);
@@ -80,11 +93,11 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)applySound {
-    if (host) host->applyPreset(current, currentIndex, edited);
+    if (host) host->applyPreset(current, ui::library().factoryNumber(currentIndex), edited);
 }
 
 - (void)knobEdited:(int)k {
-    if (!host || !host->editParameter(k, current)) [self applySound];
+    if (!host || !host->editParameter(ui::knobParam(k), current)) [self applySound];
 }
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
@@ -105,10 +118,10 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)loadPresetIndex:(int)i {
-    const auto& bank = factoryPresets();
-    if (i < 0 || i >= (int)bank.size()) return;
+    const ui::Library& lib = ui::library();
+    if (i < 0 || i >= lib.count()) return;
     currentIndex = i;
-    current = bank[i];
+    current = lib.at(i);
     edited = false;
     [self applySound];
     [self revealCurrent];
@@ -116,7 +129,7 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)stepPreset:(int)dir {
-    const std::vector<int>& order = visible.empty() ? ui::visiblePresets({}, favorites) : visible;
+    const std::vector<int>& order = visible.empty() ? ui::visiblePresets({}, favorites, ui::library()) : visible;
     int pos = -1;
     for (int r = 0; r < (int)order.size(); ++r) if (order[r] == currentIndex) pos = r;
     int n = (int)order.size();
@@ -127,20 +140,30 @@ static NSUserDefaults* MUEWDefaults() {
 
 // ---- geometry ----
 - (CGFloat)top { return self.bounds.size.height - 100; }
-- (CGFloat)listTop { return [self top] - 150; }
+- (CGFloat)listTop { return [self top] - 172; }
 - (int)listRows { return (int)std::floor(([self listTop] - 76) / kRowH); }
 - (NSPoint)knobCenter:(int)k {
     CGFloat t = [self top];
     NSPoint p[] = {{98, t - 194}, {195, t - 194}, {308, t - 194}, {405, t - 194},
                    {536, t - 94}, {637, t - 94}, {536, t - 200}, {637, t - 200}, {732, t - 200}};
+    if (ui::isMacro(k)) { // macro strip in the header
+        CGFloat h = self.bounds.size.height;
+        return NSMakePoint(772 + (k - ui::Macro1) * 56, h - 38);
+    }
     return p[k];
 }
-- (CGFloat)knobRadius:(int)k { return (k == ui::Cutoff || k == ui::Resonance) ? 30 : 25; }
+- (CGFloat)knobRadius:(int)k {
+    if (ui::isMacro(k)) return 13;
+    return (k == ui::Cutoff || k == ui::Resonance) ? 30 : 25;
+}
 - (NSRect)chipRect:(int)i {
     CGFloat t = [self top];
     return NSMakeRect(812 + (i % 3) * 51, t - 90 - (i / 3) * 22, 46, 18);
 }
-- (NSRect)favToggleRect { return NSMakeRect(812, 46, 150, 20); }
+- (NSRect)favToggleRect { return NSMakeRect(812, 46, 110, 20); }
+// Row 4 of the chip grid: [User] [Save] [Export].
+- (NSRect)saveRect { return [self chipRect:10]; }
+- (NSRect)exportRect { return [self chipRect:11]; }
 - (NSRect)prevRect { return NSMakeRect(386, self.bounds.size.height - 62, 26, 30); }
 - (NSRect)nextRect { return NSMakeRect(668, self.bounds.size.height - 62, 26, 30); }
 
@@ -158,23 +181,26 @@ static NSUserDefaults* MUEWDefaults() {
     double v = ui::knobValue(current.voice, k);
     [[NSColor colorWithWhite:.04 alpha:1] setFill];
     [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(c.x - rad - 3, c.y - rad - 3, rad * 2 + 6, rad * 2 + 6)] fill];
+    CGFloat lw = ui::isMacro(k) ? 3 : 4;
     NSBezierPath* ring = [NSBezierPath bezierPath];
     [ring appendBezierPathWithArcWithCenter:c radius:rad startAngle:225 endAngle:-45 clockwise:YES];
-    [C(0x303947) setStroke]; ring.lineWidth = 4; [ring stroke];
+    [C(0x303947) setStroke]; ring.lineWidth = lw; [ring stroke];
     NSBezierPath* arc = [NSBezierPath bezierPath];
     if (k == ui::Detune) // bipolar: draw from center
         [arc appendBezierPathWithArcWithCenter:c radius:rad startAngle:90 endAngle:225 - 270 * v clockwise:v > .5];
     else
         [arc appendBezierPathWithArcWithCenter:c radius:rad startAngle:225 endAngle:225 - 270 * v clockwise:YES];
-    [accent setStroke]; arc.lineWidth = 4; [arc stroke];
+    [accent setStroke]; arc.lineWidth = lw; [arc stroke];
     double a = (225 - 270 * v) * M_PI / 180;
     NSBezierPath* line = [NSBezierPath bezierPath];
     [line moveToPoint:c];
-    [line lineToPoint:NSMakePoint(c.x + cos(a) * (rad - 7), c.y + sin(a) * (rad - 7))];
+    CGFloat inset = ui::isMacro(k) ? 4 : 7;
+    [line lineToPoint:NSMakePoint(c.x + cos(a) * (rad - inset), c.y + sin(a) * (rad - inset))];
     [C(0xeaf1f8) setStroke]; line.lineWidth = 2; [line stroke];
     NSString* label = dragKnob == k ? S(ui::knobReadout(current.voice, k)) : S(ui::knobLabel(k));
-    TextA(label, NSMakeRect(c.x - rad - 16, c.y - rad - 25, rad * 2 + 32, 15), 10,
-          dragKnob == k ? accent : C(0xa8b2c1), NSFontWeightMedium, NSTextAlignmentCenter);
+    bool macro = ui::isMacro(k);
+    TextA(label, NSMakeRect(c.x - rad - 16, c.y - rad - (macro ? 18 : 25), rad * 2 + 32, 13), macro ? 8 : 10,
+          dragKnob == k ? accent : C(0xa8b2c1), macro ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
 }
 
 - (void)waveIn:(NSRect)r shape:(int)shape warpMode:(int)wm warp:(double)w color:(NSColor*)col {
@@ -238,6 +264,9 @@ static NSUserDefaults* MUEWDefaults() {
         pts = {{0, -1}, {t1, 1}, {t2, sus}, {t3, sus}, {1, -1}};
     } else if (src == ModRoute::Source::Velocity) {
         pts = {{0, -1}, {1, 1}};
+    } else if ((int)src >= (int)ModRoute::Source::Macro1 && (int)src <= (int)ModRoute::Source::Macro4) {
+        double m = v.macros[(int)src - (int)ModRoute::Source::Macro1] * 2 - 1; // current macro position
+        pts = {{0, m}, {1, m}};
     } else {
         int shape = src == ModRoute::Source::LFO1 ? v.lfo1Shape : v.lfo2Shape;
         for (int i = 0; i <= 64; ++i) {
@@ -275,8 +304,12 @@ static NSUserDefaults* MUEWDefaults() {
     std::string sub = current.info.category;
     for (size_t i = 0; i < current.info.tags.size() && i < 2; ++i) sub += "  \u2022  " + current.info.tags[i];
     TextA(S(sub), NSMakeRect(414, b.size.height - 62, 252, 13), 9, C(0x758192), NSFontWeightMedium, NSTextAlignmentCenter);
-    TextA([NSString stringWithFormat:@"%d FACTORY PRESETS  \u2022  UNIVERSAL AUv2", kFactoryPresetCount],
-          NSMakeRect(b.size.width - 280, b.size.height - 51, 252, 18), 10, C(0x758192), NSFontWeightMedium, NSTextAlignmentRight);
+    // Macro strip
+    TextA(@"MACROS", NSMakeRect(716, b.size.height - 43, 38, 12), 8, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentRight);
+    [self knob:ui::Macro1 accent:C(0xf2ab55)];
+    [self knob:ui::Macro2 accent:C(0x9d7df2)];
+    [self knob:ui::Macro3 accent:C(0xf2ab55)];
+    [self knob:ui::Macro4 accent:C(0x5adac8)];
 
     CGFloat top = [self top];
     [self panel:NSMakeRect(24, top - 260, 440, 260) title:@"OSCILLATORS"];
@@ -315,23 +348,34 @@ static NSUserDefaults* MUEWDefaults() {
         TextA(chips[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 13), 9,
               on ? C(0x75ead8) : C(0x9ca6b4), on ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
     }
+    for (int a = 0; a < 2; ++a) { // actions: outlined, not filters
+        NSRect r = a == 0 ? [self saveRect] : [self exportRect];
+        [C(0x3a6b64) setStroke];
+        NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:9 yRadius:9];
+        o.lineWidth = 1; [o stroke];
+        TextA(a == 0 ? @"+ Save" : @"Export", NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 13), 9,
+              C(0x75ead8), NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
     // Browser: list
     CGFloat lt = [self listTop];
     int rows = [self listRows];
-    const auto& bank = factoryPresets();
+    const ui::Library& lib = ui::library();
     for (int r = 0; r < rows && scroll + r < (int)visible.size(); ++r) {
         int idx = visible[scroll + r];
         CGFloat y = lt - (r + 1) * kRowH;
         bool sel = idx == currentIndex;
         if (sel) FillRound(NSMakeRect(806, y, b.size.width - 836, kRowH - 1), 4, C(0x293c3b));
-        Text(S(bank[idx].info.name), NSMakeRect(814, y + 2, 88, 14), 10, sel ? C(0x75ead8) : C(0xc3cbd6),
+        Text(S(lib.at(idx).info.name), NSMakeRect(814, y + 2, 88, 14), 10, sel ? C(0x75ead8) : C(0xc3cbd6),
              sel ? NSFontWeightSemibold : NSFontWeightRegular);
-        TextA(S(bank[idx].info.category), NSMakeRect(904, y + 3, 40, 12), 8, C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentRight);
-        bool fav = favorites.count(kFactoryPresetTexts[idx].slug) > 0;
+        TextA(lib.isUser(idx) ? @"User" : S(lib.at(idx).info.category), NSMakeRect(904, y + 3, 40, 12), 8,
+              lib.isUser(idx) ? C(0x3a8f84) : C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentRight);
+        bool fav = favorites.count(lib.slug(idx)) > 0;
         TextA(fav ? @"\u2605" : @"\u2606", NSMakeRect(946, y + 2, 16, 14), 10, fav ? C(0xf2ab55) : C(0x3b4552),
               NSFontWeightRegular, NSTextAlignmentCenter);
     }
-    if (visible.empty())
+    if (visible.empty() && chip == kUserChip)
+        TextA(@"No saved presets yet - use + Save", NSMakeRect(806, lt - 40, b.size.width - 836, 16), 10, C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentCenter);
+    else if (visible.empty())
         TextA(@"No presets match", NSMakeRect(806, lt - 40, b.size.width - 836, 16), 10, C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentCenter);
     if ((int)visible.size() > rows) { // scroll indicator
         CGFloat trackH = lt - 76, thumbH = std::max(24.0, trackH * rows / visible.size());
@@ -340,10 +384,10 @@ static NSUserDefaults* MUEWDefaults() {
     }
     // Browser footer
     [C(0x29313d) setFill]; NSRectFill(NSMakeRect(812, 72, b.size.width - 850, 1));
-    bool curFav = currentIndex >= 0 && favorites.count(kFactoryPresetTexts[currentIndex].slug);
+    bool curFav = currentIndex >= 0 && favorites.count(lib.slug(currentIndex));
     Text(curFav ? @"\u2605  FAVORITE" : @"\u2606  ADD TO FAVORITES", NSMakeRect(812, 50, 110, 14), 9,
          curFav ? C(0xf2ab55) : C(0x8793a3), NSFontWeightSemibold);
-    TextA([NSString stringWithFormat:@"%d / %d", (int)visible.size(), kFactoryPresetCount], NSMakeRect(912, 50, 50, 14), 9,
+    TextA([NSString stringWithFormat:@"%d / %d", (int)visible.size(), lib.count()], NSMakeRect(912, 50, 50, 14), 9,
           C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentRight);
 
     // Modulation + effects
@@ -404,15 +448,45 @@ static NSUserDefaults* MUEWDefaults() {
     return -1;
 }
 
+// ---- user presets ----
+- (BOOL)saveUserPresetNamed:(NSString*)name {
+    int idx = user::save(UserPresetDir(), current, std::string(name.UTF8String ?: ""), ui::library());
+    if (idx < 0) { NSBeep(); return NO; }
+    [self refilter];
+    [self loadPresetIndex:idx]; // now a saved preset: no edit marker, host sees its name
+    [self refilter];
+    return YES;
+}
+
+- (void)promptSave {
+    NSAlert* a = [NSAlert new];
+    a.messageText = @"Save preset";
+    a.informativeText = @"Saved to Music/MUEW/Presets. The app and the plugin both see it.";
+    [a addButtonWithTitle:@"Save"]; [a addButtonWithTitle:@"Cancel"];
+    NSTextField* f = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 240, 24)];
+    f.stringValue = S(current.info.name.empty() ? std::string("User Preset") : current.info.name);
+    a.accessoryView = f;
+    a.window.initialFirstResponder = f;
+    if ([a runModal] == NSAlertFirstButtonReturn) [self saveUserPresetNamed:f.stringValue];
+}
+
+- (void)promptExport {
+    NSSavePanel* panel = [NSSavePanel savePanel];
+    panel.nameFieldStringValue = [S(user::fileStem(current.info.name)) stringByAppendingPathExtension:@"muew"];
+    panel.allowsOtherFileTypes = NO;
+    if ([panel runModal] == NSModalResponseOK && panel.URL)
+        if (!user::exportTo(std::string(panel.URL.fileSystemRepresentation), current)) NSBeep();
+}
+
 - (void)mouseDown:(NSEvent*)e {
     [self.window makeFirstResponder:self];
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     dragKnob = [self hitKnob:p];
     dragStart = p;
     if (dragKnob >= 0) {
-        if (host) host->parameterGesture((int)dragKnob, true);
+        if (host) host->parameterGesture(ui::knobParam((int)dragKnob), true);
         if (e.clickCount == 2 && currentIndex >= 0) { // double-click restores the preset value
-            ui::knobField(current.voice, (int)dragKnob) = ui::knobField(const_cast<VoiceParams&>(factoryPresets()[currentIndex].voice), (int)dragKnob);
+            ui::knobField(current.voice, (int)dragKnob) = ui::knobField(const_cast<VoiceParams&>(ui::library().at(currentIndex).voice), (int)dragKnob);
             [self knobEdited:(int)dragKnob];
         }
         dragValue = ui::knobValue(current.voice, (int)dragKnob);
@@ -426,14 +500,17 @@ static NSUserDefaults* MUEWDefaults() {
         if (NSPointInRect(p, [self chipRect:i])) {
             chip = i;
             filter.favoritesOnly = (i == 8);
+            if (i == kUserChip) user::load(UserPresetDir(), ui::library()); // pick up presets saved elsewhere
             filter.category = (i >= 1 && i <= 7) ? factoryCategories()[i - 1] : std::string();
             scroll = 0;
             [self refilter];
             return;
         }
     }
+    if (NSPointInRect(p, [self saveRect])) { [self promptSave]; return; }
+    if (NSPointInRect(p, [self exportRect])) { [self promptExport]; return; }
     if (NSPointInRect(p, [self favToggleRect]) && currentIndex >= 0) {
-        std::string slug = kFactoryPresetTexts[currentIndex].slug;
+        std::string slug = ui::library().slug(currentIndex);
         if (favorites.count(slug)) favorites.erase(slug); else favorites.insert(slug);
         [self saveFavorites]; [self refilter];
         return;
@@ -444,7 +521,7 @@ static NSUserDefaults* MUEWDefaults() {
         if (r >= 0 && r < (int)visible.size()) {
             int idx = visible[r];
             if (p.x >= 944) {
-                std::string slug = kFactoryPresetTexts[idx].slug;
+                std::string slug = ui::library().slug(idx);
                 if (favorites.count(slug)) favorites.erase(slug); else favorites.insert(slug);
                 [self saveFavorites]; [self refilter];
             } else {
@@ -465,7 +542,7 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)mouseUp:(NSEvent*)e {
-    if (dragKnob >= 0 && host) host->parameterGesture((int)dragKnob, false);
+    if (dragKnob >= 0 && host) host->parameterGesture(ui::knobParam((int)dragKnob), false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];
 }

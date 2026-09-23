@@ -3,7 +3,8 @@
 // current sound, so parameters, presets and saved state never disagree.
 //
 // IDs are serialized by hosts inside saved sets and automation: append only,
-// never renumber. IDs 0-8 match ui::Knob so editor knobs map 1:1.
+// never renumber. IDs 0-8 match ui::Knob 0-8; ui::knobParam maps the macro
+// knobs to 12-15.
 #pragma once
 #include "preset.h"
 #include "factory_bank.h"
@@ -16,6 +17,7 @@ namespace params {
 enum ID {
     WarpA, OscMix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime,
     ChorusMix, DelayMix, ReverbMix,
+    Macro1, Macro2, Macro3, Macro4, // 0.6.0
     Count
 };
 
@@ -42,6 +44,10 @@ inline const Def& def(int id) {
         {"Chorus Mix", Percent, 0, 100, false},
         {"Delay Mix", Percent, 0, 100, false},
         {"Reverb Mix", Percent, 0, 100, false},
+        {"Macro 1 Bright", Percent, 0, 100, false},
+        {"Macro 2 Warp", Percent, 0, 100, false},
+        {"Macro 3 Reso", Percent, 0, 100, false},
+        {"Macro 4 Spread", Percent, 0, 100, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -61,6 +67,7 @@ inline double& field(Preset& p, int id) {
     case MsegTime: return p.voice.mseg1Seconds;
     case ChorusMix: return p.fx.chorus.mix;
     case DelayMix: return p.fx.delay.mix;
+    case Macro1: case Macro2: case Macro3: case Macro4: return p.voice.macros[id - Macro1];
     default: return p.fx.reverb.mix;
     }
 }

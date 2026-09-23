@@ -11,6 +11,9 @@
 //                                      events a DAW records automation from
 //   4. host automates Cutoff, Resonance and Warp A -> the open editor shows
 //                                      the automated values
+//   5. drag the header Macro 1 knob -> AU parameter 12 moves (automatable)
+//   6. save a user preset, host switches away, click User chip + the saved
+//      row -> the AU holds the saved sound under its own name
 // The window stays up long enough for the workflow to screenshot it.
 #import <AppKit/AppKit.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -50,6 +53,14 @@ static bool State(muew::Preset& out) {
     if (AudioUnitGetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &str, &size) != noErr || !str) return false;
     NSString* ns = (__bridge_transfer NSString*)str;
     return out.parse(std::string(ns.UTF8String ?: ""));
+}
+
+static std::string PresetNameNow() {
+    AUPreset p{}; UInt32 size = sizeof(p);
+    if (AudioUnitGetProperty(gUnit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &p, &size) != noErr) return "";
+    std::string n;
+    if (p.presetName) { n = [(__bridge NSString*)p.presetName UTF8String] ?: ""; CFRelease(p.presetName); }
+    return n;
 }
 
 static void SelectPreset(SInt32 n) {
@@ -171,8 +182,49 @@ int main() {
                   "host automation reached the open editor (cutoff, resonance, warp A)");
             fflush(stdout);
         });
+        After(4.3, ^{
+            NSPoint m1 = NSMakePoint(772, view.bounds.size.height - 38); // header MACRO 1 (BRIGHT)
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, m1, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(m1.x, m1.y + 30), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(m1.x, m1.y + 60), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(m1.x, m1.y + 60), w)];
+            AudioUnitParameterValue mv = 0;
+            AudioUnitGetParameter(gUnit, muew::params::Macro1, kAudioUnitScope_Global, 0, &mv);
+            muew::Preset st; State(st);
+            printf("macro 1 after drag: parameter %.1f%%, sound %.2f\n", mv, st.voice.macros[0]);
+            Check(mv > 30 && mv < 50 && std::fabs(st.voice.macros[0] - mv / 100.0) < 1e-3,
+                  "macro knob drag reached the AU as parameter 12 and the sound");
+            fflush(stdout);
+        });
+        After(4.6, ^{
+            SEL save = NSSelectorFromString(@"saveUserPresetNamed:");
+            BOOL ok = NO;
+            if ([view respondsToSelector:save]) {
+                BOOL (*fn)(id, SEL, NSString*) = (BOOL (*)(id, SEL, NSString*))[view methodForSelector:save];
+                ok = fn(view, save, @"CI Riser");
+            }
+            Check(ok && PresetNameNow() == "CI Riser" && PresetNumber() == -1, "saved user preset is what the host shows");
+            fflush(stdout);
+        });
+        After(4.9, ^{ SelectPreset(3); }); // host switches to Pluck
+        After(5.2, ^{
+            CGFloat t = view.bounds.size.height - 100;
+            NSPoint userChip = NSMakePoint(835, t - 156 + 9);
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, userChip, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, userChip, w)];
+            NSPoint firstRow = NSMakePoint(850, t - 172 - 9);
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, firstRow, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, firstRow, w)];
+            muew::Preset st;
+            bool ok = State(st);
+            printf("after User chip + row: host shows '%s', cutoff %.1f Hz, macro 1 %.2f\n",
+                   PresetNameNow().c_str(), st.voice.filterCutoff, st.voice.macros[0]);
+            Check(ok && st.info.name == "CI Riser" && PresetNameNow() == "CI Riser" && std::fabs(st.voice.filterCutoff - 900) < 0.5
+                     && st.voice.macros[0] > 0.3, "User chip lists the saved preset and loading it restores the sound");
+            fflush(stdout);
+        });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU and automation sync\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros and user presets\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

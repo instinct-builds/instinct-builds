@@ -271,7 +271,35 @@ int main() {
         if (AudioUnitInitialize(unit) != noErr) { printf("FAIL: reinitialize\n"); return 1; }
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
-        printf("parameters: %d published; get/set, schedule, preset sync, audible automation and recall: ok\n", (int)mp::Count);
+        // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
+        static_assert(mp::Count == 16, "0.6.0 publishes 16 parameters");
+        if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
+            printf("FAIL: reselect Init Saw\n"); return 1;
+        }
+        AudioUnitGetParameter(unit, mp::Macro1, kAudioUnitScope_Global, 0, &v);
+        if (v != 0.0f) { printf("FAIL: factory preset macro should start at 0 (%g)\n", v); return 1; }
+        AudioUnitSetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, 300.0f, 0);
+        auto measure = [&]() -> double {
+            AudioUnitReset(unit, kAudioUnitScope_Global, 0);
+            MusicDeviceMIDIEvent(unit, 0x90, 48, 110, 0);
+            double total = 0, hf = 0;
+            for (int blk = 0; blk < 24; ++blk) {
+                if (!render(unit, l, r)) return -1;
+                if (blk < 4) continue;
+                for (UInt32 i = 1; i < frames; ++i) { total += l[i] * l[i]; double d = l[i] - l[i - 1]; hf += d * d; }
+            }
+            MusicDeviceMIDIEvent(unit, 0x80, 48, 0, 0);
+            return total > 1e-9 ? hf / total : -1;
+        };
+        double m0 = measure();
+        AudioUnitSetParameter(unit, mp::Macro1, kAudioUnitScope_Global, 0, 100.0f, 0);
+        double m1 = measure();
+        muew::Preset ms;
+        printf("macro 1 (Bright) at 0%% brightness %.4f, at 100%% brightness %.4f\n", m0, m1);
+        if (m0 <= 0 || m1 < m0 * 2 || !getState(unit, ms) || ms.voice.macros[0] != 1.0 || presetNumber(unit) != -1) {
+            printf("FAIL: macro 1 not audible or not stored in the sound\n"); return 1;
+        }
+        printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros and recall: ok\n", (int)mp::Count);
     }
 
     // Render notifications fire before and after each render (auval checks this).

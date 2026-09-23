@@ -15,12 +15,18 @@ mod 1 1 0.5 1
 lfo1Rate 0.2
 lfo1Shape 0
 lfo2 0.06 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 3 2 2
 route 0 3 0.15
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.3 6 14 0.3
 delay 1 0.55 0.7 0.4 0.25
 reverb 1 0.82 0.45 0.38

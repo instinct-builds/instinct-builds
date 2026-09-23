@@ -146,3 +146,22 @@ simple 3-device license key scheme follow there.
   - The host test checks the parameter list, info, get/set, scheduled ramps, clamping, preset-to-parameter sync, an audible cutoff sweep, recall, and survival across re-initialize.
   - The editor harness checks that knob drags reach a DAW-style automation listener as gestures, and that host automation reaches the open editor.
   - auval and host-test logs ship with the artifact.
+
+## 0.6.0 Macros and user presets
+
+- Four macro knobs sit in the header: BRIGHT, WARP, RESO and SPREAD. They're new mod sources (`Macro1-4`, appended as source IDs 5-8) and AU parameters 12-15, so Live can automate and MIDI-map them.
+- Every factory preset routes the macros the same way:
+  - BRIGHT: cutoff +3 octaves
+  - WARP: warp A/B +0.7
+  - RESO: resonance +4
+  - SPREAD: osc B +0.3 semitones and level +0.25
+- Clean oscillators got a warp mode (BEND+ on A, FOLD on B) so WARP always does something. At warp 0, those modes produce the clean waveform.
+- With the macros at 0, all 30 factory presets render sample-identical to 0.5.0. That was checked stereo, with FX, on two notes. The bank test also keeps the 0.2.0 warm-pad file sample-identical.
+- Macro positions are part of the sound. They're saved in user presets and project state (a `macros` line, written only when a macro is set, so factory files are unchanged).
+- User presets:
+  - `+ Save` in the browser names the sound and writes a `.muew` file to `~/Music/MUEW/Presets`.
+  - `Export` writes a shareable `.muew` anywhere.
+  - The `User` chip lists saved presets. They also show up in category chips, search and favorites.
+  - The app and the AU share the folder.
+  - In Live, loading a user preset shows its name as the plugin's preset.
+- The code is `src/user_presets.h` (portable, tested on Linux) and `ui::Library` (factory bank followed by user presets, so AU factory numbers never move).

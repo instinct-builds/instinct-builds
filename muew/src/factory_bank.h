@@ -26,12 +26,18 @@ mod 1.5 1 0.4 1.5
 lfo1Rate 0.15
 lfo1Shape 1
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 1
 route 0 3 0.15
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.35 7 14 0.32
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.85 0.35 0.4
@@ -53,13 +59,19 @@ mod 0.01 0.25 0 0.1
 lfo1Rate 5.5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 3
+routes 9
 route 1 2 2
 route 0 0 0.15
 route 2 2 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.28 0.34 0.35 0.25
 reverb 1 0.4 0.5 0.2
@@ -81,13 +93,19 @@ mod 0.01 0.3 0 0.2
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 3
+routes 9
 route 1 2 2
 route 0 1 0.05
 route 2 2 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
@@ -109,12 +127,18 @@ mod 0.001 0.2 0 0.1
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 2.5
 route 2 2 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.22 0.28 0.3 0.18
 reverb 1 0.35 0.5 0.15
@@ -136,12 +160,18 @@ mod 0.005 0.15 0 0.05
 lfo1Rate 2
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 1.2
 route 2 2 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
@@ -163,11 +193,17 @@ mod 0.01 0.3 0 0.2
 lfo1Rate 4
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 1
+routes 7
 route 2 2 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.4 3 10 0.18
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.5 0.5 0.22
@@ -189,10 +225,16 @@ mod 0.01 0.3 0 0.2
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 0
+routes 6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
@@ -214,12 +256,18 @@ mod 0.8 1.2 0.3 1
 lfo1Rate 0.2
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 1.5
 route 0 3 0.1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.5 5 12 0.3
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.75 0.4 0.35
@@ -242,11 +290,17 @@ lfo1Rate 3
 lfo1Shape 0
 lfo2 0.35 1
 warp1 6 0.25
-warp2 0 0
+warp2 6 0
 mseg 0.5 1 5 0 0 0.25 1 0.5 0.1 0.75 0.8 1 0
-routes 2
+routes 8
 route 4 5 0.55
 route 1 2 1.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
@@ -268,12 +322,18 @@ mod 0.01 0.3 0 0.2
 lfo1Rate 0.3
 lfo1Shape 1
 lfo2 0.12 0
-warp1 0 0
+warp1 2 0
 warp2 3 0.3
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 3 2 1.2
 route 0 6 0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
@@ -296,12 +356,18 @@ lfo1Rate 4
 lfo1Shape 0
 lfo2 0.35 1
 warp1 1 0.1
-warp2 0 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 3
+routes 9
 route 1 5 0.8
 route 1 2 1.8
 route 2 2 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
@@ -324,11 +390,17 @@ lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
 warp1 2 0.1
-warp2 0 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 5 0.6
 route 1 2 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
@@ -351,12 +423,18 @@ lfo1Rate 5.2
 lfo1Shape 0
 lfo2 0.35 1
 warp1 1 0.35
-warp2 0 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 3
+routes 9
 route 1 5 0.5
 route 0 0 0.12
 route 0 1 0.12
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.33 0.25 0.3 0.2
 reverb 1 0.45 0.45 0.18
@@ -378,12 +456,18 @@ mod 0.02 0.5 0.2 0.3
 lfo1Rate 4.5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 1.5
 route 0 0 0.1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.36 0.48 0.4 0.25
 reverb 1 0.5 0.4 0.2
@@ -405,12 +489,18 @@ mod 0.001 0.25 0 0.1
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 3.5
 route 2 2 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.24 0.36 0.3 0.15
 reverb 0 0.55 0.45 0.28
@@ -435,10 +525,16 @@ lfo2 0.9 1
 warp1 4 0.4
 warp2 4 0.6
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 3
+routes 9
 route 3 5 0.35
 route 3 6 -0.35
 route 1 2 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.5 4 12 0.25
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.45 0.5 0.18
@@ -461,12 +557,18 @@ lfo1Rate 0.2
 lfo1Shape 0
 lfo2 0.35 1
 warp1 3 0.2
-warp2 0 0
+warp2 6 0
 mseg 4 1 5 0 0 0.3 1 0.6 0.2 0.85 0.7 1 0
-routes 3
+routes 9
 route 4 5 0.5
 route 4 2 1.3
 route 0 3 0.12
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.3 6 14 0.3
 delay 1 0.45 0.6 0.35 0.2
 reverb 1 0.88 0.35 0.42
@@ -489,11 +591,17 @@ lfo1Rate 0.25
 lfo1Shape 1
 lfo2 0.18 0
 warp1 3 0.45
-warp2 0 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 3 5 0.3
 route 0 2 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.4 8 16 0.4
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.8 0.4 0.38
@@ -515,12 +623,18 @@ mod 1 1 0.5 1
 lfo1Rate 0.1
 lfo1Shape 0
 lfo2 0.07 0
-warp1 0 0
+warp1 2 0
 warp2 6 0.3
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 3 6 0.4
 route 3 2 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.25 5 12 0.3
 delay 1 0.5 0.66 0.45 0.25
 reverb 1 0.93 0.3 0.45
@@ -542,12 +656,18 @@ mod 1 1 0.5 1
 lfo1Rate 0.2
 lfo1Shape 0
 lfo2 0.06 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 3 2 2
 route 0 3 0.15
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.3 6 14 0.3
 delay 1 0.55 0.7 0.4 0.25
 reverb 1 0.82 0.45 0.38
@@ -570,11 +690,17 @@ lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
 warp1 5 0.55
-warp2 0 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 5 -0.4
 route 2 2 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.35 3 10 0.2
 delay 1 0.3 0.45 0.25 0.15
 reverb 1 0.5 0.5 0.22
@@ -596,12 +722,18 @@ mod 0.003 0.8 0 0.4
 lfo1Rate 4.5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
+warp1 2 0
 warp2 6 0.1
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 2 2 1.5
 route 1 6 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.8 2.5 8 0.25
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.45 0.55 0.18
@@ -626,9 +758,15 @@ lfo2 0.35 1
 warp1 6 0.15
 warp2 1 0.2
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 5 0.6
 route 1 6 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.37 0.5 0.3 0.2
 reverb 1 0.7 0.35 0.3
@@ -651,11 +789,17 @@ lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
 warp1 6 0
-warp2 0 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 5 0.9
 route 1 2 1.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.25 0.37 0.3 0.2
 reverb 1 0.4 0.5 0.15
@@ -677,12 +821,18 @@ mod 0.001 0.1 0 0.1
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 1.2
 route 2 2 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.35 0.6 0.15
@@ -704,12 +854,18 @@ mod 0.001 0.2 0 0.1
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 2
+routes 8
 route 1 2 2.2
 route 2 2 0.7
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.5 4 12 0.2
 delay 1 0.375 0.25 0.5 0.35
 reverb 1 0.55 0.45 0.2
@@ -734,10 +890,16 @@ lfo2 1.3 2
 warp1 5 0.2
 warp2 1 0.2
 mseg 0.75 1 8 0 -1 0.2 -1 0.21 0.6 0.45 0.6 0.46 -0.2 0.7 -0.2 0.71 1 1 1
-routes 3
+routes 9
 route 4 5 0.7
 route 4 2 1.2
 route 3 6 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.18 0.27 0.45 0.3
 reverb 1 0.55 0.4 0.25
@@ -760,12 +922,18 @@ lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
 warp1 3 0.3
-warp2 0 0
+warp2 6 0
 mseg 0.5 1 8 0 1 0.12 -0.6 0.25 1 0.37 -0.6 0.5 0.6 0.62 -0.6 0.75 1 1 -0.6
-routes 3
+routes 9
 route 4 3 0.5
 route 4 2 1.6
 route 0 5 0.1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.4 5 12 0.3
 delay 1 0.3 0.45 0.35 0.25
 reverb 1 0.6 0.4 0.25
@@ -787,14 +955,20 @@ mod 0.01 0.3 0 0.2
 lfo1Rate 0.5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 6 0 3 0 0 0.9 1 1 1
-routes 4
+routes 10
 route 4 2 4.5
 route 4 0 12
 route 4 1 12
 route 0 3 0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 1 0.8 6 14 0.35
 delay 1 0.4 0.55 0.4 0.25
 reverb 1 0.85 0.35 0.4
@@ -816,13 +990,19 @@ mod 0.001 0.4 0 0.2
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
-warp1 0 0
-warp2 0 0
+warp1 2 0
+warp2 6 0
 mseg 0.4 0 3 0 1 0.3 0.1 1 -1
-routes 3
+routes 9
 route 4 0 24
 route 4 1 24
 route 4 2 1.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.2 0.3 0.4 0.25
 reverb 1 0.5 0.5 0.2

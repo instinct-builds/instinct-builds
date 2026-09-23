@@ -1,3 +1,4 @@
+#include <algorithm>
 // tests_bank.cpp - factory preset bank: schema v2 round-trips, v1 presets
 // still load unchanged, the embedded bank matches the authored files in AU
 // order, browser filtering works, and every preset renders bounded,
@@ -115,7 +116,23 @@ int main() {
     const NamedPreset* pad = bank.get("warm-pad");
     if (pad) {
         Preset stripped = pad->preset; stripped.info = PresetInfo{}; stripped.version = 1;
+        // 0.6 macro routes are silent while the macros sit at 0 (the preset
+        // default), so they are not part of the authored sound.
+        stripped.routes.erase(std::remove_if(stripped.routes.begin(), stripped.routes.end(),
+            [](const ModRoute& r) { return (int)r.source >= (int)ModRoute::Source::Macro1; }), stripped.routes.end());
+        // 0.6 also gives clean oscillators a warp mode for the WARP macro;
+        // at warp amount 0 every such mode is the clean waveform.
+        if (stripped.voice.osc1Warp == 0) stripped.voice.osc1WarpMode = 0;
+        if (stripped.voice.osc2Warp == 0) stripped.voice.osc2WarpMode = 0;
         check(stripped == v1, "warm-pad sounds identical in v1 and v2 form");
+        auto render = [](const Preset& pr) {
+            Synth s(4); s.init(44100); s.setParams(pr.voice, pr.routes); s.setFX(pr.fx);
+            s.noteOn(57, 0.8f);
+            std::vector<float> l(44100), r(44100);
+            s.renderPlanar(l.data(), r.data(), 44100);
+            return l;
+        };
+        check(render(pad->preset) == render(v1), "warm-pad renders sample-identical to the 0.2.0 file");
     } else check(false, "warm-pad is in the bank");
     check(!Preset().parse("muew-preset 9\nname x\n"), "unknown future version is refused");
     Preset badMseg;

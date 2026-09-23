@@ -18,10 +18,16 @@ lfo2 1.3 2
 warp1 5 0.2
 warp2 1 0.2
 mseg 0.75 1 8 0 -1 0.2 -1 0.21 0.6 0.45 0.6 0.46 -0.2 0.7 -0.2 0.71 1 1 1
-routes 3
+routes 9
 route 4 5 0.7
 route 4 2 1.2
 route 3 6 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
 chorus 0 0.6 6 15 0.35
 delay 1 0.18 0.27 0.45 0.3
 reverb 1 0.55 0.4 0.25
