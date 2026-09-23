@@ -231,4 +231,44 @@ struct JournalBlock: View {
         return f.string(from: Date())
     }
 }
+
+struct CompanionsBlock: View {
+    @Binding var character: Character
+
+    var body: some View {
+        BlockCard(title: "Companions") {
+            ForEach($character.companions) { $comp in
+                VStack(spacing: 4) {
+                    HStack {
+                        TextField("Name", text: $comp.name)
+                            .textFieldStyle(InsetFieldStyle()).frame(minWidth: 140)
+                        TextField("Kind", text: $comp.kind)
+                            .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 130)
+                        Stepper("AC \(comp.armorClass)", value: $comp.armorClass, in: 0...30)
+                        Stepper("HP \(comp.currentHP)/\(comp.maxHP)", value: Binding(
+                            get: { comp.currentHP },
+                            set: { comp.currentHP = max(0, min(comp.maxHP, $0)) }), in: 0...999)
+                        Stepper("Max \(comp.maxHP)", value: Binding(
+                            get: { comp.maxHP },
+                            set: {
+                                comp.maxHP = max(1, $0)
+                                comp.currentHP = min(comp.currentHP, comp.maxHP)
+                            }), in: 1...999)
+                        Button(role: .destructive) {
+                            character.companions.removeAll { $0.id == comp.id }
+                        } label: { Image(systemName: "minus.circle") }
+                    }
+                    .font(.caption)
+                    TextField("Notes", text: $comp.notes)
+                        .textFieldStyle(InsetFieldStyle())
+                }
+                .padding(.vertical, 2)
+            }
+            Button("Add companion") {
+                character.companions.append(Companion(name: "New companion"))
+            }
+            .controlSize(.small)
+        }
+    }
+}
 #endif

@@ -131,6 +131,9 @@ public enum SampleContent {
                              text: "Bressa says the brass key predates the Athenaeum. The booksellers' guild wants it bought, not borrowed."),
             ]
         )
+        c.companions = [Companion(name: "Inkpot", kind: "Familiar (owl)", maxHP: 3,
+                                  armorClass: 11,
+                                  notes: "Perches on the spellbook. Delivers notes across the reading room.")]
         c.armorClass = 15 // Mage Armor active: 13 + DEX
         return c
     }

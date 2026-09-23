@@ -255,6 +255,38 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// A familiar, mount, pet, or hireling tracked alongside the sheet.
+public struct Companion: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID = UUID()
+    public var name: String
+    public var kind: String
+    public var maxHP: Int
+    public var currentHP: Int
+    public var armorClass: Int
+    public var notes: String
+
+    public init(name: String, kind: String = "", maxHP: Int = 5, currentHP: Int? = nil,
+                armorClass: Int = 10, notes: String = "") {
+        self.name = name
+        self.kind = kind
+        self.maxHP = max(1, maxHP)
+        self.currentHP = max(0, min(self.maxHP, currentHP ?? self.maxHP))
+        self.armorClass = armorClass
+        self.notes = notes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        maxHP = try c.decodeIfPresent(Int.self, forKey: .maxHP) ?? 5
+        currentHP = try c.decodeIfPresent(Int.self, forKey: .currentHP) ?? maxHP
+        armorClass = try c.decodeIfPresent(Int.self, forKey: .armorClass) ?? 10
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+    }
+}
+
 public struct InventoryItem: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID = UUID()
     public var name: String
@@ -340,6 +372,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var spellcasting: Spellcasting?
     // Gear & story
     public var inventory: [InventoryItem]
+    public var companions: [Companion]
     /// Genre-standard cap on simultaneously attuned magic items.
     public static let attunementLimit = 3
     /// Items currently attuned.
@@ -393,6 +426,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         attacks: [Attack] = [],
         spellcasting: Spellcasting? = nil,
         inventory: [InventoryItem] = [],
+        companions: [Companion] = [],
         currency: Currency = Currency(),
         proficienciesText: String = "",
         features: [Feature] = [],
@@ -442,6 +476,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.attacks = attacks
         self.spellcasting = spellcasting
         self.inventory = inventory
+        self.companions = companions
         self.currency = currency
         self.journal = journal
         self.proficienciesText = proficienciesText
@@ -494,6 +529,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         attacks = try c.decode([Attack].self, forKey: .attacks)
         spellcasting = try c.decodeIfPresent(Spellcasting.self, forKey: .spellcasting)
         inventory = try c.decode([InventoryItem].self, forKey: .inventory)
+        companions = try c.decodeIfPresent([Companion].self, forKey: .companions) ?? []
         currency = try c.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
         journal = try c.decodeIfPresent([JournalEntry].self, forKey: .journal) ?? []
         proficienciesText = try c.decodeIfPresent(String.self, forKey: .proficienciesText) ?? ""

@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.12.0
+
+- Companions block: familiars, mounts, pets, and hirelings on the
+  sheet with kind, AC, current/max HP (clamped), and notes. Its own
+  draggable/hideable block, exported to Markdown, HTML, and PDF. Old
+  saves gain the block on decode with an empty list.
+
 ## What's in 2.11.0
 
 - Defenses: damage resistances, immunities, and vulnerabilities picked

@@ -86,6 +86,24 @@ struct CharacterTests {
         #expect(c.features[1].usesRemaining == 0)
     }
 
+    @Test func companionsClampHPAndDecode() throws {
+        var c = Character(name: "T", level: 1)
+        c.companions = [Companion(name: "Inkpot", kind: "Familiar", maxHP: 3, armorClass: 11)]
+        #expect(c.companions[0].currentHP == 3)
+        // currentHP never exceeds maxHP through the initializer.
+        let over = Companion(name: "Mule", maxHP: 10, currentHP: 25)
+        #expect(over.currentHP == 10)
+        // Old saves without the companions key decode empty.
+        let json = """
+        {"name":"Old","lineage":"","calling":"","background":"",
+        "level":1,"experience":0,"scores":{},"skills":[],
+        "savingThrowProficiencies":[],"maxHP":8,"currentHP":8,"armorClass":10,"speed":30,
+        "attacks":[],"inventory":[],"notes":""}
+        """.data(using: .utf8)!
+        let old = try JSONDecoder().decode(Character.self, from: json)
+        #expect(old.companions.isEmpty)
+    }
+
     @Test func defensesAdjustIncomingDamage() {
         var c = Character(name: "T", level: 1, maxHP: 30)
         c.resistances = [.fire]

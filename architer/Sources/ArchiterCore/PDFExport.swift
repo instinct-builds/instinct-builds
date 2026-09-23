@@ -388,6 +388,16 @@ public enum SheetPDFExporter {
                         }
                     }
                 }
+            case .companions:
+                guard !c.companions.isEmpty else { continue }
+                cursor.section("Companions", margin: margin)
+                for comp in c.companions {
+                    var text = "\(comp.name)\(comp.kind.isEmpty ? "" : " (\(comp.kind))") - HP \(comp.currentHP)/\(comp.maxHP), AC \(comp.armorClass)"
+                    if !comp.notes.isEmpty { text += " - \(comp.notes)" }
+                    for line in wrap(text, width: contentW, size: 9) {
+                        cursor.line(line, margin: margin)
+                    }
+                }
             }
             cursor.advance(8)
         }

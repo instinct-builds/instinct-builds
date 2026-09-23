@@ -16,6 +16,7 @@ public enum SheetBlockKind: String, Codable, CaseIterable, Sendable {
     case diceRoller
     case notes
     case journal       // dated session-log entries
+    case companions    // familiars, mounts, pets, hirelings
 }
 
 public enum BlockSize: String, Codable, CaseIterable, Sendable {

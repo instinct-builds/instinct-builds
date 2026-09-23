@@ -135,6 +135,16 @@ public enum SheetExporter {
                     }
                     out.append(lines.joined(separator: "\n"))
                 }
+            case .companions:
+                if !c.companions.isEmpty {
+                    var lines = ["## Companions"]
+                    for comp in c.companions {
+                        var line = "- **\(comp.name)**\(comp.kind.isEmpty ? "" : " (\(comp.kind))") - HP **\(comp.currentHP)/\(comp.maxHP)** - AC **\(comp.armorClass)**"
+                        if !comp.notes.isEmpty { line += " - \(comp.notes)" }
+                        lines.append(line)
+                    }
+                    out.append(lines.joined(separator: "\n"))
+                }
             }
         }
         appendCustomSections(&out, c)
@@ -296,6 +306,14 @@ public enum SheetExporter {
                         }
                     }
                     body.append("<section class=\"block\"><h2>Journal</h2>\(items)</section>")
+                }
+            case .companions:
+                if !c.companions.isEmpty {
+                    var items = ""
+                    for comp in c.companions {
+                        items += "<li><b>\(esc(comp.name))</b>\(comp.kind.isEmpty ? "" : " (" + esc(comp.kind) + ")") - HP <b>\(comp.currentHP)/\(comp.maxHP)</b> - AC <b>\(comp.armorClass)</b>\(comp.notes.isEmpty ? "" : " - " + esc(comp.notes))</li>"
+                    }
+                    body.append("<section class=\"block\"><h2>Companions</h2><ul>\(items)</ul></section>")
                 }
             }
         }
