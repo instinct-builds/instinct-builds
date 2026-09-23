@@ -273,3 +273,25 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Fixes: Find Duplicates rescans watch folders first. Re-adding a folder
   you already watch rescans it right away. The sidebar reads "N assets"
   now that the count includes your own files.
+
+## 1.5.0: contact sheets and brand kits
+
+- File > Contact Sheet & Brand Kit… (⇧⌘P) works on the current selection
+  if more than one asset is selected, otherwise on the current view. It's
+  also on any collection or smart collection's right-click menu and in the
+  selection bar's Export menu.
+- The contact sheet is a US Letter landscape PDF drawn with CoreGraphics in
+  the ASSSETS dark style. The cover has the title, counts by kind, the date,
+  the combined palette (up to 8 swatches with hex codes) and a mosaic.
+  After that, 12 assets per page, each with its thumbnail, name, kind,
+  resolution and palette strip. A preview sheet (PDFKit) shows the pages
+  before you save.
+- The brand kit is one zip: `Contact Sheet.pdf`, a `Files/` folder (as shown
+  or originals), and `Palette.ase` (Adobe Swatch Exchange, for Photoshop,
+  Illustrator, InDesign and Affinity) plus `Palette.json` for Figma/Sketch
+  scripts and design tokens.
+- Logic and tests: `BrandKit.swift` (ASE writer, combined-palette voting,
+  page layout) and `BrandKitTests.swift`.
+- CI harness: every screenshot now starts from the same fresh catalog. CI
+  also uploads the rendered contact-sheet PDF and a listing of a demo
+  kit's contents.

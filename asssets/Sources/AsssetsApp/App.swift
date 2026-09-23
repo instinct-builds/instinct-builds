@@ -8,6 +8,7 @@ import CoreImage.CIFilterBuiltins
 import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
+import PDFKit
 import AsssetsCore
 
 @main
@@ -40,6 +41,8 @@ struct ASSSETSApp: App {
                     .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(library.selection.isEmpty)
                 Button("Reveal in Finder") { library.reveal(library.selection) }
                     .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
+                Button("Contact Sheet & Brand Kit…") { library.openContactSheetForCurrentView() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
             }
         }
     }
@@ -95,7 +98,7 @@ final class StudioLibrary: ObservableObject {
     private var keyMonitor: Any?
 
     func openViewer() {
-        guard smartEditor == nil, duplicates == nil else { return }
+        guard smartEditor == nil, duplicates == nil, sheetPreview == nil else { return }
         viewerID = focusID ?? selection.first ?? filtered.first?.id
     }
     func closeViewer() { viewerID = nil }
@@ -115,7 +118,7 @@ final class StudioLibrary: ObservableObject {
     }
 
     private func handleKey(_ e: NSEvent) -> Bool {
-        guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil, duplicates == nil else { return false }
+        guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil, duplicates == nil, sheetPreview == nil else { return false }
         if viewerID == nil, NSApp.keyWindow?.firstResponder is NSText { return false }
         switch e.keyCode {
         case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
@@ -407,6 +410,71 @@ final class StudioLibrary: ObservableObject {
                 self.duplicates = DuplicateScan(scanning: false, groups: groups, checked: checked, near: true)
             }
         }
+    }
+
+    // MARK: Contact sheets and brand kits (1.5)
+
+    @Published var sheetPreview: SheetPreview?
+
+    func openContactSheetForCurrentView() {
+        if selection.count > 1 { openContactSheet(ids: selectedAssets.map(\.id), title: "\(selection.count) Selected Assets") }
+        else { openContactSheet(ids: filtered.map(\.id), title: browsingTitle) }
+    }
+
+    /// Renders the PDF to a temp file and opens the preview sheet; saving happens from there.
+    func openContactSheet(ids: [UUID], title: String) {
+        let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
+        let assets = ids.compactMap { byID[$0] }
+        guard !assets.isEmpty else { flash("Nothing to put on a contact sheet"); return }
+        flash("Laying out \(assets.count) assets…")
+        Task { @MainActor in
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-sheet/\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(DragOut.safeName(title + " Contact Sheet") + ".pdf")
+            let ok = await ContactSheetRenderer.render(title: title, assets: assets, to: url)
+            guard ok else { flash("Could not render the contact sheet"); return }
+            sheetPreview = SheetPreview(title: title, ids: assets.map(\.id), pdf: url)
+        }
+    }
+
+    func saveContactSheet(_ p: SheetPreview) {
+        let s = NSSavePanel(); s.nameFieldStringValue = p.pdf.lastPathComponent; s.allowedContentTypes = [.pdf]; s.canCreateDirectories = true
+        guard s.runModal() == .OK, let dst = s.url else { return }
+        try? FileManager.default.removeItem(at: dst)
+        if (try? FileManager.default.copyItem(at: p.pdf, to: dst)) != nil { flash("Saved \(dst.lastPathComponent)"); NSWorkspace.shared.activateFileViewerSelecting([dst]) }
+        else { flash("Could not save the PDF") }
+    }
+
+    /// One zip: the contact sheet, the files, and the combined palette as .ase and .json swatches.
+    @discardableResult
+    func buildBrandKit(_ p: SheetPreview, mode: DragOut.ExportMode, to zip: URL) -> Bool {
+        let fm = FileManager.default
+        let name = BrandKit.kitName(p.title)
+        let stage = fm.temporaryDirectory.appendingPathComponent("ASSSETS-kit/\(UUID().uuidString)/\(name)", isDirectory: true)
+        let files = stage.appendingPathComponent("Files", isDirectory: true)
+        try? fm.createDirectory(at: files, withIntermediateDirectories: true)
+        try? fm.copyItem(at: p.pdf, to: stage.appendingPathComponent("Contact Sheet.pdf"))
+        let assets = p.ids.compactMap { id in catalog.assets.first { $0.id == id } }
+        var taken = Set<String>()
+        for a in assets { if let u = write(a, mode: mode, into: files, taken: taken, copy: true) { taken.insert(u.lastPathComponent) } }
+        let palette = BrandKit.combinedPalette(assets.map(\.palette))
+        let swatches = palette.enumerated().map { BrandKit.Swatch(name: "\(p.title) \($0.offset + 1)", hex: $0.element) }
+        try? BrandKit.ase(swatches).write(to: stage.appendingPathComponent("Palette.ase"))
+        try? BrandKit.swatchJSON(title: p.title, swatches).write(to: stage.appendingPathComponent("Palette.json"))
+        try? fm.removeItem(at: zip)
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        task.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", stage.path, zip.path]
+        do { try task.run(); task.waitUntilExit() } catch { return false }
+        try? fm.removeItem(at: stage.deletingLastPathComponent())
+        return task.terminationStatus == 0 && fm.fileExists(atPath: zip.path)
+    }
+
+    func saveBrandKit(_ p: SheetPreview, mode: DragOut.ExportMode) {
+        let s = NSSavePanel(); s.nameFieldStringValue = BrandKit.kitName(p.title) + ".zip"; s.allowedContentTypes = [.zip]; s.canCreateDirectories = true
+        guard s.runModal() == .OK, let dst = s.url else { return }
+        if buildBrandKit(p, mode: mode, to: dst) { flash("Saved \(dst.lastPathComponent)"); NSWorkspace.shared.activateFileViewerSelecting([dst]) }
+        else { flash("Could not build the brand kit") }
     }
 
     // MARK: Find similar (1.4)
@@ -845,6 +913,21 @@ final class StudioLibrary: ObservableObject {
             }
             watch([drop.path])
             if let a = catalog.assets.first(where: { $0.importedPath?.hasSuffix("terrazzo-texture.png") == true && $0.isStarter }) { findSimilar(a.id) }
+        case "contact-sheet":
+            show(collection: "Material Textures")
+            let ids = filtered.map(\.id)
+            openContactSheet(ids: ids, title: "Material Textures")
+            // CI keeps the rendered PDF and a listing of a small originals kit as proof.
+            Task { @MainActor in
+                var tries = 0
+                while self.sheetPreview == nil && tries < 40 { try? await Task.sleep(nanoseconds: 150_000_000); tries += 1 }
+                guard let p = self.sheetPreview else { return }
+                let fm = FileManager.default
+                try? fm.removeItem(at: self.supportRoot.appendingPathComponent("demo-contact-sheet.pdf"))
+                try? fm.copyItem(at: p.pdf, to: self.supportRoot.appendingPathComponent("demo-contact-sheet.pdf"))
+                let small = SheetPreview(title: p.title, ids: Array(p.ids.prefix(4)), pdf: p.pdf)
+                self.buildBrandKit(small, mode: .originals, to: self.supportRoot.appendingPathComponent("demo-brand-kit.zip"))
+            }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -901,6 +984,7 @@ struct StudioView: View {
             Button("Cancel", role: .cancel) { model.pendingRemoval = [] }
         } message: { Text("Files on disk stay where they are.") }
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
+        .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
         .sheet(isPresented: Binding(get: { model.duplicates != nil }, set: { if !$0 { model.duplicates = nil } })) {
             DuplicatesSheet().environmentObject(model)
         }
@@ -954,6 +1038,7 @@ struct Sidebar: View {
                         SidebarRow(title: name, symbol: symbol(for: name), count: model.catalog.count(in: name), selected: model.selectedSmart == nil && model.selectedCollection == name, dropTarget: name) { model.show(collection: name) }
                             .contextMenu {
                                 Button("Rename…") { renameText = name; model.renamingCollection = name }
+                                Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name) }
                                 Button("Show") { model.show(collection: name) }
                             }
                     }
@@ -966,6 +1051,7 @@ struct Sidebar: View {
                         SidebarRow(title: smart.name, symbol: smart.symbol, count: model.catalog.smartAssets(smart.id).count, selected: model.selectedSmart == smart.id, accent: .smart) { model.show(smart: smart.id) }
                             .contextMenu {
                                 Button("Edit Rules…") { model.beginEdit(smart: smart.id) }
+                                Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.smartAssets(smart.id).map(\.id), title: smart.name) }
                                 Button("Delete Smart Collection", role: .destructive) { model.deleteSmart(smart.id) }
                             }
                     }
@@ -1212,6 +1298,8 @@ struct SelectionBar: View {
                 Button("As Shown…") { model.exportToFolder(model.selection, mode: .asShown) }
                 Button("Original Files…") { model.exportToFolder(model.selection, mode: .originals) }
                 if model.canReveal { Divider(); Button("Reveal in Finder") { model.reveal(model.selection) } }
+                Divider()
+                Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.selectedAssets.map(\.id), title: "\(model.selection.count) Selected Assets") }
             } label: {
                 if compact { Image(systemName: "square.and.arrow.up") } else { Label("Export", systemImage: "square.and.arrow.up") }
             }.menuStyle(.borderlessButton).fixedSize().help("Export the selection to a folder")
@@ -1561,6 +1649,156 @@ struct AnchorView: NSViewRepresentable {
     let box: AnchorBox
     func makeNSView(context: Context) -> NSView { let v = NSView(); box.view = v; return v }
     func updateNSView(_ v: NSView, context: Context) { box.view = v }
+}
+
+struct SheetPreview: Identifiable {
+    let id = UUID()
+    let title: String
+    let ids: [UUID]
+    let pdf: URL
+}
+
+struct PDFPreview: NSViewRepresentable {
+    let url: URL
+    func makeNSView(context: Context) -> PDFView {
+        let v = PDFView(); v.autoScales = true; v.displayMode = .singlePageContinuous; v.displaysPageBreaks = true
+        v.backgroundColor = NSColor(white: 0.04, alpha: 1); v.document = PDFDocument(url: url); return v
+    }
+    func updateNSView(_ v: PDFView, context: Context) { if v.document?.documentURL != url { v.document = PDFDocument(url: url) } }
+}
+
+struct ContactSheetPreview: View {
+    @EnvironmentObject var model: StudioLibrary
+    let preview: SheetPreview
+    @State private var mode: DragOut.ExportMode = .asShown
+    var body: some View {
+        let pages = PDFDocument(url: preview.pdf)?.pageCount ?? 0
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Contact Sheet & Brand Kit").font(.system(size: 20, weight: .bold))
+                    Text("\(preview.title) · \(preview.ids.count) assets · \(pages) pages, US Letter landscape").font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }.padding(20)
+            PDFPreview(url: preview.pdf).frame(minHeight: 380)
+            HStack(spacing: 10) {
+                Button { model.saveContactSheet(preview) } label: { Label("Save PDF…", systemImage: "doc.richtext") }.buttonStyle(.bordered)
+                Divider().frame(height: 18)
+                Picker("Files", selection: $mode) {
+                    Text("As shown").tag(DragOut.ExportMode.asShown)
+                    Text("Originals").tag(DragOut.ExportMode.originals)
+                }.pickerStyle(.segmented).fixedSize().help("Files inside the kit: exactly what you see, or the original files")
+                Button { model.saveBrandKit(preview, mode: mode) } label: { Label("Save Brand Kit…", systemImage: "shippingbox") }
+                    .buttonStyle(.borderedProminent).help("Zip with the contact sheet, the files, and Palette.ase / Palette.json swatches")
+                Spacer()
+                Button("Done") { model.sheetPreview = nil }.keyboardShortcut(.cancelAction)
+            }.padding(16)
+        }
+        .frame(minWidth: 860, idealWidth: 960, minHeight: 600, idealHeight: 700)
+        .background(Theme.panel)
+    }
+}
+
+/// Draws the contact sheet PDF with CoreGraphics: a cover with the combined palette and a mosaic,
+/// then 12 assets per page with name, kind, resolution and palette.
+@MainActor
+enum ContactSheetRenderer {
+    static let bg = NSColor(red: 0.055, green: 0.058, blue: 0.08, alpha: 1)
+    static let card = NSColor(white: 1, alpha: 0.05)
+    static let accent = NSColor(red: 0.55, green: 0.38, blue: 1.0, alpha: 1)
+
+    static func render(title: String, assets: [StudioAsset], to url: URL) async -> Bool {
+        var images: [UUID: CGImage] = [:]
+        for a in assets {
+            if a.importedPath == nil { images[a.id] = MediaRenderer.generated(a, width: 600) }
+            else if let img = await MediaRenderer.thumbnail(for: a, maxPixel: 600) { images[a.id] = img }
+        }
+        let sheet = BrandKit.layout(count: assets.count)
+        var box = CGRect(x: 0, y: 0, width: sheet.pageWidth, height: sheet.pageHeight)
+        let info: [CFString: Any] = [kCGPDFContextTitle: title + " Contact Sheet", kCGPDFContextCreator: "ASSSETS"]
+        guard let ctx = CGContext(url as CFURL, mediaBox: &box, info as CFDictionary) else { return false }
+        let W = sheet.pageWidth, H = sheet.pageHeight
+        let gc = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = gc
+        defer { NSGraphicsContext.restoreGraphicsState() }
+
+        func text(_ s: String, _ x: Double, _ yTop: Double, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .white,
+                  width: Double = 600, align: NSTextAlignment = .left, kern: CGFloat = 0, mono: Bool = false) {
+            let ps = NSMutableParagraphStyle(); ps.alignment = align; ps.lineBreakMode = .byTruncatingTail
+            let font = mono ? NSFont.monospacedSystemFont(ofSize: size, weight: weight) : NSFont.systemFont(ofSize: size, weight: weight)
+            let str = NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: ps, .kern: kern])
+            let h = Double(font.ascender - font.descender + font.leading) + 2
+            str.draw(in: NSRect(x: x, y: H - yTop - h, width: width, height: h))
+        }
+        func rect(_ r: BrandKit.Rect) -> CGRect { CGRect(x: r.x, y: H - r.y - r.h, width: r.w, height: r.h) }
+        func fill(_ r: CGRect, _ c: NSColor, radius: CGFloat = 0) {
+            ctx.setFillColor(c.cgColor); ctx.addPath(CGPath(roundedRect: r, cornerWidth: radius, cornerHeight: radius, transform: nil)); ctx.fillPath()
+        }
+        func draw(_ img: CGImage, in r: CGRect, radius: CGFloat) {
+            ctx.saveGState()
+            ctx.addPath(CGPath(roundedRect: r, cornerWidth: radius, cornerHeight: radius, transform: nil)); ctx.clip()
+            let s = max(r.width / CGFloat(img.width), r.height / CGFloat(img.height))
+            let w = CGFloat(img.width) * s, h = CGFloat(img.height) * s
+            ctx.interpolationQuality = .high
+            ctx.draw(img, in: CGRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h))
+            ctx.restoreGState()
+        }
+        let date = Date().formatted(date: .long, time: .omitted)
+        let total = sheet.totalPages
+
+        // Cover
+        ctx.beginPDFPage(nil)
+        fill(CGRect(x: 0, y: 0, width: W, height: H), bg)
+        text("ASSSETS", 48, 44, size: 11, weight: .black, color: accent, kern: 3)
+        text(title, 48, 150, size: 38, weight: .bold, width: 360)
+        let kinds = Dictionary(grouping: assets, by: \.kind).sorted { $0.value.count > $1.value.count }.map { "\($0.value.count) \($0.key.rawValue.lowercased())" }
+        text("\(assets.count) assets · " + kinds.prefix(3).joined(separator: ", "), 48, 200, size: 12, color: NSColor(white: 1, alpha: 0.6), width: 360)
+        text(date, 48, 220, size: 11, color: NSColor(white: 1, alpha: 0.4), width: 360)
+        text("PALETTE", 48, 300, size: 9, weight: .bold, color: NSColor(white: 1, alpha: 0.5), kern: 1.6)
+        let palette = BrandKit.combinedPalette(assets.map(\.palette))
+        for (i, hex) in palette.prefix(8).enumerated() {
+            let x = 48 + Double(i % 4) * 88, yTop = 322 + Double(i / 4) * 92
+            fill(CGRect(x: x, y: H - yTop - 56, width: 80, height: 56), NSColor(hex: hex) ?? .gray, radius: 8)
+            text(hex, x, yTop + 60, size: 8.5, color: NSColor(white: 1, alpha: 0.65), width: 80, mono: true)
+        }
+        let mosaic = assets.prefix(6).compactMap { images[$0.id] }
+        for (i, img) in mosaic.enumerated() {
+            let c = i % 2, r = i / 2
+            let cell = CGRect(x: 440 + Double(c) * 158, y: H - 60 - Double(r + 1) * 164 + 8, width: 150, height: 156)
+            draw(img, in: cell, radius: 12)
+        }
+        text("Made with ASSSETS · 1 of \(total)", 48, H - 40, size: 8, color: NSColor(white: 1, alpha: 0.35))
+        ctx.endPDFPage()
+
+        // Content pages
+        var k = 0
+        for (pi, cells) in sheet.pages.enumerated() {
+            ctx.beginPDFPage(nil)
+            fill(CGRect(x: 0, y: 0, width: W, height: H), bg)
+            text(title, 36, 30, size: 15, weight: .bold, width: 500)
+            text("\(pi + 2) of \(total)", W - 236, 32, size: 9, color: NSColor(white: 1, alpha: 0.45), width: 200, align: .right)
+            for cell in cells {
+                let a = assets[k]; k += 1
+                let r = rect(cell)
+                fill(r, card, radius: 10)
+                let thumbH = min(r.height - 44, (r.width - 12) / 1.36)
+                let t = CGRect(x: r.minX + 6, y: r.maxY - 6 - thumbH, width: r.width - 12, height: thumbH)
+                if let img = images[a.id] { draw(img, in: t, radius: 7) } else { fill(t, NSColor(white: 1, alpha: 0.06), radius: 7) }
+                let capTop = cell.y + 6 + thumbH + 6
+                text(a.title, cell.x + 8, capTop, size: 9.5, weight: .semibold, width: cell.w - 16)
+                text("\(a.kind.singular) · \(a.resolution)", cell.x + 8, capTop + 13, size: 7.5, color: NSColor(white: 1, alpha: 0.55), width: cell.w - 16)
+                let sw = a.palette.prefix(5)
+                let segW = (cell.w - 16) / Double(max(sw.count, 1))
+                for (j, hex) in sw.enumerated() {
+                    fill(CGRect(x: cell.x + 8 + Double(j) * segW, y: H - (capTop + 27) - 3, width: segW - 1, height: 3), NSColor(hex: hex) ?? .gray)
+                }
+            }
+            ctx.endPDFPage()
+        }
+        ctx.closePDF()
+        return true
+    }
 }
 
 struct DuplicateScan: Equatable {
