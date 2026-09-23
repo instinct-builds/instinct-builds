@@ -340,7 +340,7 @@ int main() {
             NSPoint dup = NSMakePoint(40 + 51 + 24, t - 250 + 10);        // DUP
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, dup, w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, dup, w)];
-            NSPoint harm = NSMakePoint(298 + 50 + 23, t - 32 + 8);        // HARM tab
+            NSPoint harm = NSMakePoint(262 + 44 + 20, t - 32 + 8);        // HARM tab (tabs moved left for 3D in 0.20.0)
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, harm, w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, harm, w)];
             NSPoint h5 = NSMakePoint(40 + 4.5 * (408 / 32.0), t - 184 + 16 + (138 - 26) * .9); // harmonic 5 at 90%
@@ -666,6 +666,57 @@ int main() {
             Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the editor
             Click(view, w, card(3));                                     // DELAY detail for the editor snapshot
             Click(view, w, NSMakePoint(46 + 95, t - 80));                // reopen OSC A's wavetable editor, as the snapshot showed before
+            fflush(stdout);
+        });
+        After(6.999, ^{ // 0.20.0 wavetable depth: spectral MORPH the 2-frame table, import a pitched AIFF, pick a frame in 3D
+            CGFloat t = view.bounds.size.height - 100;
+            muew::Preset two;
+            bool ok0 = State(two);
+            Click(view, w, NSMakePoint(40 + 3 * 51 + 24, t - 250 + 10)); // MORPH: 2 key frames -> 8 spectral frames
+            muew::Preset m8;
+            bool ok1 = State(m8);
+            Check(ok0 && ok1 && two.tables[0].size() == 2 && m8.tables[0].size() == 8 && m8.tables[0][0] == two.tables[0][0]
+                  && m8.tables[0][7] == two.tables[0][1], "MORPH rebuilt OSC A's 2 key frames as 8 spectral frames with the keys at the ends");
+            // A 1.5 s saw at 146.83 Hz (48 kHz, 16-bit AIFF) whose brightness sweeps from 2 to 40 harmonics.
+            const double rate = 48000, hz = 146.83;
+            const size_t n = (size_t)(1.5 * rate);
+            std::vector<unsigned char> a;
+            auto be = [&](uint32_t v, int k) { for (int i = k - 1; i >= 0; --i) a.push_back((v >> (8 * i)) & 255); };
+            auto tag = [&](const char* t4) { a.insert(a.end(), t4, t4 + 4); };
+            tag("FORM"); be((uint32_t)(4 + 26 + 16 + n * 2), 4); tag("AIFF");
+            tag("COMM"); be(18, 4); be(1, 2); be((uint32_t)n, 4); be(16, 2);
+            int ex; double mt = std::frexp(rate, &ex); uint64_t mant = (uint64_t)std::ldexp(mt, 64);
+            be((uint32_t)(ex - 1 + 16383), 2); be((uint32_t)(mant >> 32), 4); be((uint32_t)mant, 4);
+            tag("SSND"); be((uint32_t)(8 + n * 2), 4); be(0, 4); be(0, 4);
+            double ph = 0;
+            for (size_t i = 0; i < n; ++i) {
+                double nh = 2 + 38 * (double)i / n, sm = 0;
+                for (int k = 1; k <= 40; ++k) { double g = std::clamp(nh - k + 1, 0.0, 1.0); if (g > 0) sm += g * std::sin(ph * k) / k; }
+                be((uint16_t)(int16_t)std::lround(std::clamp(0.5 * sm, -1.0, 1.0) * 32767), 2);
+                ph += 2 * M_PI * hz / rate;
+            }
+            NSString* path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"muew-harness-sweep.aiff"];
+            [[NSData dataWithBytes:a.data() length:a.size()] writeToFile:path atomically:YES];
+            typedef BOOL (*ImportFn)(id, SEL, NSString*);
+            SEL sel = NSSelectorFromString(@"importTableFile:");
+            BOOL imported = [view respondsToSelector:sel] && ((ImportFn)[view methodForSelector:sel])(view, sel, path);
+            muew::Preset im;
+            bool ok2 = State(im);
+            printf("import: %d, OSC A shape %d, %zu frames, WT POS %.3f\n", (int)imported, im.voice.osc1Shape, im.tables[0].size(), im.voice.osc1WtPos);
+            Check(imported && ok2 && im.tables[0].size() == 64 && im.voice.osc1Shape == muew::kCustomShape && im.voice.osc1WtPos == 0,
+                  "IMPORT sliced the pitched AIFF into 64 frames of OSC A's table in the AU");
+            Click(view, w, NSMakePoint(262 + 2 * 44 + 20, t - 32 + 8.5));  // 3D tab
+            const double d = 40.0 / 63, rw = 408 * .6, rh = 138 * .34;       // frame 41's row in the stack
+            NSPoint row = NSMakePoint(40 + 14 + d * (408 - rw - 28) + rw / 2, t - 184 + 18 + d * (138 - rh - 30) + rh / 2);
+            Click(view, w, row);
+            Snapshot(view, "MUEW_WT3D_PNG", "3D wavetable view snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            printf("3D pick: WT POS %.4f (frame %.1f)\n", st.voice.osc1WtPos, st.voice.osc1WtPos * 63 + 1);
+            Check(ok && std::fabs(st.voice.osc1WtPos - 40.0 / 63) < 1e-6, "clicking frame 41's row in the 3D view moved WT POS onto it");
+            muew::Preset back;
+            std::string txt = ok ? st.serialize() : "";
+            Check(ok && back.parse(txt) && back == st && txt.find("\nwt1 64 ") != std::string::npos, "the AU state saves the 64-frame table");
             fflush(stdout);
         });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).

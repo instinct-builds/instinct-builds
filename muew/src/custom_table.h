@@ -1,5 +1,5 @@
 #pragma once
-// User wavetables (0.9.0). A table is 1-16 key frames of 256 samples each,
+// User wavetables (0.9.0). A table is 1-64 (1-16 before 0.20.0) key frames of 256 samples each,
 // drawn or built from harmonics in the editor, or imported from a WAV. For
 // playback each frame is band-limited into the same per-octave mipmaps as the
 // built-in shapes, and the WT POS control (0..1) crossfades through frames.
@@ -16,7 +16,7 @@
 namespace muew {
 
 constexpr int kFrameSize = 256;
-constexpr int kMaxFrames = 16;
+constexpr int kMaxFrames = 64; // 16 until 0.19.0; 0.20.0 import + morph fill up to 64
 constexpr int kCustomShape = 5; // osc shape index that plays the oscillator's own table
 using Frame = std::vector<float>;
 using TableFrames = std::vector<Frame>; // empty = no table

@@ -2,6 +2,7 @@
 #import "MUEWEditorView.h"
 #include "user_presets.h"
 #include "au_params.h"
+#include "table_import.h"
 #include <cmath>
 
 using namespace muew;
@@ -309,7 +310,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
 - (NSRect)wtButton:(int)i { return NSMakeRect(40 + i * 51, [self top] - 250, 48, 20); }
-- (NSRect)wtModeTab:(int)i { return NSMakeRect(298 + i * 50, [self top] - 32, 46, 17); }
+- (NSRect)wtModeTab:(int)i { return NSMakeRect(262 + i * 44, [self top] - 32, 40, 17); } // DRAW, HARM, 3D (0.20.0)
 - (NSRect)wtDoneRect { return NSMakeRect(400, [self top] - 32, 48, 17); }
 - (NSRect)modField:(int)j {
     int n = [self modFieldCount];
@@ -347,6 +348,15 @@ static int& OscShape(VoiceParams& v, int o) { return o ? v.osc2Shape : v.osc1Sha
 static double& OscWtPos(VoiceParams& v, int o) { return o ? v.osc2WtPos : v.osc1WtPos; }
 static NSColor* OscColor(int o) { return o ? C(0x9d7df2) : C(0x5adac8); }
 static NSArray<NSString*>* WtButtonLabels() { return @[@"+ ADD", @"DUP", @"DELETE", @"MORPH", @"SMOOTH", @"NORMAL", @"IMPORT", @"EXPORT"]; }
+// 0.20.0: the frame strip has 16 thumbs; tables of up to 64 frames spread them evenly.
+static int ThumbFrame(int i, int n) { return n <= 16 ? i : (int)std::lround(i * (n - 1) / 15.0); }
+static int ThumbFor(int frame, int n) { return n <= 16 ? frame : (int)std::lround(frame * 15.0 / std::max(1, n - 1)); }
+// 3D stack geometry inside the canvas: frame j of n sits at depth d (0 = front, bottom-left).
+static NSRect StackRow(NSRect cv, int j, int n) {
+    const double d = n > 1 ? (double)j / (n - 1) : 0.0;
+    const CGFloat w = cv.size.width * .6, h = cv.size.height * .34;
+    return NSMakeRect(cv.origin.x + 14 + d * (cv.size.width - w - 28), cv.origin.y + 18 + d * (cv.size.height - h - 30), w, h);
+}
 static void StrokeFrame(const Frame& f, NSRect r, CGFloat amp, NSColor* col, CGFloat width) {
     if (f.empty()) return;
     NSBezierPath* p = [NSBezierPath bezierPath];
@@ -491,8 +501,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
          NSMakeRect(40, NSMaxY(P) - 30, 150, 20), 11, col, NSFontWeightSemibold);
     Text([NSString stringWithFormat:@"FRAME %d / %d", wtFrame + 1, (int)t.size()],
          NSMakeRect(170, NSMaxY(P) - 29, 110, 20), 10, C(0x8793a3), NSFontWeightMedium);
-    NSArray* tabs = @[@"DRAW", @"HARM"];
-    for (int i = 0; i < 2; ++i) {
+    NSArray* tabs = @[@"DRAW", @"HARM", @"3D"];
+    for (int i = 0; i < 3; ++i) {
         NSRect r = [self wtModeTab:i];
         FillRound(r, 4, wtMode == i ? [col colorWithAlphaComponent:.28] : C(0x1b222c));
         TextA(tabs[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 11), 8, wtMode == i ? col : C(0x8793a3),
@@ -509,7 +519,40 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     for (int i = -1; i <= 1; ++i)
         FillRound(NSMakeRect(cv.origin.x + 6, NSMidY(cv) + i * cv.size.height * .42 - .5, cv.size.width - 12, 1), 0, i ? C(0x161c25) : C(0x222a36));
     const Frame& f = t[wtFrame];
-    if (wtMode == 0) {
+    if (wtMode == 2) { // 0.20.0 3D stack, back to front; each frame occludes the ones behind it
+        const int n = (int)t.size();
+        [NSGraphicsContext saveGraphicsState];
+        [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(cv, 1, 1) xRadius:7 yRadius:7] addClip];
+        for (int j = n - 1; j >= 0; --j) {
+            NSRect row = StackRow(cv, j, n);
+            const Frame& fr = t[j];
+            NSBezierPath* line = [NSBezierPath bezierPath];
+            NSBezierPath* body = [NSBezierPath bezierPath];
+            [body moveToPoint:NSMakePoint(row.origin.x, row.origin.y)];
+            const int N = (int)fr.size();
+            for (int i = 0; i <= N; i += 2) {
+                NSPoint q = NSMakePoint(row.origin.x + row.size.width * i / (CGFloat)N,
+                                        NSMidY(row) + std::clamp((double)fr[i % N], -1.1, 1.1) * row.size.height * .5);
+                i ? [line lineToPoint:q] : [line moveToPoint:q];
+                [body lineToPoint:q];
+            }
+            [body lineToPoint:NSMakePoint(NSMaxX(row), row.origin.y)]; [body closePath];
+            const double depth = n > 1 ? (double)j / (n - 1) : 0.0;
+            [C(0x0a0d12, j == wtFrame ? .55 : .8) setFill]; [body fill];
+            if (j == wtFrame) {
+                [[col colorWithAlphaComponent:.22] setFill]; [body fill];
+                [[col colorWithAlphaComponent:.3] setStroke]; line.lineWidth = 5; line.lineJoinStyle = NSLineJoinStyleRound; [line stroke];
+                [col setStroke]; line.lineWidth = 1.8; [line stroke];
+            } else {
+                [[col colorWithAlphaComponent:.75 - .5 * depth] setStroke]; line.lineWidth = n > 24 ? .8 : 1.1; line.lineJoinStyle = NSLineJoinStyleRound; [line stroke];
+            }
+        }
+        [NSGraphicsContext restoreGraphicsState];
+        NSRect sel = StackRow(cv, wtFrame, n);
+        TextA([NSString stringWithFormat:@"%d", wtFrame + 1], NSMakeRect(NSMaxX(sel) + 4, NSMidY(sel) - 5, 26, 10), 8, col, NSFontWeightBold, NSTextAlignmentLeft);
+        TextA(@"CLICK A FRAME TO SELECT IT", NSMakeRect(NSMaxX(cv) - 170, cv.origin.y + 6, 162, 11), 7.5, C(0x4a5462),
+              NSFontWeightSemibold, NSTextAlignmentRight);
+    } else if (wtMode == 0) {
         if (wtFrame > 0) StrokeFrame(t[wtFrame - 1], cv, .42, [col colorWithAlphaComponent:.14], 1);
         if (wtFrame + 1 < (int)t.size()) StrokeFrame(t[wtFrame + 1], cv, .42, [col colorWithAlphaComponent:.14], 1);
         StrokeFrame(f, cv, .42, [col colorWithAlphaComponent:.22], 6);
@@ -532,12 +575,17 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     }
 
     // Frame strip.
-    for (int i = 0; i < kMaxFrames; ++i) {
+    const int nT = (int)t.size(), selT = ThumbFor(wtFrame, nT);
+    for (int i = 0; i < 16; ++i) {
         NSRect r = [self wtThumb:i];
-        if (i < (int)t.size()) {
-            FillRound(r, 4, i == wtFrame ? [col colorWithAlphaComponent:.22] : C(0x0f141b));
-            StrokeFrame(t[i], NSInsetRect(r, 2, 4), .4, i == wtFrame ? col : [col colorWithAlphaComponent:.55], 1);
-            if (i == wtFrame) {
+        if (i < std::min(nT, 16)) {
+            const int fi = ThumbFrame(i, nT);
+            const bool on = i == selT;
+            FillRound(r, 4, on ? [col colorWithAlphaComponent:.22] : C(0x0f141b));
+            StrokeFrame(t[fi], NSInsetRect(r, 2, 4), .4, on ? col : [col colorWithAlphaComponent:.55], 1);
+            if (nT > 16) TextA([NSString stringWithFormat:@"%d", fi + 1], NSMakeRect(r.origin.x, r.origin.y + 1, r.size.width - 2, 8), 5.5,
+                               C(0x6f7b8b), NSFontWeightSemibold, NSTextAlignmentRight);
+            if (on) {
                 NSBezierPath* sel = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, .5, .5) xRadius:4 yRadius:4];
                 [col setStroke]; sel.lineWidth = 1; [sel stroke];
             }
@@ -1875,16 +1923,23 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
 - (void)importTable {
     NSOpenPanel* op = [NSOpenPanel openPanel];
-    op.allowedFileTypes = @[@"wav", @"wave"];
-    op.message = @"Choose a single-cycle or wavetable WAV (2048-sample frames).";
+    op.allowedFileTypes = @[@"wav", @"wave", @"aif", @"aiff", @"aifc"];
+    op.message = @"Choose a WAV or AIFF: a wavetable (2048-sample frames), a single cycle, or any pitched sound to slice into up to 64 frames.";
     if ([op runModal] != NSModalResponseOK || !op.URL) return;
-    NSData* d = [NSData dataWithContentsOfURL:op.URL];
+    if (![self importTableFile:op.URL.path]) NSBeep();
+}
+// 0.20.0: WAV/AIFF import into the open editor's oscillator (also driven by the host harness).
+- (BOOL)importTableFile:(NSString*)path {
+    if (wtEdit < 0 || wtEdit > 1) return NO;
+    NSData* d = [NSData dataWithContentsOfFile:path];
     std::vector<unsigned char> bytes;
     if (d.length) bytes.assign((const unsigned char*)d.bytes, (const unsigned char*)d.bytes + d.length);
-    TableFrames in = importWav(bytes);
-    if (in.empty()) { NSBeep(); return; }
+    TableFrames in = importAudio(bytes);
+    if (in.empty()) return NO;
     current.tables[wtEdit] = in;
+    OscShape(current.voice, wtEdit) = kCustomShape;
     [self selectTableFrame:0];
+    return YES;
 }
 
 - (void)exportTable {
@@ -1916,10 +1971,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         t.erase(t.begin() + wtFrame);
         [self selectTableFrame:std::min(wtFrame, n - 2)];
         return;
-    case 3: // morph: crossfade the frames between the first and last
-        if (n < 3) { NSBeep(); return; }
-        morphFill(t);
-        break;
+    case 3: { // 0.20.0 spectral morph: rebuild as the next of 8/16/32/64 frames through every key frame
+        if (n < 2) { NSBeep(); return; }
+        const int N = morphTarget(n);
+        const double at = n > 1 ? (double)wtFrame / (n - 1) : 0.0;
+        t = spectralMorph(t, N);
+        [self selectTableFrame:(int)std::lround(at * (N - 1))];
+        return;
+    }
     case 4: smoothFrame(t[wtFrame], 2); break;
     case 5: normalizeFrame(t[wtFrame]); break;
     case 6: [self importTable]; return;
@@ -1934,10 +1993,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 - (void)tableMouseDown:(NSPoint)p {
     TableFrames& t = current.tables[wtEdit];
     if (NSPointInRect(p, [self wtDoneRect])) { wtEdit = -1; [self setNeedsDisplay:YES]; return; }
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 3; ++i)
         if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }
-    for (int i = 0; i < (int)t.size(); ++i)
-        if (NSPointInRect(p, [self wtThumb:i])) { [self selectTableFrame:i]; return; }
+    for (int i = 0; i < std::min((int)t.size(), 16); ++i)
+        if (NSPointInRect(p, [self wtThumb:i])) { [self selectTableFrame:ThumbFrame(i, (int)t.size())]; return; }
+    if (wtMode == 2 && NSPointInRect(p, [self wtCanvas])) { // 3D: pick the frame whose wave row is under the pointer
+        NSRect cv = [self wtCanvas];
+        const int n = (int)t.size();
+        int best = 0; double bd = 1e9;
+        for (int j = 0; j < n; ++j) { NSRect row = StackRow(cv, j, n); double dd = std::fabs(NSMidY(row) - p.y) + (NSPointInRect(p, NSInsetRect(row, -4, -2)) ? 0 : 20); if (dd < bd) { bd = dd; best = j; } }
+        [self selectTableFrame:best];
+        return;
+    }
     for (int i = 0; i < (int)WtButtonLabels().count; ++i)
         if (NSPointInRect(p, [self wtButton:i])) { [self tableButton:i]; return; }
     if (NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { wtDrawing = true; [self tableStrokeTo:p first:YES]; }
