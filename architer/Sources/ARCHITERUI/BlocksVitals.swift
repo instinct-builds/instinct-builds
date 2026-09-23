@@ -167,7 +167,8 @@ struct AttacksBlock: View {
                                 damageExpression: w.damageExpression,
                                 damageType: w.damageType,
                                 range: w.range,
-                                notes: w.properties))
+                                notes: w.properties,
+                                versatileExpression: w.versatileDamageExpression))
                         }
                     }
                 }
@@ -223,6 +224,15 @@ struct AttackRow: View {
             }
             HStack {
                 TextField("Damage dice", text: $attack.damageExpression).frame(width: 90)
+                if attack.versatileExpression != nil {
+                    Picker("", selection: $attack.twoHanded) {
+                        Text("1H").tag(false)
+                        Text("2H").tag(true)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 76)
+                }
                 Text("= \(attack.damageString(scores: character.scores))")
                     .font(.caption).foregroundStyle(.secondary)
                 TextField("Type", text: $attack.damageType).frame(width: 100)

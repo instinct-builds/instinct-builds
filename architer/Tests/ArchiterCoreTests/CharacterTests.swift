@@ -556,6 +556,56 @@ struct EquipmentTests {
     }
 }
 
+@Suite("Versatile weapons")
+struct VersatileTests {
+
+    @Test func libraryParsesVersatileDice() {
+        let staff = EquipmentLibrary.weapons.first { $0.name == "Quarterstaff" }
+        #expect(staff?.versatileDamageExpression == "1d8")
+        let longsword = EquipmentLibrary.weapons.first { $0.name == "Longsword" }
+        #expect(longsword?.versatileDamageExpression == "1d10")
+        let dagger = EquipmentLibrary.weapons.first { $0.name == "Dagger" }
+        #expect(dagger?.versatileDamageExpression == nil)
+    }
+
+    @Test func twoHandedSwitchesDamageExpression() {
+        var scores = AbilityScores()
+        scores[.strength] = 16 // +3
+        var attack = Attack(name: "Longsword", damageExpression: "1d8",
+                            versatileExpression: "1d10")
+        #expect(attack.damageString(scores: scores) == "1d8+3")
+        attack.twoHanded = true
+        #expect(attack.damageString(scores: scores) == "1d10+3")
+        // Non-versatile attacks ignore the grip flag.
+        var plain = Attack(name: "Dagger", damageExpression: "1d4")
+        plain.twoHanded = true
+        #expect(plain.damageString(scores: scores) == "1d4+3")
+    }
+
+    @Test func pinnedAttackIgnoresGrip() {
+        // Legacy pinned attacks roll their literal expression either way.
+        var attack = Attack(name: "Old blade", attackBonus: 5, damageExpression: "1d8+3")
+        attack.versatileExpression = "1d10"
+        attack.twoHanded = true
+        #expect(attack.damageString(scores: AbilityScores()) == "1d10")
+    }
+
+    @Test func versatileFieldsRoundTrip() throws {
+        var attack = Attack(name: "Spear", damageExpression: "1d6",
+                            versatileExpression: "1d8", twoHanded: true)
+        let data = try JSONEncoder().encode(attack)
+        let decoded = try JSONDecoder().decode(Attack.self, from: data)
+        #expect(decoded == attack)
+        // Old saves without the new fields decode with defaults.
+        let minimal = Data(#"{"name":"Club","damageExpression":"1d4"}"#.utf8)
+        let old = try JSONDecoder().decode(Attack.self, from: minimal)
+        #expect(old.versatileExpression == nil)
+        #expect(old.twoHanded == false)
+        attack = old
+        #expect(attack.damageString(scores: AbilityScores()) == "1d4")
+    }
+}
+
 @Suite("Sample content")
 struct SampleContentTests {
 

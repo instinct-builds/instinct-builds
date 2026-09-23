@@ -53,6 +53,16 @@ public struct WeaponDef: Codable, Equatable, Sendable, Identifiable {
         self.weight = weight
         self.cost = cost
     }
+
+    /// The two-handed damage expression for versatile weapons, parsed from
+    /// the properties string ("Versatile (1d10)"); nil for other weapons.
+    public var versatileDamageExpression: String? {
+        guard let range = properties.range(of: #"(?i)versatile\s*\(([^)]+)\)"#, options: .regularExpression) else { return nil }
+        let match = String(properties[range])
+        guard let open = match.firstIndex(of: "("), let close = match.lastIndex(of: ")") else { return nil }
+        let inner = match[match.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+        return inner.isEmpty ? nil : inner
+    }
 }
 
 /// Plain adventuring gear.

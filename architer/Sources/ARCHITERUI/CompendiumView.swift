@@ -218,7 +218,8 @@ struct CompendiumView: View {
             damageExpression: w.damageExpression,
             damageType: w.damageType,
             range: w.range,
-            notes: w.properties))
+            notes: w.properties,
+            versatileExpression: w.versatileDamageExpression))
         model.selected?.wrappedValue = c
     }
 

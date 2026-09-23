@@ -4,6 +4,10 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.1.0
+
+- Versatile weapons: attacks added from the weapon library carry their two-handed damage die; a 1H/2H toggle on the attack row switches the rolled damage expression (genre-standard grip behavior). Roll labels note "(two-handed)".
+
 ## What's in 2.0.0
 
 - **Currency consolidation**: one tap converts loose change into the

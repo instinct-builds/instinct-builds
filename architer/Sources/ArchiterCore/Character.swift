@@ -128,11 +128,16 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
     public var notes: String
     /// 2024-era weapon mastery trait; ignored under the 2014 era preset.
     public var mastery: WeaponMastery?
+    /// Damage expression when wielded with both hands (versatile weapons), e.g. "1d10".
+    public var versatileExpression: String?
+    /// Whether the weapon is currently wielded two-handed.
+    public var twoHanded: Bool
 
     public init(name: String, ability: Ability? = .strength, proficient: Bool = true,
                 bonusOverride: Int? = nil, damageExpression: String = "1d6",
                 damageType: String = "", range: String = "5 ft", notes: String = "",
-                mastery: WeaponMastery? = nil) {
+                mastery: WeaponMastery? = nil, versatileExpression: String? = nil,
+                twoHanded: Bool = false) {
         self.name = name
         self.ability = ability
         self.proficient = proficient
@@ -142,6 +147,8 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         self.range = range
         self.notes = notes
         self.mastery = mastery
+        self.versatileExpression = versatileExpression
+        self.twoHanded = twoHanded
     }
 
     /// Back-compatible: old sheets pinned `attackBonus` (0.1.x format).
@@ -174,6 +181,8 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         range = try c.decodeIfPresent(String.self, forKey: .range) ?? "5 ft"
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         mastery = try c.decodeIfPresent(WeaponMastery.self, forKey: .mastery)
+        versatileExpression = try c.decodeIfPresent(String.self, forKey: .versatileExpression)
+        twoHanded = try c.decodeIfPresent(Bool.self, forKey: .twoHanded) ?? false
     }
 
     /// The ability actually rolled: the set ability, or the better of
@@ -194,13 +203,20 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
         scores.modifier(effectiveAbility(scores: scores))
     }
 
+    /// The dice expression currently rolled for damage: the versatile
+    /// expression when wielded two-handed, otherwise the base expression.
+    public var currentDamageExpression: String {
+        if twoHanded, let versatileExpression { return versatileExpression }
+        return damageExpression
+    }
+
     /// Damage expression with the ability modifier folded in, e.g. "1d8+3".
     /// Pinned attacks (bonusOverride set, e.g. legacy sheets) are literal.
     public func damageString(scores: AbilityScores) -> String {
-        if bonusOverride != nil { return damageExpression }
+        if bonusOverride != nil { return currentDamageExpression }
         let bonus = damageBonus(scores: scores)
-        if bonus == 0 { return damageExpression }
-        return damageExpression + (bonus > 0 ? "+\(bonus)" : "\(bonus)")
+        if bonus == 0 { return currentDamageExpression }
+        return currentDamageExpression + (bonus > 0 ? "+\(bonus)" : "\(bonus)")
     }
 }
 

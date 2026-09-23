@@ -201,10 +201,11 @@ public final class AppModel: ObservableObject {
         record(attackRoll)
         let crit = attackRoll.dice.contains { $0.sides == 20 && $0.kept && $0.value == 20 }
         let damageExpr = attack.damageString(scores: c.scores)
+        let grip = attack.twoHanded && attack.versatileExpression != nil ? " (two-handed)" : ""
         if crit, let parsed = try? DiceExpression.parse(damageExpr) {
-            rollLabeled("\(attack.name) damage (CRIT)", parsed.doubledDice())
+            rollLabeled("\(attack.name) damage (CRIT\(grip))", parsed.doubledDice())
         } else {
-            rollLabeled("\(attack.name) damage", damageExpr)
+            rollLabeled("\(attack.name) damage\(grip)", damageExpr)
         }
     }
 
