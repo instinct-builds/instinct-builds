@@ -116,6 +116,19 @@ public final class AppModel: ObservableObject {
         macroStore.save(macros)
     }
 
+    /// Replaces a macro in place (edit-in-place): validates the drafts,
+    /// removes the old scoped id, then upserts under the new one. The owner
+    /// binding (table-wide vs character) is preserved.
+    public func updateMacro(_ macro: DiceMacro, name: String, expression: String) {
+        let updated = DiceMacro(
+            name: name.trimmingCharacters(in: .whitespaces),
+            expression: expression.trimmingCharacters(in: .whitespaces),
+            characterName: macro.characterName)
+        guard updated.isValid else { return }
+        macros.removeAll { $0.id == macro.id }
+        saveMacro(name: updated.name, expression: updated.expression, forCharacter: updated.characterName)
+    }
+
     public func deleteMacro(_ macro: DiceMacro) {
         macros.removeAll { $0.id == macro.id }
         macroStore.save(macros)

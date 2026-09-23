@@ -194,6 +194,23 @@ struct CharacterTests {
         #expect(old.toolProficiencies.isEmpty)
     }
 
+    @Test func toolProficiencyDefaultAbilityPersists() throws {
+        // Saves written before 2.23 carry no defaultAbility key.
+        let legacy = Data(#"{"name":"Thieves' tools","tier":"proficient"}"#.utf8)
+        let decoded = try JSONDecoder().decode(ToolProficiency.self, from: legacy)
+        #expect(decoded.defaultAbility == nil)
+        #expect(decoded.tier == .proficient)
+        // A chosen default round-trips.
+        var tool = ToolProficiency(name: "Calligrapher's supplies", tier: .expert, defaultAbility: .intelligence)
+        let back = try JSONDecoder().decode(ToolProficiency.self, from: JSONEncoder().encode(tool))
+        #expect(back == tool)
+        #expect(back.defaultAbility == .intelligence)
+        // Nil stays out of the JSON, keeping untouched saves byte-stable.
+        tool.defaultAbility = nil
+        let json = String(decoding: try JSONEncoder().encode(tool), as: UTF8.self)
+        #expect(!json.contains("defaultAbility"))
+    }
+
     @Test func immobilizedDropsSpeeds() throws {
         var c = Character(name: "T", level: 1)
         c.speed = 30

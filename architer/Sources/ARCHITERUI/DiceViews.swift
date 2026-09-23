@@ -137,22 +137,70 @@ public struct DiceRollerView: View {
 }
 
 extension DiceRollerView {
-    /// One macro row: name, expression, roll (labeled with the macro name so
-    /// history reads clearly) and delete.
+    /// One macro row (view wrapper keeps per-row edit state).
     @ViewBuilder func macroRow(_ macro: DiceMacro) -> some View {
+        MacroRowView(macro: macro)
+    }
+}
+
+/// One macro row: name, expression, roll (labeled with the macro name so
+/// history reads clearly), edit-in-place, and delete.
+struct MacroRowView: View {
+    @EnvironmentObject var model: AppModel
+    let macro: DiceMacro
+    @State private var editing: Bool
+    @State private var nameDraft: String
+    @State private var expressionDraft: String
+
+    init(macro: DiceMacro, startEditing: Bool = false) {
+        self.macro = macro
+        _editing = State(initialValue: startEditing)
+        _nameDraft = State(initialValue: macro.name)
+        _expressionDraft = State(initialValue: macro.expression)
+    }
+
+    private var draftsValid: Bool {
+        !nameDraft.trimmingCharacters(in: .whitespaces).isEmpty
+            && (try? DiceExpression.parse(expressionDraft)) != nil
+    }
+
+    var body: some View {
         HStack {
-            Text(macro.name)
-                .font(Theme.Typeface.headline)
-                .foregroundStyle(Theme.ink)
-            Text(macro.expression)
-                .font(Theme.Typeface.caption)
-                .foregroundStyle(Theme.inkMuted)
-            Spacer()
-            Button("Roll") { model.rollLabeled(macro.name, macro.expression) }
-                .buttonStyle(RollButtonStyle())
-            Button(role: .destructive) {
-                model.deleteMacro(macro)
-            } label: { Image(systemName: "minus.circle") }
+            if editing {
+                TextField("Name", text: $nameDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 140)
+                TextField("Expression", text: $expressionDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(maxWidth: 220)
+                Button {
+                    model.updateMacro(macro, name: nameDraft, expression: expressionDraft)
+                    editing = false
+                } label: { Image(systemName: "checkmark") }
+                    .disabled(!draftsValid)
+                    .help("Save macro")
+                Button { editing = false } label: { Image(systemName: "xmark") }
+                    .help("Discard edits")
+            } else {
+                Text(macro.name)
+                    .font(Theme.Typeface.headline)
+                    .foregroundStyle(Theme.ink)
+                Text(macro.expression)
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+                Spacer()
+                Button("Roll") { model.rollLabeled(macro.name, macro.expression) }
+                    .buttonStyle(RollButtonStyle())
+                Button {
+                    nameDraft = macro.name
+                    expressionDraft = macro.expression
+                    editing = true
+                } label: { Image(systemName: "pencil") }
+                    .help("Edit macro")
+                Button(role: .destructive) {
+                    model.deleteMacro(macro)
+                } label: { Image(systemName: "minus.circle") }
+            }
         }
     }
 }

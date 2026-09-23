@@ -374,7 +374,11 @@ private struct ToolProficiencyRow: View {
     @Binding var tool: ToolProficiency
     let character: Character
     let remove: () -> Void
-    @State private var ability: Ability = .dexterity
+    /// The per-tool default ability, persisted with the sheet (nil = DEX).
+    private var ability: Binding<Ability> {
+        Binding(get: { tool.defaultAbility ?? .dexterity },
+                set: { tool.defaultAbility = $0 })
+    }
 
     var body: some View {
         HStack(spacing: Theme.Gap.sm) {
@@ -386,16 +390,16 @@ private struct ToolProficiencyRow: View {
                 }
             }
             .labelsHidden().frame(width: 110)
-            Menu(ability.abbreviation) {
+            Menu((tool.defaultAbility ?? .dexterity).abbreviation) {
                 ForEach(Ability.allCases, id: \.self) { a in
-                    Button(a.abbreviation) { ability = a }
+                    Button(a.abbreviation) { ability.wrappedValue = a }
                 }
             }
             .fixedSize()
-            .help("Ability for the tool check")
+            .help("Default ability for this tool's checks - saved with the sheet")
             Button("Roll") {
-                model.rollCheck("\(tool.name) check (\(ability.abbreviation))",
-                                bonus: character.toolBonus(tool, ability: ability))
+                model.rollCheck("\(tool.name) check (\(ability.wrappedValue.abbreviation))",
+                                bonus: character.toolBonus(tool, ability: ability.wrappedValue))
             }
             .buttonStyle(RollButtonStyle())
             .disabled(tool.name.trimmingCharacters(in: .whitespaces).isEmpty)

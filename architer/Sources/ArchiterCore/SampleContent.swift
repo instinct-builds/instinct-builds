@@ -100,7 +100,7 @@ public enum SampleContent {
             proficienciesText: "Armor: none · Weapons: daggers, darts, slings, quarterstaffs, light crossbows · Languages: Common, Elvish, Draconic, Dwarvish",
             toolProficiencies: [
                 // A decade copying marginalia leaves a mark.
-                ToolProficiency(name: "Calligrapher's supplies", tier: .expert),
+                ToolProficiency(name: "Calligrapher's supplies", tier: .expert, defaultAbility: .intelligence),
                 ToolProficiency(name: "Forgery kit"),
             ],
             features: [

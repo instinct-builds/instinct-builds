@@ -76,16 +76,22 @@ public struct Skill: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// A tool the character is trained with. Tools borrow their ability from the
-/// check at the table, so only the training tier is stored here.
+/// A tool the character is trained with. Only the training tier is stored;
+/// the check's ability defaults to the per-tool pick below and can still be
+/// changed per roll at the table.
 public struct ToolProficiency: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID = UUID()
     public var name: String
     public var tier: ProficiencyTier
+    /// The ability this tool's checks default to. Nil means no default was
+    /// chosen (the UI falls back to dexterity). Optional so saves written
+    /// before 2.23 decode unchanged.
+    public var defaultAbility: Ability?
 
-    public init(name: String, tier: ProficiencyTier = .proficient) {
+    public init(name: String, tier: ProficiencyTier = .proficient, defaultAbility: Ability? = nil) {
         self.name = name
         self.tier = tier
+        self.defaultAbility = defaultAbility
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,6 +99,7 @@ public struct ToolProficiency: Codable, Equatable, Sendable, Identifiable {
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try c.decode(String.self, forKey: .name)
         tier = try c.decodeIfPresent(ProficiencyTier.self, forKey: .tier) ?? .proficient
+        defaultAbility = try c.decodeIfPresent(Ability.self, forKey: .defaultAbility)
     }
 }
 

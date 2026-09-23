@@ -4,6 +4,18 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.23.0
+
+- Per-tool default ability, persisted: the ability menu on a tool
+  proficiency row now saves with the sheet, so Calligrapher's supplies
+  stays on INT (or whatever the table uses) across launches instead of
+  resetting to DEX. Saves written before 2.23 decode unchanged (no
+  default = DEX as before).
+- Macro edit-in-place: every macro row on the Dice tab has a pencil;
+  name and expression become editable inline with save (disabled until
+  the expression parses) and cancel. Character-bound macros keep their
+  owner when renamed.
+
 ## What's in 2.22.0
 
 - Compact PDF entry keep-together: a feature's name and detail lines, a

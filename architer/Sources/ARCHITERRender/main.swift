@@ -79,6 +79,14 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice", outDir: outDir, minHeight: 420)
+    // Proof render for 2.23.0: a macro row mid edit-in-place.
+    renderPNG(
+        MacroRowView(macro: DiceMacro(name: "Sneak attack", expression: "1d8+4d6+3", characterName: character.name),
+                     startEditing: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 800, name: "macro-edit", outDir: outDir, minHeight: 60)
 
     // Exports as files.
     let pdf = SheetPDFExporter.export(character)
