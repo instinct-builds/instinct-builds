@@ -207,27 +207,64 @@ static NSArray<NSString*>* ChipLabels() {
     [col setStroke]; p.lineWidth = 1.8; [p stroke];
 }
 
-- (void)msegIn:(NSRect)r {
-    FillRound(r, 7, C(0x0a0d12));
-    const auto& pts = current.voice.mseg1Points;
-    if (current.voice.mseg1Loop && pts.size() > 2) {
-        CGFloat x0 = r.origin.x + 6 + (r.size.width - 12) * pts[1].time;
-        CGFloat x1 = r.origin.x + 6 + (r.size.width - 12) * pts.back().time;
-        FillRound(NSMakeRect(x0, r.origin.y + 4, x1 - x0, r.size.height - 8), 3, C(0x5adac8, .10));
-    }
+- (void)curve:(const std::vector<MSEG::Point>&)pts in:(NSRect)r color:(NSColor*)col dots:(BOOL)dots {
     NSBezierPath* p = [NSBezierPath bezierPath];
     for (size_t i = 0; i < pts.size(); ++i) {
-        NSPoint q = NSMakePoint(r.origin.x + 6 + (r.size.width - 12) * pts[i].time,
-                                NSMidY(r) + pts[i].value * (r.size.height * .38));
+        NSPoint q = NSMakePoint(r.origin.x + r.size.width * pts[i].time,
+                                NSMidY(r) + std::clamp(pts[i].value, -1.0, 1.0) * r.size.height * .5);
         i ? [p lineToPoint:q] : [p moveToPoint:q];
     }
-    [C(0x5adac8) setStroke]; p.lineWidth = 1.6; [p stroke];
+    [col setStroke]; p.lineWidth = 1.6; [p stroke];
+    if (!dots) return;
     for (const auto& pt : pts) {
-        NSPoint q = NSMakePoint(r.origin.x + 6 + (r.size.width - 12) * pt.time, NSMidY(r) + pt.value * (r.size.height * .38));
+        NSPoint q = NSMakePoint(r.origin.x + r.size.width * pt.time, NSMidY(r) + std::clamp(pt.value, -1.0, 1.0) * r.size.height * .5);
         [C(0xeaf1f8) setFill];
         [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(q.x - 2, q.y - 2, 4, 4)] fill];
     }
+}
+
+- (void)msegIn:(NSRect)r {
+    FillRound(r, 7, C(0x0a0d12));
     Text(current.voice.mseg1Loop ? @"MSEG 1 \u2022 LOOP" : @"MSEG 1", NSMakeRect(r.origin.x + 6, NSMaxY(r) - 15, r.size.width - 8, 12), 8, C(0x66e2d0), NSFontWeightSemibold);
+    NSRect plot = NSMakeRect(r.origin.x + 7, r.origin.y + 8, r.size.width - 14, r.size.height - 30);
+    const auto& pts = current.voice.mseg1Points;
+    if (current.voice.mseg1Loop && pts.size() > 2) {
+        CGFloat x0 = plot.origin.x + plot.size.width * pts[1].time;
+        CGFloat x1 = plot.origin.x + plot.size.width * pts.back().time;
+        FillRound(NSMakeRect(x0, plot.origin.y - 3, x1 - x0, plot.size.height + 6), 3, C(0x5adac8, .10));
+    }
+    [self curve:pts in:plot color:C(0x5adac8) dots:YES];
+}
+
+// Shape of a modulation source, drawn in its matrix slot.
+- (void)sourcePreview:(ModRoute::Source)src in:(NSRect)r color:(NSColor*)col {
+    FillRound(NSInsetRect(r, -4, -4), 5, C(0x0f141b));
+    const VoiceParams& v = current.voice;
+    std::vector<MSEG::Point> pts;
+    if (src == ModRoute::Source::MSEG1) {
+        pts = v.mseg1Points;
+    } else if (src == ModRoute::Source::ModEnv) {
+        double a = std::max(v.modA, 0.001), d = std::max(v.modD, 0.001), rel = std::max(v.modR, 0.001);
+        double total = a + d + rel + (a + d + rel) * 0.4;
+        double t1 = a / total, t2 = (a + d) / total, t3 = 1.0 - rel / total;
+        double sus = std::clamp(v.modS, 0.0, 1.0) * 2 - 1;
+        pts = {{0, -1}, {t1, 1}, {t2, sus}, {t3, sus}, {1, -1}};
+    } else if (src == ModRoute::Source::Velocity) {
+        pts = {{0, -1}, {1, 1}};
+    } else {
+        int shape = src == ModRoute::Source::LFO1 ? v.lfo1Shape : v.lfo2Shape;
+        for (int i = 0; i <= 64; ++i) {
+            double t = i / 64.0, ph = std::fmod(t * 2.0, 1.0), y = 0;
+            switch (shape) {
+            case 0: y = std::sin(2 * M_PI * t * 2); break;
+            case 1: y = ph < .5 ? 4 * ph - 1 : 3 - 4 * ph; break;
+            case 2: y = 2 * ph - 1; if (i % 32 == 0 && i > 0) pts.push_back({t - 1e-6, 1}); break;
+            default: y = ph < .5 ? 1 : -1; break;
+            }
+            pts.push_back({t, y});
+        }
+    }
+    [self curve:pts in:r color:col dots:NO];
 }
 
 - (void)drawRect:(NSRect)dirty {
@@ -335,14 +372,15 @@ static NSArray<NSString*>* ChipLabels() {
         if (!has) { Text(@"EMPTY", NSMakeRect(x + 10, cardTop - 40, 80, 16), 11, C(0x3b4552), NSFontWeightSemibold); continue; }
         const ModRoute& rt = current.routes[i];
         Text(S(ui::sourceName(rt.source)), NSMakeRect(x + 10, cardTop - 40, 80, 16), 11, mseg ? C(0x66e2d0) : C(0xb9c2ce), NSFontWeightSemibold);
-        Text(@"\u2193", NSMakeRect(x + 10, cardTop - 60, 80, 16), 11, C(0x5f6b7b));
-        Text(S(ui::destName(rt.dest)), NSMakeRect(x + 10, cardTop - 80, 80, 16), 11, C(0xeaf1f8), NSFontWeightMedium);
+        Text(@"\u2193", NSMakeRect(x + 10, cardTop - 58, 80, 16), 11, C(0x5f6b7b));
+        Text(S(ui::destName(rt.dest)), NSMakeRect(x + 10, cardTop - 76, 80, 16), 11, C(0xeaf1f8), NSFontWeightMedium);
         double amt = ui::routeDisplayAmount(rt);
-        NSRect bar = NSMakeRect(x + 10, 84, 76, 6);
+        NSRect bar = NSMakeRect(x + 10, cardTop - 96, 76, 6);
         FillRound(bar, 3, C(0x111820));
         CGFloat mid = NSMidX(bar), w = amt * bar.size.width / 2;
         FillRound(NSMakeRect(w >= 0 ? mid : mid + w, bar.origin.y, std::fabs(w), 6), 3, mseg ? C(0x66e2d0) : C(0x6cb6ff));
-        TextA([NSString stringWithFormat:@"%+.2f", rt.amount], NSMakeRect(x + 10, 66, 76, 12), 9, C(0x8793a3), NSFontWeightMedium, NSTextAlignmentCenter);
+        TextA([NSString stringWithFormat:@"%+.2f", rt.amount], NSMakeRect(x + 10, cardTop - 114, 76, 12), 9, C(0x8793a3), NSFontWeightMedium, NSTextAlignmentCenter);
+        [self sourcePreview:rt.source in:NSMakeRect(x + 12, 72, 72, 44) color:mseg ? C(0x66e2d0) : C(0x6cb6ff)];
     }
     struct FxCard { const char* name; bool on; double mix; std::string detail; };
     char d0[32], d1[32], d2[32];
