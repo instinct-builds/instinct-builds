@@ -373,6 +373,20 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         !rootExists || installedFingerprint != bundledFingerprint || missingFiles > 0
     }
 
+    /// Keeps titles and tags honest about pixel size: a "4K" label stays only on files at least 3840 px wide or tall.
+    public static func correctResolutionClaims(_ asset: inout StudioAsset, width: Int, height: Int) {
+        let longest = max(width, height)
+        guard longest > 0, longest < 3840 else { return }
+        let label = longest >= 1920 ? "2K" : nil
+        let words = asset.title.split(separator: " ").map(String.init)
+        if words.contains(where: { $0.uppercased() == "4K" }) {
+            asset.title = words.compactMap { $0.uppercased() == "4K" ? label : $0 }.joined(separator: " ")
+        }
+        if let i = asset.tags.firstIndex(of: "4k") {
+            if let label, !asset.tags.contains(label.lowercased()) { asset.tags[i] = label.lowercased() } else { asset.tags.remove(at: i) }
+        }
+    }
+
     public static func humanize(_ stem: String) -> String {
         stem.split(whereSeparator: { $0 == "-" || $0 == "_" || $0 == " " }).map { word -> String in
             let w = String(word)

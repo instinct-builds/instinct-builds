@@ -219,6 +219,19 @@ struct StudioBatchTests {
         #expect(c.filtered(search: "zzz-nothing", kind: nil, collection: StudioCatalog.allAssets).isEmpty)
     }
 
+    @Test func resolutionClaimsMatchTheFile() {
+        var a = StudioAsset(title: "Blueprint 4K", kind: .texture, tags: ["texture", "4k", "seamless"], collection: "Material Textures", palette: [], seed: 1, resolution: "2048 × 2048")
+        StudioCatalog.correctResolutionClaims(&a, width: 2048, height: 2048)
+        #expect(a.title == "Blueprint 2K")
+        #expect(a.tags == ["texture", "2k", "seamless"])
+        var b = StudioAsset(title: "Ink Fiber 4K", kind: .texture, tags: ["4k"], collection: "x", palette: [], seed: 1, resolution: "")
+        StudioCatalog.correctResolutionClaims(&b, width: 4096, height: 4096)
+        #expect(b.title == "Ink Fiber 4K" && b.tags == ["4k"])
+        var c = StudioAsset(title: "Tiny 4K", kind: .texture, tags: ["4k"], collection: "x", palette: [], seed: 1, resolution: "")
+        StudioCatalog.correctResolutionClaims(&c, width: 800, height: 600)
+        #expect(c.title == "Tiny" && c.tags.isEmpty)
+    }
+
     @Test func humanizedTitles() {
         #expect(StudioCatalog.humanize("editorial-vector-03") == "Editorial Vector 03")
         #expect(StudioCatalog.humanize("night_grid-4k") == "Night Grid 4K")

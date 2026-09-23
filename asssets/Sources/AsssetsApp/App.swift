@@ -61,7 +61,7 @@ final class StudioLibrary: ObservableObject {
     @Published var focusID: UUID?
     @Published var effect: EffectPreset = .original
     @Published var intensity = 0.75
-    @Published var gridScale = 184.0
+    @Published var gridScale = 150.0
     @Published var pendingRemoval: Set<UUID> = []
     @Published var renamingCollection: String?
     @Published var toast: String?
@@ -143,6 +143,7 @@ final class StudioLibrary: ObservableObject {
                    let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
                    let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int {
                     c.assets[i].resolution = "\(w) × \(h)"
+                    StudioCatalog.correctResolutionClaims(&c.assets[i], width: w, height: h)
                 }
             default: break
             }
@@ -336,16 +337,16 @@ struct StudioView: View {
     @EnvironmentObject var model: StudioLibrary
     var body: some View {
         NavigationSplitView {
-            Sidebar().navigationSplitViewColumnWidth(min: 232, ideal: 252, max: 320)
+            Sidebar().navigationSplitViewColumnWidth(min: 246, ideal: 258, max: 320)
         } content: {
-            AssetBrowser().navigationSplitViewColumnWidth(min: 360, ideal: 560)
+            AssetBrowser().navigationSplitViewColumnWidth(min: 400, ideal: 600)
         } detail: {
             Group {
                 if model.selection.count > 1 { BatchInspector(assets: model.selectedAssets) }
                 else if let asset = model.focused { Inspector(asset: asset) }
                 else { EmptyInspector() }
             }
-            .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
+            .navigationSplitViewColumnWidth(min: 290, ideal: 316, max: 420)
         }
         .navigationSplitViewStyle(.balanced)
         .background(Theme.ink)
@@ -355,7 +356,7 @@ struct StudioView: View {
                 Button { model.importFiles() } label: { Label("Import", systemImage: "plus") }.help("Import files or folders")
                 HStack(spacing: 6) {
                     Image(systemName: "square.grid.3x3").font(.caption)
-                    Slider(value: $model.gridScale, in: 140...280).frame(width: 90)
+                    Slider(value: $model.gridScale, in: 120...280).frame(width: 90)
                     Image(systemName: "square.grid.2x2").font(.caption)
                 }.foregroundStyle(.secondary).help("Thumbnail size")
             }
@@ -477,7 +478,7 @@ struct SidebarRow: View {
         let row = HStack(spacing: 9) {
             Image(systemName: symbol).font(.system(size: 12, weight: .semibold)).frame(width: 18)
                 .foregroundStyle(selected ? Theme.accent : Color.secondary)
-            Text(title).font(.system(size: 13, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.middle)
+            Text(title).font(.system(size: 12.5, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.tail).layoutPriority(1)
             Spacer(minLength: 6)
             if let count {
                 Text("\(count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
@@ -568,26 +569,40 @@ struct SelectionBar: View {
     @EnvironmentObject var model: StudioLibrary
     @State private var tagText = ""
     var body: some View {
-        HStack(spacing: 10) {
-            Text("\(model.selection.count) selected").font(.callout.weight(.semibold))
-            Divider().frame(height: 18)
-            Button { model.toggleFavorite(model.selection) } label: { Label("Favorite", systemImage: "heart") }
-            TextField("Add tags…", text: $tagText).textFieldStyle(.roundedBorder).frame(width: 130)
-                .onSubmit { model.addTags(tagText, to: model.selection); tagText = "" }
-            MoveMenu(ids: model.selection)
-            Spacer()
-            Button("Clear") { model.clearSelection() }
+        ViewThatFits(in: .horizontal) {
+            bar(compact: false)
+            bar(compact: true)
         }
         .buttonStyle(.borderless)
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .padding(.horizontal, 14).padding(.vertical, 9)
         .background(Theme.panel.opacity(0.96))
         .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 1) }
+    }
+
+    private func bar(compact: Bool) -> some View {
+        HStack(spacing: compact ? 8 : 10) {
+            Text(compact ? "\(model.selection.count)" : "\(model.selection.count) selected")
+                .font(.callout.weight(.semibold)).lineLimit(1).fixedSize()
+                .padding(.horizontal, compact ? 8 : 0).padding(.vertical, compact ? 2 : 0)
+                .background(compact ? Theme.accent.opacity(0.3) : .clear, in: Capsule())
+            Button { model.toggleFavorite(model.selection) } label: {
+                if compact { Image(systemName: "heart") } else { Label("Favorite", systemImage: "heart").fixedSize() }
+            }.help("Favorite selection")
+            TextField("Add tags…", text: $tagText).textFieldStyle(.roundedBorder).frame(minWidth: 90, maxWidth: 150)
+                .onSubmit { model.addTags(tagText, to: model.selection); tagText = "" }
+            MoveMenu(ids: model.selection, compact: compact)
+            Spacer(minLength: 0)
+            Button { model.clearSelection() } label: {
+                if compact { Image(systemName: "xmark.circle") } else { Text("Clear").fixedSize() }
+            }.help("Clear selection")
+        }
     }
 }
 
 struct MoveMenu: View {
     @EnvironmentObject var model: StudioLibrary
     let ids: Set<UUID>
+    var compact = false
     var body: some View {
         Menu {
             ForEach(model.catalog.collections.filter { $0 != StudioCatalog.allAssets && $0 != StudioCatalog.favorites }, id: \.self) { name in
@@ -595,8 +610,10 @@ struct MoveMenu: View {
             }
             Divider()
             Button("New Collection from Selection…") { model.newCollection(with: ids) }
-        } label: { Label("Move to", systemImage: "folder") }
-        .menuStyle(.borderlessButton).fixedSize()
+        } label: {
+            if compact { Image(systemName: "folder") } else { Label("Move to", systemImage: "folder") }
+        }
+        .menuStyle(.borderlessButton).fixedSize().help("Move selection to a collection")
     }
 }
 

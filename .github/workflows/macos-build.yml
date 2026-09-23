@@ -101,6 +101,8 @@ jobs:
       - name: Capture ASSSETS native UI proof (two window sizes)
         run: |
           set -euo pipefail
+          # Start from a clean first launch so install-test state never shows up in the proof.
+          rm -rf "$HOME/Library/Application Support/ASSSETS"
           cd asssets/out
           shoot() { open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep 9; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"; pkill -x ASSSETS || true; sleep 2; }
           shoot media 1920x1200 library
