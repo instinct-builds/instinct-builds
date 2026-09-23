@@ -632,6 +632,7 @@ int main() {
             muew::Preset before;
             bool ok0 = State(before);
             Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the DELAY detail
+            Click(view, w, NSMakePoint(400 + 24, t - 32 + 8.5));         // DONE: the 0.9.0 wavetable editor still covers the OSC panel
             Click(view, w, NSMakePoint(46 + 96 + 15, t - 149));          // OSC A slot 2 back arrow: CLEAN -> REMAP
             for (int i = 0; i < 7; ++i) Click(view, w, NSMakePoint(252 + 96 + 61, t - 149)); // OSC B slot 2 forward x7: FM B
             NSPoint a0 = NSMakePoint(46 + 96 + 67 + 3, t - 149);        // OSC A slot 2 amount bar (24 pt = 100%)
@@ -664,6 +665,7 @@ int main() {
                   "the AU state saves both warp slots and the REMAP curve with the sound");
             Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the editor
             Click(view, w, card(3));                                     // DELAY detail for the editor snapshot
+            Click(view, w, NSMakePoint(46 + 95, t - 80));                // reopen OSC A's wavetable editor, as the snapshot showed before
             fflush(stdout);
         });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
