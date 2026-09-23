@@ -3,6 +3,15 @@ import Foundation
 /// Renders a character sheet as Markdown or self-contained styled HTML,
 /// honoring the layout's block visibility and order.
 public enum SheetExporter {
+    /// "Resist fire, cold · Immune poison · Vulnerable thunder" for exports.
+    static func defenseSummary(_ c: Character) -> String {
+        var parts: [String] = []
+        if !c.resistances.isEmpty { parts.append("Resist " + c.resistances.map(\.displayName).sorted().joined(separator: ", ")) }
+        if !c.immunities.isEmpty { parts.append("Immune " + c.immunities.map(\.displayName).sorted().joined(separator: ", ")) }
+        if !c.vulnerabilities.isEmpty { parts.append("Vulnerable " + c.vulnerabilities.map(\.displayName).sorted().joined(separator: ", ")) }
+        return parts.joined(separator: " · ")
+    }
+
 
     public static func exportMarkdown(_ c: Character) -> String {
         var out: [String] = []
@@ -31,6 +40,8 @@ public enum SheetExporter {
                     "Hit Dice **\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)** · Death saves **\(c.deathSaveSuccesses)✓ / \(c.deathSaveFailures)✗**",
                 ]
                 if c.exhaustion > 0 { lines.append("Exhaustion: **\(c.exhaustion)**") }
+                let defenses = defenseSummary(c)
+                if !defenses.isEmpty { lines.append(defenses) }
                 if !c.conditions.isEmpty {
                     lines.append("Conditions: " + c.conditions.map { $0.displayName }.sorted().joined(separator: ", "))
                 }
@@ -192,6 +203,7 @@ public enum SheetExporter {
                   <span class="chip">Speed <b>\(c.speed) ft</b></span>
                   <span class="chip">Passive Perc <b>\(c.passivePerception)</b></span><span class="chip">Passive Inv <b>\(c.passiveInvestigation)</b></span><span class="chip">Passive Ins <b>\(c.passiveInsight)</b></span>
                   <span class="chip">Hit Dice <b>\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)</b></span>
+                  \(defenseSummary(c).isEmpty ? "" : "<span class=\"chip\">" + esc(defenseSummary(c)) + "</span>")
                   \(extra)
                 </div>\(c.conditions.isEmpty ? "" : "<p class=\"meta\">Conditions: " + esc(c.conditions.map { $0.displayName }.sorted().joined(separator: ", ")) + "</p>")</section>
                 """)

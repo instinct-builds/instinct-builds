@@ -7,6 +7,14 @@ public enum Ability: String, Codable, CaseIterable, Sendable {
     public var displayName: String { rawValue.capitalized }
 }
 
+/// The standard damage-type taxonomy; type names only, mechanics only.
+public enum DamageType: String, Codable, CaseIterable, Sendable {
+    case acid, bludgeoning, cold, fire, force, lightning, necrotic,
+         piercing, poison, psychic, radiant, slashing, thunder
+
+    public var displayName: String { rawValue.capitalized }
+}
+
 /// Genre-standard tabletop math (ability modifier, proficiency scaling). Game
 /// mechanics are functional rules, not copyrighted expression; all naming and
 /// text here is original.
@@ -319,6 +327,9 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var initiativeBonus: Int      // misc initiative on top of DEX
     public var speed: Int
     public var conditions: Set<Condition>
+    public var resistances: Set<DamageType>
+    public var immunities: Set<DamageType>
+    public var vulnerabilities: Set<DamageType>
     public var exhaustion: Int
     /// Which d20 era preset governs rest/exhaustion/weapon/prep mechanics.
     public var era: RulesetVariant
@@ -391,7 +402,10 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         layout: SheetLayout = SheetLayout(),
         rulesetName: String? = nil,
         customAbilities: [CustomAbility] = [],
-        customSkills: [CustomSkill] = []
+        customSkills: [CustomSkill] = [],
+        resistances: Set<DamageType> = [],
+        immunities: Set<DamageType> = [],
+        vulnerabilities: Set<DamageType> = []
     ) {
         self.name = name
         self.lineage = lineage
@@ -419,6 +433,9 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.initiativeBonus = initiativeBonus
         self.speed = speed
         self.conditions = conditions
+        self.resistances = resistances
+        self.immunities = immunities
+        self.vulnerabilities = vulnerabilities
         self.era = era
         self.concentratingOn = concentratingOn
         self.exhaustion = max(0, min(era.exhaustionCap, exhaustion))
@@ -467,6 +484,9 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         initiativeBonus = try c.decodeIfPresent(Int.self, forKey: .initiativeBonus) ?? 0
         speed = try c.decode(Int.self, forKey: .speed)
         conditions = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditions) ?? []
+        resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
+        immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
+        vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
         era = try c.decodeIfPresent(RulesetVariant.self, forKey: .era) ?? .era2014
         concentratingOn = try c.decodeIfPresent(String.self, forKey: .concentratingOn)
         let rawExhaustion = try c.decodeIfPresent(Int.self, forKey: .exhaustion) ?? 0
@@ -550,9 +570,21 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
 
     // MARK: Vitals
 
+    /// Incoming damage adjusted for immunity, resistance, and vulnerability.
+    /// Resistance halves (rounded down) before temp HP absorbs anything;
+    /// vulnerability doubles; immunity reduces to zero. Untyped is unchanged.
+    public func adjustedDamage(_ amount: Int, type: DamageType?) -> Int {
+        guard let type else { return max(0, amount) }
+        if immunities.contains(type) { return 0 }
+        var value = max(0, amount)
+        if resistances.contains(type) { value /= 2 }
+        if vulnerabilities.contains(type) { value *= 2 }
+        return value
+    }
+
     /// Damage eats temporary HP first, then real HP. Falling to 0 clears temp.
-    public mutating func applyDamage(_ amount: Int) {
-        var remaining = max(0, amount)
+    public mutating func applyDamage(_ amount: Int, type: DamageType? = nil) {
+        var remaining = adjustedDamage(amount, type: type)
         if tempHP > 0 {
             let absorbed = min(tempHP, remaining)
             tempHP -= absorbed

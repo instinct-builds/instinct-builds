@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.11.0
+
+- Defenses: damage resistances, immunities, and vulnerabilities picked
+  from the standard damage-type list. Typed damage applied in the
+  vitals block adjusts automatically - resistance halves (rounded
+  down) before temp HP, vulnerability doubles, immunity zeroes.
+  Defenses show in the defenses row and all three exports.
+
 ## What's in 2.10.0
 
 - Stowed gear: mark items stowed (dropped, cached, left at camp) to

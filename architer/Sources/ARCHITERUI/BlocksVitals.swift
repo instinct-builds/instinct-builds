@@ -8,6 +8,7 @@ struct VitalsBlock: View {
     @State private var damageAmount = ""
     @State private var healAmount = ""
     @State private var tempAmount = ""
+    @State private var damageType: DamageType? = nil
 
     var body: some View {
         BlockCard(title: "Vitals") {
@@ -29,8 +30,14 @@ struct VitalsBlock: View {
             }
             HStack(spacing: Theme.Gap.sm) {
                 TextField("Damage", text: $damageAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
+                Picker("", selection: $damageType) {
+                    Text("Untyped").tag(DamageType?.none)
+                    ForEach(DamageType.allCases, id: \.self) { Text($0.displayName).tag(DamageType?.some($0)) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 110)
                 Button("Apply") {
-                    if let n = Int(damageAmount) { character.applyDamage(n); damageAmount = "" }
+                    if let n = Int(damageAmount) { character.applyDamage(n, type: damageType); damageAmount = "" }
                 }
                 .buttonStyle(RollButtonStyle(prominent: true))
                 TextField("Heal", text: $healAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
@@ -58,6 +65,12 @@ struct VitalsBlock: View {
                 .frame(maxWidth: 220)
                 Toggle("Shield", isOn: $character.shieldEquipped).toggleStyle(.checkbox)
                 Stepper("Misc \(signed(character.armorClassBonus))", value: $character.armorClassBonus, in: -10...10)
+            }
+            HStack(spacing: Theme.Gap.md) {
+                DefenseMenu(title: "Resist", selection: \.resistances, character: $character)
+                DefenseMenu(title: "Immune", selection: \.immunities, character: $character)
+                DefenseMenu(title: "Vulnerable", selection: \.vulnerabilities, character: $character)
+                Spacer()
             }
             HStack {
                 Stepper("Manual AC \(character.armorClass)", value: $character.armorClass, in: 0...40)
@@ -208,6 +221,29 @@ struct AttacksBlock: View {
                 .font(.callout)
             }
         }
+    }
+}
+
+/// Checklist menu of damage types writing one defense set on the character.
+struct DefenseMenu: View {
+    let title: String
+    let selection: WritableKeyPath<Character, Set<DamageType>>
+    @Binding var character: Character
+
+    var body: some View {
+        Menu("\(title) \(character[keyPath: selection].count)") {
+            ForEach(DamageType.allCases, id: \.self) { t in
+                Toggle(t.displayName, isOn: Binding(
+                    get: { character[keyPath: selection].contains(t) },
+                    set: { on in
+                        if on { character[keyPath: selection].insert(t) }
+                        else { character[keyPath: selection].remove(t) }
+                    }))
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .font(Theme.Typeface.caption)
+        .foregroundStyle(character[keyPath: selection].isEmpty ? Theme.inkMuted : Theme.accent)
     }
 }
 

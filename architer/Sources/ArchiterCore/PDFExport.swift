@@ -195,6 +195,9 @@ public enum SheetPDFExporter {
                     ("Hit Dice", "\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)"),
                 ]
                 if c.exhaustion > 0 { chips.append(("Exhaustion", "\(c.exhaustion)")) }
+                if !SheetExporter.defenseSummary(c).isEmpty {
+                    chips.append(("Defenses", SheetExporter.defenseSummary(c)))
+                }
                 let perRow = 4
                 let chipW = (contentW - Double(perRow - 1) * 8) / Double(perRow)
                 let rowsNeeded = (chips.count + perRow - 1) / perRow

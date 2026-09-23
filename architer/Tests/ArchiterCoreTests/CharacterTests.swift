@@ -86,6 +86,29 @@ struct CharacterTests {
         #expect(c.features[1].usesRemaining == 0)
     }
 
+    @Test func defensesAdjustIncomingDamage() {
+        var c = Character(name: "T", level: 1, maxHP: 30)
+        c.resistances = [.fire]
+        c.immunities = [.poison]
+        c.vulnerabilities = [.cold]
+        // Resistance halves, rounding down.
+        #expect(c.adjustedDamage(7, type: .fire) == 3)
+        // Immunity reduces to zero.
+        #expect(c.adjustedDamage(12, type: .poison) == 0)
+        // Vulnerability doubles.
+        #expect(c.adjustedDamage(6, type: .cold) == 12)
+        // Untyped and unrelated types pass through.
+        #expect(c.adjustedDamage(5, type: nil) == 5)
+        #expect(c.adjustedDamage(5, type: .radiant) == 5)
+        // Resistance applies before temp HP absorbs.
+        c.tempHP = 4
+        c.applyDamage(9, type: .fire)
+        #expect(c.currentHP == 30)
+        #expect(c.tempHP == 0)
+        c.applyDamage(3, type: .poison)
+        #expect(c.currentHP == 30)
+    }
+
     @Test func stowedGearExcludedFromCarriedWeight() {
         var c = Character(name: "T", level: 1)
         c.inventory = [InventoryItem(name: "Rope", weight: 10),
