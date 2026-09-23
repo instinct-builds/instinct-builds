@@ -391,7 +391,7 @@ private struct ToolProficiencyRow: View {
                     Button(a.abbreviation) { ability = a }
                 }
             }
-            .frame(width: 52)
+            .fixedSize()
             .help("Ability for the tool check")
             Button("Roll") {
                 model.rollCheck("\(tool.name) check (\(ability.abbreviation))",
