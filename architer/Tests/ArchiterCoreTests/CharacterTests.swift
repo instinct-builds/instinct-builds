@@ -91,15 +91,19 @@ struct CharacterTests {
         c.attacks = [Attack(name: "Shortbow", damageExpression: "1d6", ammunition: 2),
                      Attack(name: "Dagger", damageExpression: "1d4")]
         let bow = c.attacks[0].id
-        #expect(c.spendAmmunition(attackID: bow))
+        let first = c.spendAmmunition(attackID: bow)
+        #expect(first)
         #expect(c.attacks[0].ammunition == 1)
-        #expect(c.spendAmmunition(attackID: bow))
+        let second = c.spendAmmunition(attackID: bow)
+        #expect(second)
         #expect(c.attacks[0].ammunition == 0)
         // Empty: no spend, no negative count.
-        #expect(!c.spendAmmunition(attackID: bow))
+        let third = c.spendAmmunition(attackID: bow)
+        #expect(!third)
         #expect(c.attacks[0].ammunition == 0)
         // Untracked attacks never spend.
-        #expect(!c.spendAmmunition(attackID: c.attacks[1].id))
+        let dagger = c.spendAmmunition(attackID: c.attacks[1].id)
+        #expect(!dagger)
         #expect(c.attacks[1].ammunition == nil)
     }
 
