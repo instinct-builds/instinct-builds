@@ -543,8 +543,15 @@ public enum SheetPDFExporter {
         // Cursor owns the working copy; take it back before finishing.
         doc = cursor.doc
 
-        // Footer on every page.
+        // Footer on every page; compact continuation pages also get a
+        // running header (name + "continued") so loose pages stay
+        // attributable at the table.
         for p in 0..<doc.pageCount {
+            if compact && p > 0 {
+                doc.text(page: p, x: margin, y: doc.pageSize.height - 32, c.name, size: 7, gray: 0.5)
+                doc.text(page: p, x: margin + contentW - 40, y: doc.pageSize.height - 32, "continued", size: 7, gray: 0.5)
+                doc.line(page: p, x1: margin, y1: doc.pageSize.height - 42, x2: margin + contentW, y2: doc.pageSize.height - 42, lineWidth: 0.5, gray: 0.8)
+            }
             doc.line(page: p, x1: margin, y1: 46, x2: margin + contentW, y2: 46, lineWidth: 0.5, gray: 0.8)
             doc.text(page: p, x: margin, y: 36, "Made with ARCHITER", size: 7, gray: 0.5)
             doc.text(page: p, x: margin + contentW - 40, y: 36, "Page \(p + 1) of \(doc.pageCount)", size: 7, gray: 0.5)

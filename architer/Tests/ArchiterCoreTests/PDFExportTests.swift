@@ -129,6 +129,26 @@ struct PDFExportTests {
         }
     }
 
+    @Test func compactContinuationPagesCarryRunningHeader() throws {
+        let demo = SampleContent.demoCharacter()
+        let text = String(data: SheetPDFExporter.export(demo, style: .compact), encoding: .utf8) ?? ""
+        let chunks = text.components(separatedBy: "endstream")
+        #expect(chunks.count >= 3)
+        // Page 1 has the big title block instead; continuation pages carry
+        // the running header with the character name.
+        #expect(!chunks[0].contains("(continued"))
+        #expect(chunks[1].contains("(continued"))
+        #expect(chunks[1].contains("(Wren Halloway"))
+
+        // A single-page compact export has no continuation header at all.
+        let solo = String(data: SheetPDFExporter.export(Character(name: "Solo"), style: .compact), encoding: .utf8) ?? ""
+        #expect(!solo.contains("(continued"))
+
+        // The styled layout stays header-free.
+        let styled = String(data: SheetPDFExporter.export(demo, style: .full), encoding: .utf8) ?? ""
+        #expect(!styled.contains("(continued"))
+    }
+
     @Test func validPDFStructure() throws {
         let data = SheetPDFExporter.export(aria())
         let text = String(decoding: data, as: UTF8.self)

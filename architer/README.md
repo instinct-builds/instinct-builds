@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.28.0
+
+- Compact-PDF running header: continuation pages (page 2+) now carry the
+  character name at the top left and "continued" at the top right, with a
+  rule underneath - loose pages stay attributable at the table. Page 1
+  keeps its big title block, single-page exports get nothing extra, and
+  the styled layout is unchanged.
+
 ## What's in 2.27.0
 
 - Free-roller defense notes: the Dice tab's free roller gains a damage-type
