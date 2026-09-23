@@ -2,7 +2,8 @@ muew-preset 2
 name Hyper Saw
 category Lead
 author MUEW Factory
-tags supersaw unison wide
+tags supersaw unison wide bright
+desc Seven-voice supersaw lead. Big and bright out of the box.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 12

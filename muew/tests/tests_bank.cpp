@@ -53,7 +53,7 @@ int main() {
     std::string err;
     PresetBank bank;
     check(bank.loadManifest("presets", err), "factory bank loads in manifest order: " + err);
-    check(bank.size() >= 38 && bank.size() <= 64, "factory bank ships 38-64 presets");
+    check(bank.size() >= 38 && bank.size() <= 128, "factory bank ships 38-128 presets");
     check((int)bank.size() == kFactoryPresetCount, "embedded bank has the same count as the files");
 
     // Legacy AU numbers 0-7 keep their original sounds and slugs.
@@ -159,7 +159,7 @@ int main() {
     };
     check(count({}) == (int)bank.size(), "empty filter shows the whole bank");
     check(count({"Bass", "", false}) == perCat["Bass"], "category filter matches category count");
-    check(count({"", "BLOOM", false}) == 1, "search matches names case-insensitively");
+    check(count({"", "NIGHT BLOOM", false}) == 1, "search matches names case-insensitively");
     check(count({"", "fold", false}) >= 2, "search matches tags");
     check(count({"", "", true}) == 2, "favorites filter shows only favorites");
     check(count({"Pad", "", true}) == 1, "favorites combine with category");

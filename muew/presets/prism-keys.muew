@@ -2,7 +2,8 @@ muew-preset 2
 name Prism Keys
 category Keys
 author MUEW Factory
-tags digital quantized bright
+tags digital quantized bright clean
+desc Quantized, slightly digital keys with a sparkly top end.
 osc1Shape 2
 osc2Shape 1
 osc2Detune 12

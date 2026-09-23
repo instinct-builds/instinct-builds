@@ -2,7 +2,8 @@ muew-preset 2
 name Glass Sync Lead
 category Lead
 author MUEW Factory
-tags sync vibrato bright
+tags sync vibrato bright clean
+desc Glassy sync lead with vibrato; velocity brightens the tone.
 osc1Shape 2
 osc2Shape 0
 osc2Detune 12

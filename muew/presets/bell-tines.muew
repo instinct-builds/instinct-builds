@@ -2,7 +2,8 @@ muew-preset 2
 name Bell Tines
 category Keys
 author MUEW Factory
-tags bell metallic bright
+tags bell metallic bright clean
+desc Metallic bell tones with a long ring. Nice for arpeggios.
 osc1Shape 0
 osc2Shape 0
 osc2Detune 19.02

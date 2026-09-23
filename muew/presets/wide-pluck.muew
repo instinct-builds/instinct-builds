@@ -2,7 +2,8 @@ muew-preset 2
 name Wide Pluck
 category Pluck
 author MUEW Factory
-tags unison wide short
+tags unison wide short bright
+desc Unison pluck spread across the stereo field.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 12

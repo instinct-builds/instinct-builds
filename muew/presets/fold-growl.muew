@@ -2,7 +2,8 @@ muew-preset 2
 name Fold Growl
 category Bass
 author MUEW Factory
-tags growl fold aggressive
+tags growl fold aggressive dark
+desc Wave-folded bass that growls as the fold amount moves. Push WARP for more bite.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -12

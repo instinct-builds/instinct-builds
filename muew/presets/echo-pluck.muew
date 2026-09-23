@@ -2,7 +2,8 @@ muew-preset 2
 name Echo Pluck
 category Pluck
 author MUEW Factory
-tags delay rhythmic bright
+tags delay rhythmic bright wide
+desc Bright pluck feeding a synced stereo delay for instant rhythm.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 0.05

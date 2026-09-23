@@ -2,7 +2,8 @@ muew-preset 2
 name Frozen Lake
 category Pad
 author MUEW Factory
-tags airy glassy cold
+tags airy glassy cold bright soft wide
+desc Cold, glassy pad with a long reverb tail and a high shimmer.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 12.03

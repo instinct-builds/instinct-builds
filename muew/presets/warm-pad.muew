@@ -2,7 +2,8 @@ muew-preset 2
 name Warm Pad
 category Pad
 author MUEW Factory
-tags warm wide slow
+tags warm wide slow soft
+desc Detuned saw pad with a slow attack and a rounded low pass.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.08

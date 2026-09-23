@@ -2,7 +2,8 @@ muew-preset 2
 name Punchy Bass
 category Bass
 author MUEW Factory
-tags punchy dry
+tags punchy dry dark clean
+desc Dry, punchy mono-style bass with a fast filter envelope for kick-friendly lows.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -12

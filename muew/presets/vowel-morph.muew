@@ -2,7 +2,8 @@ muew-preset 2
 name Vowel Morph
 category Lead
 author MUEW Factory
-tags vowel wavetable talking
+tags vowel wavetable talking evolving bright
+desc Talking wavetable lead that sweeps through vowel frames.
 osc1Shape 5
 osc2Shape 2
 osc2Detune -12

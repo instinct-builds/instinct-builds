@@ -2,7 +2,8 @@ muew-preset 2
 name Crushed Keys
 category Keys
 author MUEW Factory
-tags lofi bitcrush soft
+tags lofi bitcrush soft warm
+desc Bitcrushed lofi keys with a dusty, tape-like softness.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 12

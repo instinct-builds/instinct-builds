@@ -2,7 +2,8 @@ muew-preset 2
 name Rubber Sub
 category Bass
 author MUEW Factory
-tags sub round bend
+tags sub round bend dark warm
+desc Round sub bass with a short pitch bend on each note for a rubbery bounce.
 osc1Shape 0
 osc2Shape 1
 osc2Detune -12

@@ -2,7 +2,8 @@ muew-preset 2
 name Init Saw
 category Lead
 author MUEW Factory
-tags init basic
+tags init basic clean
+desc One plain saw through an open filter. The blank page for building your own sound.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 7

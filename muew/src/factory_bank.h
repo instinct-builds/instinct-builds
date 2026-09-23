@@ -13,7 +13,8 @@ inline const FactoryPresetText kFactoryPresetTexts[] = {
 name Airy Strings
 category Pad
 author MUEW Factory
-tags strings wide slow
+tags strings wide slow soft
+desc Slow string ensemble with an airy top; BRIGHT opens the filter, SPREAD widens it.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.12
@@ -47,6 +48,7 @@ name Bright Lead
 category Lead
 author MUEW Factory
 tags bright mono-style vibrato
+desc Simple, cutting two-saw lead with delayed vibrato. A good starting point for melodies.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 7
@@ -80,7 +82,8 @@ reverb 1 0.4 0.5 0.2
 name Init Saw
 category Lead
 author MUEW Factory
-tags init basic
+tags init basic clean
+desc One plain saw through an open filter. The blank page for building your own sound.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 7
@@ -114,7 +117,8 @@ reverb 0 0.55 0.45 0.28
 name Pluck
 category Pluck
 author MUEW Factory
-tags short bright
+tags short bright clean
+desc Short filtered pluck; the envelope snaps the cutoff shut for a tight, clicky attack.
 osc1Shape 2
 osc2Shape 4
 osc2Detune 0
@@ -147,7 +151,8 @@ reverb 1 0.35 0.5 0.15
 name Punchy Bass
 category Bass
 author MUEW Factory
-tags punchy dry
+tags punchy dry dark clean
+desc Dry, punchy mono-style bass with a fast filter envelope for kick-friendly lows.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -12
@@ -180,7 +185,8 @@ reverb 0 0.55 0.45 0.28
 name Soft Keys
 category Keys
 author MUEW Factory
-tags soft mellow
+tags soft mellow warm
+desc Mellow triangle keys with a slow release. Sits under vocals without fighting them.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 0.02
@@ -212,7 +218,8 @@ reverb 1 0.5 0.5 0.22
 name Sub Bass
 category Bass
 author MUEW Factory
-tags sub clean dry
+tags sub clean dry dark
+desc Pure sine sub. Almost no harmonics, so it works under any other bass.
 osc1Shape 0
 osc2Shape 0
 osc2Detune -12
@@ -243,7 +250,8 @@ reverb 0 0.55 0.45 0.28
 name Warm Pad
 category Pad
 author MUEW Factory
-tags warm wide slow
+tags warm wide slow soft
+desc Detuned saw pad with a slow attack and a rounded low pass.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.08
@@ -276,7 +284,8 @@ reverb 1 0.75 0.4 0.35
 name Fold Growl
 category Bass
 author MUEW Factory
-tags growl fold aggressive
+tags growl fold aggressive dark
+desc Wave-folded bass that growls as the fold amount moves. Push WARP for more bite.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -12
@@ -309,7 +318,8 @@ reverb 0 0.55 0.45 0.28
 name Reese Drift
 category Bass
 author MUEW Factory
-tags reese detuned dark
+tags reese detuned dark wide
+desc Two detuned saws beating slowly against each other: the classic drum and bass reese.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.15
@@ -342,7 +352,8 @@ reverb 0 0.55 0.45 0.28
 name Sync Bite
 category Bass
 author MUEW Factory
-tags sync plucky mid
+tags sync plucky mid aggressive
+desc Hard-synced bass with a snappy envelope on the sync amount for a vocal bite.
 osc1Shape 2
 osc2Shape 4
 osc2Detune -12
@@ -376,7 +387,8 @@ reverb 0 0.55 0.45 0.28
 name Rubber Sub
 category Bass
 author MUEW Factory
-tags sub round bend
+tags sub round bend dark warm
+desc Round sub bass with a short pitch bend on each note for a rubbery bounce.
 osc1Shape 0
 osc2Shape 1
 osc2Detune -12
@@ -409,7 +421,8 @@ reverb 0 0.55 0.45 0.28
 name Glass Sync Lead
 category Lead
 author MUEW Factory
-tags sync vibrato bright
+tags sync vibrato bright clean
+desc Glassy sync lead with vibrato; velocity brightens the tone.
 osc1Shape 2
 osc2Shape 0
 osc2Detune 12
@@ -443,7 +456,8 @@ reverb 1 0.45 0.45 0.18
 name Hollow Fifths
 category Lead
 author MUEW Factory
-tags fifths hollow bandpass
+tags fifths hollow bandpass clean
+desc Band-passed fifths with a hollow, reedy tone. Plays chords as single notes.
 osc1Shape 3
 osc2Shape 3
 osc2Detune 7
@@ -476,7 +490,8 @@ reverb 1 0.5 0.4 0.2
 name Acid Squelch
 category Lead
 author MUEW Factory
-tags acid resonant squelch
+tags acid resonant squelch aggressive bright
+desc Resonant low pass with a sharp envelope. Play short notes and ride RESO.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 0
@@ -510,6 +525,7 @@ name PWM Solo
 category Lead
 author MUEW Factory
 tags pwm vintage warm
+desc Pulse width modulated solo lead with a vintage, slightly chorused tone.
 osc1Shape 3
 osc2Shape 3
 osc2Detune 0.1
@@ -544,6 +560,7 @@ name Night Bloom
 category Pad
 author MUEW Factory
 tags evolving mseg dark
+desc Dark pad that opens and closes over several seconds, shaped by MSEG 1.
 osc1Shape 2
 osc2Shape 1
 osc2Detune 0.07
@@ -577,7 +594,8 @@ reverb 1 0.88 0.35 0.42
 name Vector Choir
 category Pad
 author MUEW Factory
-tags choir vocal wide
+tags choir vocal wide soft
+desc Vocal-ish pad moving between two tones. Wide and gentle.
 osc1Shape 1
 osc2Shape 2
 osc2Detune 0.05
@@ -610,7 +628,8 @@ reverb 1 0.8 0.4 0.38
 name Frozen Lake
 category Pad
 author MUEW Factory
-tags airy glassy cold
+tags airy glassy cold bright soft wide
+desc Cold, glassy pad with a long reverb tail and a high shimmer.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 12.03
@@ -643,7 +662,8 @@ reverb 1 0.93 0.3 0.45
 name Tidal Wash
 category Pad
 author MUEW Factory
-tags sweep slow wide
+tags sweep slow wide evolving
+desc A slow filter sweep that rises and falls like a wave under the chord.
 osc1Shape 2
 osc2Shape 3
 osc2Detune -0.1
@@ -676,7 +696,8 @@ reverb 1 0.82 0.45 0.38
 name Prism Keys
 category Keys
 author MUEW Factory
-tags digital quantized bright
+tags digital quantized bright clean
+desc Quantized, slightly digital keys with a sparkly top end.
 osc1Shape 2
 osc2Shape 1
 osc2Detune 12
@@ -709,7 +730,8 @@ reverb 1 0.5 0.5 0.22
 name Velvet EP
 category Keys
 author MUEW Factory
-tags electric-piano soft velocity
+tags electric-piano soft velocity warm
+desc Soft electric piano; harder playing adds bark through velocity.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 0
@@ -742,7 +764,8 @@ reverb 1 0.45 0.55 0.18
 name Bell Tines
 category Keys
 author MUEW Factory
-tags bell metallic bright
+tags bell metallic bright clean
+desc Metallic bell tones with a long ring. Nice for arpeggios.
 osc1Shape 0
 osc2Shape 0
 osc2Detune 19.02
@@ -775,7 +798,8 @@ reverb 1 0.7 0.35 0.3
 name Fold Pluck
 category Pluck
 author MUEW Factory
-tags fold short percussive
+tags fold short percussive aggressive bright
+desc Percussive folded pluck with a short, gritty decay.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 12
@@ -808,7 +832,8 @@ reverb 1 0.4 0.5 0.15
 name Marimba Wood
 category Pluck
 author MUEW Factory
-tags mallet wooden short
+tags mallet wooden short warm clean
+desc Short wooden mallet tone. Works for fast melodic patterns.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 12
@@ -841,7 +866,8 @@ reverb 1 0.35 0.6 0.15
 name Echo Pluck
 category Pluck
 author MUEW Factory
-tags delay rhythmic bright
+tags delay rhythmic bright wide
+desc Bright pluck feeding a synced stereo delay for instant rhythm.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 0.05
@@ -874,7 +900,8 @@ reverb 1 0.55 0.45 0.2
 name Bent Circuit
 category Texture
 author MUEW Factory
-tags glitch stepped mseg
+tags glitch stepped mseg aggressive evolving
+desc Stepped MSEG glitches over a bent oscillator. Hold a note and let it run.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -5
@@ -908,7 +935,8 @@ reverb 1 0.55 0.4 0.25
 name Chrome Motion
 category Texture
 author MUEW Factory
-tags rhythmic gated motion
+tags rhythmic gated motion bright evolving
+desc Rhythmic gated texture with a metallic edge that keeps moving.
 osc1Shape 2
 osc2Shape 4
 osc2Detune 7
@@ -942,7 +970,8 @@ reverb 1 0.6 0.4 0.25
 name Rising Tide
 category FX
 author MUEW Factory
-tags riser sweep long
+tags riser sweep long evolving wide
+desc Long build-up riser: pitch and filter climb together for the drop.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.2
@@ -977,7 +1006,8 @@ reverb 1 0.85 0.35 0.4
 name Laser Drop
 category FX
 author MUEW Factory
-tags drop zap pitch
+tags drop zap pitch aggressive bright
+desc A fast pitch dive zap for transitions and hits.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 0
@@ -1011,7 +1041,8 @@ reverb 1 0.5 0.5 0.2
 name Hyper Saw
 category Lead
 author MUEW Factory
-tags supersaw unison wide
+tags supersaw unison wide bright
+desc Seven-voice supersaw lead. Big and bright out of the box.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 12
@@ -1049,7 +1080,8 @@ comp 1 0.35
 name Anthem Stack
 category Pad
 author MUEW Factory
-tags supersaw unison big
+tags supersaw unison big wide bright
+desc Stacked unison pad for festival chords.
 osc1Shape 2
 osc2Shape 2
 osc2Detune -12
@@ -1086,7 +1118,8 @@ comp 1 0.3
 name Reese Grind
 category Bass
 author MUEW Factory
-tags reese distorted dark
+tags reese distorted dark aggressive
+desc Reese bass through soft clipping for a grinding, heavy low end.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.1
@@ -1126,7 +1159,8 @@ comp 1 0.5
 name Hoover Rise
 category Lead
 author MUEW Factory
-tags hoover unison rave
+tags hoover unison rave aggressive wide
+desc Rave hoover with detuned unison and pitch swoop.
 osc1Shape 4
 osc2Shape 2
 osc2Detune -12
@@ -1166,7 +1200,8 @@ comp 1 0.4
 name Fold Screamer
 category Lead
 author MUEW Factory
-tags fold distorted aggressive
+tags fold distorted aggressive bright
+desc Folded lead through distortion and compression. Loud and forward.
 osc1Shape 3
 osc2Shape 2
 osc2Detune 7
@@ -1206,7 +1241,8 @@ comp 1 0.45
 name Crushed Keys
 category Keys
 author MUEW Factory
-tags lofi bitcrush soft
+tags lofi bitcrush soft warm
+desc Bitcrushed lofi keys with a dusty, tape-like softness.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 12
@@ -1244,7 +1280,8 @@ eq 1 1 0 -3
 name Wide Pluck
 category Pluck
 author MUEW Factory
-tags unison wide short
+tags unison wide short bright
+desc Unison pluck spread across the stereo field.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 12
@@ -1281,7 +1318,8 @@ comp 1 0.35
 name Growl Stack
 category Bass
 author MUEW Factory
-tags growl unison distorted
+tags growl unison distorted aggressive dark
+desc Unison growl bass with distortion; WARP moves the growl.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -12
@@ -1321,7 +1359,8 @@ comp 1 0.6
 name Sync Wobble
 category Bass
 author MUEW Factory
-tags wobble synced dubstep
+tags wobble synced dubstep aggressive evolving
+desc Tempo-synced wobble bass. The LFO follows the host tempo.
 osc1Shape 2
 osc2Shape 3
 osc2Detune -12
@@ -1366,7 +1405,8 @@ comp 1 0.5
 name Tempo Gate
 category Pad
 author MUEW Factory
-tags gated synced trance
+tags gated synced trance evolving wide
+desc Trance gate pad synced to the host tempo.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 7
@@ -1407,7 +1447,8 @@ comp 1 0.35
 name Triplet Pluck
 category Pluck
 author MUEW Factory
-tags triplet synced bright
+tags triplet synced bright clean
+desc Pluck with triplet-synced motion for rolling grooves.
 osc1Shape 1
 osc2Shape 4
 osc2Detune 12
@@ -1447,6 +1488,7 @@ name Drift Motion
 category Keys
 author MUEW Factory
 tags evolving drift warm
+desc Keys that drift in tone over time through slow LFO 3 and LFO 4 motion.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 0.08
@@ -1487,7 +1529,8 @@ eq 1 1 0 2
 name Vowel Morph
 category Lead
 author MUEW Factory
-tags vowel wavetable talking
+tags vowel wavetable talking evolving bright
+desc Talking wavetable lead that sweeps through vowel frames.
 osc1Shape 5
 osc2Shape 2
 osc2Detune -12
@@ -1527,7 +1570,8 @@ reverb 1 0.6 0.45 0.22
 name Harmonic Rise
 category Pad
 author MUEW Factory
-tags wavetable evolving swell
+tags wavetable evolving swell wide soft
+desc Pad that adds harmonics as it swells, moving through its wavetable.
 osc1Shape 5
 osc2Shape 5
 osc2Detune 12
@@ -1569,7 +1613,8 @@ comp 1 0.3
 name Glass Draw
 category Keys
 author MUEW Factory
-tags wavetable glass bell
+tags wavetable glass bell bright clean
+desc Glassy wavetable keys; each note starts bright and settles.
 osc1Shape 5
 osc2Shape 5
 osc2Detune 12
@@ -1606,7 +1651,8 @@ reverb 1 0.7 0.5 0.3
 name Sub Pressure
 category Bass
 author MUEW Factory
-tags sub deep mono
+tags sub deep mono dark
+desc Deep bass with the sub oscillator one octave down for club pressure.
 osc1Shape 2
 osc2Shape 3
 osc2Detune -12
@@ -1646,7 +1692,8 @@ comp 1 0.4
 name Breath Flute
 category Lead
 author MUEW Factory
-tags noise breathy airy
+tags noise breathy airy soft warm
+desc Breathy flute: filtered noise in parallel with a soft tone.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 12
@@ -1687,7 +1734,8 @@ eq 1 6 7 5
 name Formant Talker
 category Lead
 author MUEW Factory
-tags formant vowel talking
+tags formant vowel talking bright evolving
+desc Formant filter 2 swept by LFO 3 for a talking lead.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 7
@@ -1726,7 +1774,8 @@ reverb 1 0.5 0.45 0.2
 name Comb Pluck
 category Pluck
 author MUEW Factory
-tags comb metallic resonant
+tags comb metallic resonant bright clean
+desc Comb-filtered pluck with a metallic, tuned ring.
 osc1Shape 2
 osc2Shape 4
 osc2Detune 12
@@ -1760,6 +1809,1201 @@ chorus 0 0.6 6 15 0.35
 delay 1 0.25 0.375 0.35 0.22
 reverb 1 0.6 0.5 0.25
 eq 1 5 7 5
+)MUEW"},
+    {"wind-tunnel", R"MUEW(muew-preset 2
+name Wind Tunnel
+category Texture
+author MUEW Factory
+tags noise air dark evolving wide
+desc Filtered noise wind with a slow band pass sweep. Hold one note for a whole bar.
+osc1Shape 0
+osc2Shape 0
+osc2Detune 7
+osc2Level 0
+filterCutoff 3000
+filterReso 0.6
+filterMode 0
+amp 1.5 1 0.9 2.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.11
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 0.07 0 2 1
+noise 0.8 0.45
+filter2 2 700 3.5 0
+routes 8
+route 9 15 2.5
+route 0 2 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 1 0.4 6 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"rain-glass", R"MUEW(muew-preset 2
+name Rain Glass
+category Texture
+author MUEW Factory
+tags noise glass bright evolving
+desc Bright noise through a resonant comb, like rain on a window. Works as a bed under keys.
+osc1Shape 0
+osc2Shape 1
+osc2Detune 24
+osc2Level 0.2
+filterCutoff 12000
+filterReso 0.3
+filterMode 0
+amp 0.4 1 0.8 2
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 0.4 3 6.5 3
+noise 0.55 0.9
+filter2 4 1800 5 1
+routes 8
+route 9 15 1.2
+route 10 14 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 1 0.33 0.47 0.45 0.25
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"deep-space", R"MUEW(muew-preset 2
+name Deep Space
+category Texture
+author MUEW Factory
+tags drone dark wide evolving
+desc Slow detuned drone with a sub underneath and a wide, drifting top. Great for intros.
+osc1Shape 2
+osc2Shape 1
+osc2Detune -12.08
+osc2Level 0.35
+filterCutoff 900
+filterReso 0.3
+filterMode 0
+amp 2.5 1 0.85 4
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.25 0.2 0.9 0.8
+lfo34 0.05 1 0.09 0
+sub 0.2 1 0
+noise 0.08 0.3
+routes 10
+route 9 2 1.2
+route 10 9 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"static-field", R"MUEW(muew-preset 2
+name Static Field
+category Texture
+author MUEW Factory
+tags noise crackle aggressive evolving
+desc Crackling bitcrushed noise with a stepped band pass. Layer under drums for grit.
+osc1Shape 3
+osc2Shape 0
+osc2Detune 7
+osc2Level 0
+filterCutoff 8000
+filterReso 0.5
+filterMode 0
+amp 0.2 1 0.9 1
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 2 3 0.3 2
+sync 0 0 5 0
+noise 0.6 0.7
+filter2 2 2500 4 0
+routes 9
+route 10 15 3
+route 9 14 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.45 0.32
+dist 1 2 0.6 0.6
+)MUEW"},
+    {"lunar-choir", R"MUEW(muew-preset 2
+name Lunar Choir
+category Texture
+author MUEW Factory
+tags choir formant soft wide evolving
+desc Formant filtered unison saws that sing slow vowels. Soft and very wide.
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.08
+osc2Level 0.6
+filterCutoff 7000
+filterReso 0.3
+filterMode 0
+amp 1.2 1 0.9 2.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 5 0.2 0.22 1 0.8
+lfo34 0.13 1 2 1
+filter2 5 220 2 0
+routes 9
+route 9 15 1.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.4 6 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"machine-room", R"MUEW(muew-preset 2
+name Machine Room
+category Texture
+author MUEW Factory
+tags industrial rhythmic dark aggressive
+desc Synced gated metal hum with a comb filter. A dark, busy background loop.
+osc1Shape 3
+osc2Shape 4
+osc2Detune 0.5
+osc2Level 0.6
+filterCutoff 2500
+filterReso 0.8
+filterMode 0
+amp 0.01 1 0.9 0.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 4 3 1 2
+sync 0 0 4 3
+sub 0.3 2 2
+filter2 4 110 5 1
+routes 9
+route 9 2 2
+route 10 15 1.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.4 0.4
+comp 1 0.4
+)MUEW"},
+    {"noise-riser", R"MUEW(muew-preset 2
+name Noise Riser
+category FX
+author MUEW Factory
+tags riser noise bright evolving
+desc White noise build: the high pass and band pass climb over about eight seconds.
+osc1Shape 0
+osc2Shape 0
+osc2Detune 7
+osc2Level 0
+filterCutoff 700
+filterReso 0.4
+filterMode 2
+amp 0.8 1 1 1.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 8 0.1 1 1
+noise 0.9 0.8
+filter2 2 300 2.5 0
+routes 8
+route 11 2 4.5
+route 11 15 4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"impact-boom", R"MUEW(muew-preset 2
+name Impact Boom
+category FX
+author MUEW Factory
+tags hit sub dark aggressive
+desc Cinematic impact: a sub dive, a noise burst and a long tail. Play low.
+osc1Shape 0
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.3
+filterCutoff 1500
+filterReso 0.2
+filterMode 0
+amp 0.001 2.5 0 2.5
+mod 0.001 1.2 0 1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 0.001 0.25 0 0.2
+sub 0.8 1 0
+noise 0.1 0.4
+routes 11
+route 1 0 12
+route 1 1 12
+route 1 2 3
+route 11 14 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+dist 1 0 0.5 0.5
+comp 1 0.6
+)MUEW"},
+    {"downlifter", R"MUEW(muew-preset 2
+name Downlifter
+category FX
+author MUEW Factory
+tags fall sweep wide evolving
+desc Falling pitch and filter sweep for the bar after a drop.
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.2
+osc2Level 0.6
+filterCutoff 12000
+filterReso 0.4
+filterMode 0
+amp 0.001 4 0 1
+mod 0.001 4 0 1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 1 0.3 0.1 1 0.8
+noise 0.25 0.7
+routes 11
+route 1 0 12
+route 1 2 3
+route 1 14 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"alarm-sweep", R"MUEW(muew-preset 2
+name Alarm Sweep
+category FX
+author MUEW Factory
+tags siren sync bright aggressive
+desc Synced siren that sweeps up and down with LFO 3. Great for build-ups.
+osc1Shape 3
+osc2Shape 2
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 8000
+filterReso 0.5
+filterMode 0
+amp 0.01 0.3 0.8 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 2 1 2 1
+sync 0 0 3 0
+routes 10
+route 9 0 5
+route 9 1 5
+route 3 2 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 1 0.8 0.45 0.32
+dist 1 0 0.3 0.3
+)MUEW"},
+    {"tape-stop", R"MUEW(muew-preset 2
+name Tape Stop
+category FX
+author MUEW Factory
+tags stop pitch warm dark
+desc One note that slows to a halt like a stopped tape machine.
+osc1Shape 2
+osc2Shape 3
+osc2Detune -12
+osc2Level 0.4
+filterCutoff 5000
+filterReso 0.3
+filterMode 0
+amp 0.001 1.6 0 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 1.2 0.1 1 0.2
+sub 0.4 1 0
+routes 10
+route 11 0 -24
+route 11 1 -24
+route 11 2 -4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.3 0.3
+)MUEW"},
+    {"glitch-burst", R"MUEW(muew-preset 2
+name Glitch Burst
+category FX
+author MUEW Factory
+tags glitch stepped aggressive bright
+desc Stepped random-feeling pitch and filter glitches driven by square LFOs.
+osc1Shape 3
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.5
+filterCutoff 6000
+filterReso 0.6
+filterMode 0
+amp 0.001 0.6 0.4 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 5 0.6
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 8 3 3 3
+sync 0 0 5 7
+noise 0.15 0.9
+filter2 4 600 4 1
+routes 10
+route 9 0 12
+route 10 2 2.5
+route 10 15 2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 2 0.5 0.5
+)MUEW"},
+    {"ember-pad", R"MUEW(muew-preset 2
+name Ember Pad
+category Pad
+author MUEW Factory
+tags warm soft sub
+desc Warm saw pad with a sine sub for weight. Macro BRIGHT opens the embers.
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.1
+osc2Level 0.6
+filterCutoff 1800
+filterReso 0.3
+filterMode 0
+amp 0.8 1 0.85 2
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.15 0.15 0.8 0.8
+sub 0.3 1 0
+routes 9
+route 0 2 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.4 6 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.45 0.32
+)MUEW"},
+    {"glass-cathedral", R"MUEW(muew-preset 2
+name Glass Cathedral
+category Pad
+author MUEW Factory
+tags bright wide evolving
+desc Big bright pad with a comb filter 2 shimmer and a long hall.
+osc1Shape 1
+osc2Shape 2
+osc2Detune 12
+osc2Level 0.4
+filterCutoff 10000
+filterReso 0.3
+filterMode 0
+amp 1.5 1 0.9 3.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 5 0.12 0.2 1 0.8
+lfo34 0.2 0 2 1
+filter2 4 880 3 1
+routes 9
+route 9 15 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.4 6 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"dust-pad", R"MUEW(muew-preset 2
+name Dust Pad
+category Pad
+author MUEW Factory
+tags lofi noise warm soft
+desc Lofi pad: soft saws, a bed of warm noise and gentle bitcrush.
+osc1Shape 2
+osc2Shape 1
+osc2Detune 0.15
+osc2Level 0.5
+filterCutoff 2500
+filterReso 0.2
+filterMode 0
+amp 0.6 1 0.8 1.8
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.3
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+noise 0.12 0.25
+routes 8
+route 0 2 0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 1 0.4 6 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.45 0.32
+dist 1 2 0.25 0.3
+)MUEW"},
+    {"frost-bloom", R"MUEW(muew-preset 2
+name Frost Bloom
+category Pad
+author MUEW Factory
+tags cold evolving bright wide
+desc Cold pad whose band pass filter 2 blooms open every few seconds.
+osc1Shape 3
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.5
+filterCutoff 9000
+filterReso 0.4
+filterMode 0
+amp 1.2 1 0.9 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.2 0.2 1 0.8
+lfo34 0.1 1 0.07 0
+filter2 2 1200 2 0
+routes 10
+route 9 15 2.5
+route 10 4 0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"velvet-drone", R"MUEW(muew-preset 2
+name Velvet Drone
+category Pad
+author MUEW Factory
+tags drone dark warm soft
+desc Dark, soft low drone with a triangle sub. Good for film beds.
+osc1Shape 1
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.35
+filterCutoff 700
+filterReso 0.3
+filterMode 0
+amp 2 1 1 4
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 0.08 0 2 1
+sub 0.45 1 1
+noise 0.05 0.2
+routes 7
+route 9 2 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+comp 1 0.3
+)MUEW"},
+    {"felt-piano", R"MUEW(muew-preset 2
+name Felt Piano
+category Keys
+author MUEW Factory
+tags piano soft warm
+desc Muted, felt-like piano tone with a gentle hammer thump from the noise.
+osc1Shape 1
+osc2Shape 0
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 2200
+filterReso 0.2
+filterMode 0
+amp 0.002 1.8 0 0.6
+mod 0.001 0.8 0 0.5
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 0.001 0.05 0 0.05
+noise 0.1 0.3
+routes 9
+route 1 2 1.2
+route 2 2 0.8
+route 11 14 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.45 0.32
+)MUEW"},
+    {"clav-funk", R"MUEW(muew-preset 2
+name Clav Funk
+category Keys
+author MUEW Factory
+tags clav funky bright clean
+desc Snappy pulse clav with a band pass filter 2 for that plucked-string bite.
+osc1Shape 4
+osc2Shape 3
+osc2Detune 0
+osc2Level 0.6
+filterCutoff 6000
+filterReso 0.5
+filterMode 0
+amp 0.001 0.6 0.15 0.1
+mod 0.001 0.2 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+filter2 2 1400 2.5 1
+routes 8
+route 1 2 2
+route 2 15 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+eq 1 0 3 2
+comp 1 0.5
+)MUEW"},
+    {"digital-organ", R"MUEW(muew-preset 2
+name Digital Organ
+category Keys
+author MUEW Factory
+tags organ drawbar bright clean
+desc Drawbar-style organ: stacked sine and square with sub octave and a fast LFO for rotary shimmer.
+osc1Shape 0
+osc2Shape 3
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 9000
+filterReso 0.1
+filterMode 0
+amp 0.005 0.1 1 0.08
+mod 0.01 0.3 0 0.2
+lfo1Rate 6.5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+sub 0.4 1 0
+routes 8
+route 0 9 0.3
+route 0 3 0.1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 1 0.4 6 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+)MUEW"},
+    {"music-box", R"MUEW(muew-preset 2
+name Music Box
+category Keys
+author MUEW Factory
+tags bell tiny bright soft
+desc Tiny, bright music box tines with a short ring and a small room.
+osc1Shape 0
+osc2Shape 1
+osc2Detune 24
+osc2Level 0.35
+filterCutoff 14000
+filterReso 0.2
+filterMode 0
+amp 0.001 1.2 0 1
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+filter2 3 500 0.7 0
+routes 7
+route 2 3 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 1 0.25 0.375 0.2 0.15
+reverb 1 0.8 0.45 0.32
+)MUEW"},
+    {"growl-formant", R"MUEW(muew-preset 2
+name Growl Formant
+category Bass
+author MUEW Factory
+tags growl formant aggressive dark
+desc Talking growl bass: formant filter 2 swept by synced LFO 3 over a heavy sub.
+osc1Shape 2
+osc2Shape 3
+osc2Detune -12
+osc2Level 0.5
+filterCutoff 3000
+filterReso 0.5
+filterMode 0
+amp 0.002 0.3 0.9 0.12
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 6 0.3
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 2 1 2 1
+sync 0 0 4 0
+sub 0.5 1 0
+filter2 5 200 2.5 0
+routes 9
+route 9 15 2.8
+route 9 5 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.5 0.5
+comp 1 0.5
+)MUEW"},
+    {"deep-house-sub", R"MUEW(muew-preset 2
+name Deep House Sub
+category Bass
+author MUEW Factory
+tags sub round warm clean
+desc Round sine and triangle sub bass with a soft filter pluck. Sits under a kick.
+osc1Shape 0
+osc2Shape 1
+osc2Detune 12
+osc2Level 0.2
+filterCutoff 900
+filterReso 0.2
+filterMode 0
+amp 0.002 0.5 0.7 0.1
+mod 0.001 0.2 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+sub 0.4 1 1
+routes 7
+route 1 2 1.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+comp 1 0.3
+)MUEW"},
+    {"noise-bass", R"MUEW(muew-preset 2
+name Noise Bass
+category Bass
+author MUEW Factory
+tags noise gritty aggressive bright
+desc Gritty bass where each note starts with a noise snap through the high pass filter 2.
+osc1Shape 3
+osc2Shape 2
+osc2Detune 0.1
+osc2Level 0.5
+filterCutoff 1500
+filterReso 0.6
+filterMode 0
+amp 0.001 0.4 0.7 0.1
+mod 0.001 0.15 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 0.001 0.08 0 0.05
+sub 0.4 1 2
+noise 0.1 0.8
+filter2 3 2000 1 1
+routes 9
+route 1 2 2.5
+route 11 14 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.4 0.4
+)MUEW"},
+    {"comb-reese", R"MUEW(muew-preset 2
+name Comb Reese
+category Bass
+author MUEW Factory
+tags reese comb dark wide
+desc Reese bass with a moving comb filter for a metallic, phasing low end.
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.15
+osc2Level 0.8
+filterCutoff 2500
+filterReso 0.4
+filterMode 0
+amp 0.005 0.3 0.9 0.2
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.2 0.2 0.6 0.7
+lfo34 0.15 1 2 1
+sub 0.35 1 0
+filter2 4 90 4 0
+routes 10
+route 9 15 1.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.3 0.3
+)MUEW"},
+    {"kalimba-drop", R"MUEW(muew-preset 2
+name Kalimba Drop
+category Pluck
+author MUEW Factory
+tags kalimba wooden warm clean
+desc Thumb piano pluck with a short comb ring and a soft bounce delay.
+osc1Shape 0
+osc2Shape 1
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 5000
+filterReso 0.3
+filterMode 0
+amp 0.001 0.5 0 0.4
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+noise 0.05 0.5
+filter2 4 520 3 1
+routes 7
+route 2 15 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 1 0.25 0.375 0.3 0.18
+reverb 1 0.8 0.45 0.32
+)MUEW"},
+    {"harp-ripple", R"MUEW(muew-preset 2
+name Harp Ripple
+category Pluck
+author MUEW Factory
+tags harp bright soft wide
+desc Soft harp pluck with a bright high end and wide reverb. Made for arpeggios.
+osc1Shape 1
+osc2Shape 2
+osc2Detune 12
+osc2Level 0.2
+filterCutoff 7000
+filterReso 0.3
+filterMode 0
+amp 0.001 1.2 0 1.2
+mod 0.001 0.6 0 0.5
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+routes 7
+route 1 2 1.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 1 0.4 6 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+)MUEW"},
+    {"snap-pluck", R"MUEW(muew-preset 2
+name Snap Pluck
+category Pluck
+author MUEW Factory
+tags snap short bright aggressive
+desc Very short plucked saw with a noise snap on the attack. Cuts through busy mixes.
+osc1Shape 2
+osc2Shape 3
+osc2Detune 0.1
+osc2Level 0.5
+filterCutoff 3000
+filterReso 0.4
+filterMode 0
+amp 0.001 0.25 0 0.2
+mod 0.001 0.12 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 0.001 0.04 0 0.03
+noise 0.1 0.9
+routes 8
+route 1 2 3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.2 0.3
+)MUEW"},
+    {"whistle-lead", R"MUEW(muew-preset 2
+name Whistle Lead
+category Lead
+author MUEW Factory
+tags whistle breathy soft clean
+desc Pure whistle with a little breath noise and slow vibrato.
+osc1Shape 0
+osc2Shape 1
+osc2Detune 12
+osc2Level 0.1
+filterCutoff 8000
+filterReso 0.2
+filterMode 0
+amp 0.05 0.3 0.9 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+noise 0.12 0.7
+filter2 2 2500 2 1
+routes 7
+route 0 0 0.15
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 1 0.8 0.45 0.32
+)MUEW"},
+    {"band-saw-lead", R"MUEW(muew-preset 2
+name Band Saw Lead
+category Lead
+author MUEW Factory
+tags nasal bandpass bright aggressive
+desc Nasal saw lead through a band pass filter 2 in series. Velocity opens it.
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.08
+osc2Level 0.8
+filterCutoff 12000
+filterReso 0.3
+filterMode 0
+amp 0.01 0.3 0.8 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5.5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.1 0.12 0.6 0.7
+filter2 2 1500 2.5 0
+routes 11
+route 2 15 1.5
+route 0 0 0.1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.35 0.4
+)MUEW"},
+    {"sub-lead", R"MUEW(muew-preset 2
+name Sub Lead
+category Lead
+author MUEW Factory
+tags mono fat warm dark
+desc Fat square lead with a square sub an octave below. Great for low melodies.
+osc1Shape 3
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.3
+filterCutoff 2200
+filterReso 0.4
+filterMode 0
+amp 0.005 0.3 0.9 0.2
+mod 0.005 0.4 0.2 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+sub 0.5 1 2
+routes 7
+route 1 2 1.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+comp 1 0.4
 )MUEW"},
 };
 

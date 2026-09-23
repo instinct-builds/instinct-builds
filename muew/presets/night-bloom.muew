@@ -3,6 +3,7 @@ name Night Bloom
 category Pad
 author MUEW Factory
 tags evolving mseg dark
+desc Dark pad that opens and closes over several seconds, shaped by MSEG 1.
 osc1Shape 2
 osc2Shape 1
 osc2Detune 0.07

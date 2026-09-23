@@ -2,7 +2,8 @@ muew-preset 2
 name Soft Keys
 category Keys
 author MUEW Factory
-tags soft mellow
+tags soft mellow warm
+desc Mellow triangle keys with a slow release. Sits under vocals without fighting them.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 0.02

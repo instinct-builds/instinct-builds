@@ -1,0 +1,37 @@
+muew-preset 2
+name Clav Funk
+category Keys
+author MUEW Factory
+tags clav funky bright clean
+desc Snappy pulse clav with a band pass filter 2 for that plucked-string bite.
+osc1Shape 4
+osc2Shape 3
+osc2Detune 0
+osc2Level 0.6
+filterCutoff 6000
+filterReso 0.5
+filterMode 0
+amp 0.001 0.6 0.15 0.1
+mod 0.001 0.2 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+filter2 2 1400 2.5 1
+routes 8
+route 1 2 2
+route 2 15 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+eq 1 0 3 2
+comp 1 0.5

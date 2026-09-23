@@ -2,7 +2,8 @@ muew-preset 2
 name Fold Pluck
 category Pluck
 author MUEW Factory
-tags fold short percussive
+tags fold short percussive aggressive bright
+desc Percussive folded pluck with a short, gritty decay.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 12

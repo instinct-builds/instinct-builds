@@ -18,9 +18,11 @@ struct PresetInfo {
     std::string category;
     std::string author;
     std::vector<std::string> tags;
+    std::string description; // 0.11.0: one line of browser text (optional)
 
     bool operator==(const PresetInfo& o) const {
-        return name == o.name && category == o.category && author == o.author && tags == o.tags;
+        return name == o.name && category == o.category && author == o.author && tags == o.tags
+            && description == o.description;
     }
 };
 
@@ -36,6 +38,7 @@ struct PresetInfo {
 //                  files round-trip byte-identical and older builds skip them.
 //                  0.8.0 adds optional `lfo34`, `sync` and `env3` lines.
 //                  0.10.0 adds optional `sub`, `noise` and `filter2` lines.
+//                  0.11.0 adds an optional `desc` line (browser text).
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
 //                  wavetables: frame count, then 256 samples per frame).
 // Version 1 text still parses; fields it lacks keep their VoiceParams
@@ -63,6 +66,7 @@ struct Preset {
         o << "tags";
         for (const auto& t : info.tags) o << " " << t;
         o << "\n";
+        if (!info.description.empty()) o << "desc " << oneLine(info.description) << "\n";
         writeCore(o);
         o << "lfo2 " << voice.lfo2Rate << " " << voice.lfo2Shape << "\n";
         o << "warp1 " << voice.osc1WarpMode << " " << voice.osc1Warp << "\n";
@@ -145,6 +149,7 @@ struct Preset {
             else if (key == "category") info.category = restOf(line, key);
             else if (key == "author") info.author = restOf(line, key);
             else if (key == "tags") { std::string t; while (ls >> t) info.tags.push_back(t); }
+            else if (key == "desc") info.description = restOf(line, key);
             else if (key == "osc1Shape") ls >> voice.osc1Shape;
             else if (key == "osc2Shape") ls >> voice.osc2Shape;
             else if (key == "osc2Detune") ls >> voice.osc2Detune;
@@ -278,6 +283,12 @@ struct Preset {
             // Unknown keys are ignored so minor additions stay loadable.
         }
         return true;
+    }
+
+    // Descriptions live on one line; newlines and tabs become spaces.
+    static std::string oneLine(std::string s) {
+        for (auto& c : s) if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+        return s;
     }
 
     bool hasTag(const std::string& t) const {

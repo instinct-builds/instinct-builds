@@ -3,6 +3,7 @@ name Bright Lead
 category Lead
 author MUEW Factory
 tags bright mono-style vibrato
+desc Simple, cutting two-saw lead with delayed vibrato. A good starting point for melodies.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 7

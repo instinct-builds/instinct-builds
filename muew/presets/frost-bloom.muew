@@ -1,0 +1,38 @@
+muew-preset 2
+name Frost Bloom
+category Pad
+author MUEW Factory
+tags cold evolving bright wide
+desc Cold pad whose band pass filter 2 blooms open every few seconds.
+osc1Shape 3
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.5
+filterCutoff 9000
+filterReso 0.4
+filterMode 0
+amp 1.2 1 0.9 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.2 0.2 1 0.8
+lfo34 0.1 1 0.07 0
+filter2 2 1200 2 0
+routes 10
+route 9 15 2.5
+route 10 4 0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 1 0.92 0.4 0.4

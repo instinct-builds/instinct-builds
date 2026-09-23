@@ -1,0 +1,39 @@
+muew-preset 2
+name Band Saw Lead
+category Lead
+author MUEW Factory
+tags nasal bandpass bright aggressive
+desc Nasal saw lead through a band pass filter 2 in series. Velocity opens it.
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.08
+osc2Level 0.8
+filterCutoff 12000
+filterReso 0.3
+filterMode 0
+amp 0.01 0.3 0.8 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5.5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.1 0.12 0.6 0.7
+filter2 2 1500 2.5 0
+routes 11
+route 2 15 1.5
+route 0 0 0.1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.35 0.4

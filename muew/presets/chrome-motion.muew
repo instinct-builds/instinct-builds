@@ -2,7 +2,8 @@ muew-preset 2
 name Chrome Motion
 category Texture
 author MUEW Factory
-tags rhythmic gated motion
+tags rhythmic gated motion bright evolving
+desc Rhythmic gated texture with a metallic edge that keeps moving.
 osc1Shape 2
 osc2Shape 4
 osc2Detune 7

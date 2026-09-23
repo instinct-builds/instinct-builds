@@ -2,7 +2,8 @@ muew-preset 2
 name Rising Tide
 category FX
 author MUEW Factory
-tags riser sweep long
+tags riser sweep long evolving wide
+desc Long build-up riser: pitch and filter climb together for the drop.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.2

@@ -2,7 +2,8 @@ muew-preset 2
 name Sync Bite
 category Bass
 author MUEW Factory
-tags sync plucky mid
+tags sync plucky mid aggressive
+desc Hard-synced bass with a snappy envelope on the sync amount for a vocal bite.
 osc1Shape 2
 osc2Shape 4
 osc2Detune -12

@@ -2,7 +2,8 @@ muew-preset 2
 name Marimba Wood
 category Pluck
 author MUEW Factory
-tags mallet wooden short
+tags mallet wooden short warm clean
+desc Short wooden mallet tone. Works for fast melodic patterns.
 osc1Shape 1
 osc2Shape 0
 osc2Detune 12

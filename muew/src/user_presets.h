@@ -104,6 +104,27 @@ inline int save(const std::string& dir, Preset sound, const std::string& name, u
     return lib.indexOfUserFile(file);
 }
 
+// 0.11.0 Import: copies a .muew file from anywhere into the user folder so it
+// shows under the Imported bank. The sound is kept as authored; a missing
+// author (or one claiming to be "User") becomes "Imported" so it never mixes
+// with presets saved in MUEW. Returns the library index or -1.
+inline int importFile(const std::string& dir, const std::string& src, ui::Library& lib) {
+    std::string text; Preset pr;
+    if (src.empty() || !readText(fs::path(src), text) || !pr.parse(text)) return -1;
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    if (!fs::is_directory(dir, ec)) return -1;
+    if (pr.info.name.empty()) pr.info.name = fs::path(src).stem().string();
+    pr.info.name = uniqueName(pr.info.name, lib);
+    if (pr.info.author.empty() || pr.info.author == "User") pr.info.author = "Imported";
+    if (pr.info.category.empty()) pr.info.category = "Pad";
+    std::string stem = fileStem(pr.info.name), file = stem + ".muew";
+    for (int n = 2; fs::exists(fs::path(dir) / file, ec) && n < 1000; ++n) file = stem + " " + std::to_string(n) + ".muew";
+    if (!writeText(fs::path(dir) / file, pr.serialize())) return -1;
+    load(dir, lib);
+    return lib.indexOfUserFile(file);
+}
+
 // Writes a shareable .muew file anywhere (the Export button).
 inline bool exportTo(const std::string& path, const Preset& sound) {
     return !path.empty() && writeText(fs::path(path), sound.serialize());

@@ -98,7 +98,18 @@ struct PresetFilter {
     std::string category;
     std::string query;
     bool favoritesOnly = false;
+    // 0.11.0: character tags that must all be present, and the bank (see
+    // ui::Bank; -1 = every bank). The query also matches author and description.
+    std::set<std::string> tags;
+    int bank = -1;
 };
+
+// Character tags offered as multi-select filters in the full browser. Every
+// factory preset carries at least one of them.
+inline const std::vector<std::string>& characterTags() {
+    static const std::vector<std::string> t{"dark", "bright", "warm", "clean", "soft", "aggressive", "evolving", "wide"};
+    return t;
+}
 
 inline std::string muewLower(std::string s) {
     for (auto& c : s) c = (char)std::tolower((unsigned char)c);
@@ -109,12 +120,16 @@ inline bool presetMatches(const Preset& p, const std::string& slug, const Preset
                           const std::set<std::string>& favorites) {
     if (!f.category.empty() && p.info.category != f.category) return false;
     if (f.favoritesOnly && !favorites.count(slug)) return false;
+    for (const auto& t : f.tags)
+        if (std::find(p.info.tags.begin(), p.info.tags.end(), t) == p.info.tags.end()) return false;
     if (f.query.empty()) return true;
     const std::string q = muewLower(f.query);
     if (muewLower(p.info.name).find(q) != std::string::npos) return true;
     if (muewLower(p.info.category).find(q) != std::string::npos) return true;
     for (const auto& t : p.info.tags)
         if (muewLower(t).find(q) != std::string::npos) return true;
+    if (muewLower(p.info.author).find(q) != std::string::npos) return true;
+    if (muewLower(p.info.description).find(q) != std::string::npos) return true;
     return false;
 }
 

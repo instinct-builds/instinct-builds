@@ -2,7 +2,8 @@ muew-preset 2
 name Growl Stack
 category Bass
 author MUEW Factory
-tags growl unison distorted
+tags growl unison distorted aggressive dark
+desc Unison growl bass with distortion; WARP moves the growl.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -12

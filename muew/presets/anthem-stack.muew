@@ -2,7 +2,8 @@ muew-preset 2
 name Anthem Stack
 category Pad
 author MUEW Factory
-tags supersaw unison big
+tags supersaw unison big wide bright
+desc Stacked unison pad for festival chords.
 osc1Shape 2
 osc2Shape 2
 osc2Detune -12

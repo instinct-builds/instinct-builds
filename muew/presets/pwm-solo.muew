@@ -3,6 +3,7 @@ name PWM Solo
 category Lead
 author MUEW Factory
 tags pwm vintage warm
+desc Pulse width modulated solo lead with a vintage, slightly chorused tone.
 osc1Shape 3
 osc2Shape 3
 osc2Detune 0.1

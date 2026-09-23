@@ -8,6 +8,7 @@
 #include "oscillator.h"
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -381,14 +382,90 @@ struct Library {
 
 inline Library& library() { static Library lib; return lib; }
 
-// Library indices visible under a browser filter. userOnly shows only saved
-// presets; otherwise factory and user presets are listed together.
+// 0.11.0 banks. User presets saved in MUEW carry author "User"; any other
+// file in the user folder (dropped in, or brought in with Import) is Imported.
+// UserFolder (the compact browser's User chip) is User + Imported.
+enum Bank { BankFactory = 0, BankUser = 1, BankImported = 2, BankUserFolder = 3 };
+inline int bankOf(const Library& lib, int i) {
+    if (!lib.isUser(i)) return BankFactory;
+    return lib.at(i).info.author == "User" ? BankUser : BankImported;
+}
+inline bool inBank(const Library& lib, int i, int bank) {
+    if (bank < 0) return true;
+    int b = bankOf(lib, i);
+    return bank == BankUserFolder ? b != BankFactory : b == bank;
+}
+inline const char* bankName(int b) {
+    switch (b) {
+    case BankFactory: return "Factory";
+    case BankUser: return "User";
+    case BankImported: return "Imported";
+    case BankUserFolder: return "User folder";
+    default: return "All";
+    }
+}
+
+// Browser sort orders. Bank order is the AU preset order (factory numbers,
+// then the user folder by name). Rating sorts best first; ties keep bank order.
+enum SortMode { SortBank = 0, SortName, SortCategory, SortRating, SortModeCount };
+inline const char* sortName(int m) {
+    static const char* n[] = {"BANK", "NAME", "TYPE", "RATING"};
+    return (m >= 0 && m < SortModeCount) ? n[m] : "?";
+}
+using Ratings = std::map<std::string, int>; // slug -> 1..5 stars (absent = unrated)
+inline int ratingOf(const Ratings& r, const std::string& slug) {
+    auto it = r.find(slug);
+    return it == r.end() ? 0 : std::clamp(it->second, 0, 5);
+}
+// Clicking the star that is already set clears the rating.
+inline void setRating(Ratings& r, const std::string& slug, int stars) {
+    stars = std::clamp(stars, 0, 5);
+    if (stars == 0 || ratingOf(r, slug) == stars) r.erase(slug); else r[slug] = stars;
+}
+inline void sortPresets(std::vector<int>& v, int mode, const Library& lib, const Ratings& ratings) {
+    auto name = [&](int i) { return muewLower(lib.at(i).info.name); };
+    switch (mode) {
+    case SortName:
+        std::stable_sort(v.begin(), v.end(), [&](int a, int b) { return name(a) < name(b); });
+        break;
+    case SortCategory: {
+        auto rank = [&](int i) {
+            const auto& c = factoryCategories();
+            auto it = std::find(c.begin(), c.end(), lib.at(i).info.category);
+            return (int)(it - c.begin());
+        };
+        std::stable_sort(v.begin(), v.end(), [&](int a, int b) {
+            int x = rank(a), y = rank(b);
+            return x != y ? x < y : name(a) < name(b);
+        });
+        break;
+    }
+    case SortRating:
+        std::stable_sort(v.begin(), v.end(), [&](int a, int b) { return ratingOf(ratings, lib.slug(a)) > ratingOf(ratings, lib.slug(b)); });
+        break;
+    default: std::sort(v.begin(), v.end()); break;
+    }
+}
+
+// Library indices visible under a browser filter, in bank order. userOnly
+// (pre-0.11 callers) is the same as filter bank BankUserFolder.
 inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites,
                                        const Library& lib, bool userOnly = false) {
     std::vector<int> out;
-    for (int i = userOnly ? kFactoryPresetCount : 0; i < lib.count(); ++i)
-        if (presetMatches(lib.at(i), lib.slug(i), f, favorites)) out.push_back(i);
+    int bank = userOnly ? (int)BankUserFolder : f.bank;
+    for (int i = 0; i < lib.count(); ++i)
+        if (inBank(lib, i, bank) && presetMatches(lib.at(i), lib.slug(i), f, favorites)) out.push_back(i);
     return out;
+}
+inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites,
+                                       const Library& lib, const Ratings& ratings, int sort) {
+    std::vector<int> out = visiblePresets(f, favorites, lib);
+    sortPresets(out, sort, lib, ratings);
+    return out;
+}
+// How many presets a sidebar row would show if picked (the other filters kept).
+inline int countWith(PresetFilter f, const std::set<std::string>& favorites, const Library& lib) {
+    return (int)visiblePresets(f, favorites, lib).size();
 }
 inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites) {
     return visiblePresets(f, favorites, library());

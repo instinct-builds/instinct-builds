@@ -1,0 +1,41 @@
+muew-preset 2
+name Glitch Burst
+category FX
+author MUEW Factory
+tags glitch stepped aggressive bright
+desc Stepped random-feeling pitch and filter glitches driven by square LFOs.
+osc1Shape 3
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.5
+filterCutoff 6000
+filterReso 0.6
+filterMode 0
+amp 0.001 0.6 0.4 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 5 0.6
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 8 3 3 3
+sync 0 0 5 7
+noise 0.15 0.9
+filter2 4 600 4 1
+routes 10
+route 9 0 12
+route 10 2 2.5
+route 10 15 2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 2 0.5 0.5

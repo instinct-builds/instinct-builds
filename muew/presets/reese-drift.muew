@@ -2,7 +2,8 @@ muew-preset 2
 name Reese Drift
 category Bass
 author MUEW Factory
-tags reese detuned dark
+tags reese detuned dark wide
+desc Two detuned saws beating slowly against each other: the classic drum and bass reese.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.15

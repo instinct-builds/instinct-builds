@@ -2,7 +2,8 @@ muew-preset 2
 name Laser Drop
 category FX
 author MUEW Factory
-tags drop zap pitch
+tags drop zap pitch aggressive bright
+desc A fast pitch dive zap for transitions and hits.
 osc1Shape 2
 osc2Shape 3
 osc2Detune 0

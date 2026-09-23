@@ -1,0 +1,40 @@
+muew-preset 2
+name Noise Bass
+category Bass
+author MUEW Factory
+tags noise gritty aggressive bright
+desc Gritty bass where each note starts with a noise snap through the high pass filter 2.
+osc1Shape 3
+osc2Shape 2
+osc2Detune 0.1
+osc2Level 0.5
+filterCutoff 1500
+filterReso 0.6
+filterMode 0
+amp 0.001 0.4 0.7 0.1
+mod 0.001 0.15 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 0.001 0.08 0 0.05
+sub 0.4 1 2
+noise 0.1 0.8
+filter2 3 2000 1 1
+routes 9
+route 1 2 2.5
+route 11 14 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.4 0.4

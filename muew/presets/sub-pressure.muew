@@ -2,7 +2,8 @@ muew-preset 2
 name Sub Pressure
 category Bass
 author MUEW Factory
-tags sub deep mono
+tags sub deep mono dark
+desc Deep bass with the sub oscillator one octave down for club pressure.
 osc1Shape 2
 osc2Shape 3
 osc2Detune -12

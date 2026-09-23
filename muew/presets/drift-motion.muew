@@ -3,6 +3,7 @@ name Drift Motion
 category Keys
 author MUEW Factory
 tags evolving drift warm
+desc Keys that drift in tone over time through slow LFO 3 and LFO 4 motion.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 0.08

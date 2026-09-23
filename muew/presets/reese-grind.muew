@@ -2,7 +2,8 @@ muew-preset 2
 name Reese Grind
 category Bass
 author MUEW Factory
-tags reese distorted dark
+tags reese distorted dark aggressive
+desc Reese bass through soft clipping for a grinding, heavy low end.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.1

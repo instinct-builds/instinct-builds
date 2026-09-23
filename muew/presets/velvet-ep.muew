@@ -2,7 +2,8 @@ muew-preset 2
 name Velvet EP
 category Keys
 author MUEW Factory
-tags electric-piano soft velocity
+tags electric-piano soft velocity warm
+desc Soft electric piano; harder playing adds bark through velocity.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 0

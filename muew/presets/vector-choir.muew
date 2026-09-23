@@ -2,7 +2,8 @@ muew-preset 2
 name Vector Choir
 category Pad
 author MUEW Factory
-tags choir vocal wide
+tags choir vocal wide soft
+desc Vocal-ish pad moving between two tones. Wide and gentle.
 osc1Shape 1
 osc2Shape 2
 osc2Detune 0.05

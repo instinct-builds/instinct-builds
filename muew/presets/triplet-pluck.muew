@@ -2,7 +2,8 @@ muew-preset 2
 name Triplet Pluck
 category Pluck
 author MUEW Factory
-tags triplet synced bright
+tags triplet synced bright clean
+desc Pluck with triplet-synced motion for rolling grooves.
 osc1Shape 1
 osc2Shape 4
 osc2Detune 12

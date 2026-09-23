@@ -2,7 +2,8 @@ muew-preset 2
 name Bent Circuit
 category Texture
 author MUEW Factory
-tags glitch stepped mseg
+tags glitch stepped mseg aggressive evolving
+desc Stepped MSEG glitches over a bent oscillator. Hold a note and let it run.
 osc1Shape 3
 osc2Shape 2
 osc2Detune -5

@@ -2,7 +2,8 @@ muew-preset 2
 name Tempo Gate
 category Pad
 author MUEW Factory
-tags gated synced trance
+tags gated synced trance evolving wide
+desc Trance gate pad synced to the host tempo.
 osc1Shape 2
 osc2Shape 2
 osc2Detune 7

@@ -2,7 +2,8 @@ muew-preset 2
 name Breath Flute
 category Lead
 author MUEW Factory
-tags noise breathy airy
+tags noise breathy airy soft warm
+desc Breathy flute: filtered noise in parallel with a soft tone.
 osc1Shape 0
 osc2Shape 1
 osc2Detune 12

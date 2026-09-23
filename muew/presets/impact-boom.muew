@@ -1,0 +1,42 @@
+muew-preset 2
+name Impact Boom
+category FX
+author MUEW Factory
+tags hit sub dark aggressive
+desc Cinematic impact: a sub dive, a noise burst and a long tail. Play low.
+osc1Shape 0
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.3
+filterCutoff 1500
+filterReso 0.2
+filterMode 0
+amp 0.001 2.5 0 2.5
+mod 0.001 1.2 0 1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+env3 0.001 0.25 0 0.2
+sub 0.8 1 0
+noise 0.1 0.4
+routes 11
+route 1 0 12
+route 1 1 12
+route 1 2 3
+route 11 14 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.92 0.4 0.4
+dist 1 0 0.5 0.5
+comp 1 0.6

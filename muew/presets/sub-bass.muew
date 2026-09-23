@@ -2,7 +2,8 @@ muew-preset 2
 name Sub Bass
 category Bass
 author MUEW Factory
-tags sub clean dry
+tags sub clean dry dark
+desc Pure sine sub. Almost no harmonics, so it works under any other bass.
 osc1Shape 0
 osc2Shape 0
 osc2Detune -12

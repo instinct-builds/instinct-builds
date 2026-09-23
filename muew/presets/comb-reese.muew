@@ -1,0 +1,40 @@
+muew-preset 2
+name Comb Reese
+category Bass
+author MUEW Factory
+tags reese comb dark wide
+desc Reese bass with a moving comb filter for a metallic, phasing low end.
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.15
+osc2Level 0.8
+filterCutoff 2500
+filterReso 0.4
+filterMode 0
+amp 0.005 0.3 0.9 0.2
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.2 0.2 0.6 0.7
+lfo34 0.15 1 2 1
+sub 0.35 1 0
+filter2 4 90 4 0
+routes 10
+route 9 15 1.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.3 0.3

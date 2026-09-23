@@ -1,0 +1,41 @@
+muew-preset 2
+name Machine Room
+category Texture
+author MUEW Factory
+tags industrial rhythmic dark aggressive
+desc Synced gated metal hum with a comb filter. A dark, busy background loop.
+osc1Shape 3
+osc2Shape 4
+osc2Detune 0.5
+osc2Level 0.6
+filterCutoff 2500
+filterReso 0.8
+filterMode 0
+amp 0.01 1 0.9 0.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.7
+lfo34 4 3 1 2
+sync 0 0 4 3
+sub 0.3 2 2
+filter2 4 110 5 1
+routes 9
+route 9 2 2
+route 10 15 1.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.4 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.4 0.4
+comp 1 0.4

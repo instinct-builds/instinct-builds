@@ -2,7 +2,8 @@ muew-preset 2
 name Hollow Fifths
 category Lead
 author MUEW Factory
-tags fifths hollow bandpass
+tags fifths hollow bandpass clean
+desc Band-passed fifths with a hollow, reedy tone. Plays chords as single notes.
 osc1Shape 3
 osc2Shape 3
 osc2Detune 7

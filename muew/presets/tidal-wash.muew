@@ -2,7 +2,8 @@ muew-preset 2
 name Tidal Wash
 category Pad
 author MUEW Factory
-tags sweep slow wide
+tags sweep slow wide evolving
+desc A slow filter sweep that rises and falls like a wave under the chord.
 osc1Shape 2
 osc2Shape 3
 osc2Detune -0.1

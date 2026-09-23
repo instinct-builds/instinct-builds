@@ -2,7 +2,8 @@ muew-preset 2
 name Sync Wobble
 category Bass
 author MUEW Factory
-tags wobble synced dubstep
+tags wobble synced dubstep aggressive evolving
+desc Tempo-synced wobble bass. The LFO follows the host tempo.
 osc1Shape 2
 osc2Shape 3
 osc2Detune -12
