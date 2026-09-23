@@ -573,6 +573,9 @@ public enum SheetPDFExporter {
         /// Lowest y reached anywhere in the current column region, so a
         /// full-width section can resume below both columns.
         var regionLowestY = Double.greatestFiniteMagnitude
+        /// Top of the current column region; column flips restart here
+        /// (the region may begin well below the page top).
+        var regionTopY = Double.greatestFiniteMagnitude
 
         init(doc: PDFDocument) {
             var d = doc
@@ -594,6 +597,7 @@ public enum SheetPDFExporter {
             column = 0
             self.margin = margin
             regionLowestY = y
+            regionTopY = y
         }
 
         mutating func endColumns() {
@@ -608,14 +612,16 @@ public enum SheetPDFExporter {
                 regionLowestY = min(regionLowestY, y)
                 if columns > 1 && column < columns - 1 {
                     column += 1
+                    y = regionTopY
                 } else {
                     // New page: the column region restarts at the top, so
-                    // the old page's lowest y no longer applies.
+                    // the old page's extents no longer apply.
                     column = 0
                     page = doc.addPage()
                     regionLowestY = doc.pageSize.height - 54
+                    regionTopY = doc.pageSize.height - 54
+                    y = doc.pageSize.height - 54
                 }
-                y = doc.pageSize.height - 54
             }
         }
 
