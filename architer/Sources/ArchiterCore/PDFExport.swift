@@ -357,7 +357,9 @@ public enum SheetPDFExporter {
                 }
                 let cantrips = sc.cantrips.map { $0.name }.sorted().joined(separator: ", ")
                 if !cantrips.isEmpty {
-                    for line in wrap("Cantrips: " + cantrips, width: flowW, size: 9) {
+                    let lines = wrap("Cantrips: " + cantrips, width: flowW, size: 9)
+                    cursor.ensureUnit(Double(lines.count) * 13)
+                    for line in lines {
                         cursor.line(line, margin: margin)
                     }
                 }
@@ -365,7 +367,9 @@ public enum SheetPDFExporter {
                     let atLevel = sc.spells(atLevel: sl)
                     if !atLevel.isEmpty {
                         let names = atLevel.map { $0.prepared ? $0.name : "\($0.name) (unprepared)" }.joined(separator: ", ")
-                        for line in wrap("Level \(sl): " + names, width: flowW, size: 9) {
+                        let lines = wrap("Level \(sl): " + names, width: flowW, size: 9)
+                        cursor.ensureUnit(Double(lines.count) * 13)
+                        for line in lines {
                             cursor.line(line, margin: margin)
                         }
                     }
@@ -397,13 +401,14 @@ public enum SheetPDFExporter {
                 for f in c.features {
                     var head = f.name + (f.source.isEmpty ? "" : " (\(f.source))")
                     if let remaining = f.usesRemaining { head += " - \(remaining)/\(f.usesMax) uses" }
+                    let detailLines = f.detail.isEmpty ? [] : wrap(f.detail, width: flowW - 14, size: 9)
+                    // Keep-together: a feature's name and detail move as a unit.
+                    cursor.ensureUnit(Double(1 + detailLines.count) * 13)
                     cursor.line(head, margin: margin)
-                    if !f.detail.isEmpty {
-                        for line in wrap(f.detail, width: flowW - 14, size: 9) {
-                            cursor.ensure(13)
-                            cursor.put(margin + 14, line, size: 9, gray: 0.3)
-                            cursor.advance(13)
-                        }
+                    for line in detailLines {
+                        cursor.ensure(13)
+                        cursor.put(margin + 14, line, size: 9, gray: 0.3)
+                        cursor.advance(13)
                     }
                 }
             case .personality:
@@ -412,7 +417,10 @@ public enum SheetPDFExporter {
                 cursor.section("Personality", margin: margin)
                 let pairs: [(String, String)] = [("Traits", p.traits), ("Ideals", p.ideals), ("Bonds", p.bonds), ("Flaws", p.flaws)]
                 for (label, value) in pairs where !value.isEmpty {
-                    for (i, line) in wrap(value, width: flowW - 60, size: 9).enumerated() {
+                    let valueLines = wrap(value, width: flowW - 60, size: 9)
+                    // Keep-together: a label and its value move as a unit.
+                    cursor.ensureUnit(Double(valueLines.count) * 13)
+                    for (i, line) in valueLines.enumerated() {
                         cursor.ensure(13)
                         if i == 0 {
                             cursor.put(margin, label + ":", size: 9, face: .bold)
@@ -446,15 +454,20 @@ public enum SheetPDFExporter {
                 cursor.section("Journal", margin: margin)
                 for e in c.journal {
                     let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
-                    for line in wrap(head.isEmpty ? "Entry" : head, width: flowW, size: 9) {
+                    let headLines = wrap(head.isEmpty ? "Entry" : head, width: flowW, size: 9)
+                    var bodyLines: [String] = []
+                    for para in e.text.components(separatedBy: "\n") {
+                        bodyLines += wrap(para, width: flowW - 14, size: 9)
+                    }
+                    // Keep-together: an entry's head and body move as a unit.
+                    cursor.ensureUnit(Double(headLines.count + bodyLines.count) * 13)
+                    for line in headLines {
                         cursor.line(line, margin: margin)
                     }
-                    for para in e.text.components(separatedBy: "\n") {
-                        for line in wrap(para, width: flowW - 14, size: 9) {
-                            cursor.ensure(13)
-                            cursor.put(margin + 14, line, size: 9, gray: 0.3)
-                            cursor.advance(13)
-                        }
+                    for line in bodyLines {
+                        cursor.ensure(13)
+                        cursor.put(margin + 14, line, size: 9, gray: 0.3)
+                        cursor.advance(13)
                     }
                 }
             case .companions:
@@ -463,7 +476,10 @@ public enum SheetPDFExporter {
                 for comp in c.companions {
                     var text = "\(comp.name)\(comp.kind.isEmpty ? "" : " (\(comp.kind))") - HP \(comp.currentHP)/\(comp.maxHP), AC \(comp.armorClass)"
                     if !comp.notes.isEmpty { text += " - \(comp.notes)" }
-                    for line in wrap(text, width: flowW, size: 9) {
+                    let lines = wrap(text, width: flowW, size: 9)
+                    // Keep-together: a companion's stat line moves as a unit.
+                    cursor.ensureUnit(Double(lines.count) * 13)
+                    for line in lines {
                         cursor.line(line, margin: margin)
                     }
                 }
@@ -605,6 +621,20 @@ public enum SheetPDFExporter {
             y = regionLowestY
             columns = 1
             column = 0
+        }
+
+        /// Height of a fresh column (or page, when single-column).
+        var columnCapacity: Double {
+            (columns > 1 ? regionTopY : doc.pageSize.height - 54) - bottom
+        }
+
+        /// Entry keep-together (compact layout): a multi-line unit flips to
+        /// the next column/page as a whole instead of splitting. Units
+        /// taller than a full column flow normally. No-op in the styled
+        /// layout, which keeps its per-line flow.
+        mutating func ensureUnit(_ height: Double) {
+            guard compact, height <= columnCapacity else { return }
+            ensure(height)
         }
 
         mutating func ensure(_ space: Double) {

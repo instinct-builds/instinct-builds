@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.22.0
+
+- Compact PDF entry keep-together: a feature's name and detail lines, a
+  journal entry's head and body, a personality label and its value, a
+  companion's stat line, and each spell-level list now move as a unit -
+  if the entry doesn't fit at the bottom of a column, it starts the next
+  column or page instead of splitting. Entries taller than a full column
+  still flow normally. The styled layout is unchanged.
+
 ## What's in 2.21.0
 
 - Compact PDF flows in two columns: after the header, abilities, and

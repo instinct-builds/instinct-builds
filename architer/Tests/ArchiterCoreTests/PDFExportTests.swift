@@ -84,6 +84,26 @@ struct PDFExportTests {
         #expect(!text.contains(" re f"))
     }
 
+    @Test func compactEntriesKeepTogether() throws {
+        let demo = SampleContent.demoCharacter()
+        let text = String(data: SheetPDFExporter.export(demo, style: .compact), encoding: .utf8) ?? ""
+        // Page content streams end with "endstream"; an entry's head and
+        // body must land in the same stream, never split across pages.
+        let chunks = text.components(separatedBy: "endstream")
+        // Feature name + first detail line (parens are escaped in PDF literals).
+        let pairs: [(String, String)] = [
+            ("Keen Senses \\(High Elf\\)", "Proficiency in Perception"),
+            ("Arcane Recovery \\(Wizard 1\\)", "Once per day"),
+            ("Session 2 - Lantern Street", "Bressa says the"),
+        ]
+        for (head, body) in pairs {
+            let headChunk = chunks.firstIndex(where: { $0.contains(head) })
+            let bodyChunk = chunks.firstIndex(where: { $0.contains(body) })
+            #expect(headChunk != nil)
+            #expect(headChunk == bodyChunk)
+        }
+    }
+
     @Test func validPDFStructure() throws {
         let data = SheetPDFExporter.export(aria())
         let text = String(decoding: data, as: UTF8.self)
