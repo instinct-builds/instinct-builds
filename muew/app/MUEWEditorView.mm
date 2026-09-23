@@ -56,6 +56,7 @@ static NSUserDefaults* MUEWDefaults() {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
+        wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
         user::load(UserPresetDir(), ui::library());
@@ -220,6 +221,17 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 // Right: 12 source badges (2 x 6), preview, and the selected modulator's controls.
 - (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 6) * 25, i < 6 ? 216 : 198, 23, 15); }
 - (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
+// 0.9.0 oscillator displays and the wavetable editor that opens over the
+// OSCILLATORS panel.
+- (NSRect)oscDisplay:(int)o { return NSMakeRect(o ? 252 : 46, [self top] - 125, 190, 76); }
+- (NSRect)oscTitle:(int)o { return NSMakeRect(o ? 256 : 50, [self top] - 47, 186, 16); }
+- (NSRect)wtPosBar:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(r.origin.x + 10, r.origin.y + 5, r.size.width - 20, 7); }
+- (NSRect)wtPanel { return NSMakeRect(24, [self top] - 260, 440, 260); }
+- (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
+- (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
+- (NSRect)wtButton:(int)i { return NSMakeRect(40 + i * 51, [self top] - 250, 48, 20); }
+- (NSRect)wtModeTab:(int)i { return NSMakeRect(298 + i * 50, [self top] - 32, 46, 17); }
+- (NSRect)wtDoneRect { return NSMakeRect(400, [self top] - 32, 48, 17); }
 - (NSRect)modField:(int)j {
     int n = [self modFieldCount];
     CGFloat w = (148 - (n - 1) * 4) / (CGFloat)std::max(n, 1);
@@ -239,6 +251,22 @@ static NSColor* SourceColor(ModRoute::Source s) {
     return C(0xf27a55); // macros
 }
 // Envelope stage fields for ENV 2 (0) / ENV 3 (1): A, D, S, R.
+static int& OscShape(VoiceParams& v, int o) { return o ? v.osc2Shape : v.osc1Shape; }
+static double& OscWtPos(VoiceParams& v, int o) { return o ? v.osc2WtPos : v.osc1WtPos; }
+static NSColor* OscColor(int o) { return o ? C(0x9d7df2) : C(0x5adac8); }
+static NSArray<NSString*>* WtButtonLabels() { return @[@"+ ADD", @"DUP", @"DELETE", @"MORPH", @"SMOOTH", @"NORMAL", @"IMPORT", @"EXPORT"]; }
+static void StrokeFrame(const Frame& f, NSRect r, CGFloat amp, NSColor* col, CGFloat width) {
+    if (f.empty()) return;
+    NSBezierPath* p = [NSBezierPath bezierPath];
+    const int n = (int)f.size();
+    for (int i = 0; i <= n; ++i) {
+        CGFloat x = r.origin.x + r.size.width * i / (CGFloat)n;
+        CGFloat y = NSMidY(r) + std::clamp((double)f[i % n], -1.1, 1.1) * r.size.height * amp;
+        i ? [p lineToPoint:NSMakePoint(x, y)] : [p moveToPoint:NSMakePoint(x, y)];
+    }
+    [col setStroke]; p.lineWidth = width; p.lineJoinStyle = NSLineJoinStyleRound; [p stroke];
+}
+
 static double& EnvField(VoiceParams& v, bool env3, int j) {
     if (env3) return j == 0 ? v.env3A : j == 1 ? v.env3D : j == 2 ? v.env3S : v.env3R;
     return j == 0 ? v.modA : j == 1 ? v.modD : j == 2 ? v.modS : v.modR;
@@ -306,13 +334,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
           dragKnob == k ? accent : C(0xa8b2c1), macro ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
 }
 
-- (void)waveIn:(NSRect)r shape:(int)shape warpMode:(int)wm warp:(double)w color:(NSColor*)col {
+- (void)waveIn:(NSRect)r osc:(int)o shape:(int)shape warpMode:(int)wm warp:(double)w color:(NSColor*)col {
     FillRound(r, 7, C(0x0a0d12));
     [C(0x1c232d) setStroke];
     NSBezierPath* mid = [NSBezierPath bezierPath];
     [mid moveToPoint:NSMakePoint(r.origin.x + 6, NSMidY(r))]; [mid lineToPoint:NSMakePoint(NSMaxX(r) - 6, NSMidY(r))];
     mid.lineWidth = 1; [mid stroke];
-    std::vector<float> wv = ui::waveform(table, shape, wm, w, 240);
+    const bool user = shape == kCustomShape;
+    std::vector<float> wv = user ? ui::waveformUser(current.tables[o], OscWtPos(current.voice, o), wm, w, 240)
+                                 : ui::waveform(table, shape, wm, w, 240);
     NSBezierPath* p = [NSBezierPath bezierPath];
     for (int i = 0; i < 240; ++i) {
         CGFloat x = r.origin.x + 8 + (r.size.width - 16) * i / 239.0;
@@ -321,6 +351,100 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     }
     [[col colorWithAlphaComponent:.25] setStroke]; p.lineWidth = 5; [p stroke];
     [col setStroke]; p.lineWidth = 1.8; [p stroke];
+    // Click-to-edit pill, and for a user table its frame position bar.
+    NSRect pill = NSMakeRect(NSMaxX(r) - 40, NSMaxY(r) - 17, 34, 13);
+    FillRound(pill, 4, user ? [col colorWithAlphaComponent:.22] : C(0x161c25));
+    TextA(@"EDIT", NSMakeRect(pill.origin.x, pill.origin.y + 1.5, pill.size.width, 10), 7.5, user ? col : C(0x6f7b8b),
+          NSFontWeightBold, NSTextAlignmentCenter);
+    if (user) {
+        const TableFrames& t = current.tables[o];
+        const double pos = OscWtPos(current.voice, o);
+        NSRect bar = [self wtPosBar:o];
+        FillRound(bar, 3.5, C(0x1a212b));
+        FillRound(NSMakeRect(bar.origin.x, bar.origin.y, std::max<CGFloat>(7, bar.size.width * pos), bar.size.height), 3.5,
+                  [col colorWithAlphaComponent:wtPosDrag == o ? .9 : .6]);
+        int nf = std::max(1, (int)t.size());
+        for (int i = 1; i < nf - 1; ++i)
+            FillRound(NSMakeRect(bar.origin.x + bar.size.width * i / (nf - 1) - .5, bar.origin.y + 1.5, 1, 4), .5, C(0x0a0d12, .8));
+        TextA([NSString stringWithFormat:@"POS %.0f%%", pos * 100], NSMakeRect(r.origin.x + 8, NSMaxY(r) - 16, 70, 11), 7.5,
+              col, NSFontWeightSemibold, NSTextAlignmentLeft);
+    }
+}
+
+- (void)drawTableEditor {
+    if (wtEdit < 0 || wtEdit > 1) return;
+    TableFrames& t = current.tables[wtEdit];
+    if (t.empty()) { wtEdit = -1; return; }
+    wtFrame = std::clamp(wtFrame, 0, (int)t.size() - 1);
+    NSColor* col = OscColor(wtEdit);
+    NSRect P = [self wtPanel];
+    NSBezierPath* bg = [NSBezierPath bezierPathWithRoundedRect:P xRadius:12 yRadius:12];
+    [C(0x131820) setFill]; [bg fill];
+    [[col colorWithAlphaComponent:.55] setStroke]; bg.lineWidth = 1; [bg stroke];
+    Text([NSString stringWithFormat:@"WAVETABLE  \u2022  OSC %@", wtEdit ? @"B" : @"A"],
+         NSMakeRect(40, NSMaxY(P) - 30, 150, 20), 11, col, NSFontWeightSemibold);
+    Text([NSString stringWithFormat:@"FRAME %d / %d", wtFrame + 1, (int)t.size()],
+         NSMakeRect(170, NSMaxY(P) - 29, 110, 20), 10, C(0x8793a3), NSFontWeightMedium);
+    NSArray* tabs = @[@"DRAW", @"HARM"];
+    for (int i = 0; i < 2; ++i) {
+        NSRect r = [self wtModeTab:i];
+        FillRound(r, 4, wtMode == i ? [col colorWithAlphaComponent:.28] : C(0x1b222c));
+        TextA(tabs[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 11), 8, wtMode == i ? col : C(0x8793a3),
+              NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    NSRect dn = [self wtDoneRect];
+    FillRound(dn, 4, col);
+    TextA(@"DONE", NSMakeRect(dn.origin.x, dn.origin.y + 3, dn.size.width, 11), 8, C(0x0b0e13), NSFontWeightBold, NSTextAlignmentCenter);
+
+    // Canvas: grid, neighbour frames as ghosts, then the frame or its harmonics.
+    NSRect cv = [self wtCanvas];
+    FillRound(cv, 8, C(0x0a0d12));
+    for (int i = 1; i < 8; ++i) FillRound(NSMakeRect(cv.origin.x + cv.size.width * i / 8, cv.origin.y + 6, 1, cv.size.height - 12), 0, C(0x161c25));
+    for (int i = -1; i <= 1; ++i)
+        FillRound(NSMakeRect(cv.origin.x + 6, NSMidY(cv) + i * cv.size.height * .42 - .5, cv.size.width - 12, 1), 0, i ? C(0x161c25) : C(0x222a36));
+    const Frame& f = t[wtFrame];
+    if (wtMode == 0) {
+        if (wtFrame > 0) StrokeFrame(t[wtFrame - 1], cv, .42, [col colorWithAlphaComponent:.14], 1);
+        if (wtFrame + 1 < (int)t.size()) StrokeFrame(t[wtFrame + 1], cv, .42, [col colorWithAlphaComponent:.14], 1);
+        StrokeFrame(f, cv, .42, [col colorWithAlphaComponent:.22], 6);
+        StrokeFrame(f, cv, .42, col, 2);
+        TextA(@"DRAW WITH THE MOUSE", NSMakeRect(NSMaxX(cv) - 150, cv.origin.y + 6, 142, 11), 7.5, C(0x4a5462),
+              NSFontWeightSemibold, NSTextAlignmentRight);
+    } else {
+        StrokeFrame(f, cv, .42, [col colorWithAlphaComponent:.12], 1.5);
+        std::vector<double> hs = frameHarmonics(f, 32);
+        CGFloat bw = cv.size.width / 32.0;
+        for (int k = 0; k < 32; ++k) {
+            NSRect br = NSMakeRect(cv.origin.x + k * bw + 2, cv.origin.y + 16, bw - 4, 0);
+            br.size.height = std::max<CGFloat>(2, (cv.size.height - 26) * std::clamp(hs[k], 0.0, 1.0));
+            FillRound(NSMakeRect(br.origin.x, cv.origin.y + 16, br.size.width, cv.size.height - 26), 2, C(0x121821));
+            FillRound(br, 2, [col colorWithAlphaComponent:.45 + .5 * std::clamp(hs[k], 0.0, 1.0)]);
+            if (k == 0 || (k + 1) % 4 == 0)
+                TextA([NSString stringWithFormat:@"%d", k + 1], NSMakeRect(br.origin.x - 4, cv.origin.y + 4, bw + 0, 10), 7,
+                      C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentCenter);
+        }
+    }
+
+    // Frame strip.
+    for (int i = 0; i < kMaxFrames; ++i) {
+        NSRect r = [self wtThumb:i];
+        if (i < (int)t.size()) {
+            FillRound(r, 4, i == wtFrame ? [col colorWithAlphaComponent:.22] : C(0x0f141b));
+            StrokeFrame(t[i], NSInsetRect(r, 2, 4), .4, i == wtFrame ? col : [col colorWithAlphaComponent:.55], 1);
+            if (i == wtFrame) {
+                NSBezierPath* sel = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, .5, .5) xRadius:4 yRadius:4];
+                [col setStroke]; sel.lineWidth = 1; [sel stroke];
+            }
+        } else {
+            FillRound(r, 4, C(0x0e1218));
+        }
+    }
+    NSArray* labels = WtButtonLabels();
+    for (int i = 0; i < (int)labels.count; ++i) {
+        NSRect r = [self wtButton:i];
+        FillRound(r, 4, C(0x1d2430));
+        TextA(labels[i], NSMakeRect(r.origin.x, r.origin.y + 4.5, r.size.width, 11), 7.5, C(0xc3cbd6), NSFontWeightBold, NSTextAlignmentCenter);
+    }
 }
 
 - (void)curve:(const std::vector<MSEG::Point>&)pts in:(NSRect)r color:(NSColor*)col dots:(BOOL)dots {
@@ -423,11 +547,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     // Oscillators
     const VoiceParams& v = current.voice;
     NSRect wa = NSMakeRect(46, top - 125, 190, 76), wb = NSMakeRect(252, top - 125, 190, 76);
-    [self waveIn:wa shape:v.osc1Shape warpMode:v.osc1WarpMode warp:v.osc1Warp color:C(0x5adac8)];
-    [self waveIn:wb shape:v.osc2Shape warpMode:v.osc2WarpMode warp:v.osc2Warp color:C(0x9d7df2)];
-    Text([NSString stringWithFormat:@"OSC A  \u2022  %s  \u2022  %s", ui::shapeName(v.osc1Shape), ui::warpName(v.osc1WarpMode)],
+    [self waveIn:wa osc:0 shape:v.osc1Shape warpMode:v.osc1WarpMode warp:v.osc1Warp color:C(0x5adac8)];
+    [self waveIn:wb osc:1 shape:v.osc2Shape warpMode:v.osc2WarpMode warp:v.osc2Warp color:C(0x9d7df2)];
+    Text([NSString stringWithFormat:@"OSC A  \u2022  %s%@  \u2022  %s", ui::shapeName(v.osc1Shape),
+          v.osc1Shape == kCustomShape ? [NSString stringWithFormat:@" %dF", std::max(1, (int)current.tables[0].size())] : @"", ui::warpName(v.osc1WarpMode)],
          NSMakeRect(50, top - 47, 190, 16), 10, C(0x5adac8), NSFontWeightSemibold);
-    Text([NSString stringWithFormat:@"OSC B  \u2022  %s  \u2022  %s", ui::shapeName(v.osc2Shape), ui::warpName(v.osc2WarpMode)],
+    Text([NSString stringWithFormat:@"OSC B  \u2022  %s%@  \u2022  %s", ui::shapeName(v.osc2Shape),
+          v.osc2Shape == kCustomShape ? [NSString stringWithFormat:@" %dF", std::max(1, (int)current.tables[1].size())] : @"", ui::warpName(v.osc2WarpMode)],
          NSMakeRect(256, top - 47, 190, 16), 10, C(0x9d7df2), NSFontWeightSemibold);
     for (int o = 0; o < 2; ++o) { // unison strips
         NSColor* col = o ? C(0x9d7df2) : C(0x5adac8);
@@ -568,6 +694,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         Text([NSString stringWithFormat:@"%.0f%%", val * 100], NSMakeRect(r.origin.x + 48, r.origin.y + 12, 44, 16), 12,
              dragging ? acc : (on ? C(0xd5dce5) : C(0x5f6b7b)), NSFontWeightMedium);
     }
+    [self drawTableEditor];
     [self drawDragBadge];
 }
 
@@ -633,7 +760,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     NSColor* scol = SourceColor(sel);
     NSRect pv = [self modPreview];
     [self sourcePreview:sel in:NSInsetRect(pv, 4, 4) color:scol];
-    Text(S(ui::sourceName(sel)), NSMakeRect(pv.origin.x + 2, NSMaxY(pv) - 12, 80, 11), 8, C(0x8793a3), NSFontWeightSemibold);
+    Text(S(ui::sourceName(sel)), NSMakeRect(pv.origin.x + 2, NSMaxY(pv) + 2, 90, 11), 8, C(0x8793a3), NSFontWeightSemibold);
     VoiceParams& v = current.voice;
     int nf = [self modFieldCount];
     for (int j = 0; j < nf; ++j) {
@@ -829,11 +956,149 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         if (!user::exportTo(std::string(panel.URL.fileSystemRepresentation), current)) NSBeep();
 }
 
+// ---- 0.9.0 wavetable editor ----
+- (void)openTableEditor:(int)o {
+    VoiceParams& v = current.voice;
+    TableFrames& t = current.tables[o];
+    if (t.empty()) t.push_back(shapeFrame(std::clamp(OscShape(v, o), 0, 4))); // start from the current shape
+    OscShape(v, o) = kCustomShape;
+    wtEdit = o;
+    wtFrame = std::clamp((int)std::lround(OscWtPos(v, o) * ((int)t.size() - 1)), 0, (int)t.size() - 1);
+    edited = true;
+    [self applySound];
+    [self setNeedsDisplay:YES];
+}
+
+// Selecting a frame moves WT POS onto it so the edit is what you hear.
+- (void)selectTableFrame:(int)i {
+    TableFrames& t = current.tables[wtEdit];
+    wtFrame = std::clamp(i, 0, (int)t.size() - 1);
+    OscWtPos(current.voice, wtEdit) = t.size() > 1 ? (double)wtFrame / ((int)t.size() - 1) : 0.0;
+    edited = true;
+    [self applySound];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)tableStrokeTo:(NSPoint)p first:(BOOL)first {
+    NSRect cv = [self wtCanvas];
+    Frame& f = current.tables[wtEdit][wtFrame];
+    double x = std::clamp((p.x - cv.origin.x) / cv.size.width, 0.0, 1.0);
+    if (wtMode == 0) {
+        double y = std::clamp((p.y - NSMidY(cv)) / (cv.size.height * .42), -1.0, 1.0);
+        int idx = std::min(kFrameSize - 1, (int)(x * kFrameSize));
+        drawStroke(f, first ? idx : wtLastIdx, first ? y : wtLastVal, idx, y);
+        wtLastIdx = idx; wtLastVal = y;
+    } else {
+        int hn = std::min(32, 1 + (int)(x * 32));
+        double amp = std::clamp((p.y - cv.origin.y - 16) / (cv.size.height - 26), 0.0, 1.0);
+        setFrameHarmonic(f, hn, amp);
+    }
+    edited = true;
+    [self setNeedsDisplay:YES];
+}
+
+- (void)importTable {
+    NSOpenPanel* op = [NSOpenPanel openPanel];
+    op.allowedFileTypes = @[@"wav", @"wave"];
+    op.message = @"Choose a single-cycle or wavetable WAV (2048-sample frames).";
+    if ([op runModal] != NSModalResponseOK || !op.URL) return;
+    NSData* d = [NSData dataWithContentsOfURL:op.URL];
+    std::vector<unsigned char> bytes;
+    if (d.length) bytes.assign((const unsigned char*)d.bytes, (const unsigned char*)d.bytes + d.length);
+    TableFrames in = importWav(bytes);
+    if (in.empty()) { NSBeep(); return; }
+    current.tables[wtEdit] = in;
+    [self selectTableFrame:0];
+}
+
+- (void)exportTable {
+    NSSavePanel* sp = [NSSavePanel savePanel];
+    sp.nameFieldStringValue = [NSString stringWithFormat:@"%@ OSC %@.wav", S(user::fileStem(current.info.name)), wtEdit ? @"B" : @"A"];
+    sp.allowedFileTypes = @[@"wav"];
+    if ([sp runModal] != NSModalResponseOK || !sp.URL) return;
+    std::vector<unsigned char> bytes = exportWav(current.tables[wtEdit]);
+    NSData* d = [NSData dataWithBytes:bytes.data() length:bytes.size()];
+    if (![d writeToURL:sp.URL atomically:YES]) NSBeep();
+}
+
+- (void)tableButton:(int)i {
+    TableFrames& t = current.tables[wtEdit];
+    const int n = (int)t.size();
+    switch (i) {
+    case 0: // add a fresh frame at the end
+        if (n >= kMaxFrames) { NSBeep(); return; }
+        t.push_back(shapeFrame(2));
+        [self selectTableFrame:n];
+        return;
+    case 1: // duplicate the selected frame after itself
+        if (n >= kMaxFrames) { NSBeep(); return; }
+        { Frame copy = t[wtFrame]; t.insert(t.begin() + wtFrame + 1, copy); }
+        [self selectTableFrame:wtFrame + 1];
+        return;
+    case 2:
+        if (n <= 1) { NSBeep(); return; }
+        t.erase(t.begin() + wtFrame);
+        [self selectTableFrame:std::min(wtFrame, n - 2)];
+        return;
+    case 3: // morph: crossfade the frames between the first and last
+        if (n < 3) { NSBeep(); return; }
+        morphFill(t);
+        break;
+    case 4: smoothFrame(t[wtFrame], 2); break;
+    case 5: normalizeFrame(t[wtFrame]); break;
+    case 6: [self importTable]; return;
+    case 7: [self exportTable]; return;
+    default: return;
+    }
+    edited = true;
+    [self applySound];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)tableMouseDown:(NSPoint)p {
+    TableFrames& t = current.tables[wtEdit];
+    if (NSPointInRect(p, [self wtDoneRect])) { wtEdit = -1; [self setNeedsDisplay:YES]; return; }
+    for (int i = 0; i < 2; ++i)
+        if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }
+    for (int i = 0; i < (int)t.size(); ++i)
+        if (NSPointInRect(p, [self wtThumb:i])) { [self selectTableFrame:i]; return; }
+    for (int i = 0; i < (int)WtButtonLabels().count; ++i)
+        if (NSPointInRect(p, [self wtButton:i])) { [self tableButton:i]; return; }
+    if (NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { wtDrawing = true; [self tableStrokeTo:p first:YES]; }
+}
+
+// Clicks on the oscillator header and displays: the name cycles the shape
+// (SINE..PULSE, USER), the WT POS bar drags the frame position, and the rest
+// of the display opens the wavetable editor. Returns YES if handled.
+- (BOOL)oscMouseDown:(NSPoint)p {
+    for (int o = 0; o < 2; ++o) {
+        VoiceParams& v = current.voice;
+        if (NSPointInRect(p, [self oscTitle:o])) {
+            int& sh = OscShape(v, o);
+            sh = (std::clamp(sh, 0, kCustomShape) + 1) % (kCustomShape + 1);
+            if (sh == kCustomShape && current.tables[o].empty()) current.tables[o].push_back(shapeFrame(2));
+            edited = true; [self applySound]; [self setNeedsDisplay:YES];
+            return YES;
+        }
+        if (OscShape(v, o) == kCustomShape && NSPointInRect(p, NSInsetRect([self wtPosBar:o], -2, -4))) {
+            wtPosDrag = o;
+            dragValue = OscWtPos(v, o);
+            if (host) host->parameterGesture(o ? params::WtPosB : params::WtPosA, true);
+            return YES;
+        }
+        if (NSPointInRect(p, [self oscDisplay:o])) { [self openTableEditor:o]; return YES; }
+    }
+    return NO;
+}
+
 - (void)mouseDown:(NSEvent*)e {
     [self.window makeFirstResponder:self];
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
-    dragKnob = [self hitKnob:p];
     dragStart = p;
+    dragKnob = -1;
+    if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
+    if ([self oscMouseDown:p]) return;
+    dragKnob = [self hitKnob:p];
     if (dragKnob >= kFxDrag) { // FX ring: drive / mix / amount, published as AU parameters
         int id = [self paramForDrag:dragKnob];
         if (host) host->parameterGesture(id, true);
@@ -911,6 +1176,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 - (void)mouseDragged:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
+    if (wtDrawing && wtEdit >= 0) { [self tableStrokeTo:p first:NO]; return; }
+    if (wtPosDrag >= 0) { // WT POS bar: the full bar width is 0..100%
+        OscWtPos(current.voice, wtPosDrag) = std::clamp(dragValue + (p.x - dragStart.x) / ([self wtPosBar:wtPosDrag].size.width * scale / 150.0), 0.0, 1.0);
+        edited = true;
+        if (!host || !host->editParameter(wtPosDrag ? params::WtPosB : params::WtPosA, current)) [self applySound];
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (dragSource >= 0) {
         dragPoint = p;
         NSInteger k = [self hitKnob:p];
@@ -944,6 +1217,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 }
 
 - (void)mouseUp:(NSEvent*)e {
+    if (wtDrawing) { wtDrawing = false; [self applySound]; } // one engine update per stroke
+    if (wtPosDrag >= 0 && host) host->parameterGesture(wtPosDrag ? params::WtPosB : params::WtPosA, false);
+    wtPosDrag = -1;
     if (dragSource >= 0 && dropKnob >= 0) { // drop a source on a knob: new route (or reuse)
         int slot = ui::addRoute(current.routes, ui::matrixSources()[dragSource], (ModRoute::Dest)ui::knobDest(dropKnob));
         if (slot >= 0) { matrixPage = slot / 4; edited = true; [self applySound]; }

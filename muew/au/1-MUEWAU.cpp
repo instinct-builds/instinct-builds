@@ -159,6 +159,7 @@ struct MUEWInstance {
         if (block) g.lock(); else if (!g.try_lock()) return;
         foldParams();
         if (!stateDirty) return;
+        synth.setTables(state.tables[0], state.tables[1]);
         synth.setParams(state.voice, state.routes);
         synth.setFX(state.fx);
         stateDirty = false;

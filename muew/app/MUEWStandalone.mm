@@ -18,6 +18,7 @@ struct StandaloneHost : MUEWEditorHost {
     StandaloneHost(Synth* s, std::mutex* l) : synth(s), lock(l) {}
     void applyPreset(const Preset& p, int, bool) override {
         std::lock_guard<std::mutex> g(*lock);
+        synth->setTables(p.tables[0], p.tables[1]);
         synth->setParams(p.voice, p.routes);
         synth->setFX(p.fx);
     }
@@ -45,7 +46,7 @@ struct StandaloneHost : MUEWEditorHost {
     v = [[MUEWEditorView alloc] initWithFrame:f];
     v->host = binding;
     w.contentView = v;
-    int start = ui::indexOfSlug("sync-wobble");
+    int start = ui::indexOfSlug("vowel-morph");
     [v loadPresetIndex:start >= 0 ? start : 0];
     [w center]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
     engine = [AVAudioEngine new];

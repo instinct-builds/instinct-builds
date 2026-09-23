@@ -16,8 +16,8 @@ namespace muew {
 namespace ui {
 
 inline const char* shapeName(int s) {
-    static const char* n[] = {"SINE", "TRI", "SAW", "SQUARE", "PULSE"};
-    return (s >= 0 && s < 5) ? n[s] : "CUSTOM";
+    static const char* n[] = {"SINE", "TRI", "SAW", "SQUARE", "PULSE", "USER"};
+    return (s >= 0 && s < 6) ? n[s] : "?";
 }
 inline const char* warpName(int w) {
     static const char* n[] = {"CLEAN", "SYNC", "BEND+", "BEND-", "PWM", "QUANTIZE", "FOLD"};
@@ -53,6 +53,8 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::Osc2Unison: return "UNISON B";
     case ModRoute::Dest::UnisonWidth: return "WIDTH";
     case ModRoute::Dest::DistDrive: return "DRIVE";
+    case ModRoute::Dest::Osc1WtPos: return "WT POS A";
+    case ModRoute::Dest::Osc2WtPos: return "WT POS B";
     }
     return "?";
 }
@@ -112,7 +114,8 @@ inline const char* sourceBadge(ModRoute::Source s) {
 inline const std::vector<ModRoute::Dest>& matrixDests() {
     using D = ModRoute::Dest;
     static const std::vector<D> v{D::Osc1Pitch, D::Osc1Warp, D::Osc1Unison, D::Osc2Pitch, D::Osc2Warp, D::Osc2Unison,
-                                  D::Osc2Level, D::UnisonWidth, D::FilterCutoff, D::FilterResonance, D::DistDrive};
+                                  D::Osc2Level, D::UnisonWidth, D::FilterCutoff, D::FilterResonance, D::DistDrive,
+                                  D::Osc1WtPos, D::Osc2WtPos};
     return v;
 }
 // A new route starts at a musical quarter of full scale.
@@ -290,6 +293,23 @@ inline std::vector<float> waveform(const Wavetable& table, int shape, int warpMo
     osc.setSampleRate(200.0 * n);
     osc.setFrequency(200.0);
     osc.setShape(shape);
+    osc.setWarp(static_cast<Oscillator::WarpMode>(warpMode), warp);
+    osc.reset();
+    std::vector<float> out(n);
+    for (int i = 0; i < n; ++i) out[i] = osc.process();
+    return out;
+}
+
+// 0.9.0: one cycle of a user wavetable at frame position pos (0..1), with
+// the same warp the engine applies, for the oscillator displays.
+inline std::vector<float> waveformUser(const TableFrames& frames, double pos, int warpMode, double warp, int n) {
+    CustomTable ct(frames);
+    Oscillator osc;
+    osc.setCustom(&ct);
+    osc.setSampleRate(200.0 * n);
+    osc.setFrequency(200.0);
+    osc.setShape(kCustomShape);
+    osc.setWtPos(pos);
     osc.setWarp(static_cast<Oscillator::WarpMode>(warpMode), warp);
     osc.reset();
     std::vector<float> out(n);

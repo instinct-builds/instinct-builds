@@ -301,8 +301,44 @@ int main() {
             Check(ok && st.voice.lfoSync[2] == 5, "LFO 3 SYNC + RATE drag stored 1/16 in the AU's sound");
             fflush(stdout);
         });
+        After(6.5, ^{ // 0.9.0 wavetable editor: open it on OSC A, draw, duplicate the frame, edit a harmonic
+            CGFloat t = view.bounds.size.height - 100;
+            NSPoint disp = NSMakePoint(46 + 95, t - 80);                 // OSC A display (above the WT POS bar)
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, disp, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, disp, w)];
+            CGFloat mid = t - 184 + 69, amp = 138 * .42;                  // canvas centre line and full scale
+            NSPoint s0 = NSMakePoint(100, mid + .5 * amp), s1 = NSMakePoint(200, mid + .5 * amp), s2 = NSMakePoint(300, mid - .8 * amp);
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, s0, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, s1, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, s2, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, s2, w)];
+            muew::Preset drawn;
+            bool ok1 = State(drawn);
+            int i70 = 70;                                                 // inside the flat +0.5 part of the stroke
+            Check(ok1 && drawn.voice.osc1Shape == muew::kCustomShape && drawn.tables[0].size() == 1
+                  && std::fabs(drawn.tables[0][0][i70] - 0.5) < 0.02,
+                  "clicking OSC A opened the editor and the drawn stroke reached the AU's user table");
+            NSPoint dup = NSMakePoint(40 + 51 + 24, t - 250 + 10);        // DUP
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, dup, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, dup, w)];
+            NSPoint harm = NSMakePoint(298 + 50 + 23, t - 32 + 8);        // HARM tab
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, harm, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, harm, w)];
+            NSPoint h5 = NSMakePoint(40 + 4.5 * (408 / 32.0), t - 184 + 16 + (138 - 26) * .9); // harmonic 5 at 90%
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, h5, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, h5, w)];
+            muew::Preset st;
+            bool ok = State(st);
+            std::vector<double> hs = ok && st.tables[0].size() == 2 ? muew::frameHarmonics(st.tables[0][1], 8) : std::vector<double>(8, 0.0);
+            printf("wavetable: shape %d, %zu frames, WT POS A %.2f, frame 2 harmonic 5 at %.2f\n",
+                   st.voice.osc1Shape, st.tables[0].size(), st.voice.osc1WtPos, hs[4]);
+            Check(ok && st.tables[0].size() == 2 && std::fabs(st.voice.osc1WtPos - 1.0) < 1e-6 && st.tables[0][0] != st.tables[0][1],
+                  "DUP added a second frame and moved WT POS onto it");
+            Check(hs[4] > 0.8, "harmonic bar click raised harmonic 5 of the new frame");
+            fflush(stdout);
+        });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack and mod matrix\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack, mod matrix and wavetable editor\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

@@ -20,7 +20,8 @@ struct ModRoute {
                         LFO3 = 9, LFO4 = 10, Env3 = 11 } source; // 0.8.0: LFO 3/4, ENV 3
     enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6,
                       Osc1Unison = 7, Osc2Unison = 8, UnisonWidth = 9, // 0.7.0: unison detune A/B, stereo width (0..1 units)
-                      DistDrive = 10 } dest;                            // 0.7.0: FX-rack drive, macro sources only (global FX)
+                      DistDrive = 10,                                   // 0.7.0: FX-rack drive, macro sources only (global FX)
+                      Osc1WtPos = 11, Osc2WtPos = 12 } dest;            // 0.9.0: user-table frame position (0..1 units)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
 };
 
@@ -59,6 +60,9 @@ struct VoiceParams {
     // kSyncBeats). Synced LFOs follow the host tempo.
     int lfoSync[4] = {0, 0, 0, 0};
     double env3A = 0.01, env3D = 0.4, env3S = 0.0, env3R = 0.3;
+    // 0.9.0: frame position (0..1) through each oscillator's user table; only
+    // heard when the oscillator's shape is kCustomShape.
+    double osc1WtPos = 0.0, osc2WtPos = 0.0;
 };
 
 constexpr int kMaxUnison = 8;
@@ -95,7 +99,8 @@ public:
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
         params_ = p; routes_ = routes;
-        for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setShape(p.osc1Shape); osc2_[i].setShape(p.osc2Shape); }
+        for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setShape(std::clamp(p.osc1Shape, 0, 4)); osc2_[i].setShape(std::clamp(p.osc2Shape, 0, 4)); }
+        applyCustom();
         filter_.setMode(static_cast<SVFilter::Mode>(p.filterMode));
         filterR_.setMode(static_cast<SVFilter::Mode>(p.filterMode));
         ampEnv_.set(p.ampA, p.ampD, p.ampS, p.ampR);
@@ -114,6 +119,9 @@ public:
         mseg1_.setRate(p.mseg1Seconds); mseg1_.setPoints(p.mseg1Points);
         mseg1_.setLoop(1, (int)mseg1_.pointCount() - 1, p.mseg1Loop);
     }
+
+    // User tables for oscillators A/B (null = none; the synth owns them).
+    void setCustomTables(const CustomTable* a, const CustomTable* b) { custom1_ = a; custom2_ = b; applyCustom(); }
 
     // Host tempo for synced LFOs.
     void setTempo(double bpm) {
@@ -195,6 +203,8 @@ public:
 
         const int n1 = std::clamp(params_.osc1Unison, 1, kMaxUnison);
         const int n2 = std::clamp(params_.osc2Unison, 1, kMaxUnison);
+        if (active1_) { const double wp = std::clamp(params_.osc1WtPos + modSum(ModRoute::Dest::Osc1WtPos), 0.0, 1.0); for (int i = 0; i < n1; ++i) osc1_[i].setWtPos(wp); }
+        if (active2_) { const double wp = std::clamp(params_.osc2WtPos + modSum(ModRoute::Dest::Osc2WtPos), 0.0, 1.0); for (int i = 0; i < n2; ++i) osc2_[i].setWtPos(wp); }
         float l, r;
         bool stereo = false;
         if (n1 == 1 && n2 == 1) {
@@ -295,6 +305,17 @@ private:
         }
     }
 
+    // Shape kCustomShape plays the oscillator's table; without one it falls
+    // back to the saw so an incomplete preset still sounds.
+    void applyCustom() {
+        active1_ = params_.osc1Shape == kCustomShape; active2_ = params_.osc2Shape == kCustomShape;
+        for (int i = 0; i < kMaxUnison; ++i) {
+            osc1_[i].setCustom(active1_ ? (custom1_ ? custom1_ : fallback()) : nullptr);
+            osc2_[i].setCustom(active2_ ? (custom2_ ? custom2_ : fallback()) : nullptr);
+        }
+    }
+    static const CustomTable* fallback() { static const CustomTable t{TableFrames{}}; return &t; }
+
     void applyRates() {
         lfo1_.setRate(lfoHz(params_.lfo1Rate, params_.lfoSync[0], bpm_));
         lfo2_.setRate(lfoHz(params_.lfo2Rate, params_.lfoSync[1], bpm_));
@@ -306,6 +327,8 @@ private:
     LFO lfo3_, lfo4_;
     Envelope env3_;
     bool usesLfo3_ = false, usesLfo4_ = false;
+    const CustomTable* custom1_ = nullptr; const CustomTable* custom2_ = nullptr;
+    bool active1_ = false, active2_ = false;
     double bpm_ = 120.0;
     Oscillator osc1_[kMaxUnison], osc2_[kMaxUnison];
     SVFilter filter_, filterR_;

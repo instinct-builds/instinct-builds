@@ -46,6 +46,7 @@ int main(int argc, char** argv) {
     const int total = (int)(sr * seconds);
     Synth synth(16);
     synth.init(sr);
+    synth.setTables(preset.tables[0], preset.tables[1]);
     synth.setParams(preset.voice, preset.routes);
     synth.setFX(preset.fx);
 

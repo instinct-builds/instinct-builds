@@ -60,6 +60,16 @@ struct MUEWEditorHost {
     int dropKnob;
     int routeDrag;
     int modFieldDrag;
+    // 0.9.0 wavetable editor: oscillator being edited (-1 = closed), the
+    // selected frame, draw (0) or harmonic (1) mode, the last stroke point,
+    // and the oscillator whose WT POS bar is being dragged (-1 = none).
+    int wtEdit;
+    int wtFrame;
+    int wtMode;
+    int wtLastIdx;
+    double wtLastVal;
+    bool wtDrawing;
+    int wtPosDrag;
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)

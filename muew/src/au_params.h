@@ -19,6 +19,7 @@ enum ID {
     ChorusMix, DelayMix, ReverbMix,
     Macro1, Macro2, Macro3, Macro4, // 0.6.0
     UnisonDetuneA, UnisonDetuneB, UnisonWidth, DistDrive, CompAmount, // 0.7.0
+    WtPosA, WtPosB, // 0.9.0: user-table frame position
     Count
 };
 
@@ -54,6 +55,8 @@ inline const Def& def(int id) {
         {"Unison Width", Percent, 0, 100, false},
         {"Distortion Drive", Percent, 0, 100, false},
         {"Compressor", Percent, 0, 100, false},
+        {"WT Position A", Percent, 0, 100, false},
+        {"WT Position B", Percent, 0, 100, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -79,6 +82,8 @@ inline double& field(Preset& p, int id) {
     case UnisonWidth: return p.voice.uniWidth;
     case DistDrive: return p.fx.dist.drive;
     case CompAmount: return p.fx.comp.amount;
+    case WtPosA: return p.voice.osc1WtPos;
+    case WtPosB: return p.voice.osc2WtPos;
     default: return p.fx.reverb.mix;
     }
 }

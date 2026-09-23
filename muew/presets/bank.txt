@@ -42,3 +42,6 @@ sync-wobble
 tempo-gate
 triplet-pluck
 drift-motion
+vowel-morph
+harmonic-rise
+glass-draw

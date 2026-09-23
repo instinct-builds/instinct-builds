@@ -60,7 +60,7 @@ static bool render(AudioUnit u, std::vector<float>& l, std::vector<float>& r) {
     bool ok=AudioUnitRender(u,&flags,&ts,0,frames,b)==noErr; free(b); return ok;
 }
 
-static constexpr int kExpectedPresets = 42; // 0.8.0 appended 38-41
+static constexpr int kExpectedPresets = 45; // 0.8.0 appended 38-41, 0.9.0 42-44
 
 static double energy(const std::vector<float>& x, size_t a, size_t b) {
     double e=0; for(size_t i=a;i<b;++i)e+=double(x[i])*x[i]; return e;
@@ -273,7 +273,7 @@ int main() {
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
-        static_assert(mp::Count == 21, "0.7.0 publishes 21 parameters");
+        static_assert(mp::Count == 23, "0.9.0 publishes 23 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
             printf("FAIL: reselect Init Saw\n"); return 1;
         }
@@ -404,6 +404,38 @@ int main() {
             printf("FAIL: state route, host tempo sync or recall\n"); return 1;
         }
         printf("mod matrix route via state, host-tempo LFO sync and recall: ok\n");
+    }
+
+    // 0.9.0: a user wavetable set through the state plays on oscillator A,
+    // survives getState, and the WT POS A parameter morphs it audibly.
+    {
+        muew::Preset p = muew::factoryPresets()[0];
+        p.voice.osc2Level = 0; p.voice.filterCutoff = 12000; p.routes.clear(); p.fx = muew::FXParams{};
+        p.voice.osc1Shape = muew::kCustomShape; p.voice.osc1WtPos = 0.0;
+        p.tables[0] = {muew::shapeFrame(0), muew::shapeFrame(3)}; // sine -> square
+        auto take = [&](double wtpos, std::vector<float>& out, muew::Preset* back) -> bool {
+            AudioUnit t = openUnit();
+            if (!t) return false;
+            bool ok = setState(t, p)
+                      && AudioUnitSetParameter(t, mp::WtPosA, kAudioUnitScope_Global, 0, (AudioUnitParameterValue)wtpos, 0) == noErr;
+            std::vector<float> bl(512), br(512);
+            out.clear();
+            ok = ok && render(t, bl, br) && MusicDeviceMIDIEvent(t, 0x90, 48, 110, 0) == noErr;
+            for (int i = 0; ok && i < 40; ++i) { ok = render(t, bl, br); out.insert(out.end(), bl.begin(), bl.end()); }
+            if (ok && back) ok = getState(t, *back);
+            AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+            return ok;
+        };
+        std::vector<float> a0, a1; muew::Preset back;
+        if (!take(0.0, a0, nullptr) || !take(1.0, a1, &back)) { printf("FAIL: user table renders
+"); return 1; }
+        double d = 0, pk = 0;
+        for (size_t i = 0; i < a0.size() && i < a1.size(); ++i) { d = std::max(d, (double)std::fabs(a0[i] - a1[i])); pk = std::max(pk, (double)std::fabs(a0[i])); }
+        printf("user table: peak %.3f, WT POS 0 vs 1 delta %.3f, recalled frames %d, wtpos %.2f\n", pk, d, (int)back.tables[0].size(), back.voice.osc1WtPos);
+        if (pk < 0.01 || d < 0.01 || back.tables[0].size() != 2 || back.tables[0] != p.tables[0] || std::fabs(back.voice.osc1WtPos - 1.0) > 1e-6) {
+            printf("FAIL: user table state, WT POS automation or recall\n"); return 1;
+        }
+        printf("user wavetable via state, WT POS parameter and recall: ok\n");
     }
 
     // Cocoa editor is advertised with a loadable bundle and class name.

@@ -1,5 +1,6 @@
 #pragma once
 #include "wavetable.h"
+#include "custom_table.h"
 #include <algorithm>
 #include <cmath>
 
@@ -27,7 +28,7 @@ public:
     // unison stacks share one level and pitch computation per sample.
     inline float processAt(double hz, double level) {
         const double p = warpedPhase(phase_);
-        float out = table_->sampleFractional(shape_, level, p);
+        float out = custom_ ? custom_->sample(wtPos_, level, p) : table_->sampleFractional(shape_, level, p);
         if (warpMode_ == WarpMode::Fold && warp_ > 0.0) {
             const double drive = 1.0 + warp_ * 7.0;
             double x = out * drive;
@@ -39,6 +40,9 @@ public:
     }
 
     void setTable(const Wavetable* t) { table_ = t; }
+    // 0.9.0: play a user table (null = the built-in shape) at frame position 0..1.
+    void setCustom(const CustomTable* c) { custom_ = c; }
+    void setWtPos(double p) { wtPos_ = p; }
     double frequency() const { return freq_; }
     double phase() const { return phase_; }
 
@@ -61,6 +65,8 @@ private:
     }
 
     const Wavetable* table_ = nullptr;
+    const CustomTable* custom_ = nullptr;
+    double wtPos_ = 0.0;
     double sr_ = 44100.0, freq_ = 440.0, detune_ = 0.0, phase_ = 0.0, warp_ = 0.0;
     int shape_ = 0;
     WarpMode warpMode_ = WarpMode::Off;

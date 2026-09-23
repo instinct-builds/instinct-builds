@@ -208,3 +208,24 @@ simple 3-device license key scheme follow there.
   tempo, round trips, unknown-source rejection), an AU host test for a route
   set through state plus host-tempo sync, and an editor harness step that
   drags LFO 3 onto CUTOFF, sets depth and sync, and checks the AU's sound.
+
+## 0.9.0 User wavetables
+
+Each oscillator can now play its own wavetable: up to 16 frames of 256
+samples, band-limited per frame and crossfaded by a frame position.
+
+- Shape `USER` (index 5). Clicking an oscillator's name cycles SINE, TRI, SAW,
+  SQUARE, PULSE, USER. Clicking its display opens the wavetable editor over
+  the OSCILLATORS panel, starting from the current shape.
+- Editor: freehand DRAW mode (strokes are interpolated so fast moves leave no
+  gaps, with the neighbour frames shown as ghosts) and HARM mode (32
+  harmonic bars). The frame strip selects a frame and moves WT POS onto it.
+  Buttons: + ADD, DUP, DELETE, MORPH (crossfades every frame between the
+  first and last), SMOOTH, NORMAL, IMPORT and EXPORT (.wav; files made of
+  2048-sample cycles import one frame per cycle).
+- WT POS A/B: AU parameters 21 and 22, a drag bar in each display, and two
+  new mod matrix destinations (WT POS A = 11, WT POS B = 12), so an envelope,
+  LFO or MSEG can sweep the table.
+- Presets store tables in optional `wtpos`, `wt1`, `wt2` lines. Older
+  presets load unchanged; every 0.8.0 factory preset renders byte-identical.
+- Three new factory presets (42-44): Vowel Morph, Harmonic Rise, Glass Draw.

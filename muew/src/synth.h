@@ -39,6 +39,18 @@ public:
         fx_.setDriveOffset(drive);
     }
 
+    // User tables for oscillators A/B (0.9.0). Rebuilt only when the frames
+    // change; an empty table leaves that oscillator on the built-in shapes.
+    void setTables(const TableFrames& a, const TableFrames& b) {
+        const TableFrames* in[2] = {&a, &b};
+        for (int i = 0; i < 2; ++i) {
+            if (*in[i] == tableFrames_[i] && (bool)tables_[i] == !in[i]->empty()) continue;
+            tableFrames_[i] = *in[i];
+            tables_[i] = in[i]->empty() ? nullptr : std::make_shared<const CustomTable>(*in[i]);
+        }
+        for (auto& v : voices_) v.setCustomTables(tables_[0].get(), tables_[1].get());
+    }
+
     // Host tempo (BPM) for tempo-synced LFOs; 120 until a host reports one.
     void setTempo(double bpm) { for (auto& v : voices_) v.setTempo(bpm); }
 
@@ -122,6 +134,8 @@ private:
     double sr_ = 44100.0;
     std::unique_ptr<Wavetable> table_;
     std::vector<Voice> voices_;
+    TableFrames tableFrames_[2];
+    std::shared_ptr<const CustomTable> tables_[2];
 };
 
 } // namespace muew

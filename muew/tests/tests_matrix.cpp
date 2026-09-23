@@ -67,7 +67,7 @@ int main() {
     std::vector<ModRoute> r;
     check(ui::addRoute(r, S::LFO3, D::FilterCutoff) == 0 && std::fabs(r[0].amount - 1.25) < 1e-12, "add route with a quarter-scale amount");
     check(ui::addRoute(r, S::LFO3, D::FilterCutoff) == 0 && r.size() == 1, "same source and destination reuses the slot");
-    for (int i = 1; i < kMaxRoutes; ++i) ui::addRoute(r, ui::matrixSources()[i % 12], ui::matrixDests()[i % 11]);
+    for (int i = 1; i < kMaxRoutes; ++i) ui::addRoute(r, ui::matrixSources()[i % 12], ui::matrixDests()[i % 13]);
     int full = ui::addRoute(r, S::Env3, D::DistDrive);
     check((int)r.size() <= kMaxRoutes && (r.size() < (size_t)kMaxRoutes || full == -1), "matrix holds at most 16 routes");
     ModRoute m{S::LFO1, D::FilterCutoff, 2.5};
@@ -81,7 +81,7 @@ int main() {
           && ui::knobDest(ui::Attack) == -1, "knob drop targets");
     std::vector<ModRoute> two{{S::LFO1, D::FilterCutoff, 2.5}, {S::Env3, D::FilterCutoff, -1.25}};
     check(std::fabs(ui::knobModDepth(two, ui::Cutoff) - 0.25) < 1e-12 && ui::knobModDepth(two, ui::WarpA) == 0.0, "knob mod ring depth sums its routes");
-    check(ui::matrixSources().size() == 12 && ui::matrixDests().size() == 11, "every source and destination is assignable");
+    check(ui::matrixSources().size() == 12 && ui::matrixDests().size() == 13, "every source and destination is assignable");
     check(std::string(ui::sourceBadge(S::Env3)) == "ENV3" && std::string(ui::syncName(8)) == "1/4D", "badge and sync names");
 
     // Presets.
