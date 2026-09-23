@@ -17,6 +17,9 @@
 //   7. host selects Fold Screamer; click unison pip 5 on osc A, drag the
 //      WIDTH knob and the distortion DRIVE ring, click the All chip -> the
 //      AU holds 5 voices, parameter 18 (width) and 19 (drive) moved
+//   8. 0.11.0 full browser: open it, Import a file (Imported bank), pick the
+//      'dark' character tag, rate row 2 with the info stars, sort by RATING
+//      -> the rated preset moves to row 1
 // The window stays up long enough for the workflow to screenshot it.
 #import <AppKit/AppKit.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -74,6 +77,21 @@ static void SelectPreset(SInt32 n) {
 static NSEvent* Mouse(NSEventType type, NSPoint p, NSWindow* w) {
     return [NSEvent mouseEventWithType:type location:p modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
                           windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+}
+
+static void Click(NSView* view, NSWindow* w, NSPoint p) {
+    [view mouseDown:Mouse(NSEventTypeLeftMouseDown, p, w)];
+    [view mouseUp:Mouse(NSEventTypeLeftMouseUp, p, w)];
+}
+
+static void Snapshot(NSView* view, const char* env, const char* what) {
+    const char* png = getenv(env);
+    if (!png || !*png) return;
+    NSBitmapImageRep* rep = [view bitmapImageRepForCachingDisplayInRect:view.bounds];
+    [view cacheDisplayInRect:view.bounds toBitmapImageRep:rep];
+    NSData* d = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+    Check(d.length > 10000 && [d writeToFile:[NSString stringWithUTF8String:png] atomically:YES], what);
+    fflush(stdout);
 }
 
 static void After(double seconds, dispatch_block_t block) {
@@ -368,17 +386,46 @@ int main() {
                   "SUB knob drag on page 2 reached the AU as parameter 23 without touching ATTACK");
             fflush(stdout);
         });
-        After(8.6, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
-            const char* png = getenv("MUEW_VIEW_PNG");
-            if (!png || !*png) return;
-            NSBitmapImageRep* rep = [view bitmapImageRepForCachingDisplayInRect:view.bounds];
-            [view cacheDisplayInRect:view.bounds toBitmapImageRep:rep];
-            NSData* d = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
-            Check(d.length > 10000 && [d writeToFile:[NSString stringWithUTF8String:png] atomically:YES], "editor snapshot written after the scripted edits");
+        After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
+            Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
+        });
+        After(7.2, ^{ // 0.11.0 full browser: open it, import a file, filter by a character tag, rate, sort by rating
+            CGFloat t = view.bounds.size.height - 100;
+            Click(view, w, NSMakePoint(view.bounds.size.width - 76 + 23, t - 26 + 8)); // FULL pill on the compact browser
+            muew::Preset mine;
+            State(mine);
+            mine.info.name = "Harness Import"; mine.info.author = "Sam"; mine.info.description = "Brought in with Import.";
+            NSString* path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"muew-harness-import.muew"];
+            [[NSString stringWithUTF8String:mine.serialize().c_str()] writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            typedef BOOL (*ImportFn)(id, SEL, NSString*);
+            SEL sel = NSSelectorFromString(@"importPresetFile:");
+            BOOL imported = [view respondsToSelector:sel] && ((ImportFn)[view methodForSelector:sel])(view, sel, path);
+            muew::Preset st;
+            Check(imported && State(st) && st.info.name == "Harness Import" && st.info.author == "Sam" && PresetNumber() < 0,
+                  "Import put the file in the Imported bank and loaded it into the AU");
+            Click(view, w, NSMakePoint(125, t - 80 + 9));             // BANK: All banks
+            Click(view, w, NSMakePoint(81, t - 404 + 9));             // CHARACTER: dark
+            Click(view, w, NSMakePoint(400, t - 62 - 40 + 9));        // table row 2
+            SInt32 second = PresetNumber();
+            Click(view, w, NSMakePoint(728 + 3 * 20 + 10, t - 104 + 10)); // info pane: 4 stars
+            NSUserDefaults* d = [[NSUserDefaults alloc] initWithSuiteName:@"co.instinct.muew"];
+            NSNumber* stars = [d dictionaryForKey:@"MUEWRatings"][@"sub-bass"];
+            printf("browser: row 2 under 'dark' is preset %d, rating stored %d\n", (int)second, stars ? stars.intValue : 0);
+            Check(second == 6 && stars.intValue == 4, "dark tag lists Sub Bass second; the info stars rated it 4");
+            Click(view, w, NSMakePoint(650, t - 62 + 10));            // RATING column header
+            Click(view, w, NSMakePoint(400, t - 62 - 40 + 9));        // row 2 after the sort
+            SInt32 afterSortRow2 = PresetNumber();
+            Click(view, w, NSMakePoint(400, t - 62 - 20 + 9));        // row 1 after the sort
+            SInt32 afterSortRow1 = PresetNumber();
+            printf("browser: sorted by rating, row 1 = %d, row 2 = %d\n", (int)afterSortRow1, (int)afterSortRow2);
+            Check(afterSortRow1 == 6 && afterSortRow2 == 4, "RATING sort put the rated Sub Bass above Punchy Bass");
             fflush(stdout);
         });
+        After(8.6, ^{
+            Snapshot(view, "MUEW_BROWSER_PNG", "full browser snapshot written");
+        });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack, mod matrix, wavetable editor and filter 2 + sub page\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack, mod matrix, wavetable editor, filter 2 + sub page and full browser\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

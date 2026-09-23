@@ -72,6 +72,12 @@ struct MUEWEditorHost {
     int wtPosDrag;
     // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE).
     int filterPage;
+    // 0.11.0 full browser: open flag, sort order (ui::SortMode), star
+    // ratings by slug, and the table scroll offset.
+    bool browserOpen;
+    int sortMode;
+    muew::ui::Ratings ratings;
+    int bscroll;
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)
@@ -80,4 +86,8 @@ struct MUEWEditorHost {
 // Saves the current sound as a user preset and selects it (the + Save button
 // after its name prompt). Returns NO if the file could not be written.
 - (BOOL)saveUserPresetNamed:(NSString*)name;
+// 0.11.0: open or close the full preset browser, and bring a .muew file into
+// the Imported bank (the browser's Import button after its file panel).
+- (void)setBrowserOpen:(bool)open;
+- (BOOL)importPresetFile:(NSString*)path;
 @end

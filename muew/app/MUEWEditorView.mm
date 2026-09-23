@@ -60,6 +60,10 @@ static NSUserDefaults* MUEWDefaults() {
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
+        browserOpen = false; bscroll = 0;
+        sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
+        NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
+        for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
         user::load(UserPresetDir(), ui::library());
         CGFloat top = f.size.height - 100;
         search = [[NSSearchField alloc] initWithFrame:NSMakeRect(812, top - 64, 150, 24)];
@@ -83,7 +87,8 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)refilter {
-    visible = ui::visiblePresets(filter, favorites, ui::library(), chip == kUserChip);
+    visible = ui::visiblePresets(filter, favorites, ui::library(), ratings, sortMode);
+    [MUEWDefaults() setInteger:sortMode forKey:@"MUEWSort"];
     int rows = [self listRows];
     int maxScroll = std::max(0, (int)visible.size() - rows);
     scroll = std::clamp(scroll, 0, maxScroll);
@@ -92,7 +97,7 @@ static NSUserDefaults* MUEWDefaults() {
 
 - (void)controlTextDidChange:(NSNotification*)n {
     filter.query = std::string(search.stringValue.UTF8String ?: "");
-    scroll = 0;
+    scroll = 0; bscroll = 0;
     [self refilter];
 }
 
@@ -724,6 +729,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     TextA([NSString stringWithFormat:@"%d / %d", (int)visible.size(), lib.count()], NSMakeRect(912, 50, 50, 14), 9,
           C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentRight);
 
+    { // expand to the full browser
+        NSRect r = [self expandRect];
+        [C(0x3a6b64) setStroke];
+        NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:8 yRadius:8];
+        o.lineWidth = 1; [o stroke];
+        TextA(@"\u2922 FULL", NSMakeRect(r.origin.x, r.origin.y + 2.5, r.size.width, 11), 8, C(0x75ead8), NSFontWeightBold, NSTextAlignmentCenter);
+    }
+
     // Modulation + effects
     CGFloat low = top - 286;
     [self panel:NSMakeRect(24, 38, 760, low - 48) title:@"MODULATION + EFFECTS"];
@@ -781,6 +794,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     }
     [self drawTableEditor];
     [self drawDragBadge];
+    if (browserOpen) [self drawBrowser];
 }
 
 - (void)drawMatrix {
@@ -1201,11 +1215,296 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     return NO;
 }
 
+// ---- 0.11.0 full preset browser (overlay over the panels) ----
+// Sidebar: banks, categories, character tags. Table: sortable columns with
+// star ratings. Info pane: description, tags, oscillator previews, actions.
+static NSArray<NSString*>* BankRows() { return @[@"All banks", @"Factory", @"User", @"Imported"]; }
+- (NSRect)browserRect { return NSMakeRect(24, 38, self.bounds.size.width - 48, [self top] - 38); }
+- (NSRect)browserClose { NSRect b = [self browserRect]; return NSMakeRect(NSMaxX(b) - 34, NSMaxY(b) - 30, 22, 20); }
+- (NSRect)expandRect { return NSMakeRect(self.bounds.size.width - 76, [self top] - 26, 46, 16); }
+- (NSRect)presetDisplayRect { return NSMakeRect(414, self.bounds.size.height - 66, 252, 40); }
+- (NSRect)bankRow:(int)i { return NSMakeRect(40, [self top] - 80 - i * 20, 170, 18); }
+- (NSRect)catRow:(int)i { return NSMakeRect(40, [self top] - 186 - i * 20, 170, 18); } // 0 All, 1-7 categories, 8 favorites
+- (NSRect)tagChip:(int)i { return NSMakeRect(40 + (i % 2) * 86, [self top] - 404 - (i / 2) * 22, 82, 18); }
+- (CGFloat)tableTop { return [self top] - 62; }
+- (int)tableRows { return (int)std::floor(([self tableTop] - 54) / 20); }
+- (NSRect)tableHeader:(int)c { // 0 #, 1 NAME, 2 TYPE, 3 AUTHOR, 4 RATING
+    static const CGFloat x[] = {228, 262, 452, 526, 624}, w[] = {30, 186, 70, 94, 76};
+    return NSMakeRect(x[c], [self tableTop] + 2, w[c], 16);
+}
+- (NSRect)tableRow:(int)r { return NSMakeRect(226, [self tableTop] - (r + 1) * 20, 476, 19); }
+- (NSRect)rowStar:(int)r star:(int)s { NSRect row = [self tableRow:r]; return NSMakeRect(624 + s * 13, row.origin.y + 2, 13, 15); }
+- (NSRect)infoStar:(int)s { return NSMakeRect(728 + s * 20, [self top] - 104, 20, 20); }
+- (NSRect)infoButton:(int)i { // 0 favorite, 1 + save, 2 import, 3 export
+    return NSMakeRect(728 + (i % 2) * 118, 90 - (i / 2) * 28, 112, 22);
+}
+static int SortForColumn(int c) {
+    switch (c) { case 1: return ui::SortName; case 2: return ui::SortCategory; case 4: return ui::SortRating; default: return ui::SortBank; }
+}
+
+- (void)saveRatings {
+    NSMutableDictionary* d = [NSMutableDictionary dictionary];
+    for (const auto& kv : ratings) d[S(kv.first)] = @(kv.second);
+    [MUEWDefaults() setObject:d forKey:@"MUEWRatings"];
+}
+
+- (void)setBrowserOpen:(bool)open {
+    browserOpen = open;
+    wtEdit = -1;
+    bscroll = 0;
+    NSRect b = [self browserRect];
+    search.frame = open ? NSMakeRect(NSMaxX(b) - 250, NSMaxY(b) - 32, 200, 24) : NSMakeRect(812, [self top] - 64, 150, 24);
+    if (!open) { // the compact chips show what they can of the shared filter
+        const auto& cats = factoryCategories();
+        auto it = std::find(cats.begin(), cats.end(), filter.category);
+        chip = filter.favoritesOnly ? 8 : filter.bank == ui::BankUserFolder ? kUserChip
+             : it != cats.end() ? 1 + (int)(it - cats.begin()) : 0;
+    }
+    [self refilter];
+    if (open) [self revealInTable];
+}
+
+- (void)revealInTable {
+    int rows = [self tableRows];
+    for (int r = 0; r < (int)visible.size(); ++r)
+        if (visible[r] == currentIndex) {
+            if (r < bscroll) bscroll = r;
+            if (r >= bscroll + rows) bscroll = r - rows + 1;
+        }
+}
+
+- (void)miniWave:(NSRect)r shape:(int)shape osc:(int)o warpMode:(int)wm warp:(double)w color:(NSColor*)col {
+    FillRound(r, 6, C(0x0a0d12));
+    std::vector<float> wv = shape == kCustomShape ? ui::waveformUser(current.tables[o], OscWtPos(current.voice, o), wm, w, 160)
+                                                  : ui::waveform(table, shape, wm, w, 160);
+    NSBezierPath* p = [NSBezierPath bezierPath];
+    for (int i = 0; i < 160; ++i) {
+        CGFloat x = r.origin.x + 6 + (r.size.width - 12) * i / 159.0;
+        CGFloat y = NSMidY(r) + std::clamp((double)wv[i], -1.1, 1.1) * r.size.height * .34;
+        i ? [p lineToPoint:NSMakePoint(x, y)] : [p moveToPoint:NSMakePoint(x, y)];
+    }
+    [[col colorWithAlphaComponent:.22] setStroke]; p.lineWidth = 4; [p stroke];
+    [col setStroke]; p.lineWidth = 1.5; [p stroke];
+}
+
+- (void)stars:(int)n in:(NSRect)first step:(CGFloat)step size:(CGFloat)size {
+    for (int s = 0; s < 5; ++s)
+        TextA(s < n ? @"\u2605" : @"\u2606", NSMakeRect(first.origin.x + s * step, first.origin.y, step, first.size.height), size,
+              s < n ? C(0xf2ab55) : C(0x3b4552), NSFontWeightRegular, NSTextAlignmentCenter);
+}
+
+- (void)drawBrowser {
+    NSRect b = [self browserRect];
+    [C(0x05070a, .72) setFill]; NSRectFillUsingOperation(NSMakeRect(0, 0, self.bounds.size.width, [self top] + 8), NSCompositingOperationSourceOver);
+    FillRound(b, 12, C(0x121821));
+    [C(0x2b3a45) setStroke];
+    NSBezierPath* edge = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(b, .5, .5) xRadius:12 yRadius:12];
+    edge.lineWidth = 1; [edge stroke];
+    CGFloat t = NSMaxY(b);
+    Text(@"PRESET BROWSER", NSMakeRect(40, t - 30, 200, 18), 12, C(0xe6ebf1), NSFontWeightBold);
+    const ui::Library& lib = ui::library();
+    TextA([NSString stringWithFormat:@"%d of %d sounds", (int)visible.size(), lib.count()], NSMakeRect(170, t - 28, 140, 14), 9,
+          C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentLeft);
+    TextA(@"\u2715", [self browserClose], 12, C(0x9ca6b4), NSFontWeightRegular, NSTextAlignmentCenter);
+    [C(0x232c37) setFill]; NSRectFill(NSMakeRect(b.origin.x + 12, t - 42, b.size.width - 24, 1));
+
+    // Sidebar
+    auto sideRow = [&](NSRect r, NSString* label, int count, bool on) {
+        if (on) FillRound(r, 5, C(0x21423e));
+        Text(label, NSMakeRect(r.origin.x + 8, r.origin.y + 3, 120, 13), 10, on ? C(0x75ead8) : C(0xc3cbd6),
+             on ? NSFontWeightSemibold : NSFontWeightRegular);
+        TextA([NSString stringWithFormat:@"%d", count], NSMakeRect(NSMaxX(r) - 44, r.origin.y + 3, 38, 13), 9,
+              on ? C(0x75ead8) : C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentRight);
+    };
+    Text(@"BANK", NSMakeRect(48, [self top] - 58, 100, 12), 8, C(0x5f6b7b), NSFontWeightBold);
+    for (int i = 0; i < 4; ++i) {
+        PresetFilter f = filter; f.bank = i - 1;
+        sideRow([self bankRow:i], BankRows()[i], ui::countWith(f, favorites, lib), filter.bank == i - 1);
+    }
+    Text(@"TYPE", NSMakeRect(48, [self top] - 164, 100, 12), 8, C(0x5f6b7b), NSFontWeightBold);
+    const auto& cats = factoryCategories();
+    for (int i = 0; i < 9; ++i) {
+        PresetFilter f = filter;
+        f.favoritesOnly = i == 8 ? true : filter.favoritesOnly;
+        if (i < 8) f.category = i == 0 ? std::string() : cats[i - 1];
+        bool on = i == 8 ? filter.favoritesOnly : (i == 0 ? filter.category.empty() : filter.category == cats[i - 1]);
+        NSString* label = i == 0 ? @"All types" : i == 8 ? @"\u2605 Favorites" : S(cats[i - 1]);
+        sideRow([self catRow:i], label, ui::countWith(f, favorites, lib), on);
+    }
+    Text(@"CHARACTER", NSMakeRect(48, [self top] - 382, 100, 12), 8, C(0x5f6b7b), NSFontWeightBold);
+    for (int i = 0; i < (int)characterTags().size(); ++i) {
+        NSRect r = [self tagChip:i];
+        bool on = filter.tags.count(characterTags()[i]) > 0;
+        FillRound(r, 9, on ? C(0x9d7df2, .28) : C(0x1d232d));
+        TextA(S(characterTags()[i]), NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 13), 9,
+              on ? C(0xc9b8ff) : C(0x9ca6b4), on ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
+    }
+    [C(0x232c37) setFill]; NSRectFill(NSMakeRect(218, 50, 1, t - 100));
+
+    // Table
+    NSArray* heads = @[@"#", @"NAME", @"TYPE", @"AUTHOR", @"RATING"];
+    for (int c = 0; c < 5; ++c) {
+        bool on = SortForColumn(c) == sortMode && (c != 0 || sortMode == ui::SortBank) && c != 3;
+        NSString* h = on ? [heads[c] stringByAppendingString:c == 4 ? @" \u25BC" : @" \u25B2"] : heads[c];
+        Text(h, [self tableHeader:c], 8, on ? C(0x75ead8) : C(0x6f7b8b), NSFontWeightBold);
+    }
+    [C(0x232c37) setFill]; NSRectFill(NSMakeRect(226, [self tableTop], 476, 1));
+    int rows = [self tableRows];
+    bscroll = std::clamp(bscroll, 0, std::max(0, (int)visible.size() - rows));
+    for (int r = 0; r < rows && bscroll + r < (int)visible.size(); ++r) {
+        int idx = visible[bscroll + r];
+        const Preset& p = lib.at(idx);
+        NSRect row = [self tableRow:r];
+        bool sel = idx == currentIndex;
+        if (sel) FillRound(row, 4, C(0x293c3b));
+        else if (r % 2) FillRound(row, 4, C(0x161d27));
+        CGFloat y = row.origin.y + 3;
+        int bk = ui::bankOf(lib, idx);
+        TextA(bk == ui::BankFactory ? [NSString stringWithFormat:@"%d", idx + 1] : bk == ui::BankUser ? @"U" : @"IMP",
+              NSMakeRect(226, y, 28, 13), 8, C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentCenter);
+        Text(S(p.info.name), NSMakeRect(262, y - 1, 186, 15), 11, sel ? C(0x75ead8) : C(0xdde3ea), sel ? NSFontWeightSemibold : NSFontWeightRegular);
+        Text(S(p.info.category), NSMakeRect(452, y, 70, 13), 9, C(0x8793a3), NSFontWeightMedium);
+        Text(S(p.info.author), NSMakeRect(526, y, 94, 13), 9, bk == ui::BankFactory ? C(0x5f6b7b) : C(0x3a8f84), NSFontWeightMedium);
+        [self stars:ui::ratingOf(ratings, lib.slug(idx)) in:[self rowStar:r star:0] step:13 size:10];
+        bool fav = favorites.count(lib.slug(idx)) > 0;
+        if (fav) TextA(@"\u2665", NSMakeRect(NSMaxX(row) - 18, y - 1, 14, 14), 10, C(0xf2ab55), NSFontWeightRegular, NSTextAlignmentCenter);
+    }
+    if (visible.empty())
+        TextA(@"No presets match these filters", NSMakeRect(226, [self tableTop] - 60, 476, 16), 11, C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentCenter);
+    if ((int)visible.size() > rows) {
+        CGFloat trackH = [self tableTop] - 54, thumbH = std::max(24.0, trackH * rows / visible.size());
+        CGFloat thumbY = [self tableTop] - thumbH - (trackH - thumbH) * bscroll / std::max(1, (int)visible.size() - rows);
+        FillRound(NSMakeRect(704, thumbY, 3, thumbH), 1.5, C(0x3b4552));
+    }
+    [C(0x232c37) setFill]; NSRectFill(NSMakeRect(714, 50, 1, t - 100));
+
+    // Info pane: the loaded sound
+    CGFloat ix = 728, iw = NSMaxX(b) - 12 - ix;
+    bool has = currentIndex >= 0;
+    Text(S(has ? current.info.name : "Init"), NSMakeRect(ix, [self top] - 68, iw, 20), 15, C(0xf5f7fa), NSFontWeightSemibold);
+    std::string line = current.info.category + "  \u2022  " + (current.info.author.empty() ? "Unknown" : current.info.author);
+    if (has) line += std::string("  \u2022  ") + ui::bankName(ui::bankOf(lib, currentIndex));
+    Text(S(line), NSMakeRect(ix, [self top] - 84, iw, 13), 9, C(0x8793a3), NSFontWeightMedium);
+    [self stars:has ? ui::ratingOf(ratings, lib.slug(currentIndex)) : 0 in:[self infoStar:0] step:20 size:15];
+    NSString* desc = current.info.description.empty() ? @"No description." : S(current.info.description);
+    NSMutableParagraphStyle* ps = [NSMutableParagraphStyle new];
+    ps.lineBreakMode = NSLineBreakByWordWrapping; ps.lineSpacing = 2;
+    [desc drawInRect:NSMakeRect(ix, [self top] - 178, iw, 66)
+      withAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:10.5], NSForegroundColorAttributeName: C(0xb4bdc9), NSParagraphStyleAttributeName: ps}];
+    CGFloat tx = ix, ty = [self top] - 202;
+    for (const auto& tag : current.info.tags) { // tag pills, wrapping
+        NSString* s = S(tag);
+        CGFloat w = [s sizeWithAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:8.5 weight:NSFontWeightSemibold]}].width + 14;
+        if (tx + w > ix + iw) { tx = ix; ty -= 20; }
+        if (ty < [self top] - 244) break;
+        bool ch = std::find(characterTags().begin(), characterTags().end(), tag) != characterTags().end();
+        FillRound(NSMakeRect(tx, ty, w, 16), 8, ch ? C(0x9d7df2, .22) : C(0x1d232d));
+        TextA(s, NSMakeRect(tx, ty + 2.5, w, 11), 8.5, ch ? C(0xc9b8ff) : C(0x9ca6b4), NSFontWeightSemibold, NSTextAlignmentCenter);
+        tx += w + 5;
+    }
+    const VoiceParams& v = current.voice;
+    Text(@"OSC A", NSMakeRect(ix, [self top] - 266, 60, 11), 8, C(0x5adac8), NSFontWeightBold);
+    Text(@"OSC B", NSMakeRect(ix + iw / 2 + 3, [self top] - 266, 60, 11), 8, C(0x9d7df2), NSFontWeightBold);
+    [self miniWave:NSMakeRect(ix, [self top] - 336, iw / 2 - 3, 66) shape:v.osc1Shape osc:0 warpMode:v.osc1WarpMode warp:v.osc1Warp color:C(0x5adac8)];
+    [self miniWave:NSMakeRect(ix + iw / 2 + 3, [self top] - 336, iw / 2 - 3, 66) shape:v.osc2Shape osc:1 warpMode:v.osc2WarpMode warp:v.osc2Warp color:C(0x9d7df2)];
+    std::string layers;
+    if (v.subLevel > 0) layers += "SUB  ";
+    if (v.noiseLevel > 0) layers += "NOISE  ";
+    if (v.filter2Type > 0) layers += std::string("F2 ") + ui::filter2TypeName(v.filter2Type) + "  ";
+    if (ui::unisonVoices(v, 0) > 1 || ui::unisonVoices(v, 1) > 1) layers += "UNISON  ";
+    Text(S(layers.empty() ? "OSC A + OSC B" : layers), NSMakeRect(ix, [self top] - 356, iw, 12), 8, C(0x6f7b8b), NSFontWeightBold);
+    bool fav = has && favorites.count(lib.slug(currentIndex));
+    NSArray* labels = @[fav ? @"\u2665  Favorite" : @"\u2661  Favorite", @"+ Save", @"Import\u2026", @"Export\u2026"];
+    for (int i = 0; i < 4; ++i) {
+        NSRect r = [self infoButton:i];
+        bool lit = i == 0 && fav;
+        FillRound(r, 6, lit ? C(0xf2ab55, .2) : C(0x1d232d));
+        TextA(labels[i], NSMakeRect(r.origin.x, r.origin.y + 4.5, r.size.width, 13), 9.5, lit ? C(0xf2ab55) : C(0x75ead8),
+              NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
+}
+
+- (void)promptImport {
+    NSOpenPanel* panel = [NSOpenPanel openPanel];
+    panel.allowsMultipleSelection = NO;
+    panel.allowedFileTypes = @[@"muew"];
+    if ([panel runModal] != NSModalResponseOK || !panel.URL) return;
+    [self importPresetFile:panel.URL.path];
+}
+
+- (BOOL)importPresetFile:(NSString*)path {
+    int idx = user::importFile(UserPresetDir(), std::string(path.fileSystemRepresentation), ui::library());
+    if (idx < 0) { NSBeep(); return NO; }
+    filter.bank = ui::BankImported;
+    [self refilter];
+    [self loadPresetIndex:idx];
+    [self revealInTable];
+    return YES;
+}
+
+- (void)toggleFavorite:(int)idx {
+    if (idx < 0) return;
+    std::string slug = ui::library().slug(idx);
+    if (favorites.count(slug)) favorites.erase(slug); else favorites.insert(slug);
+    [self saveFavorites]; [self refilter];
+}
+
+- (void)rate:(int)idx stars:(int)n {
+    if (idx < 0) return;
+    ui::setRating(ratings, ui::library().slug(idx), n);
+    [self saveRatings]; [self refilter];
+}
+
+- (void)browserMouseDown:(NSPoint)p {
+    if (NSPointInRect(p, [self browserClose]) || !NSPointInRect(p, [self browserRect])) { [self setBrowserOpen:false]; return; }
+    for (int i = 0; i < 4; ++i)
+        if (NSPointInRect(p, [self bankRow:i])) {
+            filter.bank = i - 1;
+            if (filter.bank >= ui::BankUser) user::load(UserPresetDir(), ui::library());
+            bscroll = 0; [self refilter]; return;
+        }
+    for (int i = 0; i < 9; ++i)
+        if (NSPointInRect(p, [self catRow:i])) {
+            if (i == 8) filter.favoritesOnly = !filter.favoritesOnly;
+            else filter.category = i == 0 ? std::string() : factoryCategories()[i - 1];
+            bscroll = 0; [self refilter]; return;
+        }
+    for (int i = 0; i < (int)characterTags().size(); ++i)
+        if (NSPointInRect(p, [self tagChip:i])) {
+            const std::string& t = characterTags()[i];
+            if (filter.tags.count(t)) filter.tags.erase(t); else filter.tags.insert(t);
+            bscroll = 0; [self refilter]; return;
+        }
+    for (int c = 0; c < 5; ++c)
+        if (c != 3 && NSPointInRect(p, NSInsetRect([self tableHeader:c], -2, -3))) { sortMode = SortForColumn(c); [self refilter]; [self revealInTable]; return; }
+    for (int s = 0; s < 5; ++s)
+        if (NSPointInRect(p, [self infoStar:s])) { [self rate:currentIndex stars:s + 1]; return; }
+    for (int i = 0; i < 4; ++i)
+        if (NSPointInRect(p, [self infoButton:i])) {
+            if (i == 0) [self toggleFavorite:currentIndex];
+            else if (i == 1) [self promptSave];
+            else if (i == 2) [self promptImport];
+            else [self promptExport];
+            return;
+        }
+    int rows = [self tableRows];
+    for (int r = 0; r < rows && bscroll + r < (int)visible.size(); ++r) {
+        if (!NSPointInRect(p, [self tableRow:r])) continue;
+        int idx = visible[bscroll + r];
+        for (int s = 0; s < 5; ++s)
+            if (NSPointInRect(p, [self rowStar:r star:s])) { [self rate:idx stars:s + 1]; return; }
+        [self loadPresetIndex:idx];
+        return;
+    }
+}
+
 - (void)mouseDown:(NSEvent*)e {
     [self.window makeFirstResponder:self];
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     dragStart = p;
     dragKnob = -1;
+    if (browserOpen) { [self browserMouseDown:p]; return; }
+    if (NSPointInRect(p, [self expandRect]) || NSPointInRect(p, [self presetDisplayRect])) { [self setBrowserOpen:true]; return; }
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
     if ([self oscMouseDown:p]) return;
     if ([self filterPanelMouseDown:p]) return;
@@ -1253,6 +1552,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         if (NSPointInRect(p, [self chipRect:i])) {
             chip = i;
             filter.favoritesOnly = (i == 8);
+            filter.bank = i == kUserChip ? (int)ui::BankUserFolder : -1;
+            filter.tags.clear(); // the compact chips never hide a tag filter
             if (i == kUserChip) user::load(UserPresetDir(), ui::library()); // pick up presets saved elsewhere
             filter.category = (i >= 1 && i <= 7) ? factoryCategories()[i - 1] : std::string();
             scroll = 0;
@@ -1344,6 +1645,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
 - (void)scrollWheel:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    if (browserOpen) {
+        static double bacc = 0;
+        bacc -= e.scrollingDeltaY / (e.hasPreciseScrollingDeltas ? 20.0 : 1.0);
+        int st = (int)bacc;
+        if (st != 0) { bacc -= st; bscroll += st; [self setNeedsDisplay:YES]; }
+        return;
+    }
     if (p.x < 798) return;
     static double acc = 0;
     acc -= e.scrollingDeltaY / (e.hasPreciseScrollingDeltas ? kRowH : 1.0);

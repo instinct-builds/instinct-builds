@@ -60,7 +60,7 @@ static bool render(AudioUnit u, std::vector<float>& l, std::vector<float>& r) {
     bool ok=AudioUnitRender(u,&flags,&ts,0,frames,b)==noErr; free(b); return ok;
 }
 
-static constexpr int kExpectedPresets = 49; // 0.8.0 appended 38-41, 0.9.0 42-44, 0.10.0 45-48
+static constexpr int kExpectedPresets = 80; // 0.8.0 appended 38-41, 0.9.0 42-44, 0.10.0 45-48, 0.11.0 49-79
 
 static double energy(const std::vector<float>& x, size_t a, size_t b) {
     double e=0; for(size_t i=a;i<b;++i)e+=double(x[i])*x[i]; return e;
