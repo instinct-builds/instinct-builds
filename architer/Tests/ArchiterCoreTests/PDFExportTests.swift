@@ -104,6 +104,31 @@ struct PDFExportTests {
         }
     }
 
+    @Test func compactSectionHeadersKeepTheirFirstEntry() throws {
+        let demo = SampleContent.demoCharacter()
+        let text = String(data: SheetPDFExporter.export(demo, style: .compact), encoding: .utf8) ?? ""
+        let chunks = text.components(separatedBy: "endstream")
+        // Widow guard: a section header never strands at a column bottom -
+        // it lands on the same page as the section's first entry.
+        let sections: [(String, String)] = [
+            ("(SKILLS", "Stealth"),
+            ("(ATTACKS", "Dagger"),
+            ("(SPELLS", "Cantrips"),
+            ("(INVENTORY", "Currency"),
+            ("(FEATURES", "Arcane Recovery"),
+            ("(PERSONALITY", "Traits:"),
+            ("(NOTES", "Ask Bressa"),
+            ("(JOURNAL", "Session 1"),
+            ("(COMPANIONS", "Inkpot"),
+        ]
+        for (header, first) in sections {
+            let h = chunks.firstIndex(where: { $0.contains(header) })
+            let f = chunks.firstIndex(where: { $0.contains(first) })
+            #expect(h != nil)
+            #expect(h == f)
+        }
+    }
+
     @Test func validPDFStructure() throws {
         let data = SheetPDFExporter.export(aria())
         let text = String(decoding: data, as: UTF8.self)

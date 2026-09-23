@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.25.0
+
+- Compact-PDF widow guard: a section header now travels with its first
+  entry. Headers are held back until the first entry's space check runs,
+  so a header can never sit alone at the bottom of a column while its
+  content starts the next one. Applies to every compact section; the
+  styled layout is unchanged.
+
 ## What's in 2.24.0
 
 - Outgoing-defense notes: attack damage rolls now carry what the total

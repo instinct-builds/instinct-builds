@@ -537,6 +537,9 @@ public enum SheetPDFExporter {
             cursor.advance(8)
         }
 
+        // A trailing held-back section header (an empty final section).
+        cursor.flushPendingSection()
+
         // Cursor owns the working copy; take it back before finishing.
         doc = cursor.doc
 
@@ -592,6 +595,9 @@ public enum SheetPDFExporter {
         /// Top of the current column region; column flips restart here
         /// (the region may begin well below the page top).
         var regionTopY = Double.greatestFiniteMagnitude
+        /// Compact widow guard: a section header held back so it emits with
+        /// the section's first entry instead of stranding at a column bottom.
+        private var pendingSection: (title: String, margin: Double)?
 
         init(doc: PDFDocument) {
             var d = doc
@@ -618,6 +624,7 @@ public enum SheetPDFExporter {
 
         mutating func endColumns() {
             guard columns > 1 else { return }
+            flushPendingSection()
             y = regionLowestY
             columns = 1
             column = 0
@@ -634,7 +641,8 @@ public enum SheetPDFExporter {
         /// layout, which keeps its per-line flow.
         mutating func ensureUnit(_ height: Double) {
             guard compact, height <= columnCapacity else { return }
-            ensure(height)
+            // A pending section header (19pt) travels with the first entry.
+            ensure(height + (pendingSection != nil ? 19 : 0))
         }
 
         mutating func ensure(_ space: Double) {
@@ -653,6 +661,8 @@ public enum SheetPDFExporter {
                     y = doc.pageSize.height - 54
                 }
             }
+            // A held-back section header lands wherever the first entry does.
+            flushPendingSection()
         }
 
         mutating func advance(_ dy: Double) {
@@ -672,6 +682,25 @@ public enum SheetPDFExporter {
         }
 
         mutating func section(_ title: String, margin: Double) {
+            if compact {
+                // Widow guard: hold the header until the first entry's space
+                // check runs, so header and entry always land together.
+                flushPendingSection()
+                pendingSection = (title, margin)
+                return
+            }
+            emitSection(title, margin: margin)
+        }
+
+        /// Emits a held-back section header, if any. No-op when none is
+        /// pending, so calling it is always safe.
+        mutating func flushPendingSection() {
+            guard let pending = pendingSection else { return }
+            pendingSection = nil
+            emitSection(pending.title, margin: pending.margin)
+        }
+
+        private mutating func emitSection(_ title: String, margin: Double) {
             // Compact keep-together: a section header never strands within
             // ~5 lines of the column bottom; it starts the next column.
             ensure(compact ? 64 : 30)
