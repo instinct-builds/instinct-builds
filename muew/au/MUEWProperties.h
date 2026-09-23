@@ -14,5 +14,5 @@ enum : AudioUnitPropertyID {
 
 // Objective-C class the AU names in kAudioUnitProperty_CocoaUI. Versioned so
 // two MUEW builds loaded in one host never collide.
-#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_14"
+#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_15"
 #define MUEW_AU_BUNDLE_ID "co.instinct.muew.au"

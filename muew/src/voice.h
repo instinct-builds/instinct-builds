@@ -19,7 +19,8 @@ struct ModRoute {
     // Append only: values are stored in presets and host projects.
     enum class Source { LFO1 = 0, ModEnv = 1, Velocity = 2, LFO2 = 3, MSEG1 = 4,
                         Macro1 = 5, Macro2 = 6, Macro3 = 7, Macro4 = 8,
-                        LFO3 = 9, LFO4 = 10, Env3 = 11 } source; // 0.8.0: LFO 3/4, ENV 3
+                        LFO3 = 9, LFO4 = 10, Env3 = 11, // 0.8.0: LFO 3/4, ENV 3
+                        FxLfo1 = 12, FxLfo2 = 13 } source; // 0.15.0: rack LFOs (FX destinations only)
     enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6,
                       Osc1Unison = 7, Osc2Unison = 8, UnisonWidth = 9, // 0.7.0: unison detune A/B, stereo width (0..1 units)
                       DistDrive = 10,                                   // 0.7.0: FX-rack drive, macro sources only (global FX)
@@ -225,6 +226,7 @@ public:
                 case ModRoute::Source::LFO3: src = lfo3; break;
                 case ModRoute::Source::LFO4: src = lfo4; break;
                 case ModRoute::Source::Env3: src = env3; break;
+                case ModRoute::Source::FxLfo1: case ModRoute::Source::FxLfo2: break; // rack only
                 }
                 sum += src * r.amount;
             }

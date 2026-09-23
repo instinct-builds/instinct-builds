@@ -81,7 +81,7 @@ int main() {
           && ui::knobDest(ui::Attack) == -1, "knob drop targets");
     std::vector<ModRoute> two{{S::LFO1, D::FilterCutoff, 2.5}, {S::Env3, D::FilterCutoff, -1.25}};
     check(std::fabs(ui::knobModDepth(two, ui::Cutoff) - 0.25) < 1e-12 && ui::knobModDepth(two, ui::WarpA) == 0.0, "knob mod ring depth sums its routes");
-    check(ui::matrixSources().size() == 12 && ui::matrixDests().size() == 21, "every source and destination is assignable");
+    check(ui::matrixSources().size() == 14 && ui::matrixDests().size() == 21, "every source and destination is assignable");
     check(std::string(ui::sourceBadge(S::Env3)) == "ENV3" && std::string(ui::syncName(8)) == "1/4D", "badge and sync names");
 
     // Presets.

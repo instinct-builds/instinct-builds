@@ -32,7 +32,22 @@ public:
         // The FX rack is shared by all voices, so only the macro knobs (global
         // sources) can modulate it.
         FXChain::Mod m;
+        std::vector<FXChain::LfoRoute> lr;
         for (const auto& r : routes) {
+            if (r.source == ModRoute::Source::FxLfo1 || r.source == ModRoute::Source::FxLfo2) {
+                int d = -1;
+                switch (r.dest) {
+                case ModRoute::Dest::DistDrive: d = FXChain::kDrive; break;
+                case ModRoute::Dest::FxDelayFeedback: d = FXChain::kDelayFb; break;
+                case ModRoute::Dest::FxReverbDecay: d = FXChain::kRevDecay; break;
+                case ModRoute::Dest::FxPhaserDepth: d = FXChain::kPhDepth; break;
+                case ModRoute::Dest::FxFlangerDepth: d = FXChain::kFlDepth; break;
+                case ModRoute::Dest::FxChorusDepth: d = FXChain::kChDepth; break;
+                default: break;
+                }
+                if (d >= 0) lr.push_back({r.source == ModRoute::Source::FxLfo2 ? 1 : 0, d, r.amount});
+                continue;
+            }
             int s = (int)r.source - (int)ModRoute::Source::Macro1;
             if (s < 0 || s >= 4) continue;
             const double v = p.macros[s] * r.amount;
@@ -46,7 +61,7 @@ public:
             default: break;
             }
         }
-        fx_.setMod(m);
+        fx_.setLfoRoutes(m, lr);
     }
 
     // User tables for oscillators A/B (0.9.0). Rebuilt only when the frames

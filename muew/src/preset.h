@@ -41,6 +41,7 @@ struct PresetInfo {
 //                  0.11.0 adds an optional `desc` line (browser text).
 //                  0.13.0 adds optional `phaser`, `flanger` and `fxorder` lines.
 //                  0.14.0 adds an optional `delaysync` line.
+//                  0.15.0 adds an optional `fxlfo` line (rack LFOs).
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
 //                  wavetables: frame count, then 256 samples per frame).
 // Version 1 text still parses; fields it lacks keep their VoiceParams
@@ -126,6 +127,11 @@ struct Preset {
             fxLine("flanger", fl.enabled, fl.rateHz, fl.depth, fl.feedback, fl.mix);
         if (fx.delay.syncL != d.delay.syncL || fx.delay.syncR != d.delay.syncR)
             o << "delaysync " << fx.delay.syncL << " " << fx.delay.syncR << "\n";
+        if (fx.lfo[0] != d.lfo[0] || fx.lfo[1] != d.lfo[1]) {
+            o << "fxlfo";
+            for (const auto& l : fx.lfo) o << " " << l.rateHz << " " << l.shape << " " << l.sync;
+            o << "\n";
+        }
         if (!fx.order.isDefault()) {
             o << "fxorder";
             for (int i = 0; i < kFxUnits; ++i) o << " " << fxUnitName(fx.order.slot[i]);
@@ -285,6 +291,16 @@ struct Preset {
                     else fx.flanger = FlangerParams{e != 0, rate, depth, fb, mix};
                 }
             }
+            else if (key == "fxlfo") {
+                RackLfoParams l[2];
+                bool ok = true;
+                for (auto& x : l) ok = ok && (ls >> x.rateHz >> x.shape >> x.sync) && std::isfinite(x.rateHz);
+                if (ok) for (int k = 0; k < 2; ++k) {
+                    fx.lfo[k].rateHz = std::clamp(l[k].rateHz, 0.02, 20.0);
+                    fx.lfo[k].shape = std::clamp(l[k].shape, 0, 3);
+                    fx.lfo[k].sync = std::clamp(l[k].sync, 0, kSyncCount - 1);
+                }
+            }
             else if (key == "delaysync") {
                 int a = 0, b = 0;
                 if (ls >> a >> b) { fx.delay.syncL = std::clamp(a, 0, kSyncCount - 1); fx.delay.syncR = std::clamp(b, 0, kSyncCount - 1); }
@@ -305,7 +321,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Env3 && d >= 0 && d <= (int)ModRoute::Dest::FxChorusDepth) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::FxLfo2 && d >= 0 && d <= (int)ModRoute::Dest::FxChorusDepth) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     routes.push_back(r);
                 }
@@ -392,6 +408,7 @@ struct Preset {
             && fa.flanger.enabled == fb.flanger.enabled && fa.flanger.rateHz == fb.flanger.rateHz
             && fa.flanger.depth == fb.flanger.depth && fa.flanger.feedback == fb.flanger.feedback && fa.flanger.mix == fb.flanger.mix
             && fa.delay.syncL == fb.delay.syncL && fa.delay.syncR == fb.delay.syncR
+            && fa.lfo[0] == fb.lfo[0] && fa.lfo[1] == fb.lfo[1]
             && fa.order == fb.order;
     }
 

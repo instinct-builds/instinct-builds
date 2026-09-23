@@ -38,6 +38,8 @@ inline const char* sourceName(ModRoute::Source s) {
     case ModRoute::Source::LFO3: return "LFO 3";
     case ModRoute::Source::LFO4: return "LFO 4";
     case ModRoute::Source::Env3: return "ENV 3";
+    case ModRoute::Source::FxLfo1: return "FX LFO 1";
+    case ModRoute::Source::FxLfo2: return "FX LFO 2";
     }
     return "?";
 }
@@ -96,9 +98,16 @@ inline void setRouteDisplayAmount(ModRoute& r, double n) { r.amount = std::clamp
 // macro knobs (global sources); other sources show that instead of an amount.
 inline bool isFxDest(ModRoute::Dest d) { return d == ModRoute::Dest::DistDrive || (int)d >= (int)ModRoute::Dest::FxDelayFeedback; }
 inline bool isMacroSource(ModRoute::Source s) { return (int)s >= (int)ModRoute::Source::Macro1 && (int)s <= (int)ModRoute::Source::Macro4; }
+inline bool isRackLfo(ModRoute::Source s) { return s == ModRoute::Source::FxLfo1 || s == ModRoute::Source::FxLfo2; }
+// Global sources (macros, rack LFOs) can drive the FX rack; the rack LFOs
+// drive nothing else. A route outside that says so instead of an amount.
+inline bool routeActive(const ModRoute& r) {
+    if (isRackLfo(r.source)) return isFxDest(r.dest);
+    return !isFxDest(r.dest) || isMacroSource(r.source);
+}
 inline std::string routeAmountReadout(const ModRoute& r) {
     char b[32];
-    if (isFxDest(r.dest) && !isMacroSource(r.source)) return "MACROS ONLY";
+    if (!routeActive(r)) return isRackLfo(r.source) ? "FX DESTS ONLY" : "GLOBAL ONLY";
     switch (r.dest) {
     case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: snprintf(b, sizeof b, "%+.2f st", r.amount); break;
     case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
@@ -113,7 +122,7 @@ inline std::string routeAmountReadout(const ModRoute& r) {
 inline const std::vector<ModRoute::Source>& matrixSources() {
     using S = ModRoute::Source;
     static const std::vector<S> v{S::LFO1, S::LFO2, S::LFO3, S::LFO4, S::ModEnv, S::Env3, S::MSEG1, S::Velocity,
-                                  S::Macro1, S::Macro2, S::Macro3, S::Macro4};
+                                  S::Macro1, S::Macro2, S::Macro3, S::Macro4, S::FxLfo1, S::FxLfo2};
     return v;
 }
 inline const char* sourceBadge(ModRoute::Source s) {
@@ -130,8 +139,24 @@ inline const char* sourceBadge(ModRoute::Source s) {
     case ModRoute::Source::Macro2: return "M2";
     case ModRoute::Source::Macro3: return "M3";
     case ModRoute::Source::Macro4: return "M4";
+    case ModRoute::Source::FxLfo1: return "FXL1";
+    case ModRoute::Source::FxLfo2: return "FXL2";
     }
     return "?";
+}
+// Primary modulation destination of each rack unit (drop target for a
+// dragged source badge), or -1 (comp, EQ).
+inline int fxUnitDest(int unit) {
+    using D = ModRoute::Dest;
+    switch (unit) {
+    case FxDist: return (int)D::DistDrive;
+    case FxChorus: return (int)D::FxChorusDepth;
+    case FxDelay: return (int)D::FxDelayFeedback;
+    case FxReverb: return (int)D::FxReverbDecay;
+    case FxPhaser: return (int)D::FxPhaserDepth;
+    case FxFlanger: return (int)D::FxFlangerDepth;
+    default: return -1;
+    }
 }
 inline const std::vector<ModRoute::Dest>& matrixDests() {
     using D = ModRoute::Dest;
@@ -173,6 +198,23 @@ inline std::string lfoRateReadout(const VoiceParams& p, int n) {
     int sy = p.lfoSync[std::clamp(n, 0, 3)];
     if (sy > 0) return syncName(sy);
     char b[24]; snprintf(b, sizeof b, "%.2f Hz", lfoRate(const_cast<VoiceParams&>(p), n)); return b;
+}
+// Rack DELAY card summary: note divisions when synced, ms otherwise (0.15.0 fix).
+inline std::string delayCardReadout(const DelayParams& d) {
+    auto side = [](int sync, double sec) {
+        char t[16];
+        if (sync > 0) snprintf(t, sizeof t, "%s", syncName(sync)); else snprintf(t, sizeof t, "%.0f", sec * 1000);
+        return std::string(t);
+    };
+    std::string l = side(d.syncL, d.timeLSec), r = side(d.syncR, d.timeRSec);
+    if (d.syncL <= 0 && d.syncR <= 0) return l + " / " + r + " ms";
+    if (d.syncL <= 0) l += "ms";
+    if (d.syncR <= 0) r += "ms";
+    return l + " / " + r;
+}
+inline std::string rackLfoRateReadout(const RackLfoParams& l) {
+    if (l.sync > 0) return syncName(l.sync);
+    char b[24]; snprintf(b, sizeof b, "%.2f Hz", l.rateHz); return b;
 }
 
 enum Knob { WarpA, Mix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime,
@@ -290,7 +332,7 @@ inline double knobModDepth(const std::vector<ModRoute>& routes, int k) {
     int d = knobDest(k);
     if (d < 0) return 0.0;
     double sum = 0.0;
-    for (const auto& r : routes) if ((int)r.dest == d) sum += routeDisplayAmount(r);
+    for (const auto& r : routes) if ((int)r.dest == d && routeActive(r)) sum += routeDisplayAmount(r);
     return std::clamp(sum, -1.0, 1.0);
 }
 // Human-readable knob value for the hover/drag readout.
@@ -442,7 +484,7 @@ inline double fxDefault(int unit, int i) { return fxGet(FXParams{}, unit, i); }
 // Sum of macro route amounts into a destination (what the detail row shows).
 inline double fxRouteSum(const std::vector<ModRoute>& routes, int dest, int* count = nullptr) {
     double s = 0; int n = 0;
-    for (const auto& r : routes) if ((int)r.dest == dest) { s += r.amount; ++n; }
+    for (const auto& r : routes) if ((int)r.dest == dest && routeActive(r)) { s += r.amount; ++n; }
     if (count) *count = n;
     return s;
 }

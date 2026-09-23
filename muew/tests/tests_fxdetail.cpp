@@ -89,7 +89,7 @@ int main() {
     Preset m2; m2.parse(m.serialize());
     check(m2 == m, "routes into FX destinations survive save and load");
     check(std::string(ui::destName(D::FxDelayFeedback)) == "DELAY FB" && std::string(ui::destName(D::FxChorusDepth)) == "CH DEPTH", "destination names");
-    check(ui::routeAmountReadout(m.routes.back()) == "MACROS ONLY" && ui::routeAmountReadout(m.routes[m.routes.size() - 2]) == "+30%",
+    check(ui::routeAmountReadout(m.routes.back()) == "GLOBAL ONLY" && ui::routeAmountReadout(m.routes[m.routes.size() - 2]) == "+30%",
           "a non-macro source on an FX destination says so");
 
     // Engine: macro routes move the FX; zero macro leaves the output bit-exact.

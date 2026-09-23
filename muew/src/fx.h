@@ -481,6 +481,25 @@ struct FxOrder {
     }
 };
 
+// 0.15.0: two free-running LFOs for the shared FX rack (matrix sources
+// FX LFO 1/2). Bipolar sine / triangle / saw / square; sync > 0 locks the
+// cycle to the host tempo (syncBeats beats per cycle).
+struct RackLfoParams {
+    double rateHz = 0.5; // 0.02..20
+    int shape = 0;       // 0 sine, 1 triangle, 2 saw, 3 square
+    int sync = 0;
+    bool operator==(const RackLfoParams& o) const { return rateHz == o.rateHz && shape == o.shape && sync == o.sync; }
+    bool operator!=(const RackLfoParams& o) const { return !(*this == o); }
+};
+inline double rackLfoValue(int shape, double ph) {
+    switch (shape) {
+    case 1: return ph < 0.5 ? 4.0 * ph - 1.0 : 3.0 - 4.0 * ph;
+    case 2: return 2.0 * ph - 1.0;
+    case 3: return ph < 0.5 ? 1.0 : -1.0;
+    default: return std::sin(2.0 * M_PI * ph);
+    }
+}
+
 struct FXParams {
     ChorusParams chorus;
     DelayParams delay;
@@ -493,6 +512,7 @@ struct FXParams {
     PhaserParams phaser;
     FlangerParams flanger;
     FxOrder order;
+    RackLfoParams lfo[2]; // 0.15.0
 };
 
 // Rack order comes from FXParams::order (default: distortion -> chorus ->
@@ -500,7 +520,7 @@ struct FXParams {
 // passes through untouched when off.
 class FXChain {
 public:
-    void init(double sr) { chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); phaser_.init(sr); flanger_.init(sr); }
+    void init(double sr) { sr_ = sr; chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); phaser_.init(sr); flanger_.init(sr); }
     void set(const FXParams& p) {
         chorus_.set(p.chorus); delay_.set(p.delay); reverb_.set(p.reverb);
         dist_.set(p.dist); eq_.set(p.eq); comp_.set(p.comp);
@@ -515,10 +535,26 @@ public:
         dist_.setDriveOffset(m.drive); delay_.setFeedbackOffset(m.delayFeedback); reverb_.setDecayOffset(m.reverbDecay);
         phaser_.setDepthOffset(m.phaserDepth); flanger_.setDepthOffset(m.flangerDepth); chorus_.setDepthOffset(m.chorusDepth);
     }
-    void setTempo(double bpm) { delay_.setTempo(bpm); }
+    void setTempo(double bpm) { delay_.setTempo(bpm); if (bpm > 20.0 && bpm < 999.0) bpm_ = bpm; }
+    // 0.15.0: routes from the rack LFOs. The static (macro) part is `base`;
+    // every kLfoBlock samples the LFO part is added on top. No LFO routes
+    // leaves the rack exactly as setMod left it.
+    struct LfoRoute { int lfo; int dest; double amount; };
+    enum { kDrive, kDelayFb, kRevDecay, kPhDepth, kFlDepth, kChDepth };
+    void setLfoRoutes(const Mod& base, const std::vector<LfoRoute>& routes) {
+        base_ = base; lfoRoutes_ = routes;
+        if (routes.empty()) setMod(base); else lfoTick_ = 0;
+    }
+    double rackLfoHz(int k) const {
+        const auto& l = p_.lfo[k];
+        double b = syncBeats(l.sync);
+        return b > 0.0 ? (bpm_ / 60.0) / b : std::clamp(l.rateHz, 0.02, 20.0);
+    }
+    double rackLfoPhase(int k) const { return lfoPhase_[k]; }
     const StereoDelay& delay() const { return delay_; }
     const Reverb& reverb() const { return reverb_; }
     inline void process(float& l, float& r) {
+        if (!lfoRoutes_.empty() && --lfoTick_ < 0) updateLfoMod();
         for (int i = 0; i < kFxUnits; ++i) {
             switch (p_.order.slot[i]) {
             case FxDist: if (p_.dist.enabled) dist_.process(l, r); break;
@@ -545,6 +581,33 @@ private:
     Compressor comp_;
     Phaser phaser_;
     Flanger flanger_;
+    static const int kLfoBlock = 32;
+    double sr_ = 44100.0, bpm_ = 120.0, lfoPhase_[2] = {0, 0};
+    int lfoTick_ = 0;
+    Mod base_;
+    std::vector<LfoRoute> lfoRoutes_;
+    void updateLfoMod() {
+        lfoTick_ = kLfoBlock - 1;
+        double v[2];
+        for (int k = 0; k < 2; ++k) {
+            v[k] = rackLfoValue(p_.lfo[k].shape, lfoPhase_[k]);
+            lfoPhase_[k] += kLfoBlock * rackLfoHz(k) / sr_;
+            lfoPhase_[k] -= std::floor(lfoPhase_[k]);
+        }
+        Mod m = base_;
+        for (const auto& r : lfoRoutes_) {
+            const double x = v[r.lfo & 1] * r.amount;
+            switch (r.dest) {
+            case kDrive: m.drive += x; break;
+            case kDelayFb: m.delayFeedback += x; break;
+            case kRevDecay: m.reverbDecay += x; break;
+            case kPhDepth: m.phaserDepth += x; break;
+            case kFlDepth: m.flangerDepth += x; break;
+            default: m.chorusDepth += x; break;
+            }
+        }
+        setMod(m);
+    }
 };
 
 } // namespace muew

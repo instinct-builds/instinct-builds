@@ -55,7 +55,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -259,8 +259,8 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)routeClear:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 226, r.origin.y + 20, 16, 14); }
 - (NSRect)routeBar:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 28, r.origin.y + 4, 150, 14); }
 - (NSRect)pageTab:(int)i { return NSMakeRect(172 + i * 30, 234, 28, 14); }
-// Right: 12 source badges (2 x 6), preview, and the selected modulator's controls.
-- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 6) * 25, i < 6 ? 216 : 198, 23, 15); }
+// Right: 14 source badges (2 x 7), preview, and the selected modulator's controls.
+- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 7) * 21.5, i < 7 ? 216 : 198, 19, 15); }
 - (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
 // 0.9.0 oscillator displays and the wavetable editor that opens over the
 // OSCILLATORS panel.
@@ -289,7 +289,10 @@ static bool IsLfo(ModRoute::Source s) {
 static int LfoIndex(ModRoute::Source s) {
     return s == ModRoute::Source::LFO1 ? 0 : s == ModRoute::Source::LFO2 ? 1 : s == ModRoute::Source::LFO3 ? 2 : 3;
 }
+static bool IsRack(ModRoute::Source s) { return s == ModRoute::Source::FxLfo1 || s == ModRoute::Source::FxLfo2; }
+static int RackIndex(ModRoute::Source s) { return s == ModRoute::Source::FxLfo2 ? 1 : 0; }
 static NSColor* SourceColor(ModRoute::Source s) {
+    if (IsRack(s)) return C(0xb68cff);
     if (IsLfo(s)) return C(0x6cb6ff);
     if (s == ModRoute::Source::ModEnv || s == ModRoute::Source::Env3) return C(0xf2ab55);
     if (s == ModRoute::Source::MSEG1) return C(0x66e2d0);
@@ -324,7 +327,7 @@ static double RateTo01(double hz) { return std::log(std::clamp(hz, 0.02, 20.0) /
 static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n, 0.0, 1.0)); }
 - (int)modFieldCount {
     ModRoute::Source s = ui::matrixSources()[modSel];
-    if (IsLfo(s)) return 3;                                                   // SHAPE, RATE, SYNC
+    if (IsLfo(s) || IsRack(s)) return 3;                                      // SHAPE, RATE, SYNC
     if (s == ModRoute::Source::ModEnv || s == ModRoute::Source::Env3) return 4; // A, D, S, R
     return 0;
 }
@@ -585,6 +588,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     } else if ((int)src >= (int)ModRoute::Source::Macro1 && (int)src <= (int)ModRoute::Source::Macro4) {
         double m = v.macros[(int)src - (int)ModRoute::Source::Macro1] * 2 - 1; // current macro position
         pts = {{0, m}, {1, m}};
+    } else if (IsRack(src)) {
+        int shape = current.fx.lfo[RackIndex(src)].shape;
+        for (int i = 0; i <= 64; ++i) {
+            double t = i / 64.0, ph = std::fmod(t * 2.0, 1.0);
+            if ((shape == 2 || shape == 3) && i % 32 == 0 && i > 0) pts.push_back({t - 1e-6, rackLfoValue(shape, 0.999999)});
+            if (shape == 3 && (i % 32 == 16)) pts.push_back({t - 1e-6, rackLfoValue(shape, 0.49)});
+            pts.push_back({t, rackLfoValue(shape, ph)});
+        }
     } else {
         int shape = ui::lfoShape(const_cast<VoiceParams&>(v), LfoIndex(src));
         for (int i = 0; i <= 64; ++i) {
@@ -784,7 +795,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     char det[kFxUnits][40];
     snprintf(det[0], 40, "%s", ui::distModeName(f.dist.mode));
     snprintf(det[1], 40, "RATE %.2f Hz", f.chorus.rateHz);
-    snprintf(det[2], 40, "%.0f / %.0f ms", f.delay.timeLSec * 1000, f.delay.timeRSec * 1000);
+    snprintf(det[2], 40, "%s", ui::delayCardReadout(f.delay).c_str());
     snprintf(det[3], 40, "RATIO %.1f:1", 1.5 + 6.5 * std::clamp(f.comp.amount, 0.0, 1.0));
     snprintf(det[4], 40, "DECAY %.2f", f.reverb.decay);
     snprintf(det[5], 40, "%+.0f %+.0f %+.0f dB", f.eq.lowDb, f.eq.midDb, f.eq.highDb);
@@ -828,6 +839,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         if (fxDetail == i && !moving) { // the unit open in the detail panel
             NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:8 yRadius:8];
             [C(accHex[i], 0.85) setStroke]; o.lineWidth = 1.2; [o stroke];
+        }
+        if (dragSource >= 0 && ui::fxUnitDest(i) >= 0) { // drop target: a source badge routes to this unit's main amount
+            NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, -2.5, -2.5) xRadius:10 yRadius:10];
+            CGFloat dash[2] = {2, 3};
+            if (dropFx != s) [o setLineDash:dash count:2 phase:0];
+            [(dropFx == s ? SourceColor(ui::matrixSources()[dragSource]) : C(0x5f6b7b)) setStroke];
+            o.lineWidth = dropFx == s ? 2 : 1; [o stroke];
         }
         CGFloat alpha = moving ? 0.35 : 1.0;
         Text(S(names[i]), NSMakeRect(r.origin.x + 8, NSMaxY(r) - 19, 46, 13), 8.5,
@@ -954,7 +972,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(f, 5, modFieldDrag == j ? C(0x26303c) : C(0x1b212a));
         NSString* lab = @""; std::string val;
         char b[24];
-        if (IsLfo(sel)) {
+        if (IsRack(sel)) {
+            const RackLfoParams& rl = current.fx.lfo[RackIndex(sel)];
+            if (j == 0) { lab = @"SHAPE"; val = ui::lfoShapeName(rl.shape); }
+            else if (j == 1) { lab = @"RATE"; val = ui::rackLfoRateReadout(rl); }
+            else { lab = @"SYNC"; val = rl.sync ? "ON" : "FREE"; }
+        } else if (IsLfo(sel)) {
             int li = LfoIndex(sel);
             if (j == 0) { lab = @"SHAPE"; val = ui::lfoShapeName(ui::lfoShape(v, li)); }
             else if (j == 1) { lab = @"RATE"; val = ui::lfoRateReadout(v, li); }
@@ -1048,13 +1071,24 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             double z = bip ? ui::fxNorm(c, 0.0) : 0.0;
             CGFloat a0 = track.origin.x + track.size.width * std::min(z, n), a1 = track.origin.x + track.size.width * std::max(z, n);
             FillRound(NSMakeRect(a0, track.origin.y, std::max<CGFloat>(a1 - a0, 0), 4), 2, inactive ? C(0x303947) : live ? acc : C(0x4a5462));
-            if (c.dest >= 0) { // macro modulation range from routes into this row
-                double amt = ui::fxRouteSum(current.routes, c.dest);
-                if (amt != 0) {
-                    double span = amt * (c.fmt == ui::FmtMs ? 10.0 : 1.0) / (c.hi - c.lo);
+            if (c.dest >= 0) { // modulation ranges into this row: macros push one way (above), FX LFOs swing both ways (below)
+                double mac = 0, lfo = 0;
+                for (const auto& rt : current.routes) {
+                    if ((int)rt.dest != c.dest || !ui::routeActive(rt)) continue;
+                    (IsRack(rt.source) ? lfo : mac) += rt.amount;
+                }
+                double unit = (c.fmt == ui::FmtMs ? 10.0 : 1.0) / (c.hi - c.lo);
+                if (mac != 0) {
+                    double span = mac * unit;
                     double m0 = std::clamp(n + std::min(0.0, span), 0.0, 1.0), m1 = std::clamp(n + std::max(0.0, span), 0.0, 1.0);
                     FillRound(NSMakeRect(track.origin.x + track.size.width * m0, track.origin.y - 3, track.size.width * (m1 - m0), 2), 1,
                               C(0xf27a55, 0.9));
+                }
+                if (lfo != 0) {
+                    double span = std::fabs(lfo * unit);
+                    double m0 = std::clamp(n - span, 0.0, 1.0), m1 = std::clamp(n + span, 0.0, 1.0);
+                    FillRound(NSMakeRect(track.origin.x + track.size.width * m0, track.origin.y + 5, track.size.width * (m1 - m0), 2), 1,
+                              C(0xb68cff, 0.9));
                 }
             }
             NSPoint k = NSMakePoint(track.origin.x + track.size.width * n, NSMidY(track));
@@ -1063,13 +1097,16 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         }
         TextA(S(ui::fxValueText(f, u, i)), NSMakeRect(NSMaxX(bar) + 6, row.origin.y + 3.5, 64, 13), 9.5,
               inactive ? C(0x5f6b7b) : fxRowDrag == i ? acc : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentRight);
-        if (c.dest >= 0) { // modulation tag: route amount when a macro drives this row
+        if (c.dest >= 0) { // modulation tag: route amount when a macro or FX LFO drives this row
             int nr = 0; double amt = ui::fxRouteSum(current.routes, c.dest, &nr);
             NSRect tag = NSMakeRect(NSMaxX(row) - 36, row.origin.y + 3, 36, 14);
-            FillRound(tag, 4, nr ? C(0xf27a55, 0.18) : C(0x10151c));
+            bool rack = false;
+            for (const auto& rt : current.routes) if ((int)rt.dest == c.dest && ui::routeActive(rt) && IsRack(rt.source)) rack = true;
+            NSColor* tc = rack ? C(0xb68cff) : C(0xf27a55);
+            FillRound(tag, 4, nr ? [tc colorWithAlphaComponent:0.18] : C(0x10151c));
             NSString* t = !nr ? @"MOD" : c.fmt == ui::FmtMs ? [NSString stringWithFormat:@"%+.0fms", amt * 10.0]
                                                    : [NSString stringWithFormat:@"%+.0f%%", amt * 100.0];
-            TextA(t, NSMakeRect(tag.origin.x, tag.origin.y + 2.5, tag.size.width, 10), 7, nr ? C(0xf27a55) : C(0x4a5462), NSFontWeightBold,
+            TextA(t, NSMakeRect(tag.origin.x, tag.origin.y + 2.5, tag.size.width, 10), 7, nr ? tc : C(0x4a5462), NSFontWeightBold,
                   NSTextAlignmentCenter);
         }
     }
@@ -1220,7 +1257,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         if (!NSPointInRect(p, [self modField:j])) continue;
         ModRoute::Source sel = srcs[modSel];
         VoiceParams& v = current.voice;
-        if (IsLfo(sel)) {
+        if (IsRack(sel)) {
+            RackLfoParams& rl = current.fx.lfo[RackIndex(sel)];
+            if (j == 0) rl.shape = (rl.shape + 1) % 4;
+            else if (j == 2) rl.sync = rl.sync ? 0 : 3;
+            else { modFieldDrag = 1; dragValue = rl.sync ? (rl.sync - 1) / (double)(kSyncCount - 2) : RateTo01(rl.rateHz); }
+            if (j != 1) { edited = true; [self applySound]; }
+        } else if (IsLfo(sel)) {
             int li = LfoIndex(sel);
             if (j == 0) { int& sh = ui::lfoShape(v, li); sh = (sh + 1) % 4; }
             else if (j == 2) v.lfoSync[li] = v.lfoSync[li] ? 0 : 3; // FREE <-> 1/4, rate then steps divisions
@@ -1241,7 +1284,11 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     ModRoute::Source sel = ui::matrixSources()[modSel];
     VoiceParams& v = current.voice;
     x = std::clamp(x, 0.0, 1.0);
-    if (IsLfo(sel)) {
+    if (IsRack(sel)) {
+        RackLfoParams& rl = current.fx.lfo[RackIndex(sel)];
+        if (rl.sync) rl.sync = 1 + (int)std::lround(x * (kSyncCount - 2));
+        else rl.rateHz = RateFrom01(x);
+    } else if (IsLfo(sel)) {
         int li = LfoIndex(sel);
         if (v.lfoSync[li]) v.lfoSync[li] = 1 + (int)std::lround(x * (kSyncCount - 2));
         else ui::lfoRate(v, li) = RateFrom01(x);
@@ -1880,6 +1927,8 @@ static int SortForColumn(int c) {
         dragPoint = p;
         NSInteger k = [self hitKnob:p];
         dropKnob = (k >= 0 && k < kFxDrag && ui::knobDest((int)k) >= 0) ? (int)k : -1;
+        int fs = dropKnob < 0 ? [self fxSlotAt:p] : -1;
+        dropFx = (fs >= 0 && ui::fxUnitDest(current.fx.order.slot[fs]) >= 0) ? fs : -1;
         [self setNeedsDisplay:YES];
         return;
     }
@@ -1916,6 +1965,11 @@ static int SortForColumn(int c) {
         int slot = ui::addRoute(current.routes, ui::matrixSources()[dragSource], (ModRoute::Dest)ui::knobDest(dropKnob));
         if (slot >= 0) { matrixPage = slot / 4; edited = true; [self applySound]; }
         else NSBeep(); // matrix full
+    } else if (dragSource >= 0 && dropFx >= 0) { // drop a source on an FX card: route to that unit's main amount
+        int u = current.fx.order.slot[dropFx];
+        int slot = ui::addRoute(current.routes, ui::matrixSources()[dragSource], (ModRoute::Dest)ui::fxUnitDest(u));
+        if (slot >= 0) { matrixPage = slot / 4; edited = true; [self applySound]; } // the matrix stays in view; click the card for its ranges
+        else NSBeep();
     }
     if (fxMove >= 0) { // drop: move the unit to the landing slot
         NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
@@ -1933,7 +1987,7 @@ static int SortForColumn(int c) {
         if (id >= 0 && host) host->parameterGesture(id, false);
         fxRowDrag = -1;
     }
-    dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
+    dragSource = -1; dropKnob = -1; dropFx = -1; routeDrag = -1; modFieldDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];

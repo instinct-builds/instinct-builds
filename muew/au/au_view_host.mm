@@ -282,7 +282,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             muew::Preset before;
             State(before);
-            NSPoint badge = NSMakePoint(304 + 2 * 25 + 11.5, 216 + 7.5); // LFO3 source badge
+            NSPoint badge = NSMakePoint(304 + 2 * 21.5 + 9.5, 216 + 7.5); // LFO3 source badge
             NSPoint cut = NSMakePoint(536, t - 94);                      // CUTOFF knob
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, badge, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(450, 300), w)];
@@ -446,6 +446,50 @@ int main() {
                 }
                 Click(view, w, card(3));
             }
+            fflush(stdout);
+        });
+        After(6.97, ^{ // 0.15.0 FX LFOs: drop FX LFO 1 on FLANGER, FX LFO 2 on DELAY; shape and sync them
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto badge = [&](int i) { return NSMakePoint(304 + (i % 7) * 21.5 + 9.5, (i < 7 ? 216 : 198) + 7.5); };
+            auto dropOn = [&](NSPoint from, NSPoint to) {
+                [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, to, w)];
+                [view mouseUp:Mouse(NSEventTypeLeftMouseUp, to, w)];
+            };
+            CGFloat fw = (148 - 8) / 3.0;
+            NSPoint shape = NSMakePoint(304 + fw / 2, 87), sync = NSMakePoint(304 + 2 * (fw + 4) + fw / 2, 87);
+            muew::Preset before;
+            State(before);
+            if (getenv("MUEW_FXDETAIL_PREFIX") && *getenv("MUEW_FXDETAIL_PREFIX"))
+                Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));     // close the DELAY detail left open above
+            Click(view, w, NSMakePoint(468 + 3 * 78 + 70 - 11, 58 + h - 13)); // FLANGER LED (slot 8) on
+            dropOn(badge(12), card(7));                                         // FX LFO 1 -> FLANGER
+            Click(view, w, shape);                                              // sine -> triangle
+            dropOn(badge(13), card(3));                                         // FX LFO 2 -> DELAY
+            Click(view, w, shape); Click(view, w, shape); Click(view, w, shape); // sine -> square
+            Click(view, w, sync);                                               // FREE -> 1/4
+            Snapshot(view, "MUEW_FXLFO_MOD_PNG", "FX LFO modulator snapshot written");
+            Click(view, w, card(7));                                            // FLANGER detail: purple LFO range on DEPTH
+            Snapshot(view, "MUEW_FXLFO1_PNG", "FX LFO 1 range on FLANGER snapshot written");
+            Click(view, w, card(3));                                            // DELAY detail stays open for the editor snapshot
+            muew::Preset st;
+            bool ok = State(st);
+            size_t n = st.routes.size();
+            using S = muew::ModRoute::Source; using D = muew::ModRoute::Dest;
+            bool r1 = false, r2 = false;
+            for (const auto& r : st.routes) { r1 |= r.source == S::FxLfo1 && r.dest == D::FxFlangerDepth; r2 |= r.source == S::FxLfo2 && r.dest == D::FxDelayFeedback; }
+            printf("fx lfos: %zu routes (+%zu), lfo1 shape %d %.2f Hz sync %d, lfo2 shape %d sync %d (%s), flanger %s\n", n, n - before.routes.size(),
+                   st.fx.lfo[0].shape, st.fx.lfo[0].rateHz, st.fx.lfo[0].sync, st.fx.lfo[1].shape, st.fx.lfo[1].sync,
+                   muew::ui::syncName(st.fx.lfo[1].sync), st.fx.flanger.enabled ? "on" : "off");
+            Check(ok && r1 && r2 && n == before.routes.size() + 2, "dropping FXL1 on FLANGER and FXL2 on DELAY added both routes in the AU");
+            Check(ok && st.fx.flanger.enabled && st.fx.lfo[0].shape == 1 && st.fx.lfo[1].shape == 3 && st.fx.lfo[1].sync == 3,
+                  "FX LFO shape and sync fields reached the AU's sound");
+            muew::Preset back;
+            Check(ok && back.parse(st.serialize()) && back == st && st.serialize().find("\nfxlfo ") != std::string::npos,
+                  "the AU state saves the FX LFOs with the sound");
             fflush(stdout);
         });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
