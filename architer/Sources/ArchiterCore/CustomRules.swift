@@ -58,6 +58,33 @@ public struct Ruleset: Codable, Equatable, Sendable {
         self.skills = skills
     }
 
+    /// Normalizes an edited ruleset for saving: trims the name, drops and
+    /// dedupes blank abilities, drops blank skills, and remaps skills whose
+    /// ability was removed onto the first remaining ability.
+    public func sanitized() -> Ruleset {
+        var seen = Set<String>()
+        var abilitiesOut: [String] = []
+        for raw in abilities {
+            let a = raw.trimmingCharacters(in: .whitespaces)
+            if !a.isEmpty && !seen.contains(a.lowercased()) {
+                seen.insert(a.lowercased())
+                abilitiesOut.append(a)
+            }
+        }
+        let fallback = abilitiesOut.first ?? ""
+        var skillsOut: [CustomSkillDef] = []
+        var seenSkills = Set<String>()
+        for sk in skills {
+            let n = sk.name.trimmingCharacters(in: .whitespaces)
+            if n.isEmpty || seenSkills.contains(n.lowercased()) { continue }
+            seenSkills.insert(n.lowercased())
+            let ability = abilitiesOut.contains(sk.abilityName) ? sk.abilityName : fallback
+            skillsOut.append(CustomSkillDef(name: n, abilityName: ability))
+        }
+        return Ruleset(name: name.trimmingCharacters(in: .whitespaces),
+                       abilities: abilitiesOut, skills: skillsOut)
+    }
+
     /// Original example ruleset for a pulp space-adventure game.
     public static let starfarer = Ruleset(
         name: "Starfarer",

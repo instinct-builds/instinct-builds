@@ -9,6 +9,8 @@ public struct BuilderView: View {
     @EnvironmentObject var model: AppModel
     @State private var rulesetNameDraft = ""
     @State private var showSaveRuleset = false
+    @State private var editingRuleset: Ruleset? = nil
+    @State private var editingOriginalName = ""
 
     public init(character: Binding<Character>) {
         _character = character
@@ -82,6 +84,10 @@ public struct BuilderView: View {
                             }
                             Spacer()
                             Button("Apply") { apply(ruleset) }
+                            Button("Edit") {
+                                editingOriginalName = ruleset.name
+                                editingRuleset = ruleset
+                            }
                             Button(role: .destructive) {
                                 model.deleteRuleset(named: ruleset.name)
                             } label: { Image(systemName: "minus.circle") }
@@ -146,6 +152,22 @@ public struct BuilderView: View {
                 }
             }
         }
+        .sheet(isPresented: Binding(
+            get: { editingRuleset != nil },
+            set: { if !$0 { editingRuleset = nil } })) {
+            if let editing = editingRuleset {
+                RulesetEditorView(
+                    draft: editing,
+                    onSave: { edited in
+                        if editingOriginalName != edited.name {
+                            model.deleteRuleset(named: editingOriginalName)
+                        }
+                        model.saveRuleset(edited)
+                        editingRuleset = nil
+                    },
+                    onCancel: { editingRuleset = nil })
+            }
+        }
         .preferredColorScheme(.dark)
         .foregroundStyle(Theme.ink)
     }
@@ -158,4 +180,72 @@ public struct BuilderView: View {
         character = c
     }
 }
+
+
+/// Inline editor for a library ruleset: rename it, add/remove abilities
+/// and skills, and reassign each skill's ability. Saving runs the draft
+/// through `Ruleset.sanitized()` so blanks and dangling references never
+/// reach the library.
+private struct RulesetEditorView: View {
+    @State var draft: Ruleset
+    let onSave: (Ruleset) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.md) {
+            Text("Edit ruleset")
+                .font(Theme.Typeface.title)
+                .foregroundStyle(Theme.ink)
+            TextField("Ruleset name", text: $draft.name)
+                .textFieldStyle(InsetFieldStyle())
+            Text("Abilities")
+                .font(Theme.Typeface.headline)
+                .foregroundStyle(Theme.ink)
+            ForEach(draft.abilities.indices, id: \.self) { i in
+                HStack {
+                    TextField("Ability", text: $draft.abilities[i])
+                        .textFieldStyle(InsetFieldStyle())
+                    Button(role: .destructive) {
+                        draft.abilities.remove(at: i)
+                    } label: { Image(systemName: "minus.circle") }
+                }
+            }
+            Button("Add ability") { draft.abilities.append("") }
+            Text("Skills")
+                .font(Theme.Typeface.headline)
+                .foregroundStyle(Theme.ink)
+            ForEach(draft.skills.indices, id: \.self) { i in
+                HStack {
+                    TextField("Skill", text: $draft.skills[i].name)
+                        .textFieldStyle(InsetFieldStyle())
+                    Picker("", selection: $draft.skills[i].abilityName) {
+                        ForEach(draft.abilities, id: \.self) { a in
+                            Text(a).tag(a)
+                        }
+                    }
+                    .frame(width: 170)
+                    Button(role: .destructive) {
+                        draft.skills.remove(at: i)
+                    } label: { Image(systemName: "minus.circle") }
+                }
+            }
+            Button("Add skill") {
+                draft.skills.append(CustomSkillDef(name: "", abilityName: draft.abilities.first ?? ""))
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                Button("Save") { onSave(draft.sanitized()) }
+                    .buttonStyle(RollButtonStyle())
+                    .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty
+                        || draft.abilities.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
+            }
+        }
+        .padding(Theme.Gap.lg)
+        .frame(minWidth: 480)
+        .background(Theme.surface)
+        .preferredColorScheme(.dark)
+    }
+}
+
 #endif

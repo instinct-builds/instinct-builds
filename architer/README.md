@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.6.0
+
+- **Ruleset editor**: edit any ruleset in your library in place - rename
+  it, add/remove abilities and skills, reassign each skill's ability.
+  Saving normalizes the draft (blank entries dropped, dangling skills
+  remapped) so a broken ruleset never reaches the library.
+
 ## What's in 1.5.0
 
 - **Roll history persistence**: the last 50 rolls survive quitting the app

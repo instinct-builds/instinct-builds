@@ -368,6 +368,23 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func rulesetSanitizedDropsBlanksAndRemapsSkills() {
+        let r = Ruleset(
+            name: "  Grit Game  ",
+            abilities: [" Brawn ", "", "brawn", "Wits"],
+            skills: [
+                CustomSkillDef(name: " Punch ", abilityName: "Brawn"),
+                CustomSkillDef(name: "Scheme", abilityName: "Gone"),
+                CustomSkillDef(name: "", abilityName: "Wits"),
+            ])
+        let clean = r.sanitized()
+        #expect(clean.name == "Grit Game")
+        #expect(clean.abilities == ["Brawn", "Wits"])
+        #expect(clean.skills.count == 2)
+        #expect(clean.skills[0].name == "Punch")
+        #expect(clean.skills[1].abilityName == "Brawn")
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",
