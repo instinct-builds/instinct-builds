@@ -53,7 +53,7 @@ struct PDFExportTests {
         // Proficiencies and tools lines ship in BOTH layouts.
         #expect(fullText.contains("Proficiencies: Armor: light"))
         #expect(compactText.contains("Proficiencies: Armor: light"))
-        #expect(compactText.contains("Tools: Thieves' tools (expertise)"))
+        #expect(compactText.contains("Tools: Thieves' tools \\(expertise\\)")) // parens are escaped in PDF literal strings
         // Compact uses no color operators and no filled rects (ink-light).
         #expect(!compactText.contains(" rg"))
         #expect(!compactText.contains(" RG"))
