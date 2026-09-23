@@ -136,9 +136,12 @@ jobs:
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
           cp "$SUP/demo-contact-sheet-all.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"
           ls -l ASSSETS-$ASSSETS_VERSION-contact-sheet*.pdf | tee -a "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
-          # JPEG thumbnails keep the 28-asset sheet small.
-          size=$(stat -f%z "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"); echo "whole-library sheet: $size bytes" | tee -a "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
-          test "$size" -lt 3500000
+          # JPEG thumbnails: the 28-asset Material Textures sheet stays under 2 MB (1.5.0: ~10.7 MB),
+          # and the whole bundled library (129 assets, 12 pages) under 6 MB.
+          size=$(stat -f%z "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"); all=$(stat -f%z "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf")
+          echo "28-asset sheet: $size bytes; whole-library sheet: $all bytes" | tee -a "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
+          test "$size" -lt 2000000
+          test "$all" -lt 6000000
           test "$(mdls -raw -name kMDItemNumberOfPages "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" 2>/dev/null || echo 4)" != "0"
           sips -s format png --resampleWidth 1600 "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" --out "ASSSETS-$ASSSETS_VERSION-contact-sheet-cover.png" >/dev/null
           unzip -l "$SUP/demo-brand-kit.zip" | tee "ASSSETS-$ASSSETS_VERSION-brand-kit-listing.txt"

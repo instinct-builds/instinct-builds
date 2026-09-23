@@ -95,6 +95,7 @@ final class StudioLibrary: ObservableObject {
     @Published var tileRepeat = 1
     /// Asset shown in the full-window viewer (space bar), nil when closed.
     @Published var viewerID: UUID?
+    var scrollInspectorToTags = false
     private var keyMonitor: Any?
 
     func openViewer() {
@@ -963,7 +964,7 @@ final class StudioLibrary: ObservableObject {
         case "autotags", "autotags-audio":
             // Suggested tags are searchable before they're accepted: "tileable" finds textures nobody tagged by hand.
             if demo == "autotags" {
-                show(collection: StudioCatalog.allAssets); search = "tileable"
+                show(collection: StudioCatalog.allAssets); search = "tileable"; scrollInspectorToTags = true
                 Task { @MainActor in
                     var tries = 0
                     while self.filtered.isEmpty && tries < 40 { try? await Task.sleep(nanoseconds: 150_000_000); tries += 1 }
@@ -2082,6 +2083,7 @@ struct Inspector: View {
                 if model.missing.contains(asset.id) { MissingBanner(asset: asset).padding(.horizontal, 14).padding(.top, 8) }
                 if asset.kind != .audio { EffectStrip(asset: asset).padding(.top, 10) }
                 Divider().overlay(Theme.hairline).padding(.top, 10)
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if asset.kind != .audio { SimilarStrip(asset: asset) }
@@ -2108,7 +2110,7 @@ struct Inspector: View {
                                 }
                             }
                         }
-                        InspectorLabel(text: "TAGS")
+                        InspectorLabel(text: "TAGS").id("inspector-tags")
                         WrapLayout(spacing: 5) { ForEach(asset.tags, id: \.self) { tag in TagChip(tag: tag) { model.removeTag(tag, from: [asset.id]) } } }
                         if !asset.suggestedTags.isEmpty {
                             HStack {
@@ -2140,6 +2142,12 @@ struct Inspector: View {
                         }
                     }
                     .padding(16)
+                }
+                .onAppear {
+                    // Demo only: bring the tag rows into view for the suggested-tags screenshot.
+                    guard model.scrollInspectorToTags else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { withAnimation { proxy.scrollTo("inspector-tags", anchor: .top) } }
+                }
                 }
             }
         }
