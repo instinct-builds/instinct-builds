@@ -56,30 +56,64 @@ jobs:
         run: |
           set -euo pipefail
           cd asssets
-          test $(stat -f%z ASSSETS-0.3.0.dmg) -gt 5000000
-          hdiutil verify ASSSETS-0.3.0.dmg
+          V=$(sed -n 's/^VERSION=${VERSION:-\(.*\)}$/\1/p' scripts/make_dmg.sh)
+          echo "ASSSETS_VERSION=$V" >> "$GITHUB_ENV"
+          test $(stat -f%z ASSSETS-$V.dmg) -gt 5000000
+          hdiutil verify ASSSETS-$V.dmg
           mount=$(mktemp -d)
-          hdiutil attach ASSSETS-0.3.0.dmg -nobrowse -readonly -mountpoint "$mount"
+          hdiutil attach ASSSETS-$V.dmg -nobrowse -readonly -mountpoint "$mount"
           file "$mount/ASSSETS.app/Contents/MacOS/ASSSETS"
           lipo "$mount/ASSSETS.app/Contents/MacOS/ASSSETS" -verify_arch arm64 x86_64
           codesign --verify --deep --strict --verbose=4 "$mount/ASSSETS.app"
           test -f "$mount/ASSSETS.app/Contents/Resources/StarterLibrary.zip"
-          du -sh "$mount/ASSSETS.app/Contents/Resources/StarterLibrary.zip"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$mount/ASSSETS.app/Contents/Info.plist")" = "$V"
           hdiutil detach "$mount"
-      - name: Capture ASSSETS native UI proof
+      - name: Install test - fresh install, relaunch and 0.3 upgrade stay duplicate-free
         run: |
-          open asssets/out/ASSSETS.app
-          sleep 10
-          screencapture -x asssets/out/ASSSETS-0.3.0-library.png
-          test -s asssets/out/ASSSETS-0.3.0-library.png
-          sips -g pixelWidth -g pixelHeight asssets/out/ASSSETS-0.3.0-library.png
-      - name: Upload ASSSETS 0.3.0
+          set -euo pipefail
+          SUP="$HOME/Library/Application Support/ASSSETS"
+          count() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); a=d["assets"]; k=[x.get("sourceKey") for x in a if x.get("sourceKey")]; assert len(k)==len(set(k)), "duplicate keys"; p=[x.get("importedPath") for x in a if x.get("importedPath")]; assert len(p)==len(set(p)), "duplicate paths"; print(len(a))' "$SUP/studio-catalog.json"; }
+          run_once() { open -W -n asssets/out/ASSSETS.app --args -asssets-quit-after 6 || true; sleep 1; }
+          rm -rf "$SUP"
+          run_once; first=$(count); echo "fresh install: $first assets"
+          test "$first" -ge 99
+          test $(ls "$SUP/StarterLibrary" | wc -l) -ge 27
+          run_once; second=$(count); echo "relaunch: $second assets"
+          test "$first" = "$second"
+          # Simulate a 0.3 catalog: drop the new keys, file starter media under Imported, remove the 0.4 file.
+          python3 - "$SUP" <<'PY2'
+          import json, sys, os
+          sup = sys.argv[1]
+          d = json.load(open(os.path.join(sup, "studio-catalog.json")))
+          legacy = []
+          for a in d["assets"]:
+              a.pop("sourceKey", None)
+              if a.get("importedPath"):
+                  a["collection"] = "Imported"; a["tags"] = [a["importedPath"].rsplit(".", 1)[-1], "imported", "client-x"]
+              legacy.append(a)
+          legacy[0]["favorite"] = True
+          json.dump(legacy, open(os.path.join(sup, "studio-library.json"), "w"))
+          os.remove(os.path.join(sup, "studio-catalog.json"))
+          PY2
+          run_once; third=$(count); echo "after 0.3 migration: $third assets"
+          test "$first" = "$third"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); a=d["assets"]; assert not any(x["collection"]=="Imported" for x in a), "starter media left in Imported"; assert any("client-x" in x["tags"] for x in a), "user tags lost"; print("migration keeps user tags and refiles starter media")' "$SUP/studio-catalog.json"
+      - name: Capture ASSSETS native UI proof (two window sizes)
+        run: |
+          set -euo pipefail
+          cd asssets/out
+          shoot() { open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep 9; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"; pkill -x ASSSETS || true; sleep 2; }
+          shoot media 1920x1200 library
+          shoot batch 960x640 batch-compact
+          shoot vectors 1920x1200 vectors
+          for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
+      - name: Upload ASSSETS release
         uses: actions/upload-artifact@v4
         with:
-          name: asssets-0.3.0
+          name: asssets-${{ env.ASSSETS_VERSION }}
           path: |
-            asssets/ASSSETS-0.3.0.dmg
-            asssets/out/ASSSETS-0.3.0-library.png
+            asssets/ASSSETS-${{ env.ASSSETS_VERSION }}.dmg
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-*.png
 
   au:
     runs-on: macos-latest

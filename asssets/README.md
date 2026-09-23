@@ -79,3 +79,23 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   PackBits-encoded fixtures (raw/RLE equivalence, RGB+alpha, grayscale,
   grayscale+alpha, rejected variants, truncation, end-to-end library
   derivatives). 34 total via swift test.
+
+## 0.4.0: studio workflow pass
+
+- `Studio.swift` (core, tested) - the app's catalog model now lives in the
+  core: search over titles/tags/colors, multi-asset batch tagging, favorite
+  toggles, drag-to-collection moves, empty user collections, rename, and
+  remove-from-library that never touches files on disk.
+- Upgrade-safe bundled library: every bundled record has a stable key, so
+  relaunches and upgrades never duplicate assets. 0.3 catalogs migrate in
+  place: starter media leaves "Imported" for its real collection while user
+  favorites and tags survive. Removed bundled assets stay removed.
+- `MediaPreview.swift` (core, tested) - real WAV waveform peaks (RIFF chunk
+  walk, 16/24/32-bit PCM and float) and a small SVG reader for native vector
+  previews.
+- App: wider styled sidebar with counts and drop targets, compact preview
+  with a visible effect strip, ⌘/⇧-click multi-select, batch inspector,
+  context menus, selection bar, video posters and looping playback, audio
+  playback, full-resolution PNG export.
+- CI: fresh-install, relaunch and 0.3-upgrade tests on the real app, plus
+  screenshots at two window sizes.
