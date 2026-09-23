@@ -147,7 +147,14 @@ public enum SheetPDFExporter {
         var cursor = Cursor(doc: doc)
         cursor.compact = compact
         let margin = compact ? 40.0 : 54.0
+        cursor.margin = margin
         let contentW = doc.pageSize.width - margin * 2
+        /// Flow width inside the active column layout (full width when
+        /// single-column). Read after any beginColumns/endColumns call.
+        var flowW = contentW
+        /// Compact two-column flow starts at the first line-based block
+        /// after the header/abilities/vitals run.
+        var columnsBegan = false
 
         cursor.ensure(compact ? 92 : 120)
         // Header
@@ -180,6 +187,16 @@ public enum SheetPDFExporter {
         cursor.advance(compact ? 10 : 14)
 
         for block in c.layout.visibleBlocks {
+            if compact && !columnsBegan {
+                switch block.kind {
+                case .identity, .abilities, .vitals:
+                    break
+                default:
+                    cursor.beginColumns(2, margin: margin)
+                    flowW = cursor.columnWidth
+                    columnsBegan = true
+                }
+            }
             switch block.kind {
             case .identity:
                 continue // already the header
@@ -189,7 +206,7 @@ public enum SheetPDFExporter {
                     let parts = Ability.allCases.map { a in
                         "\(a.abbreviation) \(c.scores[a]) (\(signed(RulesMath.modifier(for: c.scores[a]))), save \(signed(c.savingThrow(a))))"
                     }
-                    for line in wrap(parts.joined(separator: "  "), width: contentW, size: 9) {
+                    for line in wrap(parts.joined(separator: "  "), width: flowW, size: 9) {
                         cursor.line(line, margin: margin)
                     }
                     break
@@ -264,17 +281,22 @@ public enum SheetPDFExporter {
                 if trained.isEmpty {
                     cursor.line("No trained skills", margin: margin, gray: 0.45)
                 } else {
-                    let colW = contentW / 2
+                    let subCols = cursor.columns > 1 ? 1 : 2
+                    let colW = flowW / 2
                     for (i, s) in trained.enumerated() {
-                        if i % 2 == 0 { cursor.ensure(13) }
-                        let x = margin + Double(i % 2) * colW
+                        if i % subCols == 0 { cursor.ensure(13) }
+                        let x = margin + Double(i % subCols) * colW
                         let bonus = signed(s.bonus(scores: c.scores, level: c.level))
                         let text = "\(s.name) \(bonus)\(s.tier == .expert ? " (expert)" : "")"
                         cursor.put(x, text, size: 9)
-                        if i % 2 == 1 || i == trained.count - 1 { cursor.advance(13) }
+                        if i % subCols == subCols - 1 || i == trained.count - 1 { cursor.advance(13) }
                     }
                 }
             case .attacks:
+                if compact && cursor.columns > 1 {
+                    cursor.endColumns()
+                    flowW = contentW
+                }
                 cursor.section("Attacks", margin: margin)
                 let showMastery = c.era.usesWeaponMastery && c.attacks.contains { $0.mastery != nil }
                 let cols: [(String, Double)] = showMastery
@@ -313,6 +335,10 @@ public enum SheetPDFExporter {
                 if let sc = c.spellcasting {
                     cursor.line("Spell attack \(signed(sc.spellAttackBonus(scores: c.scores, level: c.level))) - Spell save DC \(sc.spellSaveDC(scores: c.scores, level: c.level)) (\(sc.ability.abbreviation))", margin: margin, gray: 0.3)
                 }
+                if compact {
+                    cursor.beginColumns(2, margin: margin)
+                    flowW = cursor.columnWidth
+                }
             case .spells:
                 guard let sc = c.spellcasting else { continue }
                 cursor.section("Spells (\(sc.progression.displayName))", margin: margin)
@@ -331,7 +357,7 @@ public enum SheetPDFExporter {
                 }
                 let cantrips = sc.cantrips.map { $0.name }.sorted().joined(separator: ", ")
                 if !cantrips.isEmpty {
-                    for line in wrap("Cantrips: " + cantrips, width: contentW, size: 9) {
+                    for line in wrap("Cantrips: " + cantrips, width: flowW, size: 9) {
                         cursor.line(line, margin: margin)
                     }
                 }
@@ -339,7 +365,7 @@ public enum SheetPDFExporter {
                     let atLevel = sc.spells(atLevel: sl)
                     if !atLevel.isEmpty {
                         let names = atLevel.map { $0.prepared ? $0.name : "\($0.name) (unprepared)" }.joined(separator: ", ")
-                        for line in wrap("Level \(sl): " + names, width: contentW, size: 9) {
+                        for line in wrap("Level \(sl): " + names, width: flowW, size: 9) {
                             cursor.line(line, margin: margin)
                         }
                     }
@@ -350,16 +376,17 @@ public enum SheetPDFExporter {
                 if c.inventory.isEmpty {
                     cursor.line("Empty pack", margin: margin, gray: 0.45)
                 } else {
-                    let colW = contentW / 2
+                    let subCols = cursor.columns > 1 ? 1 : 2
+                    let colW = flowW / 2
                     for (i, item) in c.inventory.enumerated() {
-                        if i % 2 == 0 { cursor.ensure(13) }
-                        let x = margin + Double(i % 2) * colW
+                        if i % subCols == 0 { cursor.ensure(13) }
+                        let x = margin + Double(i % subCols) * colW
                         var text = item.name
                         if item.quantity > 1 { text += " x\(item.quantity)" }
                         if item.stowed { text += " (stowed)" }
                         if !item.notes.isEmpty { text += " - \(item.notes)" }
                         cursor.put(x, text, size: 9)
-                        if i % 2 == 1 || i == c.inventory.count - 1 { cursor.advance(13) }
+                        if i % subCols == subCols - 1 || i == c.inventory.count - 1 { cursor.advance(13) }
                     }
                 }
             case .features:
@@ -372,7 +399,7 @@ public enum SheetPDFExporter {
                     if let remaining = f.usesRemaining { head += " - \(remaining)/\(f.usesMax) uses" }
                     cursor.line(head, margin: margin)
                     if !f.detail.isEmpty {
-                        for line in wrap(f.detail, width: contentW - 14, size: 9) {
+                        for line in wrap(f.detail, width: flowW - 14, size: 9) {
                             cursor.ensure(13)
                             cursor.put(margin + 14, line, size: 9, gray: 0.3)
                             cursor.advance(13)
@@ -385,7 +412,7 @@ public enum SheetPDFExporter {
                 cursor.section("Personality", margin: margin)
                 let pairs: [(String, String)] = [("Traits", p.traits), ("Ideals", p.ideals), ("Bonds", p.bonds), ("Flaws", p.flaws)]
                 for (label, value) in pairs where !value.isEmpty {
-                    for (i, line) in wrap(value, width: contentW - 60, size: 9).enumerated() {
+                    for (i, line) in wrap(value, width: flowW - 60, size: 9).enumerated() {
                         cursor.ensure(13)
                         if i == 0 {
                             cursor.put(margin, label + ":", size: 9, face: .bold)
@@ -397,7 +424,7 @@ public enum SheetPDFExporter {
                 if !p.backstory.isEmpty {
                     cursor.line("Backstory", margin: margin)
                     for para in p.backstory.components(separatedBy: "\n") {
-                        for line in wrap(para, width: contentW, size: 9) {
+                        for line in wrap(para, width: flowW, size: 9) {
                             cursor.ensure(13)
                             cursor.put(margin + 14, line, size: 9, gray: 0.3)
                             cursor.advance(13)
@@ -410,7 +437,7 @@ public enum SheetPDFExporter {
                 guard !c.notes.isEmpty else { continue }
                 cursor.section("Notes", margin: margin)
                 for para in c.notes.components(separatedBy: "\n") {
-                    for line in wrap(para, width: contentW, size: 9) {
+                    for line in wrap(para, width: flowW, size: 9) {
                         cursor.line(line, margin: margin)
                     }
                 }
@@ -419,11 +446,12 @@ public enum SheetPDFExporter {
                 cursor.section("Journal", margin: margin)
                 for e in c.journal {
                     let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
-                    for line in wrap(head.isEmpty ? "Entry" : head, width: contentW, size: 9) {
+                    for line in wrap(head.isEmpty ? "Entry" : head, width: flowW, size: 9) {
                         cursor.line(line, margin: margin)
                     }
                     for para in e.text.components(separatedBy: "\n") {
-                        for line in wrap(para, width: contentW - 14, size: 9) {
+                        for line in wrap(para, width: flowW - 14, size: 9) {
+                            cursor.ensure(13)
                             cursor.put(margin + 14, line, size: 9, gray: 0.3)
                             cursor.advance(13)
                         }
@@ -435,7 +463,7 @@ public enum SheetPDFExporter {
                 for comp in c.companions {
                     var text = "\(comp.name)\(comp.kind.isEmpty ? "" : " (\(comp.kind))") - HP \(comp.currentHP)/\(comp.maxHP), AC \(comp.armorClass)"
                     if !comp.notes.isEmpty { text += " - \(comp.notes)" }
-                    for line in wrap(text, width: contentW, size: 9) {
+                    for line in wrap(text, width: flowW, size: 9) {
                         cursor.line(line, margin: margin)
                     }
                 }
@@ -444,6 +472,7 @@ public enum SheetPDFExporter {
         }
 
         // Custom ruleset sections and user-defined templated blocks.
+        if compact { cursor.endColumns() }
         if !c.customAbilities.isEmpty {
             cursor.section("\(c.rulesetName ?? "Custom") Abilities", margin: margin)
             let cols: [(String, Double)] = [("Ability", 0), ("Score", 200), ("Mod", 270)]
@@ -527,13 +556,23 @@ public enum SheetPDFExporter {
 
     private static func signed(_ n: Int) -> String { n >= 0 ? "+\(n)" : "\(n)" }
 
-    /// Tracks the vertical cursor and opens new pages as needed.
+    /// Tracks the vertical cursor and opens new columns and pages as needed.
     private struct Cursor {
         var doc: PDFDocument
         var page: Int
         var y: Double
         var compact = false
         let bottom = 60.0
+        /// Two-column flow (compact print layout): line sections fill the
+        /// left column, then the right, then the next page. Full-width
+        /// sections (attacks table) suspend and resume the flow.
+        var columns = 1
+        var column = 0
+        var margin = 54.0
+        let gutter = 24.0
+        /// Lowest y reached anywhere in the current column region, so a
+        /// full-width section can resume below both columns.
+        var regionLowestY = Double.greatestFiniteMagnitude
 
         init(doc: PDFDocument) {
             var d = doc
@@ -542,32 +581,68 @@ public enum SheetPDFExporter {
             self.y = d.pageSize.height - 54
         }
 
+        /// Width of one flow column; equals the full content width when
+        /// running single-column, so callers can use it unconditionally.
+        var columnWidth: Double {
+            (doc.pageSize.width - margin * 2 - gutter * Double(columns - 1)) / Double(columns)
+        }
+        /// Horizontal shift for the active column; zero in single-column flow.
+        var xOffset: Double { Double(column) * (columnWidth + gutter) }
+
+        mutating func beginColumns(_ count: Int, margin: Double) {
+            columns = count
+            column = 0
+            self.margin = margin
+            regionLowestY = y
+        }
+
+        mutating func endColumns() {
+            guard columns > 1 else { return }
+            y = regionLowestY
+            columns = 1
+            column = 0
+        }
+
         mutating func ensure(_ space: Double) {
             if y - space < bottom {
-                page = doc.addPage()
+                regionLowestY = min(regionLowestY, y)
+                if columns > 1 && column < columns - 1 {
+                    column += 1
+                } else {
+                    // New page: the column region restarts at the top, so
+                    // the old page's lowest y no longer applies.
+                    column = 0
+                    page = doc.addPage()
+                    regionLowestY = doc.pageSize.height - 54
+                }
                 y = doc.pageSize.height - 54
             }
         }
 
-        mutating func advance(_ dy: Double) { y -= dy }
+        mutating func advance(_ dy: Double) {
+            y -= dy
+            regionLowestY = min(regionLowestY, y)
+        }
 
         /// Draws at the current cursor baseline - the single convention for
         /// all rows so ascenders never overlap the previous line.
         mutating func put(_ x: Double, _ s: String, size: Double = 9,
                           face: PDFDocument.Face = .regular, gray: Double = 0) {
-            doc.text(page: page, x: x, y: y, s, size: size, face: face, gray: gray)
+            doc.text(page: page, x: x + xOffset, y: y, s, size: size, face: face, gray: gray)
         }
 
         mutating func text(_ x: Double, _ s: String, size: Double, face: PDFDocument.Face = .regular, gray: Double = 0) {
-            doc.text(page: page, x: x, y: y, s, size: size, face: face, gray: gray)
+            doc.text(page: page, x: x + xOffset, y: y, s, size: size, face: face, gray: gray)
         }
 
         mutating func section(_ title: String, margin: Double) {
-            ensure(compact ? 24 : 30)
+            // Compact keep-together: a section header never strands within
+            // ~5 lines of the column bottom; it starts the next column.
+            ensure(compact ? 64 : 30)
             if compact {
-                doc.text(page: page, x: margin, y: y, title.uppercased(), size: 9, face: .bold)
+                doc.text(page: page, x: margin + xOffset, y: y, title.uppercased(), size: 9, face: .bold)
                 advance(11)
-                rule(margin, width: doc.pageSize.width - margin * 2, gray: 0.6)
+                rule(margin, width: columnWidth, gray: 0.6)
                 advance(8)
             } else {
                 doc.text(page: page, x: margin, y: y, title.uppercased(), size: 10, face: .bold,
@@ -589,7 +664,7 @@ public enum SheetPDFExporter {
         }
 
         mutating func rule(_ x: Double, width: Double, gray: Double = 0) {
-            doc.line(page: page, x1: x, y1: y, x2: x + width, y2: y, lineWidth: 0.8, gray: gray)
+            doc.line(page: page, x1: x + xOffset, y1: y, x2: x + xOffset + width, y2: y, lineWidth: 0.8, gray: gray)
         }
     }
 }

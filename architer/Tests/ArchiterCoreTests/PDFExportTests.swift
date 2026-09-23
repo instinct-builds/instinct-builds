@@ -65,6 +65,25 @@ struct PDFExportTests {
         #expect(compact.count < full.count)
     }
 
+    @Test func compactLayoutFlowsInTwoColumns() throws {
+        let demo = SampleContent.demoCharacter()
+        let compact = SheetPDFExporter.export(demo, style: .compact)
+        let text = String(data: compact, encoding: .utf8) ?? ""
+        // Sections still labeled.
+        #expect(text.contains("(SKILLS"))
+        #expect(text.contains("(ATTACKS"))
+        #expect(text.contains("(FEATURES"))
+        // Two-column flow: content lands in the right-hand column.
+        // Column x origin = margin 40 + column width 254 + gutter 24 = 318.
+        #expect(text.contains("Tf 318 "))
+        // The attacks table suspends the columns and spans the full width:
+        // its "Bonus" column sits at x = margin 40 + 4 + 170 = 214.
+        #expect(text.contains("Tf 214 "))
+        // Ink-light stays true under the column machinery.
+        #expect(!text.contains(" rg"))
+        #expect(!text.contains(" re f"))
+    }
+
     @Test func validPDFStructure() throws {
         let data = SheetPDFExporter.export(aria())
         let text = String(decoding: data, as: UTF8.self)

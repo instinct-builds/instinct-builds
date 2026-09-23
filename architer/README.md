@@ -4,6 +4,20 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.21.0
+
+- Compact PDF flows in two columns: after the header, abilities, and
+  vitals, the line-based sections (skills, spells, features, inventory,
+  personality, notes, journal) set in two balanced 254pt columns with a
+  24pt gutter, spilling from the left column to the right and then to
+  the next page. Skills and inventory go single-file inside a column
+  instead of the old full-width two-up grid, so nothing collides across
+  the gutter.
+- Section keep-together: a compact section header never strands within
+  five lines of a column bottom - it starts the next column instead.
+- The attacks table still spans the full page width: the column flow
+  suspends for the table and resumes beneath it.
+
 ## What's in 2.20.0
 
 - Defenses on the dice path: the vitals damage field now doubles as dice
