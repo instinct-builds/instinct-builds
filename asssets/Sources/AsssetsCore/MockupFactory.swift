@@ -88,6 +88,31 @@ public struct Canvas {
         }
     }
 
+    /// Filled polygon with 4x4 supersampled edges; `color` gets the pixel's (u, v) within the bounding box.
+    public mutating func polygon(_ pts: [(Double, Double)], color: (Double, Double) -> RGBA) {
+        guard pts.count >= 3 else { return }
+        let xs = pts.map(\.0), ys = pts.map(\.1)
+        let minX = xs.min()!, maxX = xs.max()!, minY = ys.min()!, maxY = ys.max()!
+        let x0 = max(0, Int(minX)), x1 = min(width, Int(maxX) + 1), y0 = max(0, Int(minY)), y1 = min(height, Int(maxY) + 1)
+        guard x0 < x1, y0 < y1 else { return }
+        func inside(_ px: Double, _ py: Double) -> Bool {
+            var c = false, j = pts.count - 1
+            for i in 0..<pts.count {
+                let (xi, yi) = pts[i], (xj, yj) = pts[j]
+                if (yi > py) != (yj > py), px < (xj - xi) * (py - yi) / (yj - yi) + xi { c.toggle() }
+                j = i
+            }
+            return c
+        }
+        let bw = max(1, maxX - minX), bh = max(1, maxY - minY)
+        for y in y0..<y1 { for x in x0..<x1 {
+            var hits = 0
+            for sy in 0..<4 { for sx in 0..<4 where inside(Double(x) + (Double(sx) + 0.5) / 4, Double(y) + (Double(sy) + 0.5) / 4) { hits += 1 } }
+            guard hits > 0 else { continue }
+            over((y * width + x) * 4, color((Double(x) - minX) / bw, (Double(y) - minY) / bh), Float(hits) / 16)
+        } }
+    }
+
     /// Crops to the painted bounds and converts to a PSD layer.
     public func layer(_ name: String, opacity: UInt8 = 255, blend: String = "norm", hidden: Bool = false) -> PsdLayer {
         var minX = width, minY = height, maxX = -1, maxY = -1
@@ -101,7 +126,9 @@ public struct Canvas {
 }
 
 public enum MockupFactory {
-    public static let names = ["phone-screen-mockup.psd", "poster-frame-mockup.psd", "packaging-box-mockup.psd", "business-card-mockup.psd"]
+    public static let names = ["phone-screen-mockup.psd", "poster-frame-mockup.psd", "packaging-box-mockup.psd", "business-card-mockup.psd",
+                               "laptop-screen-mockup.psd", "tablet-desk-mockup.psd", "tote-bag-mockup.psd", "billboard-mockup.psd",
+                               "magazine-spread-mockup.psd", "coffee-cup-mockup.psd"]
 
     public static func make(_ name: String, width W: Int = 1600, height H: Int = 1200) -> PsdDocument? {
         let w = Double(W), h = Double(H)
@@ -200,6 +227,121 @@ public enum MockupFactory {
             front.ellipse(cx: w * 0.4 + 90, cy: h * 0.44 + 90, rx: 44, ry: 44, Canvas.hex("#101114"))
             for (i, bw2) in [0.42, 0.3, 0.36].enumerated() { front.rect(x: w * 0.4 + 60, y: h * 0.44 + ch * 0.55 + Double(i) * 30, w: cw * bw2, h: i == 0 ? 16 : 10, Canvas.hex("#2B2F36", i == 0 ? 1 : 0.55)) }
             layers.append(front.layer("Card Front (Smart Object)"))
+        case "laptop-screen-mockup.psd":
+            var bg = fresh(); bg.gradient(Canvas.hex("#20232E"), Canvas.hex("#0E0F14"), diagonal: true); layers.append(bg.layer("Backdrop"))
+            var studio = fresh(); studio.gradient(Canvas.hex("#E9EEF3"), Canvas.hex("#C3CCD6")); layers.append(studio.layer("Backdrop - Studio White", hidden: true))
+            let lw = w * 0.56, lh = lw * 0.62, lx = (w - lw) / 2, ly = h * 0.12
+            let baseY = ly + lh, bx0 = lx - w * 0.05, bx1 = lx + lw + w * 0.05
+            var floor = fresh(); floor.ellipse(cx: w / 2, cy: baseY + 46, rx: lw * 0.62, ry: 30, Canvas.hex("#000000", 0.9)); floor.blur(radius: 16)
+            layers.append(floor.layer("Floor Shadow", opacity: 190, blend: "mul "))
+            var lid = fresh(); lid.roundedRect(x: lx, y: ly, w: lw, h: lh, radius: 18) { _, _ in (0.13, 0.13, 0.15, 1) }
+            lid.roundedRect(x: lx + 14, y: ly + 14, w: lw - 28, h: lh - 24, radius: 8) { _, _ in (0.01, 0.01, 0.02, 1) }
+            layers.append(lid.layer("Display Lid"))
+            var screen = fresh(); design(&screen, x: lx + 24, y: ly + 24, cw: lw - 48, ch: lh - 44, radius: 4, a: "#0F4C75", b: "#3282B8", dots: ["#BBE1FA", "#FF7B54", "#FFD56F", "#FFFFFF"])
+            layers.append(screen.layer("Screen Design (Smart Object)"))
+            var base = fresh()
+            base.polygon([(lx - 6, baseY - 2), (lx + lw + 6, baseY - 2), (bx1, baseY + 26), (bx0, baseY + 26)]) { _, v in
+                let t = Float(0.72 - v * 0.3)
+                return (t, t, t * 1.03, 1)
+            }
+            base.roundedRect(x: w / 2 - lw * 0.1, y: baseY - 2, w: lw * 0.2, h: 8, radius: 4) { _, _ in (0.5, 0.5, 0.53, 1) }
+            layers.append(base.layer("Keyboard Deck"))
+            var glare = fresh(); glare.polygon([(lx + 24, ly + 24), (lx + lw * 0.55, ly + 24), (lx + lw * 0.3, ly + lh - 20), (lx + 24, ly + lh - 20)]) { u, _ in (1, 1, 1, Float(0.16 * (1 - u))) }
+            layers.append(glare.layer("Screen Reflection", opacity: 170, blend: "scrn"))
+        case "tablet-desk-mockup.psd":
+            var desk = fresh(); desk.gradient(Canvas.hex("#C9A27E"), Canvas.hex("#8E6B4E"), diagonal: true); layers.append(desk.layer("Walnut Desk"))
+            var slate = fresh(); slate.gradient(Canvas.hex("#3A3F4A"), Canvas.hex("#1E2128"), diagonal: true); layers.append(slate.layer("Desk - Slate", hidden: true))
+            let tw = w * 0.5, th = tw * 0.72, tx = (w - tw) / 2 - w * 0.04, ty = (h - th) / 2
+            layers.append(shadow(tx + 22, ty + 30, tw, th, radius: 40, blur: 24, alpha: 0.75).layer("Tablet Shadow", opacity: 175, blend: "mul "))
+            var body = fresh(); body.roundedRect(x: tx, y: ty, w: tw, h: th, radius: 40) { _, _ in (0.09, 0.09, 0.1, 1) }
+            layers.append(body.layer("Tablet Body"))
+            var screen = fresh(); design(&screen, x: tx + 26, y: ty + 26, cw: tw - 52, ch: th - 52, radius: 18, a: "#FF9A8B", b: "#6A0572", dots: ["#FFE66D", "#FFFFFF", "#4ECDC4", "#FF6B6B"])
+            layers.append(screen.layer("Screen Design (Smart Object)"))
+            var pencil = fresh(); pencil.roundedRect(x: tx + tw + 50, y: ty + 20, w: 22, h: th * 0.8, radius: 11) { _, v in v > 0.94 ? (0.2, 0.2, 0.22, 1) : (0.95, 0.95, 0.96, 1) }
+            layers.append(pencil.layer("Stylus"))
+            var sun = fresh(); sun.polygon([(0, 0), (w * 0.55, 0), (w * 0.2, h), (0, h)]) { u, _ in (1, 0.95, 0.85, Float(0.22 * (1 - u))) }
+            layers.append(sun.layer("Window Light", opacity: 160, blend: "scrn"))
+        case "tote-bag-mockup.psd":
+            var bg = fresh(); bg.gradient(Canvas.hex("#E6D5C3"), Canvas.hex("#CDB49A")); layers.append(bg.layer("Backdrop"))
+            var sage = fresh(); sage.gradient(Canvas.hex("#B7C4B0"), Canvas.hex("#8FA388")); layers.append(sage.layer("Backdrop - Sage", hidden: true))
+            let bw = w * 0.36, bh = bw * 1.05, bx = (w - bw) / 2, by = h * 0.3
+            var straps = fresh()
+            for sx in [bx + bw * 0.2, bx + bw * 0.58] {
+                // Each strap is an arch: outer half-ellipse minus the inner one, as a single ring polygon.
+                let cx = sx + bw * 0.11, top = by + bh * 0.05, ro = bw * 0.11, ri = bw * 0.11 * 0.68, rise = h * 0.2, band = bw * 0.035
+                var ring: [(Double, Double)] = []
+                for k in 0...24 { let a = Double.pi * Double(k) / 24; ring.append((cx - cos(a) * ro, top - sin(a) * rise)) }
+                for k in stride(from: 24, through: 0, by: -1) { let a = Double.pi * Double(k) / 24; ring.append((cx - cos(a) * ri, top - sin(a) * (rise - band))) }
+                straps.polygon(ring) { u, _ in (0.74 - Float(u) * 0.06, 0.68 - Float(u) * 0.06, 0.58 - Float(u) * 0.05, 1) }
+            }
+            layers.append(straps.layer("Straps"))
+            layers.append(shadow(bx + 14, by + 22, bw, bh, radius: 10, blur: 22, alpha: 0.6).layer("Bag Shadow", opacity: 150, blend: "mul "))
+            let canvasTone = TileNoise(seed: 42)
+            var bag = fresh(); bag.roundedRect(x: bx, y: by, w: bw, h: bh, radius: 10) { u, v in
+                let t = 0.9 + (canvasTone.value(u, v, period: 180) - 0.5) * 0.06
+                return (t, t * 0.96, t * 0.88, 1)
+            }
+            layers.append(bag.layer("Canvas Bag"))
+            var print = fresh(); design(&print, x: bx + bw * 0.18, y: by + bh * 0.2, cw: bw * 0.64, ch: bw * 0.64, radius: bw * 0.32, a: "#E63946", b: "#1D3557", dots: ["#F1FAEE", "#A8DADC", "#FFB703", "#FFFFFF"])
+            layers.append(print.layer("Print Artwork (Smart Object)", opacity: 235, blend: "mul "))
+            var folds = fresh(); folds.polygon([(bx + bw * 0.4, by), (bx + bw * 0.48, by), (bx + bw * 0.44, by + bh), (bx + bw * 0.34, by + bh)]) { _, _ in (0, 0, 0, 0.12) }
+            folds.blur(radius: 12)
+            layers.append(folds.layer("Fabric Folds", opacity: 200, blend: "mul "))
+        case "billboard-mockup.psd":
+            var sky = fresh(); sky.gradient(Canvas.hex("#FFB88C"), Canvas.hex("#6A82FB")); layers.append(sky.layer("Sunset Sky"))
+            var night = fresh(); night.gradient(Canvas.hex("#0B1026"), Canvas.hex("#2B3A67")); layers.append(night.layer("Sky - Night", hidden: true))
+            var city = fresh(); var cxp = 0.0; var bi = 0
+            let skyline = TileNoise(seed: 9)
+            while cxp < w { let bw2 = 60 + Double(skyline.hash(bi, 1)) * 120, bh2 = h * (0.12 + Double(skyline.hash(bi, 2)) * 0.22); city.rect(x: cxp, y: h - bh2, w: bw2 - 6, h: bh2, Canvas.hex("#1B1F3B")); cxp += bw2; bi += 1 }
+            layers.append(city.layer("City Skyline"))
+            let bw = w * 0.62, bh = bw * 0.42, bx = (w - bw) / 2, by = h * 0.14
+            var pole = fresh(); pole.rect(x: w / 2 - 22, y: by + bh, w: 44, h: h - by - bh, Canvas.hex("#2A2D34")); pole.rect(x: bx + 30, y: by + bh + 10, w: bw - 60, h: 10, Canvas.hex("#3A3D44"))
+            layers.append(pole.layer("Pole + Catwalk"))
+            var frame = fresh(); frame.rect(x: bx - 14, y: by - 14, w: bw + 28, h: bh + 28, Canvas.hex("#23262D")); layers.append(frame.layer("Board Frame"))
+            var art = fresh(); design(&art, x: bx, y: by, cw: bw, ch: bh, radius: 0, a: "#F72585", b: "#3A0CA3", dots: ["#4CC9F0", "#FFFFFF", "#F8961E", "#90BE6D"])
+            layers.append(art.layer("Billboard Art (Smart Object)"))
+            var lamps = fresh()
+            for k in 0..<4 { let lx = bx + bw * (0.15 + Double(k) * 0.23); lamps.polygon([(lx - 8, by - 20), (lx + 8, by - 20), (lx + 90, by + bh * 0.9), (lx - 90, by + bh * 0.9)]) { _, v in (1, 0.95, 0.8, Float(0.28 * (1 - v))) } }
+            layers.append(lamps.layer("Flood Lights", opacity: 150, blend: "scrn", hidden: true))
+        case "magazine-spread-mockup.psd":
+            var desk = fresh(); desk.gradient(Canvas.hex("#DCD6CE"), Canvas.hex("#B9B1A6"), diagonal: true); layers.append(desk.layer("Desk"))
+            var ink = fresh(); ink.gradient(Canvas.hex("#1F2A36"), Canvas.hex("#0F151C"), diagonal: true); layers.append(ink.layer("Desk - Ink", hidden: true))
+            let pw = w * 0.34, ph = pw * 1.3, px = w / 2 - pw, py = (h - ph) / 2
+            layers.append(shadow(px + 16, py + 26, pw * 2, ph, radius: 6, blur: 22, alpha: 0.7).layer("Spread Shadow", opacity: 165, blend: "mul "))
+            var pages = fresh(); pages.rect(x: px, y: py, w: pw * 2, h: ph, Canvas.hex("#FAF8F4")); layers.append(pages.layer("Paper"))
+            var left = fresh(); design(&left, x: px, y: py, cw: pw, ch: ph, radius: 0, a: "#2B2D42", b: "#8D99AE", dots: ["#EF233C", "#EDF2F4", "#FFB4A2", "#FFFFFF"])
+            layers.append(left.layer("Left Page Photo (Smart Object)"))
+            var right = fresh()
+            right.rect(x: w / 2 + pw * 0.12, y: py + ph * 0.1, w: pw * 0.7, h: 34, Canvas.hex("#1B1B1E"))
+            right.rect(x: w / 2 + pw * 0.12, y: py + ph * 0.1 + 50, w: pw * 0.45, h: 18, Canvas.hex("#EF233C"))
+            for line in 0..<18 { right.rect(x: w / 2 + pw * 0.12, y: py + ph * 0.24 + Double(line) * 28, w: pw * (line % 6 == 5 ? 0.4 : 0.76), h: 9, Canvas.hex("#3D3D44", 0.7)) }
+            layers.append(right.layer("Right Page Layout (Smart Object)"))
+            var gutter = fresh(); gutter.roundedRect(x: w / 2 - 50, y: py, w: 100, h: ph, radius: 0) { u, _ in (0.1, 0.08, 0.06, Float(0.45 * pow(1 - abs(u - 0.5) * 2, 2))) }
+            layers.append(gutter.layer("Gutter Shade", opacity: 170, blend: "mul "))
+        case "coffee-cup-mockup.psd":
+            var bg = fresh(); bg.gradient(Canvas.hex("#F3E9DC"), Canvas.hex("#D8C3A5")); layers.append(bg.layer("Backdrop"))
+            var moss = fresh(); moss.gradient(Canvas.hex("#3E4A3D"), Canvas.hex("#222A22")); layers.append(moss.layer("Backdrop - Moss", hidden: true))
+            let cw = w * 0.24, ch = cw * 1.45, cx = (w - cw) / 2, cy = h * 0.2
+            var floor = fresh(); floor.ellipse(cx: w / 2 + 20, cy: cy + ch + 10, rx: cw * 0.75, ry: 34, Canvas.hex("#000000", 0.85)); floor.blur(radius: 16)
+            layers.append(floor.layer("Contact Shadow", opacity: 180, blend: "mul "))
+            var cup = fresh(); cup.polygon([(cx, cy), (cx + cw, cy), (cx + cw * 0.9, cy + ch), (cx + cw * 0.1, cy + ch)]) { u, _ in
+                let t = Float(0.97 - pow(abs(u - 0.4) * 1.6, 2) * 0.25)
+                return (t, t * 0.98, t * 0.95, 1)
+            }
+            layers.append(cup.layer("Paper Cup"))
+            var sleeve = fresh(); sleeve.polygon([(cx + cw * 0.03, cy + ch * 0.32), (cx + cw * 0.97, cy + ch * 0.32), (cx + cw * 0.93, cy + ch * 0.7), (cx + cw * 0.07, cy + ch * 0.7)]) { u, v in
+                let a = Canvas.hex("#6D597A"), b = Canvas.hex("#E56B6F")
+                let t = Float((u + v) / 2)
+                return (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t, 1)
+            }
+            sleeve.ellipse(cx: cx + cw / 2, cy: cy + ch * 0.51, rx: cw * 0.16, ry: cw * 0.16, Canvas.hex("#FFFFFF", 0.9))
+            layers.append(sleeve.layer("Sleeve Design (Smart Object)"))
+            var lid = fresh(); lid.roundedRect(x: cx - 12, y: cy - 36, w: cw + 24, h: 44, radius: 14) { _, v in (0.18 + Float(v) * 0.05, 0.16, 0.15, 1) }
+            layers.append(lid.layer("Lid"))
+            var shade = fresh(); shade.polygon([(cx + cw * 0.62, cy), (cx + cw, cy), (cx + cw * 0.9, cy + ch), (cx + cw * 0.56, cy + ch)]) { u, _ in (0.1, 0.08, 0.06, Float(0.35 * u)) }
+            layers.append(shade.layer("Cylinder Shade", opacity: 190, blend: "mul "))
+            var steam = fresh(); steam.ellipse(cx: w / 2 - 20, cy: cy - 120, rx: 30, ry: 70, Canvas.hex("#FFFFFF", 0.5)); steam.ellipse(cx: w / 2 + 25, cy: cy - 190, rx: 24, ry: 60, Canvas.hex("#FFFFFF", 0.4)); steam.blur(radius: 18)
+            layers.append(steam.layer("Steam", opacity: 170, blend: "scrn"))
         default: return nil
         }
         return PsdDocument(width: W, height: H, layers: layers)

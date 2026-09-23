@@ -129,3 +129,22 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   blend mode and opacity per layer, a live composite in the preview, and
   PNG export that honors the toggles. The file on disk is never changed.
   PSD cards get a PSD badge and real "PSD - W x H - N layers" metadata.
+
+## 0.7.0: bigger bundled library
+
+- 26 more original files, drawn from code at build time by `asssets-mockgen`
+  and shipped inside the DMG (57 real starter files, 129 assets in total):
+  - 6 more layered PSD mockups: laptop screen, tablet on a desk, tote bag,
+    billboard, magazine spread and coffee cup. Each has a smart-object
+    layer, shadows, lighting and a hidden alternate backdrop.
+  - `LibraryFactory.swift`: 8 seamless 2048 px textures (terrazzo, brushed
+    metal, marble, halftone, woven linen, topo lines, watercolor, cork) and
+    12 editorial vectors (Bauhaus grids, contour landscapes).
+  - `scripts/recompress_png.py` re-deflates the generated PNGs as RGB with
+    the Python standard library, since the core PNG writer stores data.
+- The Layers panel now sits at the top of the inspector with tighter rows,
+  so all of a mockup's layers show without scrolling.
+- PSD color swatches come from the actual composite rather than the
+  collection default. 0.6.0 installs are updated on first launch.
+- The "Favorite Motion & Sound" smart collection is now "Favorite Clips",
+  so it fits in the sidebar. A collection the user edited keeps its name.

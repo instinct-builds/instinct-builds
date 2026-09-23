@@ -105,12 +105,17 @@ extension StudioCatalog {
         ("Warm Palettes", SmartRules(tone: .warm), "sun.max"),
         ("Cool Palettes", SmartRules(tone: .cool), "snowflake"),
         ("Real Files", SmartRules(requiredTags: ["bundled"]), "doc.richtext"),
-        ("Favorite Motion & Sound", SmartRules(kinds: [.video, .audio], favoritesOnly: true), "play.rectangle"),
+        ("Favorite Clips", SmartRules(kinds: [.video, .audio], favoritesOnly: true), "play.rectangle"),
     ]
 
     /// Adds the starter smart collections once; deleting one keeps it deleted.
     @discardableResult
     public mutating func seedSmartCollections() -> Int {
+        // 0.5/0.6 named this "Favorite Motion & Sound", which truncated in the sidebar. Rename it only if untouched.
+        if let i = smartCollections.firstIndex(where: { $0.name == "Favorite Motion & Sound" && $0.rules == SmartRules(kinds: [.video, .audio], favoritesOnly: true) }),
+           !smartCollections.contains(where: { $0.name == "Favorite Clips" }) {
+            smartCollections[i].name = "Favorite Clips"
+        }
         guard !smartSeeded else { return 0 }
         smartSeeded = true
         var n = 0

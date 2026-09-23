@@ -108,6 +108,12 @@ public struct PsdDocument: Equatable, Sendable {
 }
 
 public enum PsdLayers {
+    /// Dominant colors of the default composite, sampled from a small thumbnail.
+    public static func palette(of doc: PsdDocument, count: Int = 4) -> [String] {
+        let thumb = Thumbnailer.thumbnail(from: doc.composite(toggled: []), maxDim: 160)
+        return PaletteExtractor.colors(from: thumb, count: count).map(\.hex)
+    }
+
     public enum ReadError: Error, Equatable { case notPsd, unsupported(String), truncated }
 
     struct Reader {

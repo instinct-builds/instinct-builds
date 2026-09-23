@@ -148,9 +148,14 @@ final class StudioLibrary: ObservableObject {
                     c.assets[i].resolution = "SVG • \(Int(scene.width)) × \(Int(scene.height))"
                 }
             case "psd":
-                if !c.assets[i].resolution.hasPrefix("PSD"), let data = try? Data(contentsOf: url), let doc = try? PsdLayers.read(data) {
+                // Read once: on first install, or when the palette is still the collection default (0.6.0 installs).
+                let defaultPalette = StarterCatalog.describe(filename: url.lastPathComponent)?.palette
+                if !c.assets[i].resolution.hasPrefix("PSD") || c.assets[i].palette == defaultPalette,
+                   let data = try? Data(contentsOf: url), let doc = try? PsdLayers.read(data) {
                     c.assets[i].resolution = "PSD • \(doc.width) × \(doc.height) • \(doc.panelLayers.count) layers"
                     if !c.assets[i].tags.contains("layered") { c.assets[i].tags.append("layered") }
+                    let colors = PsdLayers.palette(of: doc)
+                    if colors.count >= 3 { c.assets[i].palette = colors }
                 }
             case "wav":
                 if let data = try? Data(contentsOf: url), let s = AsssetsCore.Waveform.summarize(wav: data, buckets: 8) {
@@ -984,6 +989,7 @@ struct Inspector: View {
                 Divider().overlay(Theme.hairline).padding(.top, 10)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
                         InspectorLabel(text: "COLOR PALETTE")
                         HStack(spacing: 5) {
                             ForEach(Array(asset.palette.prefix(5).enumerated()), id: \.offset) { _, hex in
@@ -994,7 +1000,6 @@ struct Inspector: View {
                                 .onTapGesture { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(hex, forType: .string); model.flash("Copied \(hex)") }
                             }
                         }
-                        if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
                         let smarts = model.catalog.smartCollections.filter { $0.rules.matches(asset) }
                         if !smarts.isEmpty {
                             InspectorLabel(text: "IN SMART COLLECTIONS")
@@ -1079,7 +1084,7 @@ struct PsdLayersPanel: View {
                             Text(L.blendKey == "norm" && L.opacity == 255 ? "" : "\(L.blendName) \(Int((Double(L.opacity) / 255 * 100).rounded()))%")
                                 .font(.system(size: 9.5).monospacedDigit()).foregroundStyle(.tertiary).lineLimit(1)
                         }
-                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(visible ? Color.white.opacity(0.035) : Color.clear)
                         .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
                     }

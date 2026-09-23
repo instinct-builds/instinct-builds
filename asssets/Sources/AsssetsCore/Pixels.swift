@@ -404,11 +404,16 @@ public enum PNGEncoder {
             raw.append(0) // filter: none
             raw.append(contentsOf: img.rgba[(y * rowBytes)..<((y + 1) * rowBytes)])
         }
+        return encodeRaw(width: img.width, height: img.height, filtered: raw)
+    }
+
+    /// Wraps already-filtered scanlines (one filter byte per row) in a PNG.
+    static func encodeRaw(width: Int, height: Int, filtered raw: [UInt8]) -> Data {
         var out = Data()
         out.append(contentsOf: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
         var ihdr: [UInt8] = []
-        ihdr.appendBE(UInt32(img.width))
-        ihdr.appendBE(UInt32(img.height))
+        ihdr.appendBE(UInt32(width))
+        ihdr.appendBE(UInt32(height))
         ihdr.append(contentsOf: [8, 6, 0, 0, 0])
         appendChunk(&out, "IHDR", ihdr)
         appendChunk(&out, "IDAT", Zlib.deflateStored(raw))
