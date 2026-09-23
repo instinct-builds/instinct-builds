@@ -17,20 +17,40 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let lastSelectedKey = "architer.lastSelectedCharacterID"
-    /// Free-roller damage-type selection (Dice tab), persisted across
+    /// Free-roller damage-type selection (Dice tab), remembered per
+    /// character; characters without a choice fall back to the table-wide
+    /// selection kept when no character is selected. Persisted across
     /// launches like the session restore above. nil means untyped rolls.
-    @Published public var freeRollerDamageType: DamageType? =
-        UserDefaults.standard.string(forKey: AppModel.freeRollerTypeKey)
-            .flatMap(DamageType.init(rawValue:)) {
-        didSet {
-            if let type = freeRollerDamageType {
-                UserDefaults.standard.set(type.rawValue, forKey: AppModel.freeRollerTypeKey)
+    public var freeRollerDamageType: DamageType? {
+        get {
+            ArchiterCore.resolveFreeRollerType(
+                map: freeRollerTypeMap, characterID: selectedID?.uuidString,
+                tableDefault: tableFreeRollerDamageType)
+        }
+        set {
+            if let id = selectedID {
+                freeRollerTypeMap = ArchiterCore.storingFreeRollerType(
+                    newValue, in: freeRollerTypeMap, characterID: id.uuidString)
+                UserDefaults.standard.set(freeRollerTypeMap, forKey: AppModel.freeRollerTypesByCharacterKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: AppModel.freeRollerTypeKey)
+                tableFreeRollerDamageType = newValue
+                if let type = newValue {
+                    UserDefaults.standard.set(type.rawValue, forKey: AppModel.freeRollerTypeKey)
+                } else {
+                    UserDefaults.standard.removeObject(forKey: AppModel.freeRollerTypeKey)
+                }
             }
         }
     }
+    /// Table-wide fallback (the 2.30.0 key) used with no character selected
+    /// and inherited by characters with no stored choice of their own.
+    @Published private var tableFreeRollerDamageType: DamageType? =
+        UserDefaults.standard.string(forKey: AppModel.freeRollerTypeKey)
+            .flatMap(DamageType.init(rawValue:))
+    @Published private var freeRollerTypeMap: [String: String] =
+        (UserDefaults.standard.dictionary(forKey: AppModel.freeRollerTypesByCharacterKey) as? [String: String]) ?? [:]
     private static let freeRollerTypeKey = "architer.freeRollerDamageType"
+    private static let freeRollerTypesByCharacterKey = "architer.freeRollerDamageTypesByCharacter"
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
     @Published public var showCompendium = false

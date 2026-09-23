@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.33.0
+
+- Per-character free-roller type memory: the Dice tab damage-type picker
+  now remembers a choice per character - Wren's free rolls stay typed
+  fire while Bruk's stay untyped. Characters with no choice yet inherit
+  the table-wide selection made with no character selected (the 2.30.0
+  behavior), and choosing "No type" for a character is an explicit
+  opt-out that beats a typed table default.
+
 ## What's in 2.32.0
 
 - Roll history export: a Copy button on the Dice tab History row copies

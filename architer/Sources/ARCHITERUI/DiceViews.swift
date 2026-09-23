@@ -70,7 +70,7 @@ public struct DiceRollerView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 110)
-                .help("Damage type: typed rolls note what they deal against resistance, immunity, and vulnerability")
+                .help("Damage type: typed rolls note what they deal against resistance, immunity, and vulnerability. Remembered per character (or for the table when none is selected).")
                 Text("d20 · 2d6+3 · 4d6kh3 · 4d6dl1 · 1d8+1d4+2")
                     .font(.caption).foregroundStyle(.secondary)
             }

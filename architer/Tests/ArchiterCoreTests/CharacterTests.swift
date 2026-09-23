@@ -787,6 +787,23 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func freeRollerTypeMemoryResolvesPerCharacter() throws {
+        // Missing entry falls back to the table-wide selection.
+        #expect(resolveFreeRollerType(map: [:], characterID: "A", tableDefault: .fire) == .fire)
+        #expect(resolveFreeRollerType(map: [:], characterID: nil, tableDefault: .cold) == .cold)
+        // A stored type wins over the table default; "" is an explicit
+        // untyped choice that beats a typed table default.
+        let map = ["A": "lightning", "B": ""]
+        #expect(resolveFreeRollerType(map: map, characterID: "A", tableDefault: .fire) == .lightning)
+        #expect(resolveFreeRollerType(map: map, characterID: "B", tableDefault: .fire) == nil)
+        // Unknown stored strings (renamed cases) decode to nil, not a crash.
+        #expect(resolveFreeRollerType(map: ["C": "bogus"], characterID: "C", tableDefault: .fire) == nil)
+        // The write helper records types and the explicit-untyped sentinel.
+        let written = storingFreeRollerType(.acid, in: [:], characterID: "A")
+        #expect(written == ["A": "acid"])
+        #expect(storingFreeRollerType(nil, in: written, characterID: "A") == ["A": ""])
+    }
+
     @Test func damageTypeRawValuesStayStableForPersistence() throws {
         // The free-roller type picker persists rawValue strings in
         // user defaults; renaming a case would silently drop the saved

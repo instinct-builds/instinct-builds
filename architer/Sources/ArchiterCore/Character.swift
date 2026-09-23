@@ -15,6 +15,24 @@ public enum DamageType: String, Codable, CaseIterable, Sendable {
     public var displayName: String { rawValue.capitalized }
 }
 
+/// Per-character free-roller damage-type memory (2.33.0). The map stores
+/// characterID.uuidString -> rawValue, with "" as an explicit "untyped"
+/// choice (so a character can opt out while the table default is typed).
+/// A missing entry falls back to the table-wide selection.
+public func resolveFreeRollerType(map: [String: String], characterID: String?,
+                                  tableDefault: DamageType?) -> DamageType? {
+    guard let characterID, let stored = map[characterID] else { return tableDefault }
+    return stored.isEmpty ? nil : DamageType(rawValue: stored)
+}
+
+/// Returns the map with one character's choice recorded ("" = untyped).
+public func storingFreeRollerType(_ type: DamageType?, in map: [String: String],
+                                  characterID: String) -> [String: String] {
+    var map = map
+    map[characterID] = type?.rawValue ?? ""
+    return map
+}
+
 /// Genre-standard tabletop math (ability modifier, proficiency scaling). Game
 /// mechanics are functional rules, not copyrighted expression; all naming and
 /// text here is original.
