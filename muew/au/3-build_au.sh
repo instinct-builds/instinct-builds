@@ -14,7 +14,7 @@ clang++ -std=c++17 -O2 -bundle -arch arm64 -arch x86_64 \
   au/MUEWAU.cpp au/MUEWAUView.mm app/MUEWEditorView.mm \
   -framework AudioToolbox -framework CoreAudio -framework CoreMIDI -framework CoreFoundation \
   -framework AppKit -framework AudioUnit \
-  -o "$OUT/Contents/MacOS/MUEW"
+  -o "$OUT/Contents/MacOS/MUEW" 2>&1 | tee out/au_compile.log
 cp au/Info.plist "$OUT/Contents/Info.plist"
 echo "== Universal architecture check =="
 ARCHS=$(lipo -archs "$OUT/Contents/MacOS/MUEW")

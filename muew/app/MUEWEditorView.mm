@@ -220,7 +220,6 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 // Right: 12 source badges (2 x 6), preview, and the selected modulator's controls.
 - (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 6) * 25, i < 6 ? 216 : 198, 23, 15); }
 - (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
-- (int)modFieldCount;
 - (NSRect)modField:(int)j {
     int n = [self modFieldCount];
     CGFloat w = (148 - (n - 1) * 4) / (CGFloat)std::max(n, 1);

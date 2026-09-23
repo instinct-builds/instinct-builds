@@ -186,6 +186,14 @@ jobs:
             muew/out/auval.log
             muew/out/au_host_test.log
             muew/out/MUEW-AU-unsigned.zip
+      - name: Upload MUEW diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: muew-0.8.0-diagnostics
+          path: |
+            muew/out/*.log
+          if-no-files-found: ignore
       - name: Upload AU artifact
         uses: actions/upload-artifact@v4
         with:
