@@ -493,3 +493,24 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Logic and tests: `XmpMetadata.swift` and `XmpMetadataTests.swift`
   (Lightroom sidecar, JPEG with XMP and IPTC, PNG iTXt, round-trip,
   write-back that keeps other settings, rename and merge).
+
+## 1.14.0: batch rename and folder-structure export
+
+- Batch Rename (⌥⌘R, File menu, or Rename in the selection bar) retitles
+  the selected assets from a pattern. Tokens: `{title}`, `{collection}`,
+  `{kind}`, `{date}`, `{rating}`, `{label}`, `{n}` (two digits) and
+  `{n:000}` (pad to as many digits as zeros), with a start number. A live
+  list shows each new title next to the old one and flags titles that
+  would repeat. It is one undo step (⌘Z). Only titles in ASSSETS change;
+  files on disk keep their names, and exports and sidecars pick up the
+  new titles.
+- Export with Presets has a FOLDERS pattern, for example
+  `{collection}/{label}` or `{rating}`. Each file goes into its own
+  subfolder inside the folder you pick. Empty means flat, as before. Name
+  clashes are handled per subfolder, and a pattern can never write outside
+  the chosen folder (`..`, `.` and slashes inside names are removed). The
+  file-name pattern also accepts the new tokens. Both are remembered.
+- The label name next to the stars in the inspector stays on one line.
+  When the inspector is too narrow it hides instead of wrapping one
+  letter per line.
+- Logic and tests: `BatchRename.swift` and `BatchRenameTests.swift`.

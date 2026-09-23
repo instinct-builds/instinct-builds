@@ -31,6 +31,7 @@ struct ASSSETSApp: App {
                 Button("Cull Current View") { library.openCull() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(!library.canCull)
                 Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Batch Rename…") { library.openBatchRename() }.keyboardShortcut("r", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
                 Divider()
                 Button("Stack as Versions") { library.stackSelection() }.keyboardShortcut("g", modifiers: [.command]).disabled(!library.canStack)
                 Button("Unstack") { library.unstackSelection() }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(!library.canUnstack)
@@ -145,6 +146,8 @@ final class StudioLibrary: ObservableObject {
         var presets: Set<ExportPreset> = [.web, .social]
         var crop: CropMode = .detail
         var pattern = FilenamePattern.defaultPattern
+        /// Subfolders inside the export folder, e.g. "{collection}/{label}". Empty exports flat (1.14). Remembered.
+        var folders = UserDefaults.standard.string(forKey: "exportFolderPattern") ?? ""
         /// Write title, tags, rating and label into the exported JPEG and TIFF copies (1.13). Remembered.
         var embedMetadata = UserDefaults.standard.bool(forKey: "exportEmbedMetadata")
     }
@@ -172,6 +175,7 @@ final class StudioLibrary: ObservableObject {
         guard let dir else { return }
         presetExport = nil
         UserDefaults.standard.set(st.embedMetadata, forKey: "exportEmbedMetadata")
+        UserDefaults.standard.set(st.folders, forKey: "exportFolderPattern")
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = st.ids.compactMap { byID[$0] }
         let jobs = assets.map { a in (a, effect, intensity, psdToggled[a.id] ?? [], tiles(for: a), fixSeams.contains(a.id)) }
@@ -179,8 +183,10 @@ final class StudioLibrary: ObservableObject {
         let presets = ExportPreset.allCases.filter(st.presets.contains)
         presetExportRunning = true
         flash("Exporting \(assets.count) assets…")
+        let today = Date()
         Task.detached(priority: .userInitiated) {
-            var taken = Set((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+            // Names already used, per folder, so clashes get "Name 2.jpg" inside each subfolder like Finder.
+            var takenIn: [String: Set<String>] = [:]
             var written: [URL] = [], failed = 0
             for (n, job) in jobs.enumerated() {
                 let (a, fx, amt, psd, tiles, fix) = job
@@ -189,11 +195,15 @@ final class StudioLibrary: ObservableObject {
                 if st.crop == .detail, let small = MediaRenderer.pixelBuffer(from: img, maxPixel: 256) {
                     for p in presets { if let asp = p.cropAspect { focus[asp] = SmartCrop.detailWindow(small, sourceWidth: img.width, sourceHeight: img.height, aspect: asp) } }
                 }
+                let sub = FolderPattern.relativePath(st.folders, asset: a, date: today)
+                let folder = sub.isEmpty ? dir : dir.appendingPathComponent(sub, isDirectory: true)
+                if !sub.isEmpty { try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+                if takenIn[sub] == nil { takenIn[sub] = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []) }
                 for p in presets {
                     for o in p.outputs(width: img.width, height: img.height, crop: st.crop, focus: p.cropAspect.flatMap { focus[$0] }) {
-                        let name = DragOut.uniqueName(FilenamePattern.render(st.pattern, title: a.title, preset: p, output: o, index: n + 1, collection: a.collection), taken: taken)
-                        let url = dir.appendingPathComponent(name)
-                        if MediaRenderer.writePreset(img, output: o, to: url, metadata: metadata[a.id]) { taken.insert(name); written.append(url) } else { failed += 1 }
+                        let name = DragOut.uniqueName(FilenamePattern.render(st.pattern, asset: a, preset: p, output: o, index: n + 1, date: today), taken: takenIn[sub] ?? [])
+                        let url = folder.appendingPathComponent(name)
+                        if MediaRenderer.writePreset(img, output: o, to: url, metadata: metadata[a.id]) { takenIn[sub, default: []].insert(name); written.append(url) } else { failed += 1 }
                     }
                 }
             }
@@ -201,7 +211,10 @@ final class StudioLibrary: ObservableObject {
                 self.presetExportRunning = false
                 self.flash(failed == 0 ? "Exported \(written.count) files" : "Exported \(written.count) files, \(failed) failed")
                 if fixedDir == nil, !written.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(written) }
-                if fixedDir != nil { try? written.map(\.lastPathComponent).sorted().joined(separator: "\n").write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8) }
+                if fixedDir != nil {
+                    let rel = written.map { String($0.path.dropFirst(dir.path.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
+                    try? rel.sorted().joined(separator: "\n").write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
+                }
             }
         }
     }
@@ -621,6 +634,33 @@ final class StudioLibrary: ObservableObject {
         flash(merging ? "Merged \"\(old)\" into \"\(target)\" on \(n) assets" : "Renamed \"\(old)\" to \"\(target)\" on \(n) assets")
     }
 
+    // MARK: Batch rename (1.14)
+
+    struct BatchRenameState: Identifiable {
+        let id = UUID()
+        var ids: [UUID]
+        var pattern = UserDefaults.standard.string(forKey: "renamePattern") ?? RenamePattern.defaultPattern
+        var start = 1
+    }
+    @Published var batchRename: BatchRenameState?
+    func openBatchRename(_ ids: [UUID]? = nil) {
+        let list = ids ?? filtered.map(\.id).filter(selection.contains)
+        guard !list.isEmpty else { flash("Select assets to rename"); return }
+        batchRename = BatchRenameState(ids: list)
+    }
+    /// Titles only, one undo step. Files on disk keep their names; exports pick up the new titles.
+    func applyBatchRename(_ st: BatchRenameState) {
+        let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
+        let rows = RenamePattern.preview(st.pattern, assets: st.ids.compactMap { byID[$0] }, start: st.start)
+        UserDefaults.standard.set(st.pattern, forKey: "renamePattern")
+        batchRename = nil
+        var n = 0
+        let titles = Dictionary(uniqueKeysWithValues: rows.filter(\.changed).map { ($0.id, $0.new) })
+        guard !titles.isEmpty else { flash("Nothing to rename"); return }
+        mutate("Batch Rename") { n = $0.retitle(titles) }
+        flash("Renamed \(n) asset\(n == 1 ? "" : "s"). Undo with ⌘Z.")
+    }
+
     // MARK: Undo, sort and cull (1.12)
 
     @Published var history = UndoHistory()
@@ -648,7 +688,7 @@ final class StudioLibrary: ObservableObject {
     func setSort(_ sort: AssetSort) { let k = sortKey; mutate { $0.setSort(sort, for: k) } }
 
     @Published var cull: CullSession?
-    var canCull: Bool { !filtered.isEmpty && compare == nil && smartEditor == nil && sheetPreview == nil && presetExport == nil && duplicates == nil }
+    var canCull: Bool { !filtered.isEmpty && compare == nil && smartEditor == nil && sheetPreview == nil && presetExport == nil && batchRename == nil && duplicates == nil }
     func openCull() {
         guard canCull else { return }
         viewerID = nil
@@ -1578,6 +1618,37 @@ final class StudioLibrary: ObservableObject {
                 runPresetExport(st, to: out)
                 presetExport = keep
             }
+        case "batch-rename":
+            // Eight textures picked in the grid, renamed for a client hand-off.
+            show(collection: "Material Textures")
+            let ids = filtered.filter { $0.kind != .audio }.prefix(8).map(\.id)
+            selection = Set(ids); focusID = ids.first
+            openBatchRename(ids)
+            batchRename?.pattern = "Client X {n:000} - {title}"
+            batchRename?.start = 1
+        case "folder-export":
+            // Mockups and textures with mixed labels, exported into {collection}/{label} subfolders.
+            let pick = ["cosmetic-plinth-mockup.png", "device-stage-mockup.png", "album-gatefold-mockup.png", "terrazzo-texture.png", "marble-veins-texture.png", "cork-board-texture.png"]
+            let ids = pick.compactMap { f in catalog.assets.first(where: { $0.importedPath?.hasSuffix(f) == true })?.id }
+            let labels: [ColorLabel?] = [.green, .blue, .green, .red, nil, .red]
+            let want = Dictionary(uniqueKeysWithValues: zip(ids, labels))
+            mutate { c in for i in c.assets.indices { if let l = want[c.assets[i].id] { c.assets[i].label = l } } }
+            show(collection: StudioCatalog.allAssets)
+            selection = Set(ids); focusID = ids.first
+            openPresetExport(ids)
+            presetExport?.presets = [.web]
+            presetExport?.folders = "{collection}/{label}"
+            presetExport?.pattern = "{title}-{preset}"
+            presetExport?.embedMetadata = true
+            if var st = presetExport {
+                st.presets = [.web, .social]
+                let out = supportRoot.appendingPathComponent("demo-folder-export", isDirectory: true)
+                try? FileManager.default.removeItem(at: out)
+                try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+                let keep = presetExport
+                runPresetExport(st, to: out)
+                presetExport = keep
+            }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -1636,6 +1707,7 @@ struct StudioView: View {
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
         .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
         .sheet(item: $model.presetExport) { st in PresetExportSheet(state: st).environmentObject(model) }
+        .sheet(item: $model.batchRename) { st in BatchRenameSheet(state: st).environmentObject(model) }
         .sheet(isPresented: Binding(get: { model.duplicates != nil }, set: { if !$0 { model.duplicates = nil } })) {
             DuplicatesSheet().environmentObject(model)
         }
@@ -2206,7 +2278,13 @@ struct RatingLabelRow: View {
                 ForEach(ColorLabel.allCases) { l in LabelDot(label: l, on: asset.label == l, size: 12) { model.label([asset.id], l) } }
             }
             Spacer(minLength: 0)
-            if let l = asset.label { Text(l.name).font(.caption.weight(.semibold)).foregroundStyle(Color(hex: l.hex)) }
+            // One line or nothing: at narrow inspector widths the name hides instead of wrapping letter by letter (1.14).
+            if let l = asset.label {
+                ViewThatFits(in: .horizontal) {
+                    Text(l.name).font(.caption.weight(.semibold)).foregroundStyle(Color(hex: l.hex)).lineLimit(1).fixedSize()
+                    Color.clear.frame(width: 0, height: 0)
+                }
+            }
         }
     }
 }
@@ -2261,6 +2339,9 @@ struct SelectionBar: View {
                     if compact { Image(systemName: "square.stack.3d.up") } else { Label("Stack", systemImage: "square.stack.3d.up") }
                 }.menuStyle(.borderlessButton).fixedSize().help("Group versions under one card (⌘G) or split them (⇧⌘G)")
             }
+            Button { model.openBatchRename() } label: {
+                if compact { Image(systemName: "character.cursor.ibeam") } else { Label("Rename", systemImage: "character.cursor.ibeam").fixedSize() }
+            }.buttonStyle(.borderless).help("Batch rename titles with a pattern (⌥⌘R)")
             MoveMenu(ids: model.selection, compact: compact)
             Menu {
                 Button("As Shown…") { model.exportToFolder(model.selection, mode: .asShown) }
@@ -3303,6 +3384,112 @@ struct AssetViewer: View {
     }
 }
 
+/// Retitle a selection from a pattern, with a live before/after list. One undo step (1.14).
+struct BatchRenameSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State var state: StudioLibrary.BatchRenameState
+
+    static let examples = ["{collection} {n:000}", "{title} - {date}", "Client X {n:00} - {title}", "{kind} {n}"]
+
+    var body: some View {
+        let byID = Dictionary(uniqueKeysWithValues: model.catalog.assets.map { ($0.id, $0) })
+        let rows = RenamePattern.preview(state.pattern, assets: state.ids.compactMap { byID[$0] }, start: state.start)
+        let changes = rows.filter(\.changed).count, clashes = rows.filter(\.clash).count
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Batch Rename").font(.system(size: 20, weight: .bold))
+                Text("\(rows.count) \(rows.count == 1 ? "asset" : "assets") · \(changes) will change").font(.caption.monospaced()).foregroundStyle(.secondary)
+            }
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    InspectorLabel(text: "PATTERN")
+                    TextField(RenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
+                    InspectorLabel(text: "INSERT").padding(.top, 4)
+                    FlowChips(items: RenamePattern.tokens) { t in state.pattern += (state.pattern.hasSuffix(" ") || state.pattern.isEmpty ? "" : " ") + t }
+                    InspectorLabel(text: "EXAMPLES").padding(.top, 4)
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Self.examples, id: \.self) { ex in
+                            Button { state.pattern = ex } label: {
+                                Text(ex).font(.caption.monospaced()).frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 8).padding(.vertical, 5)
+                                    .background(state.pattern == ex ? Theme.accent.opacity(0.2) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                                    .contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    HStack {
+                        InspectorLabel(text: "START AT")
+                        Spacer()
+                        Stepper(value: $state.start, in: 0...99999) { Text("\(state.start)").font(.callout.monospaced()) }
+                    }.padding(.top, 4)
+                    Text("Changes titles in ASSSETS only. Your files keep their names on disk; exports and sidecars use the new titles.")
+                        .font(.caption).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+                }
+                .frame(width: 300)
+                VStack(alignment: .leading, spacing: 8) {
+                    InspectorLabel(text: "PREVIEW")
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(rows) { r in
+                                HStack(spacing: 10) {
+                                    if let a = byID[r.id] { Thumbnail(asset: a, pixels: 96).frame(width: 40, height: 30).clipShape(RoundedRectangle(cornerRadius: 4)) }
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(r.new).font(.callout.weight(.semibold)).foregroundStyle(r.changed ? Color.primary : Color.secondary).lineLimit(1).truncationMode(.middle)
+                                        Text(r.changed ? "was " + r.old : "unchanged").font(.caption).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+                                    }
+                                    Spacer(minLength: 4)
+                                    if r.clash { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning).help("Another asset in this batch gets the same title") }
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                Divider().opacity(0.4)
+                            }
+                        }
+                    }
+                    .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+                    if clashes > 0 {
+                        Label("\(clashes) titles repeat. Add {n} to keep them apart.", systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Theme.warning)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { model.batchRename = nil }.keyboardShortcut(.cancelAction)
+                Button(changes == 0 ? "Rename" : "Rename \(changes)") { model.applyBatchRename(state) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                    .disabled(changes == 0)
+            }
+        }
+        .padding(22)
+        .frame(width: 820, height: 580)
+        .background(Theme.panel)
+    }
+}
+
+/// Small token buttons that wrap onto new lines.
+struct FlowChips: View {
+    let items: [String]
+    var perRow = 3
+    var selected: String? = nil
+    let action: (String) -> Void
+    var body: some View {
+        let rows = stride(from: 0, to: items.count, by: perRow).map { Array(items[$0..<min($0 + perRow, items.count)]) }
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(rows, id: \.self) { row in
+                HStack(spacing: 5) {
+                    ForEach(row, id: \.self) { t in
+                        Button(t) { action(t) }.buttonStyle(.plain).font(.caption.monospaced())
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Theme.accent.opacity(selected == t ? 0.32 : 0.14), in: Capsule())
+                            .overlay(Capsule().stroke(Theme.accent.opacity(0.4)))
+                            .lineLimit(1).fixedSize()
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Pick presets, crop mode and a file-name pattern; shows the crops on the first asset before exporting.
 struct PresetExportSheet: View {
     @EnvironmentObject var model: StudioLibrary
@@ -3359,13 +3546,25 @@ struct PresetExportSheet: View {
                             Text("In the JPEG and TIFF copies. Originals are never changed.").font(.caption).foregroundStyle(.tertiary)
                         }
                     }.toggleStyle(.checkbox).padding(.top, 4)
-                    InspectorLabel(text: "FILE NAMES").padding(.top, 6)
-                    TextField(FilenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
-                    Text(FilenamePattern.tokens.joined(separator: "  ")).font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        InspectorLabel(text: "FILE NAMES").padding(.top, 6)
+                        TextField(FilenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
+                        Text(FilenamePattern.tokens.joined(separator: "  ")).font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        InspectorLabel(text: "FOLDERS").padding(.top, 6)
+                        TextField("Flat - everything in one folder", text: $state.folders).textFieldStyle(.roundedBorder).font(.callout.monospaced())
+                        FlowChips(items: FolderPattern.examples, perRow: 2, selected: state.folders) { state.folders = $0 }
+                    }
                     if let a = first, let p = ExportPreset.allCases.first(where: state.presets.contains) {
                         let o = p.outputs(width: base?.width ?? 2048, height: base?.height ?? 2048)[0]
-                        Text("e.g. " + FilenamePattern.render(state.pattern, title: a.title, preset: p, output: o, index: 1, collection: a.collection))
+                        let sub = FolderPattern.relativePath(state.folders, asset: a)
+                        Text("e.g. " + (sub.isEmpty ? "" : sub + "/") + FilenamePattern.render(state.pattern, asset: a, preset: p, output: o, index: 1))
                             .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        if !state.folders.trimmingCharacters(in: .whitespaces).isEmpty {
+                            let groups = Dictionary(grouping: assets) { FolderPattern.relativePath(state.folders, asset: $0) }
+                            Text("\(groups.count) \(groups.count == 1 ? "folder" : "folders"): " + groups.keys.sorted().prefix(4).joined(separator: ", ") + (groups.count > 4 ? ", …" : ""))
+                                .font(.caption).foregroundStyle(.tertiary).lineLimit(2)
+                        }
                     }
                 }
                 .frame(width: 330)
@@ -3391,7 +3590,7 @@ struct PresetExportSheet: View {
             }
         }
         .padding(22)
-        .frame(width: 820, height: 560)
+        .frame(width: 820, height: 660)
         .background(Theme.panel)
         .task(id: state.ids.first) { await load(first) }
     }

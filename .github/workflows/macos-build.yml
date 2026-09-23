@@ -158,6 +158,16 @@ jobs:
           S="$HOME/Pictures/Client Drops/DSC_0192.xmp"; cp "$S" "ASSSETS-$ASSSETS_VERSION-sidecar.xmp.txt"
           grep -q 'crs:Exposure2012="+0.35"' "$S" && grep -q '<xmp:Label>Blue</xmp:Label>' "$S" && grep -q 'round 2' "$S" && grep -q 'Marble Wall Study' "$S" || { echo "sidecar write-back lost data"; cat "$S"; exit 1; }
           echo "sidecar keeps develop settings and has the new label and tag"
+          shoot batch-rename 1920x1200 batch-rename
+          shoot folder-export 1920x1200 folder-export demo-folder-export/done.txt
+          FE="$SUP/demo-folder-export"
+          ( cd "$FE" && find . -type f ! -name done.txt | sort ) | tee "ASSSETS-$ASSSETS_VERSION-folder-export-tree.txt"
+          T="ASSSETS-$ASSSETS_VERSION-folder-export-tree.txt"
+          grep -q '^./Device Mockups/Green/' "$T" && grep -q '^./Device Mockups/Blue/' "$T" && grep -q '^./Material Textures/Red/' "$T" && grep -q '^./Material Textures/No Label/' "$T" || { echo "folder export tree is wrong"; exit 1; }
+          test "$(grep -c . "$T")" -ge 18
+          if find "$FE" -maxdepth 1 -type f -name '*.jpg' | grep -q .; then echo "files landed outside their subfolders"; exit 1; fi
+          J=$(find "$FE" -mindepth 3 -name '*.jpg' | head -1); grep -q "dc:subject" "$J" || { echo "no embedded XMP in $J"; exit 1; }
+          echo "folder export: $(grep -c . "$T") files in $(cut -d/ -f2-3 "$T" | sort -u | wc -l | tr -d ' ') folders, XMP embedded"
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
@@ -189,6 +199,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
 
   au:
     runs-on: macos-latest

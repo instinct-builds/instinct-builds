@@ -144,14 +144,22 @@ public enum SmartCrop {
 
 public enum FilenamePattern {
     public static let defaultPattern = "{title}-{preset}"
-    public static let tokens = ["{title}", "{preset}", "{w}", "{h}", "{n}", "{collection}"]
+    public static let tokens = ["{title}", "{preset}", "{w}", "{h}", "{n}", "{collection}", "{rating}", "{label}", "{date}"]
 
     /// Renders a name like "Terrazzo Texture-web@1x.jpg". Unknown text is kept; path characters are replaced.
     public static func render(_ pattern: String, title: String, preset: ExportPreset, output: ExportOutput, index: Int, collection: String) -> String {
-        var s = pattern.trimmingCharacters(in: .whitespaces).isEmpty ? defaultPattern : pattern
-        let values = ["{title}": title, "{preset}": preset.slug, "{w}": "\(output.width)", "{h}": "\(output.height)",
-                      "{n}": String(format: "%02d", index), "{collection}": collection]
-        for (k, v) in values { s = s.replacingOccurrences(of: k, with: v) }
-        return DragOut.safeName(s + output.suffix) + "." + output.format.ext
+        render(pattern, values: ["{title}": title, "{collection}": collection], preset: preset, output: output, index: index)
+    }
+
+    /// Same, with every asset token ({rating}, {label}, {kind}, {date}) available (1.14).
+    public static func render(_ pattern: String, asset: StudioAsset, preset: ExportPreset, output: ExportOutput, index: Int, date: Date = Date()) -> String {
+        render(pattern, values: PatternTokens.values(for: asset, date: date), preset: preset, output: output, index: index)
+    }
+
+    static func render(_ pattern: String, values base: [String: String], preset: ExportPreset, output: ExportOutput, index: Int) -> String {
+        let s = pattern.trimmingCharacters(in: .whitespaces).isEmpty ? defaultPattern : pattern
+        var values = base
+        values["{preset}"] = preset.slug; values["{w}"] = "\(output.width)"; values["{h}"] = "\(output.height)"
+        return DragOut.safeName(PatternTokens.expand(s, values: values, index: index) + output.suffix) + "." + output.format.ext
     }
 }
