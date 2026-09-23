@@ -2051,6 +2051,8 @@ struct PresentView: View {
                 .scaleEffect(CGFloat(f.scale), anchor: .topLeading)
                 .offset(x: f.x, y: f.y)
                 .animation(.spring(response: 0.5, dampingFraction: 0.86), value: idx)
+                // Pin the oversized board to the view's corner; without this the ZStack centers it and the fit drifts left.
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
@@ -2151,22 +2153,37 @@ struct BoardCanvas: View {
         model.boardZoom = max(0.25, min(1, min(zx, zy)))
     }
 
+    /// Full header when there's room; otherwise tighter spacing, no zoom steppers and an icon-only Export,
+    /// so the board name keeps its space next to the inspector (1.17 fix).
     private var header: some View {
-        HStack(spacing: 10) {
+        ViewThatFits(in: .horizontal) {
+            headerRow(compact: false)
+            headerRow(compact: true)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.panel)
+    }
+
+    private func headerRow(compact: Bool) -> some View {
+        HStack(spacing: compact ? 7 : 10) {
             Image(systemName: "rectangle.3.group").foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(board.name).font(.system(size: 15, weight: .bold)).lineLimit(1)
                 Text("\(board.items.count) item\(board.items.count == 1 ? "" : "s")").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            }.layoutPriority(1)
-            Spacer(minLength: 8)
+            }
+            .fixedSize(horizontal: !compact, vertical: false)
+            .layoutPriority(1)
+            Spacer(minLength: compact ? 4 : 8)
             Button { model.addNote() } label: { Image(systemName: "note.text.badge.plus") }.help("Add a note")
             Button { model.updateBoard(board.id, "Tidy Board") { $0.tidy() }; model.fitBoardRequest += 1 } label: { Image(systemName: "rectangle.grid.2x2") }.help("Tidy into rows")
             Toggle(isOn: Binding(get: { board.snap }, set: { v in model.updateBoard(board.id, v ? "Snap On" : "Snap Off") { $0.snap = v } })) { Image(systemName: "grid") }
                 .toggleStyle(.button).help("Snap to grid")
             HStack(spacing: 4) {
-                Button { autoFit = false; model.boardZoom = max(0.25, z / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
+                if !compact { Button { autoFit = false; model.boardZoom = max(0.25, z / 1.25) } label: { Image(systemName: "minus.magnifyingglass") } }
                 Button { autoFit = true; fit() } label: { Text("\(Int((z * 100).rounded()))%").font(.caption.monospacedDigit()).frame(minWidth: 34) }.help("Fit the board")
-                Button { autoFit = false; model.boardZoom = min(2, z * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
+                if !compact { Button { autoFit = false; model.boardZoom = min(2, z * 1.25) } label: { Image(systemName: "plus.magnifyingglass") } }
             }
             Button { model.startPresenting(board.id) } label: { Image(systemName: "play.fill").foregroundStyle(Theme.accent) }.help("Present the board full screen")
             Menu {
@@ -2174,11 +2191,10 @@ struct BoardCanvas: View {
                 Button("PDF…") { model.exportBoard(board.id, pdf: true) }
                 Divider()
                 Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
-            } label: { Label("Export", systemImage: "square.and.arrow.up") }.fixedSize().help("Export the board")
+            } label: {
+                if compact { Image(systemName: "square.and.arrow.up") } else { Label("Export", systemImage: "square.and.arrow.up") }
+            }.fixedSize().help("Export the board")
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(Theme.panel)
     }
 
     private var emptyHint: some View {
