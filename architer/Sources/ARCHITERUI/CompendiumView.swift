@@ -11,6 +11,8 @@ struct CompendiumView: View {
     @State private var query = ""
     @State private var levelFilter: Int? = nil
     @State private var favoritesOnly = false
+    @State private var schoolFilter: String? = nil
+    @State private var damageTypeFilter: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,6 +40,18 @@ struct CompendiumView: View {
                         ForEach(1...9, id: \.self) { Text("Lvl \($0)").tag(Int?.some($0)) }
                     }
                     .frame(width: 130)
+                    Picker("School", selection: $schoolFilter) {
+                        Text("All schools").tag(String?.none)
+                        ForEach(SpellLibrary.schools, id: \.self) { Text($0).tag(String?.some($0)) }
+                    }
+                    .frame(width: 150)
+                }
+                if tab == 1 {
+                    Picker("Damage", selection: $damageTypeFilter) {
+                        Text("All types").tag(String?.none)
+                        ForEach(EquipmentLibrary.weaponDamageTypes, id: \.self) { Text($0).tag(String?.some($0)) }
+                    }
+                    .frame(width: 140)
                 }
                 Button {
                     favoritesOnly.toggle()
@@ -67,7 +81,7 @@ struct CompendiumView: View {
     }
 
     @ViewBuilder private var spellsList: some View {
-        let matches = SpellLibrary.search(query, level: levelFilter)
+        let matches = SpellLibrary.search(query, level: levelFilter, school: schoolFilter)
             .filter { !favoritesOnly || model.favorites.contains(kind: .spell, name: $0.name) }
         if matches.isEmpty {
             Text("No library spell matches.")
@@ -113,7 +127,7 @@ struct CompendiumView: View {
     }
 
     @ViewBuilder private var weaponsList: some View {
-        ForEach(EquipmentLibrary.searchWeapons(query)
+        ForEach(EquipmentLibrary.searchWeapons(query, damageType: damageTypeFilter)
             .filter { !favoritesOnly || model.favorites.contains(kind: .weapon, name: $0.name) }) { w in
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {

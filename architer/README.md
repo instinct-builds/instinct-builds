@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.8.0
+
+- **Compendium filters**: spells filter by school alongside the level
+  picker; weapons filter by damage type. Filter options come from the
+  library itself, so they stay honest as content grows.
+
 ## What's in 1.7.0
 
 - **Character files**: export the selected character as a portable

@@ -72,10 +72,17 @@ public struct GearDef: Codable, Equatable, Sendable, Identifiable {
 public enum EquipmentLibrary {
 
     /// Case-insensitive weapon search across name, damage type, and
-    /// properties. Empty query returns everything.
-    public static func searchWeapons(_ query: String) -> [WeaponDef] {
+    /// Case-insensitive weapon search across name, damage type, and
+    /// properties. Empty query returns everything, damage-type-filtered if given.
+    /// Distinct weapon damage types in the library, sorted, for filter pickers.
+    public static var weaponDamageTypes: [String] {
+        Array(Set(weapons.map { $0.damageType }.filter { !$0.isEmpty })).sorted()
+    }
+
+    public static func searchWeapons(_ query: String, damageType: String? = nil) -> [WeaponDef] {
         weapons.filter {
-            query.isEmpty
+            if let damageType, $0.damageType != damageType { return false }
+            return query.isEmpty
                 || $0.name.localizedCaseInsensitiveContains(query)
                 || $0.damageType.localizedCaseInsensitiveContains(query)
                 || $0.properties.localizedCaseInsensitiveContains(query)

@@ -132,9 +132,15 @@ public enum SpellLibrary {
 
     /// Case-insensitive search across name, school, and original detail
     /// text. Empty query returns everything, level-filtered if given.
-    public static func search(_ query: String, level: Int? = nil) -> [Spell] {
+    /// Distinct schools in the library, sorted, for filter pickers.
+    public static var schools: [String] {
+        Array(Set(all.map { $0.school }.filter { !$0.isEmpty })).sorted()
+    }
+
+    public static func search(_ query: String, level: Int? = nil, school: String? = nil) -> [Spell] {
         all.filter { spell in
             if let level, spell.level != level { return false }
+            if let school, spell.school != school { return false }
             if query.isEmpty { return true }
             return spell.name.localizedCaseInsensitiveContains(query)
                 || spell.school.localizedCaseInsensitiveContains(query)

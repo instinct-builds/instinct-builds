@@ -398,6 +398,22 @@ struct CharacterTests {
         #expect(again.id != imported.id)
     }
 
+    @Test func compendiumFiltersNarrowResults() {
+        #expect(!SpellLibrary.schools.isEmpty)
+        let evocations = SpellLibrary.search("", school: "Evocation")
+        #expect(!evocations.isEmpty)
+        #expect(evocations.allSatisfy { $0.school == "Evocation" })
+        let cantripEvocations = SpellLibrary.search("", level: 0, school: "Evocation")
+        #expect(cantripEvocations.allSatisfy { $0.level == 0 && $0.school == "Evocation" })
+        #expect(cantripEvocations.count <= evocations.count)
+
+        #expect(!EquipmentLibrary.weaponDamageTypes.isEmpty)
+        let slashing = EquipmentLibrary.searchWeapons("", damageType: "slashing")
+        #expect(!slashing.isEmpty)
+        #expect(slashing.allSatisfy { $0.damageType == "slashing" })
+        #expect(EquipmentLibrary.searchWeapons("", damageType: "not-a-type").isEmpty)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",
