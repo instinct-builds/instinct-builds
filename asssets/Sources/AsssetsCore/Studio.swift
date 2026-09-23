@@ -134,8 +134,10 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var smartSeeded = false
     /// Folders ASSSETS watches for new files (1.2). New files land in the Inbox collection.
     public var watchFolders: [String] = []
+    /// Grid sort per collection or smart collection (1.12); missing means date added.
+    public var viewSorts: [String: AssetSort] = [:]
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -146,6 +148,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         smartCollections = try c.decodeIfPresent([StudioSmartCollection].self, forKey: .smartCollections) ?? []
         smartSeeded = try c.decodeIfPresent(Bool.self, forKey: .smartSeeded) ?? false
         watchFolders = try c.decodeIfPresent([String].self, forKey: .watchFolders) ?? []
+        viewSorts = ((try? c.decodeIfPresent([String: String].self, forKey: .viewSorts)) ?? [:]).compactMapValues(AssetSort.init(rawValue:))
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {

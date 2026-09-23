@@ -28,6 +28,7 @@ struct ASSSETSApp: App {
                 Button("Watch Folder…") { library.addWatchFolder() }.keyboardShortcut("i", modifiers: [.command, .shift])
                 Button("Find Duplicates…") { library.findDuplicates() }.keyboardShortcut("d", modifiers: [.command, .option])
                 Button("Compare Selection") { library.openCompare() }.keyboardShortcut("c", modifiers: [.command, .option]).disabled(!library.canCompare)
+                Button("Cull Current View") { library.openCull() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(!library.canCull)
                 Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Divider()
@@ -41,6 +42,10 @@ struct ASSSETSApp: App {
                     ForEach(ColorLabel.allCases) { l in Button(l.name + (l.key.map { "  (\($0))" } ?? "")) { library.label(library.selection, l) } }
                     Divider(); Button("No Label") { library.label(library.selection, nil) }
                 }.disabled(library.selection.isEmpty)
+            }
+            CommandGroup(replacing: .undoRedo) {
+                Button(library.history.undoLabel.map { "Undo \($0)" } ?? "Undo") { library.undo() }.keyboardShortcut("z")
+                Button(library.history.redoLabel.map { "Redo \($0)" } ?? "Redo") { library.redo() }.keyboardShortcut("z", modifiers: [.command, .shift])
             }
             CommandGroup(after: .pasteboard) {
                 Button("Select All Assets") { library.selectAllVisible() }.keyboardShortcut("a", modifiers: [.command, .option])
@@ -301,7 +306,7 @@ final class StudioLibrary: ObservableObject {
         compare = nil
         guard apply, !(s.keeps.isEmpty && s.rejects.isEmpty) else { return }
         let stars = keepRating
-        mutate { $0.applyPicks(s, keepRating: stars) }
+        mutate("Compare Pass") { $0.applyPicks(s, keepRating: stars) }
         flash(s.keeps.isEmpty ? "\(s.rejects.count) marked rejected" : "\(s.summary) · kept assets are in Picks")
         if !s.keeps.isEmpty { selection = Set(s.keeps); focusID = s.keeps.first }
     }
@@ -340,6 +345,22 @@ final class StudioLibrary: ObservableObject {
 
     private func handleKey(_ e: NSEvent) -> Bool {
         guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil, duplicates == nil, sheetPreview == nil, presetExport == nil else { return false }
+        if cull != nil {
+            if let ch = e.charactersIgnoringModifiers, ch.count == 1, let d = Int(ch), !e.modifierFlags.contains(.shift) {
+                if d <= 5 { cullRate(d) } else if let l = ColorLabel.forKey(d) { cullLabel(l) }
+                return true
+            }
+            switch e.keyCode {
+            case 7, 51: cullReject()                                                  // X, Delete
+            case 124, 125, 49: cull?.step(by: 1)                                       // → ↓ Space
+            case 123, 126: cull?.step(by: -1)                                          // ← ↑
+            case 0: cull?.autoAdvance.toggle(); flash(cull?.autoAdvance == true ? "Auto-advance on" : "Auto-advance off")  // A
+            case 32: cullNextUndecided()                                               // U
+            case 53, 36, 76: closeCull()                                               // Esc, Return
+            default: break
+            }
+            return true
+        }
         if compare != nil {
             switch e.keyCode {
             case 40: markCompare(.keep); return true                                   // K
@@ -507,8 +528,11 @@ final class StudioLibrary: ObservableObject {
         if let data = try? catalog.encoded() { try? data.write(to: catalogURL, options: .atomic) }
     }
 
-    func mutate(_ change: (inout StudioCatalog) -> Void) {
+    /// Pass a label for edits the user makes; background updates (scans, suggested tags, metadata) stay out of undo.
+    func mutate(_ undo: String? = nil, _ change: (inout StudioCatalog) -> Void) {
+        let before = undo == nil ? nil : catalog
         change(&catalog)
+        if let undo, let before { history.record(undo, before: before, after: catalog) }
         selection = selection.filter { id in catalog.assets.contains { $0.id == id } }
         if let f = focusID, !selection.contains(f) { focusID = selection.first }
         save()
@@ -529,7 +553,7 @@ final class StudioLibrary: ObservableObject {
     var filtered: [StudioAsset] {
         let list = unstackedFiltered.filter(ratingFilter.matches)
         if similarTo != nil || (selectedSmart == nil && selectedCollection == Self.missingCollection) { return list }
-        return catalog.collapsingStacks(list, expanded: expandedStacks)
+        return catalog.collapsingStacks(currentSort.apply(list), expanded: expandedStacks)
     }
     private var unstackedFiltered: [StudioAsset] {
         if let target = similarTo {
@@ -550,17 +574,75 @@ final class StudioLibrary: ObservableObject {
     }
     var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive) }
 
+    // MARK: Undo, sort and cull (1.12)
+
+    @Published var history = UndoHistory()
+    func undo() {
+        if NSApp.keyWindow?.firstResponder is NSText { NSApp.sendAction(Selector(("undo:")), to: nil, from: nil); return }
+        var c = catalog
+        guard let label = history.undo(&c) else { return }
+        catalog = c; save(); dropMissingSelection()
+        flash("Undid \(label)")
+    }
+    func redo() {
+        if NSApp.keyWindow?.firstResponder is NSText { NSApp.sendAction(Selector(("redo:")), to: nil, from: nil); return }
+        var c = catalog
+        guard let label = history.redo(&c) else { return }
+        catalog = c; save(); dropMissingSelection()
+        flash("Redid \(label)")
+    }
+    private func dropMissingSelection() {
+        selection = selection.filter { id in catalog.assets.contains { $0.id == id } }
+        if let f = focusID, !catalog.assets.contains(where: { $0.id == f }) { focusID = selection.first }
+    }
+
+    var sortKey: String { StudioCatalog.sortKey(collection: selectedCollection, smart: selectedSmart) }
+    var currentSort: AssetSort { catalog.sort(for: sortKey) }
+    func setSort(_ sort: AssetSort) { let k = sortKey; mutate { $0.setSort(sort, for: k) } }
+
+    @Published var cull: CullSession?
+    var canCull: Bool { !filtered.isEmpty && compare == nil && smartEditor == nil && sheetPreview == nil && presetExport == nil && duplicates == nil }
+    func openCull() {
+        guard canCull else { return }
+        viewerID = nil
+        cull = CullSession(ids: filtered.map(\.id), start: focusID)
+    }
+    func closeCull() {
+        guard let s = cull else { return }
+        cull = nil
+        selection = [s.current]; focusID = s.current
+        let p = s.progress(in: catalog)
+        flash("Culled \(p.decided) of \(p.total)")
+    }
+    func cullRate(_ stars: Int) {
+        guard let id = cull?.current else { return }
+        rate([id], stars)
+        if stars > 0 { cull?.didDecide() }
+    }
+    func cullLabel(_ l: ColorLabel) { if let id = cull?.current { label([id], l) } }
+    func cullReject() {
+        guard let id = cull?.current else { return }
+        var on = false
+        mutate("Reject") { on = $0.toggleReject([id]) }
+        flash(on ? "Rejected" : "Reject cleared")
+        if on { cull?.didDecide() }
+    }
+    func cullNextUndecided() {
+        guard let s = cull else { return }
+        if let i = s.nextUndecided(in: catalog) { cull?.index = i } else { flash("Everything here is rated or rejected") }
+    }
+
     // MARK: Ratings and labels (1.11)
 
     func rate(_ ids: Set<UUID>, _ stars: Int) {
         guard !ids.isEmpty else { return }
-        mutate { $0.setRating(ids, stars) }
+        mutate("Rating") { $0.setRating(ids, stars) }
         flash(stars == 0 ? "Rating cleared" : "Rated \(String(repeating: "★", count: stars))\(ids.count > 1 ? " · \(ids.count) assets" : "")")
     }
     func label(_ ids: Set<UUID>, _ l: ColorLabel?) {
         guard !ids.isEmpty else { return }
         var now: ColorLabel?
-        mutate { now = $0.toggleLabel(ids, l) }
+        mutate("Label") { now = $0.toggleLabel(ids, l) }
         flash(now.map { "\($0.name) label" } ?? "Label cleared")
     }
     func toggleLabelFilter(_ l: ColorLabel) {
@@ -582,7 +664,7 @@ final class StudioLibrary: ObservableObject {
     func stackSelection() {
         let ids = withStackMembers(selection)
         var sid: UUID?
-        mutate { sid = $0.stack(ids) }
+        mutate("Stack") { sid = $0.stack(ids) }
         guard let sid else { return }
         let top = catalog.stackTop(ids.first!)
         expandedStacks.remove(sid)
@@ -591,12 +673,12 @@ final class StudioLibrary: ObservableObject {
     }
     func unstackSelection() {
         let ids = withStackMembers(selection)
-        mutate { $0.unstack(ids) }
+        mutate("Unstack") { $0.unstack(ids) }
         selection = ids; focusID = focusID ?? ids.first
         flash("Unstacked \(ids.count) assets")
     }
     func unstack(_ ids: Set<UUID>) {
-        mutate { $0.unstack(ids) }
+        mutate("Unstack") { $0.unstack(ids) }
         flash(ids.count == 1 ? "Removed from stack" : "Unstacked \(ids.count) assets")
     }
     func toggleStackExpanded(_ asset: StudioAsset) {
@@ -868,7 +950,7 @@ final class StudioLibrary: ObservableObject {
 
     func keep(_ keeper: UUID, in group: [UUID]) {
         var removed = 0
-        mutate { removed = $0.mergeDuplicates(keep: keeper, remove: Set(group)) }
+        mutate("Merge Duplicates") { removed = $0.mergeDuplicates(keep: keeper, remove: Set(group)) }
         duplicates?.groups.removeAll { $0.contains(keeper) }
         flash("Kept 1, removed \(removed) duplicate\(removed == 1 ? "" : "s"). Files on disk are untouched.")
     }
@@ -876,7 +958,7 @@ final class StudioLibrary: ObservableObject {
     func keepSuggestedForAll() {
         guard let groups = duplicates?.groups else { return }
         var removed = 0
-        mutate { c in
+        mutate("Merge Duplicates") { c in
             for g in groups {
                 let members = g.compactMap { id in c.assets.first { $0.id == id } }
                 if let k = Duplicates.suggestedKeeper(members) { removed += c.mergeDuplicates(keep: k, remove: Set(g)) }
@@ -961,20 +1043,20 @@ final class StudioLibrary: ObservableObject {
 
     // MARK: Edits
 
-    func toggleFavorite(_ ids: Set<UUID>) { guard !ids.isEmpty else { return }; mutate { $0.toggleFavorite(ids) } }
+    func toggleFavorite(_ ids: Set<UUID>) { guard !ids.isEmpty else { return }; mutate("Favorite") { $0.toggleFavorite(ids) } }
     func addTags(_ raw: String, to ids: Set<UUID>) {
         var n = 0
-        mutate { n = $0.addTags(raw, to: ids) }
+        mutate("Add Tags") { n = $0.addTags(raw, to: ids) }
         if n > 1 { flash("Tagged \(n) assets") }
     }
-    func removeTag(_ tag: String, from ids: Set<UUID>) { mutate { $0.removeTag(tag, from: ids) } }
+    func removeTag(_ tag: String, from ids: Set<UUID>) { mutate("Remove Tag") { $0.removeTag(tag, from: ids) } }
     func removeClientNote(_ n: ClientNote, from id: UUID) {
-        mutate { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].clientNotes.removeAll { $0 == n } } }
+        mutate("Remove Note") { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].clientNotes.removeAll { $0 == n } } }
     }
     func acceptSuggestions(_ tags: [String]? = nil, for ids: Set<UUID>) {
         let n = catalog.assets.filter { ids.contains($0.id) }.reduce(0) { sum, a in sum + (tags.map { t in t.filter(a.suggestedTags.contains).count } ?? a.suggestedTags.count) }
         guard n > 0 else { return }
-        mutate { $0.acceptSuggestions(tags, for: ids) }
+        mutate("Accept Suggestions") { $0.acceptSuggestions(tags, for: ids) }
         if tags == nil || n > 1 { flash("Accepted \(n) suggested \(n == 1 ? "tag" : "tags")") }
     }
     func rejectSuggestion(_ tag: String, for ids: Set<UUID>) { mutate { $0.rejectSuggestion(tag, for: ids) } }
@@ -997,7 +1079,7 @@ final class StudioLibrary: ObservableObject {
     }
     func move(_ ids: Set<UUID>, to collection: String) {
         var n = 0
-        mutate { n = $0.move(ids, to: collection) }
+        mutate("Move") { n = $0.move(ids, to: collection) }
         if n > 0 { flash(collection == StudioCatalog.favorites ? "Added \(n) to Favorites" : "Moved \(n) to \(collection)") }
     }
     func newCollection(with ids: Set<UUID>) {
@@ -1015,7 +1097,7 @@ final class StudioLibrary: ObservableObject {
         let ids = pendingRemoval
         pendingRemoval = []
         var n = 0
-        mutate { n = $0.remove(ids) }
+        mutate("Remove from Library") { n = $0.remove(ids) }
         if n > 0 { flash("Removed \(n) from library. Files on disk were not touched.") }
     }
 
@@ -1289,6 +1371,25 @@ final class StudioLibrary: ObservableObject {
                     compareVersions(v1.id, top.id); compareSwipe = true; swipeSplit = 0.5
                 }
             }
+        case "cull", "sort-rating":
+            // Half the mockups already rated, then cull picks up at the first unrated one; or the same pass sorted by rating.
+            show(collection: "Device Mockups")
+            let ids = filtered.map(\.id)
+            let stars = [5, 4, 3, 0, 4, 2, 5, 1, 3, 0, 4, 5]
+            let labels: [ColorLabel?] = [.green, .blue, nil, .red, .green, nil, .purple, .yellow, nil, .red, .blue, .green]
+            mutate { c in
+                for (i, id) in ids.prefix(demo == "cull" ? 6 : 12).enumerated() {
+                    c.setRating([id], stars[i]); if let l = labels[i] { c.toggleLabel([id], l) }
+                }
+                if demo == "cull", ids.count > 3 { c.toggleReject([ids[3]]) }
+            }
+            if demo == "cull" {
+                if ids.count > 6 { focusID = ids[6]; selection = [ids[6]] }
+                openCull()
+            } else {
+                setSort(.rating)
+                if let a = filtered.first { selection = [a.id]; focusID = a.id }
+            }
         case "ratings", "label-filter":
             // A rating pass on the mockups: stars and labels on the cards, the inspector row, then the chips narrowing the grid.
             show(collection: "Device Mockups")
@@ -1459,6 +1560,10 @@ struct StudioView: View {
             if model.compare != nil { CompareView().transition(.opacity) }
         }
         .animation(.easeOut(duration: 0.16), value: model.compare != nil)
+        .overlay {
+            if model.cull != nil { CullView().transition(.opacity) }
+        }
+        .animation(.easeOut(duration: 0.16), value: model.cull != nil)
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
                 Text(toast).font(.callout.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 9)
@@ -1671,6 +1776,7 @@ struct AssetBrowser: View {
                         .font(.callout).foregroundStyle(.secondary).fixedSize()
                         .help(files > items.count ? "Stacks show as one card; \(files - items.count) older versions are tucked inside" : "")
                     Spacer()
+                    SortMenu()
                     if let id = model.selectedSmart {
                         Button { model.beginEdit(smart: id) } label: { Label("Edit Rules", systemImage: "slider.horizontal.3").fixedSize() }
                             .buttonStyle(.bordered).controlSize(.small)
@@ -1691,12 +1797,15 @@ struct AssetBrowser: View {
                 .background(Theme.raised, in: RoundedRectangle(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11).stroke(Theme.hairline))
                 HStack(spacing: 8) {
-                    ScrollView(.horizontal, showsIndicators: false) {
+                    // Full chips when they fit; otherwise one "Media" menu instead of squeezed, cut-off chips.
+                    ViewThatFits(in: .horizontal) {
                         HStack(spacing: 6) {
                             KindChip(title: "All", symbol: "circle.grid.3x3", on: model.selectedKind == nil) { model.selectedKind = nil }
                             ForEach(MediaKind.allCases) { k in KindChip(title: k.rawValue, symbol: k.symbol, on: model.selectedKind == k) { model.selectedKind = model.selectedKind == k ? nil : k } }
-                        }
+                        }.fixedSize()
+                        MediaFoldMenu()
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     // Pinned outside the scrolling media chips so an active rating or label filter is always visible.
                     Rectangle().fill(Theme.hairline).frame(width: 1, height: 18)
                     HStack(spacing: 6) { RatingFilterChips() }.fixedSize()
@@ -1726,6 +1835,149 @@ struct AssetBrowser: View {
             if model.selection.count > 1 { SelectionBar() }
         }
         .background(Theme.backdrop)
+    }
+}
+
+/// Media kinds folded into one menu when the window is too narrow for the chips.
+struct MediaFoldMenu: View {
+    @EnvironmentObject var model: StudioLibrary
+    var body: some View {
+        let k = model.selectedKind
+        Menu {
+            Button("All Media") { model.selectedKind = nil }
+            Divider()
+            ForEach(MediaKind.allCases) { kind in Button { model.selectedKind = kind } label: { Label(kind.rawValue, systemImage: kind.symbol) } }
+        } label: {
+            Label(k?.rawValue ?? "All Media", systemImage: k?.symbol ?? "circle.grid.3x3").font(.system(size: 11.5, weight: .medium))
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(Theme.accent.opacity(0.28), in: Capsule())
+        .overlay(Capsule().stroke(Theme.accent.opacity(0.9)))
+    }
+}
+
+/// Grid sort for the current collection; each collection remembers its own.
+struct SortMenu: View {
+    @EnvironmentObject var model: StudioLibrary
+    var body: some View {
+        let cur = model.currentSort
+        Menu {
+            ForEach(AssetSort.allCases) { s in
+                Button { model.setSort(s) } label: { Label(s.title, systemImage: s == cur ? "checkmark" : s.symbol) }
+            }
+        } label: {
+            Label(cur.title, systemImage: "arrow.up.arrow.down").font(.system(size: 11.5, weight: .semibold))
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(cur == .added ? Color.white.opacity(0.05) : Theme.accent.opacity(0.22), in: Capsule())
+        .overlay(Capsule().stroke(cur == .added ? Theme.hairline : Theme.accent.opacity(0.7)))
+        .help("Sort this collection")
+    }
+}
+
+/// Full-window cull: one asset at a time. 1-5 rate and move on, X rejects, 6-9 label, arrows browse.
+struct CullView: View {
+    @EnvironmentObject var model: StudioLibrary
+    var body: some View {
+        if let s = model.cull {
+            let byID = Dictionary(uniqueKeysWithValues: model.catalog.assets.map { ($0.id, $0) })
+            let p = s.progress(in: model.catalog)
+            ZStack {
+                ZStack { Rectangle().fill(.ultraThinMaterial); Color.black.opacity(0.94) }.ignoresSafeArea()
+                if let asset = byID[s.current] {
+                    VStack(spacing: 14) {
+                        header(s, asset: asset, progress: p)
+                        HStack(spacing: 14) {
+                            ViewerArrow(symbol: "chevron.left") { model.cull?.step(by: -1) }
+                            ZStack(alignment: .topLeading) {
+                                ProcessedPreview(asset: asset, effect: .original, amount: 0, pixels: 2000, fit: true).id(asset.id)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .opacity(asset.tags.contains(StudioCatalog.rejectTag) ? 0.4 : 1)
+                                if asset.tags.contains(StudioCatalog.rejectTag) {
+                                    Label("Rejected", systemImage: "xmark.circle.fill").font(.system(size: 12, weight: .bold))
+                                        .padding(.horizontal, 10).padding(.vertical, 5).background(Color(red: 0.75, green: 0.2, blue: 0.25), in: Capsule()).padding(12)
+                                }
+                            }
+                            ViewerArrow(symbol: "chevron.right") { model.cull?.step(by: 1) }
+                        }
+                        controls(asset)
+                        strip(s, byID: byID)
+                        Text("1-5 rate · 0 clear · X reject · 6-9 label · ← → browse · U next unrated · A auto-advance · ⌘Z undo · Esc done")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    .padding(24)
+                }
+            }
+        }
+    }
+
+    private func header(_ s: CullSession, asset: StudioAsset, progress p: (decided: Int, total: Int)) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Cull · " + model.browsingTitle).font(.system(size: 20, weight: .bold)).lineLimit(1)
+                Text("\(asset.title) · \(asset.resolution)").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 5) {
+                Text("\(s.index + 1) of \(s.ids.count) · \(p.decided) decided").font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.1))
+                        Capsule().fill(Theme.accent).frame(width: g.size.width * CGFloat(p.decided) / CGFloat(max(1, p.total)))
+                    }
+                }.frame(width: 220, height: 6)
+            }
+            Button { model.cull?.autoAdvance.toggle() } label: {
+                Label("Auto-advance", systemImage: s.autoAdvance ? "forward.fill" : "forward").font(.system(size: 11.5, weight: .semibold))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(s.autoAdvance ? Theme.accent.opacity(0.3) : Color.white.opacity(0.06), in: Capsule())
+                    .overlay(Capsule().stroke(s.autoAdvance ? Theme.accent : Theme.hairline))
+            }.buttonStyle(.plain).help("Move to the next asset after rating or rejecting (A)")
+            Button { model.closeCull() } label: { Label("Done", systemImage: "checkmark") }.buttonStyle(.borderedProminent)
+        }
+    }
+
+    private func controls(_ asset: StudioAsset) -> some View {
+        HStack(spacing: 18) {
+            HStack(spacing: 6) {
+                ForEach(1...5, id: \.self) { n in
+                    Button { model.cullRate(asset.rating == n ? 0 : n) } label: {
+                        Image(systemName: n <= asset.rating ? "star.fill" : "star").font(.system(size: 24))
+                            .foregroundStyle(n <= asset.rating ? Theme.warning : Color.white.opacity(0.35))
+                    }.buttonStyle(.plain).help("\(n) (\(n))")
+                }
+            }
+            Rectangle().fill(Theme.hairline).frame(width: 1, height: 24)
+            HStack(spacing: 6) { ForEach(ColorLabel.allCases) { l in LabelDot(label: l, on: asset.label == l, size: 18) { model.cullLabel(l) } } }
+            Rectangle().fill(Theme.hairline).frame(width: 1, height: 24)
+            let rejected = asset.tags.contains(StudioCatalog.rejectTag)
+            Button { model.cullReject() } label: {
+                Label(rejected ? "Rejected" : "Reject", systemImage: "xmark.circle").font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(rejected ? Color(red: 0.75, green: 0.2, blue: 0.25) : Color.white.opacity(0.07), in: Capsule())
+            }.buttonStyle(.plain).help("Reject (X)")
+        }
+    }
+
+    /// Neighbors on either side; a dot under each shows its decision.
+    private func strip(_ s: CullSession, byID: [UUID: StudioAsset]) -> some View {
+        let lo = max(0, s.index - 5), hi = min(s.ids.count - 1, s.index + 5)
+        return HStack(spacing: 8) {
+            ForEach(lo...hi, id: \.self) { i in
+                if let a = byID[s.ids[i]] {
+                    VStack(spacing: 4) {
+                        Thumbnail(asset: a, pixels: 160).frame(width: 70, height: 50).clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(i == s.index ? Theme.accent : Theme.hairline, lineWidth: i == s.index ? 2 : 1))
+                            .opacity(a.tags.contains(StudioCatalog.rejectTag) ? 0.35 : 1)
+                        Text(a.tags.contains(StudioCatalog.rejectTag) ? "✕" : a.rating > 0 ? a.stars : "·")
+                            .font(.system(size: 9)).foregroundStyle(a.tags.contains(StudioCatalog.rejectTag) ? Color.red : Theme.warning).frame(height: 10)
+                    }
+                    .onTapGesture { model.cull?.index = i }
+                }
+            }
+        }
     }
 }
 

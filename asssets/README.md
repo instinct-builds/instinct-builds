@@ -442,3 +442,25 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   the grid header reads "4 items · 7 files" when stacks hide versions.
 - Logic and tests: `Ratings.swift` and `RatingTests.swift`; rating and
   label rules in `SmartStudio.swift`, keep ratings in `Compare.swift`.
+
+## 1.12.0: cull mode, undo, sorting
+
+- Asset > Cull Current View (⌥⌘K) goes through whatever the grid shows,
+  one asset at a time, full window. 1-5 rate and move to the next asset,
+  0 clears, X rejects (and clears stars), 6-9 label, arrows or Space
+  browse, U jumps to the next unrated asset, A turns auto-advance on or
+  off, Esc or Return ends. A progress bar counts rated or rejected assets,
+  and a strip of neighbors shows each one's stars or reject mark.
+- Undo and redo (⌘Z, ⇧⌘Z) for ratings, labels, rejects, tags, favorites,
+  moves, stacking, compare passes, duplicate merges and removals. The Edit
+  menu names the step ("Undo Rating"). Undo only puts back what that edit
+  changed, so suggested tags, file sizes and new watched files that
+  arrived in between stay. Text fields keep their own undo. History holds
+  the last 50 edits for the session.
+- Sort menu in the grid header: Date Added, Name, Rating or Label. Each
+  collection and smart collection remembers its own sort. Ties keep the
+  date-added order, and stacks still collapse to their newest version.
+- When the window is too narrow for the media chips, they fold into one
+  "All Media" menu instead of being squeezed and cut off.
+- Logic and tests: `Culling.swift` (sort, cull session, reject toggle,
+  undo history) and `CullingTests.swift`.
