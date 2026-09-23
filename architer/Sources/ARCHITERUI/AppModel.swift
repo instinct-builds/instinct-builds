@@ -154,6 +154,27 @@ public final class AppModel: ObservableObject {
         if let r = try? roller.roll(expression) { record(r) }
     }
 
+    /// Incoming damage on the dice path: roll the expression, fold the
+    /// selected character's defenses into the total (halved, zeroed, or
+    /// doubled), label history with the adjustment, and apply the result -
+    /// temp HP still absorbs first. Type nil skips defenses entirely.
+    public func rollIncomingDamage(_ expression: String, type: DamageType?) {
+        guard var c = selected?.wrappedValue,
+              let rolled = try? roller.roll(expression) else { return }
+        let adjusted = c.adjustedDamage(rolled.total, type: type)
+        var r = rolled
+        let typeName = type?.displayName.lowercased() ?? "untyped"
+        if let note = c.defenseAdjustmentNote(amount: rolled.total, type: type) {
+            r.label = "\(typeName) damage taken (\(note))"
+        } else {
+            r.label = "\(typeName) damage taken"
+        }
+        record(r)
+        // Defenses already folded in above; type nil keeps temp-HP absorption.
+        c.applyDamage(adjusted, type: nil)
+        selected?.wrappedValue = c
+    }
+
     public func rollLabeled(_ label: String, _ expression: String) {
         if let r = try? roller.rollLabeled(label, expression) { record(r) }
     }

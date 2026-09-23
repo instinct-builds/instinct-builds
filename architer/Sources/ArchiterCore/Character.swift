@@ -743,6 +743,20 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         return value
     }
 
+    /// "resisted: 14 -> 7" style note when defenses change an incoming damage
+    /// amount, nil when they don't. Used to label incoming-damage rolls.
+    public func defenseAdjustmentNote(amount: Int, type: DamageType?) -> String? {
+        guard let type else { return nil }
+        let adjusted = adjustedDamage(amount, type: type)
+        guard adjusted != max(0, amount) else { return nil }
+        let word: String
+        if immunities.contains(type) { word = "immune" }
+        else if resistances.contains(type) && vulnerabilities.contains(type) { word = "resisted + vulnerable" }
+        else if resistances.contains(type) { word = "resisted" }
+        else { word = "vulnerable" }
+        return "\(word): \(amount) -> \(adjusted)"
+    }
+
     /// Damage eats temporary HP first, then real HP. Falling to 0 clears temp.
     public mutating func applyDamage(_ amount: Int, type: DamageType? = nil) {
         var remaining = adjustedDamage(amount, type: type)

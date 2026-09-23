@@ -4,6 +4,17 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.20.0
+
+- Defenses on the dice path: the vitals damage field now doubles as dice
+  notation - type "2d6+3", pick a damage type, hit Roll. The roll lands
+  in history labeled with the defense adjustment ("fire damage taken
+  (resisted: 14 -> 7)") and the adjusted total applies to HP, temp HP
+  absorbing first. Immunity zeroes, vulnerability doubles; untyped or
+  undefended types apply raw. The flat-amount Apply path is unchanged.
+- Sample sheet: Wren's vault story now grants fire resistance, so the
+  defenses row and the resisted-roll label show in renders.
+
 ## What's in 2.19.0
 
 - Exhaustion meets movement, era-aware: 2014-style step 2 halves every

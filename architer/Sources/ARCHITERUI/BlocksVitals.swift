@@ -40,6 +40,13 @@ struct VitalsBlock: View {
                     if let n = Int(damageAmount) { character.applyDamage(n, type: damageType); damageAmount = "" }
                 }
                 .buttonStyle(RollButtonStyle(prominent: true))
+                Button("Roll") {
+                    model.rollIncomingDamage(damageAmount, type: damageType)
+                    damageAmount = ""
+                }
+                .buttonStyle(RollButtonStyle())
+                .disabled((try? DiceExpression.parse(damageAmount)) == nil)
+                .help("Roll the field as dice notation (2d6+3); defenses adjust the total before it lands")
                 TextField("Heal", text: $healAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
                 Button("Apply") {
                     if let n = Int(healAmount) { character.applyHealing(n); healAmount = "" }

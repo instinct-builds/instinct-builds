@@ -289,6 +289,24 @@ struct CharacterTests {
         #expect(c.currentHP == 30)
     }
 
+    @Test func defenseAdjustmentNoteLabelsRolls() {
+        var c = Character(name: "T", level: 1)
+        c.resistances = [.fire]
+        c.immunities = [.poison]
+        c.vulnerabilities = [.cold]
+        #expect(c.defenseAdjustmentNote(amount: 14, type: .fire) == "resisted: 14 -> 7")
+        #expect(c.defenseAdjustmentNote(amount: 14, type: .poison) == "immune: 14 -> 0")
+        #expect(c.defenseAdjustmentNote(amount: 10, type: .cold) == "vulnerable: 10 -> 20")
+        // No defense on the type, or no type at all: no note.
+        #expect(c.defenseAdjustmentNote(amount: 14, type: .acid) == nil)
+        #expect(c.defenseAdjustmentNote(amount: 14, type: nil) == nil)
+        // Resist + vulnerable cancels on even amounts (halve then double).
+        c.vulnerabilities.insert(.fire)
+        #expect(c.defenseAdjustmentNote(amount: 14, type: .fire) == nil)
+        // Odd amounts round down mid-pipe, so a note still appears.
+        #expect(c.defenseAdjustmentNote(amount: 15, type: .fire) == "resisted + vulnerable: 15 -> 14")
+    }
+
     @Test func stowedGearExcludedFromCarriedWeight() {
         var c = Character(name: "T", level: 1)
         c.inventory = [InventoryItem(name: "Rope", weight: 10),

@@ -70,6 +70,9 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "builder", outDir: outDir, minHeight: 700)
+    // Seeded after the sheet render so the resisted total lands in dice
+    // history without lowering the sheet's HP bar.
+    model.rollIncomingDamage("2d6+3", type: .fire)
     renderPNG(
         DiceRollerView()
             .padding()

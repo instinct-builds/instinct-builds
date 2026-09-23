@@ -148,6 +148,8 @@ public enum SampleContent {
         // Story residue from the singing vault: a homebrew state that hinders
         // ability checks until Wren shakes it.
         c.customConditions = [CustomCondition(name: "Vault-marked", hindersChecks: true)]
+        // The vault's song left an ember-ward: fire resistance.
+        c.resistances = [.fire]
         // Winded and knocked prone in the last scene: exhaustion 2 halves
         // every speed under her 2014-style rules, and standing up costs
         // half of what remains.
