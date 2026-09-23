@@ -337,8 +337,39 @@ int main() {
             Check(hs[4] > 0.8, "harmonic bar click raised harmonic 5 of the new frame");
             fflush(stdout);
         });
+        After(6.8, ^{ // 0.10.0 FILTER 2 + SUB page: open it, enable filter 2, go parallel, raise the sub
+            CGFloat t = view.bounds.size.height - 100;
+            muew::Preset before;
+            State(before);
+            NSPoint tab = NSMakePoint(556 + 46, t - 29 + 8);             // FILTER 2 + SUB tab
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, tab, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, tab, w)];
+            NSPoint disp = NSMakePoint(686 + 43, t - 138 + 50);          // filter 2 display: cycles the type
+            for (int i = 0; i < 5; ++i) {                                 // OFF -> LP -> BP -> HP -> COMB -> FORMANT
+                [view mouseDown:Mouse(NSEventTypeLeftMouseDown, disp, w)];
+                [view mouseUp:Mouse(NSEventTypeLeftMouseUp, disp, w)];
+            }
+            NSPoint par = NSMakePoint(686 + 5 + 39 + 18, t - 138 + 10);  // PAR
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, par, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, par, w)];
+            NSPoint sub = NSMakePoint(536, t - 200);                      // SUB knob (page 2, attack's spot)
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, sub, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(sub.x, sub.y + 45), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(sub.x, sub.y + 90), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(sub.x, sub.y + 90), w)];
+            muew::Preset st;
+            bool ok = State(st);
+            AudioUnitParameterValue sp = -1;
+            AudioUnitGetParameter(gUnit, muew::params::SubLevel, kAudioUnitScope_Global, 0, &sp);
+            printf("filter 2: type %d routing %d, sub %.2f (param 23 = %.1f), attack kept %.4f -> %.4f\n",
+                   st.voice.filter2Type, st.voice.filterRouting, st.voice.subLevel, sp, before.voice.ampA, st.voice.ampA);
+            Check(ok && st.voice.filter2Type == 5 && st.voice.filterRouting == 1, "FILTER 2 display clicks chose FORMANT, PAR set parallel routing");
+            Check(ok && st.voice.subLevel > 0.5 && std::fabs(sp - st.voice.subLevel * 100) < 0.5 && st.voice.ampA == before.voice.ampA,
+                  "SUB knob drag on page 2 reached the AU as parameter 23 without touching ATTACK");
+            fflush(stdout);
+        });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack, mod matrix and wavetable editor\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack, mod matrix, wavetable editor and filter 2 + sub page\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

@@ -229,3 +229,23 @@ samples, band-limited per frame and crossfaded by a frame position.
 - Presets store tables in optional `wtpos`, `wt1`, `wt2` lines. Older
   presets load unchanged; every 0.8.0 factory preset renders byte-identical.
 - Three new factory presets (42-44): Vowel Morph, Harmonic Rise, Glass Draw.
+
+## 0.10.0 Sub, noise and filter 2
+
+- Sub oscillator: SINE, TRI or SQUARE, one or two octaves below oscillator A
+  (it follows A's pitch modulation). Noise: white through a tone control
+  (0 = dark, 1 = white), seeded per note so renders repeat exactly.
+- Filter 2: LOW PASS, BAND PASS, HIGH PASS, COMB (feedback comb tuned to the
+  cutoff, resonance sets the feedback) and FORMANT (three vowel formants;
+  cutoff sweeps A-E-I-O-U). SERIAL runs it after filter 1; PARALLEL runs it
+  beside filter 1 on the same input and mixes the two.
+- Editor: the FILTER panel has two pages. FILTER 2 + SUB holds F2 CUTOFF,
+  F2 RESONANCE, a live response plot of filter 2 (click it to change the
+  type, SER / PAR below it), SUB with octave and shape pills, NOISE and TONE.
+  A dot on the tab shows when page 2 is in use.
+- AU parameters 23-27: Sub Level, Noise Level, Noise Tone, Filter 2 Cutoff,
+  Filter 2 Resonance. Mod destinations 13-15: SUB, NOISE, F2 CUTOFF.
+- Presets add optional `sub`, `noise` and `filter2` lines. Every 0.9.0
+  factory preset renders byte-identical.
+- Four new factory presets (45-48): Sub Pressure, Breath Flute, Formant
+  Talker, Comb Pluck.

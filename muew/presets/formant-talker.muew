@@ -1,0 +1,38 @@
+muew-preset 2
+name Formant Talker
+category Lead
+author MUEW Factory
+tags formant vowel talking
+osc1Shape 2
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.4
+filterCutoff 9000
+filterReso 0.6
+filterMode 0
+amp 0.01 0.3 0.9 0.25
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.15 0.15 0.6 0.7
+lfo34 1.2 1 2 1
+sync 0 0 3 0
+sub 0.3 1 0
+filter2 5 180 2.5 0
+routes 9
+route 9 15 2.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.3 0.2
+reverb 1 0.5 0.45 0.2

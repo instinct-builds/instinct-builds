@@ -35,6 +35,7 @@ struct PresetInfo {
 //                  written only when they differ from the defaults, so older
 //                  files round-trip byte-identical and older builds skip them.
 //                  0.8.0 adds optional `lfo34`, `sync` and `env3` lines.
+//                  0.10.0 adds optional `sub`, `noise` and `filter2` lines.
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
 //                  wavetables: frame count, then 256 samples per frame).
 // Version 1 text still parses; fields it lacks keep their VoiceParams
@@ -86,6 +87,11 @@ struct Preset {
             if (v.env3A != d.env3A || v.env3D != d.env3D || v.env3S != d.env3S || v.env3R != d.env3R)
                 o << "env3 " << v.env3A << " " << v.env3D << " " << v.env3S << " " << v.env3R << "\n";
             if (v.osc1WtPos != 0 || v.osc2WtPos != 0) o << "wtpos " << v.osc1WtPos << " " << v.osc2WtPos << "\n";
+            if (v.subLevel != d.subLevel || v.subOctave != d.subOctave || v.subShape != d.subShape)
+                o << "sub " << v.subLevel << " " << v.subOctave << " " << v.subShape << "\n";
+            if (v.noiseLevel != d.noiseLevel || v.noiseTone != d.noiseTone) o << "noise " << v.noiseLevel << " " << v.noiseTone << "\n";
+            if (v.filter2Type != d.filter2Type || v.filter2Cutoff != d.filter2Cutoff || v.filter2Reso != d.filter2Reso || v.filterRouting != d.filterRouting)
+                o << "filter2 " << v.filter2Type << " " << v.filter2Cutoff << " " << v.filter2Reso << " " << v.filterRouting << "\n";
             for (int t = 0; t < 2; ++t) {
                 if (tables[t].empty()) continue;
                 std::ostringstream w;
@@ -199,6 +205,24 @@ struct Preset {
                 voice.osc1WtPos = std::clamp(voice.osc1WtPos, 0.0, 1.0);
                 voice.osc2WtPos = std::clamp(voice.osc2WtPos, 0.0, 1.0);
             }
+            else if (key == "sub") {
+                ls >> voice.subLevel >> voice.subOctave >> voice.subShape;
+                voice.subLevel = std::clamp(voice.subLevel, 0.0, 1.0);
+                voice.subOctave = std::clamp(voice.subOctave, 1, 2);
+                voice.subShape = std::clamp(voice.subShape, 0, kSubShapes - 1);
+            }
+            else if (key == "noise") {
+                ls >> voice.noiseLevel >> voice.noiseTone;
+                voice.noiseLevel = std::clamp(voice.noiseLevel, 0.0, 1.0);
+                voice.noiseTone = std::clamp(voice.noiseTone, 0.0, 1.0);
+            }
+            else if (key == "filter2") {
+                ls >> voice.filter2Type >> voice.filter2Cutoff >> voice.filter2Reso >> voice.filterRouting;
+                voice.filter2Type = std::clamp(voice.filter2Type, 0, kFilter2Types - 1);
+                voice.filter2Cutoff = std::clamp(voice.filter2Cutoff, 40.0, 18000.0);
+                voice.filter2Reso = std::clamp(voice.filter2Reso, 0.1, 8.0);
+                voice.filterRouting = std::clamp(voice.filterRouting, 0, 1);
+            }
             else if (key == "wt1" || key == "wt2") {
                 int n = 0; ls >> n;
                 TableFrames t;
@@ -234,7 +258,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Env3 && d >= 0 && d <= (int)ModRoute::Dest::Osc2WtPos) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Env3 && d >= 0 && d <= (int)ModRoute::Dest::Filter2Cutoff) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     routes.push_back(r);
                 }
@@ -284,6 +308,10 @@ struct Preset {
             && a.lfoSync[0] == b.lfoSync[0] && a.lfoSync[1] == b.lfoSync[1] && a.lfoSync[2] == b.lfoSync[2] && a.lfoSync[3] == b.lfoSync[3]
             && a.env3A == b.env3A && a.env3D == b.env3D && a.env3S == b.env3S && a.env3R == b.env3R
             && a.osc1WtPos == b.osc1WtPos && a.osc2WtPos == b.osc2WtPos
+            && a.subLevel == b.subLevel && a.subOctave == b.subOctave && a.subShape == b.subShape
+            && a.noiseLevel == b.noiseLevel && a.noiseTone == b.noiseTone
+            && a.filter2Type == b.filter2Type && a.filter2Cutoff == b.filter2Cutoff && a.filter2Reso == b.filter2Reso
+            && a.filterRouting == b.filterRouting
             && tables[0] == o.tables[0] && tables[1] == o.tables[1];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         for (size_t i = 0; i < a.mseg1Points.size(); ++i)

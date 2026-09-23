@@ -4,6 +4,7 @@
 #include "envelope.h"
 #include "lfo.h"
 #include "mseg.h"
+#include "layers.h"
 #include <cmath>
 
 namespace muew {
@@ -21,7 +22,8 @@ struct ModRoute {
     enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6,
                       Osc1Unison = 7, Osc2Unison = 8, UnisonWidth = 9, // 0.7.0: unison detune A/B, stereo width (0..1 units)
                       DistDrive = 10,                                   // 0.7.0: FX-rack drive, macro sources only (global FX)
-                      Osc1WtPos = 11, Osc2WtPos = 12 } dest;            // 0.9.0: user-table frame position (0..1 units)
+                      Osc1WtPos = 11, Osc2WtPos = 12,                   // 0.9.0: user-table frame position (0..1 units)
+                      SubLevel = 13, NoiseLevel = 14, Filter2Cutoff = 15 } dest; // 0.10.0 (0..1 levels, octaves)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
 };
 
@@ -63,6 +65,15 @@ struct VoiceParams {
     // 0.9.0: frame position (0..1) through each oscillator's user table; only
     // heard when the oscillator's shape is kCustomShape.
     double osc1WtPos = 0.0, osc2WtPos = 0.0;
+    // 0.10.0 layers. Level 0 / type Off skip the stage entirely.
+    double subLevel = 0.0;     // 0..1
+    int subOctave = 1;         // 1 or 2 octaves below oscillator A
+    int subShape = 0;          // kSubShapes: SINE, TRI, SQUARE
+    double noiseLevel = 0.0;   // 0..1
+    double noiseTone = 1.0;    // 0 dark .. 1 white
+    int filter2Type = 0;       // Filter2Type
+    double filter2Cutoff = 2000.0, filter2Reso = 0.7;
+    int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
 };
 
 constexpr int kMaxUnison = 8;
@@ -95,6 +106,9 @@ public:
         lfo1_.setSampleRate(sr); lfo2_.setSampleRate(sr);
         lfo3_.setSampleRate(sr); lfo4_.setSampleRate(sr); env3_.setSampleRate(sr);
         mseg1_.setSampleRate(sr);
+        sub_.setSampleRate(sr); sub_.setTable(table);
+        noise_.setSampleRate(sr);
+        f2L_.setSampleRate(sr); f2R_.setSampleRate(sr);
     }
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
@@ -118,6 +132,15 @@ public:
         }
         mseg1_.setRate(p.mseg1Seconds); mseg1_.setPoints(p.mseg1Points);
         mseg1_.setLoop(1, (int)mseg1_.pointCount() - 1, p.mseg1Loop);
+        usesSub_ = p.subLevel > 0; usesNoise_ = p.noiseLevel > 0;
+        for (const auto& r : routes) {
+            if (r.dest == ModRoute::Dest::SubLevel) usesSub_ = true;
+            if (r.dest == ModRoute::Dest::NoiseLevel) usesNoise_ = true;
+        }
+        sub_.setShape(subTableShape(p.subShape));
+        noise_.setTone(p.noiseTone);
+        const int t2 = std::clamp(p.filter2Type, 0, kFilter2Types - 1);
+        if (t2 != f2Type_) { f2Type_ = t2; f2L_.setType(t2); f2R_.setType(t2); f2L_.reset(); f2R_.reset(); }
     }
 
     // User tables for oscillators A/B (null = none; the synth owns them).
@@ -146,6 +169,8 @@ public:
             osc2_[i].setPhase(i == 0 ? 0.0 : std::fmod(i * 0.381966 + 0.25, 1.0));
         }
         age_ = 0;
+        sub_.setPhase(0.0);
+        noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
     }
 
     void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); }
@@ -228,6 +253,21 @@ public:
             stereo = width > 0.0;
         }
 
+        // 0.10.0 sub oscillator (follows oscillator A's pitch) and noise, mono, pre-filter.
+        if (usesSub_) {
+            const float lv = (float)std::clamp(params_.subLevel + modSum(ModRoute::Dest::SubLevel), 0.0, 1.0);
+            sub_.setFrequency(baseFreq_ * (params_.subOctave >= 2 ? 0.25 : 0.5));
+            sub_.setDetuneSemitones(pitch1);
+            const float sv = sub_.process() * lv * 0.8f;
+            l += sv; r += sv;
+        }
+        if (usesNoise_) {
+            const float lv = (float)std::clamp(params_.noiseLevel + modSum(ModRoute::Dest::NoiseLevel), 0.0, 1.0);
+            const float nv = noise_.process() * lv;
+            l += nv; r += nv;
+        }
+        const float preL = l, preR = r;
+
         // Cutoff modulation is exponential: amount 1.0 = one octave up at full source.
         double cutoffMod = modSum(ModRoute::Dest::FilterCutoff);
         double cutoff = params_.filterCutoff * std::pow(2.0, cutoffMod);
@@ -236,6 +276,19 @@ public:
         l = filter_.process(l);
         if (stereo) { filterR_.set(cutoff, resonance); r = filterR_.process(r); }
         else { r = l; filterR_.copyStateFrom(filter_); } // keep the right filter warm for a width change
+
+        // 0.10.0 filter 2: after filter 1 (serial) or beside it on the dry mix (parallel).
+        if (f2Type_ != 0) {
+            const double c2 = params_.filter2Cutoff * std::pow(2.0, modSum(ModRoute::Dest::Filter2Cutoff));
+            f2L_.set(c2, params_.filter2Reso);
+            const bool par = params_.filterRouting == 1;
+            const float inL = par ? preL : l;
+            const float yL = f2L_.process(inL);
+            float yR = yL;
+            if (stereo) { f2R_.set(c2, params_.filter2Reso); yR = f2R_.process(par ? preR : r); }
+            if (par) { l = 0.5f * (l + yL); r = 0.5f * (r + yR); }
+            else { l = yL; r = yR; }
+        }
 
         float amp = ampEnv_.process();
         ++age_;
@@ -323,6 +376,11 @@ private:
         lfo4_.setRate(lfoHz(params_.lfo4Rate, params_.lfoSync[3], bpm_));
     }
 
+    Oscillator sub_;
+    NoiseSource noise_;
+    Filter2 f2L_, f2R_;
+    int f2Type_ = 0;
+    bool usesSub_ = false, usesNoise_ = false;
     StackGains gains1_, gains2_;
     LFO lfo3_, lfo4_;
     Envelope env3_;

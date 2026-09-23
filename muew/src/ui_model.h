@@ -55,8 +55,19 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::DistDrive: return "DRIVE";
     case ModRoute::Dest::Osc1WtPos: return "WT POS A";
     case ModRoute::Dest::Osc2WtPos: return "WT POS B";
+    case ModRoute::Dest::SubLevel: return "SUB";
+    case ModRoute::Dest::NoiseLevel: return "NOISE";
+    case ModRoute::Dest::Filter2Cutoff: return "F2 CUTOFF";
     }
     return "?";
+}
+inline const char* filter2TypeName(int t) {
+    static const char* n[] = {"OFF", "LOW PASS", "BAND PASS", "HIGH PASS", "COMB", "FORMANT"};
+    return (t >= 0 && t < 6) ? n[t] : "?";
+}
+inline const char* subShapeName(int s) {
+    static const char* n[] = {"SINE", "TRI", "SQUARE"};
+    return (s >= 0 && s < 3) ? n[s] : "?";
 }
 inline const char* filterModeName(int m) {
     static const char* n[] = {"LOW PASS", "BAND PASS", "HIGH PASS", "NOTCH", "PEAK"};
@@ -68,7 +79,7 @@ inline const char* filterModeName(int m) {
 inline double routeScale(ModRoute::Dest d) {
     switch (d) {
     case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: return 24.0; // semitones
-    case ModRoute::Dest::FilterCutoff: return 5.0;                              // octaves
+    case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: return 5.0; // octaves
     case ModRoute::Dest::FilterResonance: return 8.0;                           // Q
     default: return 1.0;
     }
@@ -79,7 +90,7 @@ inline std::string routeAmountReadout(const ModRoute& r) {
     char b[32];
     switch (r.dest) {
     case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: snprintf(b, sizeof b, "%+.2f st", r.amount); break;
-    case ModRoute::Dest::FilterCutoff: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
+    case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
     case ModRoute::Dest::FilterResonance: snprintf(b, sizeof b, "%+.2f Q", r.amount); break;
     default: snprintf(b, sizeof b, "%+.0f%%", r.amount * 100); break;
     }
@@ -115,7 +126,7 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
     using D = ModRoute::Dest;
     static const std::vector<D> v{D::Osc1Pitch, D::Osc1Warp, D::Osc1Unison, D::Osc2Pitch, D::Osc2Warp, D::Osc2Unison,
                                   D::Osc2Level, D::UnisonWidth, D::FilterCutoff, D::FilterResonance, D::DistDrive,
-                                  D::Osc1WtPos, D::Osc2WtPos};
+                                  D::Osc1WtPos, D::Osc2WtPos, D::SubLevel, D::NoiseLevel, D::Filter2Cutoff};
     return v;
 }
 // A new route starts at a musical quarter of full scale.
@@ -155,12 +166,22 @@ inline std::string lfoRateReadout(const VoiceParams& p, int n) {
 enum Knob { WarpA, Mix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime,
             Macro1, Macro2, Macro3, Macro4,
             UniDetuneA, UniDetuneB, Width, // 0.7.0
+            F2Cutoff, F2Reso, Sub, Noise, NoiseTone, // 0.10.0 (FILTER 2 + SUB/NOISE page)
             KnobCount };
 
 // What the factory presets assign each macro to (see presets/*.muew).
 inline const char* macroName(int i) {
     static const char* n[] = {"BRIGHT", "WARP", "RESO", "SPREAD"};
     return (i >= 0 && i < 4) ? n[i] : "";
+}
+// Knobs shared by the two pages of the FILTER panel: -1 = always shown,
+// 0 = FILTER 1 + AMP page, 1 = FILTER 2 + SUB/NOISE page (0.10.0).
+inline int knobPage(int k) {
+    switch (k) {
+    case Cutoff: case Resonance: case Attack: case Release: case MsegTime: return 0;
+    case F2Cutoff: case F2Reso: case Sub: case Noise: case NoiseTone: return 1;
+    default: return -1;
+    }
 }
 inline bool isMacro(int k) { return k >= Macro1 && k <= Macro4; }
 inline bool isUnison(int k) { return k >= UniDetuneA && k <= Width; }
@@ -176,13 +197,17 @@ inline int knobDest(int k) {
     case UniDetuneA: return (int)ModRoute::Dest::Osc1Unison;
     case UniDetuneB: return (int)ModRoute::Dest::Osc2Unison;
     case Width: return (int)ModRoute::Dest::UnisonWidth;
+    case F2Cutoff: return (int)ModRoute::Dest::Filter2Cutoff;
+    case Sub: return (int)ModRoute::Dest::SubLevel;
+    case Noise: return (int)ModRoute::Dest::NoiseLevel;
     default: return -1;
     }
 }
 
 inline const char* knobLabel(int k) {
     static const char* n[] = {"WARP A", "MIX", "WARP B", "DETUNE", "CUTOFF", "RESONANCE", "ATTACK", "RELEASE", "MSEG TIME",
-                              "BRIGHT", "WARP", "RESO", "SPREAD", "UNISON", "UNISON", "WIDTH"};
+                              "BRIGHT", "WARP", "RESO", "SPREAD", "UNISON", "UNISON", "WIDTH",
+                              "CUTOFF", "RESONANCE", "SUB", "NOISE", "TONE"};
     return (k >= 0 && k < KnobCount) ? n[k] : "";
 }
 
@@ -191,6 +216,7 @@ inline const char* knobLabel(int k) {
 inline int knobParam(int k) {
     if (isMacro(k)) return 12 + (k - Macro1);
     if (isUnison(k)) return 16 + (k - UniDetuneA);
+    if (k >= F2Cutoff) { static const int m[] = {26, 27, 23, 24, 25}; return m[std::min(k - F2Cutoff, 4)]; }
     return k;
 }
 
@@ -198,7 +224,9 @@ struct Range { double lo, hi; bool log; };
 inline Range knobRange(int k) {
     switch (k) {
     case WarpA: case Mix: case WarpB: case Macro1: case Macro2: case Macro3: case Macro4:
-    case UniDetuneA: case UniDetuneB: case Width: return {0.0, 1.0, false};
+    case UniDetuneA: case UniDetuneB: case Width: case Sub: case Noise: case NoiseTone: return {0.0, 1.0, false};
+    case F2Cutoff: return {40.0, 18000.0, true};
+    case F2Reso: return {0.1, 8.0, false};
     case Detune: return {-24.0, 24.0, false};
     case Cutoff: return {40.0, 18000.0, true};
     case Resonance: return {0.1, 8.0, false};
@@ -234,6 +262,11 @@ inline double& knobField(VoiceParams& p, int k) {
     case UniDetuneA: return p.osc1UniDetune;
     case UniDetuneB: return p.osc2UniDetune;
     case Width: return p.uniWidth;
+    case F2Cutoff: return p.filter2Cutoff;
+    case F2Reso: return p.filter2Reso;
+    case Sub: return p.subLevel;
+    case Noise: return p.noiseLevel;
+    case NoiseTone: return p.noiseTone;
     default: return p.mseg1Seconds;
     }
 }
@@ -253,11 +286,11 @@ inline std::string knobReadout(const VoiceParams& p, int k) {
     char b[32];
     double v = knobField(const_cast<VoiceParams&>(p), k);
     switch (k) {
-    case Cutoff: if (v >= 1000) snprintf(b, sizeof b, "%.1f kHz", v / 1000); else snprintf(b, sizeof b, "%.0f Hz", v); break;
+    case Cutoff: case F2Cutoff: if (v >= 1000) snprintf(b, sizeof b, "%.1f kHz", v / 1000); else snprintf(b, sizeof b, "%.0f Hz", v); break;
     case Detune: snprintf(b, sizeof b, "%+.2f st", v); break;
     case Attack: case Release: case MsegTime:
         if (v < 1) snprintf(b, sizeof b, "%.0f ms", v * 1000); else snprintf(b, sizeof b, "%.2f s", v); break;
-    case Resonance: snprintf(b, sizeof b, "Q %.2f", v); break;
+    case Resonance: case F2Reso: snprintf(b, sizeof b, "Q %.2f", v); break;
     case UniDetuneA: case UniDetuneB: snprintf(b, sizeof b, "\u00b1%.0f ct", v * 100); break;
     default: snprintf(b, sizeof b, "%.0f%%", v * 100); break;
     }

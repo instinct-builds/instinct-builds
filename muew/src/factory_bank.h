@@ -1602,6 +1602,165 @@ chorus 1 0.5 3 10 0.2
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.7 0.5 0.3
 )MUEW"},
+    {"sub-pressure", R"MUEW(muew-preset 2
+name Sub Pressure
+category Bass
+author MUEW Factory
+tags sub deep mono
+osc1Shape 2
+osc2Shape 3
+osc2Detune -12
+osc2Level 0.35
+filterCutoff 650
+filterReso 1.1
+filterMode 0
+amp 0.002 0.35 0.8 0.15
+mod 0.002 0.25 0 0.15
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 2 1 0.08 0 0.3 0.6
+sub 0.6 1 0
+routes 11
+route 1 2 2.2
+route 2 13 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.25 0.3
+comp 1 0.4
+)MUEW"},
+    {"breath-flute", R"MUEW(muew-preset 2
+name Breath Flute
+category Lead
+author MUEW Factory
+tags noise breathy airy
+osc1Shape 0
+osc2Shape 1
+osc2Detune 12
+osc2Level 0.35
+filterCutoff 5000
+filterReso 0.7
+filterMode 0
+amp 0.06 0.4 0.85 0.35
+mod 0.02 0.5 0 0.3
+lfo1Rate 5.2
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 2 1 0.05 0 0.3 0.8
+env3 0.005 0.25 0 0.3
+noise 0.45 0.6
+filter2 2 1600 1.6 1
+routes 11
+route 0 0 0.12
+route 11 14 0.35
+route 1 2 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.3 0.45 0.25 0.18
+reverb 1 0.7 0.5 0.3
+eq 1 6 7 5
+)MUEW"},
+    {"formant-talker", R"MUEW(muew-preset 2
+name Formant Talker
+category Lead
+author MUEW Factory
+tags formant vowel talking
+osc1Shape 2
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.4
+filterCutoff 9000
+filterReso 0.6
+filterMode 0
+amp 0.01 0.3 0.9 0.25
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 3 0.15 0.15 0.6 0.7
+lfo34 1.2 1 2 1
+sync 0 0 3 0
+sub 0.3 1 0
+filter2 5 180 2.5 0
+routes 9
+route 9 15 2.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.5 0.3 0.2
+reverb 1 0.5 0.45 0.2
+)MUEW"},
+    {"comb-pluck", R"MUEW(muew-preset 2
+name Comb Pluck
+category Pluck
+author MUEW Factory
+tags comb metallic resonant
+osc1Shape 2
+osc2Shape 4
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 11000
+filterReso 0.6
+filterMode 0
+amp 0.001 0.5 0 0.4
+mod 0.001 0.35 0 0.3
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 2 1 0.1 0 0.5 0.7
+noise 0.15 0.8
+filter2 4 330 6.5 0
+routes 10
+route 1 15 2
+route 2 2 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.25 0.375 0.35 0.22
+reverb 1 0.6 0.5 0.25
+eq 1 5 7 5
+)MUEW"},
 };
 
 constexpr int kFactoryPresetCount = (int)(sizeof(kFactoryPresetTexts) / sizeof(kFactoryPresetTexts[0]));

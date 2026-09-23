@@ -46,7 +46,7 @@ struct StandaloneHost : MUEWEditorHost {
     v = [[MUEWEditorView alloc] initWithFrame:f];
     v->host = binding;
     w.contentView = v;
-    int start = ui::indexOfSlug("vowel-morph");
+    int start = ui::indexOfSlug("formant-talker");
     [v loadPresetIndex:start >= 0 ? start : 0];
     [w center]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
     engine = [AVAudioEngine new];

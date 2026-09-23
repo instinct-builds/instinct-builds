@@ -60,7 +60,7 @@ static bool render(AudioUnit u, std::vector<float>& l, std::vector<float>& r) {
     bool ok=AudioUnitRender(u,&flags,&ts,0,frames,b)==noErr; free(b); return ok;
 }
 
-static constexpr int kExpectedPresets = 45; // 0.8.0 appended 38-41, 0.9.0 42-44
+static constexpr int kExpectedPresets = 49; // 0.8.0 appended 38-41, 0.9.0 42-44, 0.10.0 45-48
 
 static double energy(const std::vector<float>& x, size_t a, size_t b) {
     double e=0; for(size_t i=a;i<b;++i)e+=double(x[i])*x[i]; return e;
@@ -273,7 +273,7 @@ int main() {
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
-        static_assert(mp::Count == 23, "0.9.0 publishes 23 parameters");
+        static_assert(mp::Count == 28, "0.10.0 publishes 28 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
             printf("FAIL: reselect Init Saw\n"); return 1;
         }
@@ -435,6 +435,38 @@ int main() {
             printf("FAIL: user table state, WT POS automation or recall\n"); return 1;
         }
         printf("user wavetable via state, WT POS parameter and recall: ok\n");
+    }
+
+    // 0.10.0: the SUB LEVEL parameter is audible and a filter 2 set through
+    // the state (comb, parallel) survives getState.
+    {
+        muew::Preset p = muew::factoryPresets()[0];
+        p.voice.osc2Level = 0; p.voice.osc1Shape = 0; p.voice.filterCutoff = 12000; p.routes.clear(); p.fx = muew::FXParams{};
+        p.voice.filter2Type = 4; p.voice.filter2Cutoff = 440; p.voice.filter2Reso = 5; p.voice.filterRouting = 1;
+        auto take = [&](double subPct, std::vector<float>& out, muew::Preset* back) -> bool {
+            AudioUnit t = openUnit();
+            if (!t) return false;
+            bool ok = setState(t, p)
+                      && AudioUnitSetParameter(t, muew::params::SubLevel, kAudioUnitScope_Global, 0, (AudioUnitParameterValue)subPct, 0) == noErr;
+            std::vector<float> bl(512), br(512);
+            out.clear();
+            ok = ok && render(t, bl, br) && MusicDeviceMIDIEvent(t, 0x90, 48, 110, 0) == noErr;
+            for (int i = 0; ok && i < 40; ++i) { ok = render(t, bl, br); out.insert(out.end(), bl.begin(), bl.end()); }
+            if (ok && back) ok = getState(t, *back);
+            AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+            return ok;
+        };
+        std::vector<float> s0, s1; muew::Preset back;
+        if (!take(0, s0, nullptr) || !take(100, s1, &back)) { printf("FAIL: layer renders\n"); return 1; }
+        double d = 0, pk = 0; bool fin = true;
+        for (size_t i = 0; i < s0.size() && i < s1.size(); ++i) { d = std::max(d, (double)std::fabs(s0[i] - s1[i])); pk = std::max(pk, (double)std::fabs(s1[i])); fin = fin && std::isfinite(s1[i]); }
+        printf("layers: peak %.3f, SUB 0 vs 100%% delta %.3f, filter 2 type %d routing %d cutoff %.0f, sub %.2f\n", pk, d,
+               back.voice.filter2Type, back.voice.filterRouting, back.voice.filter2Cutoff, back.voice.subLevel);
+        if (!fin || pk < 0.01 || d < 0.01 || back.voice.filter2Type != 4 || back.voice.filterRouting != 1 || back.voice.filter2Cutoff != 440
+            || std::fabs(back.voice.subLevel - 1.0) > 1e-6) {
+            printf("FAIL: sub parameter, filter 2 state or recall\n"); return 1;
+        }
+        printf("sub level parameter, filter 2 via state and recall: ok\n");
     }
 
     // Cocoa editor is advertised with a loadable bundle and class name.

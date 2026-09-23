@@ -45,3 +45,7 @@ drift-motion
 vowel-morph
 harmonic-rise
 glass-draw
+sub-pressure
+breath-flute
+formant-talker
+comb-pluck

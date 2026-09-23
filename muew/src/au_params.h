@@ -20,6 +20,7 @@ enum ID {
     Macro1, Macro2, Macro3, Macro4, // 0.6.0
     UnisonDetuneA, UnisonDetuneB, UnisonWidth, DistDrive, CompAmount, // 0.7.0
     WtPosA, WtPosB, // 0.9.0: user-table frame position
+    SubLevel, NoiseLevel, NoiseTone, Filter2Cutoff, Filter2Reso, // 0.10.0
     Count
 };
 
@@ -57,6 +58,11 @@ inline const Def& def(int id) {
         {"Compressor", Percent, 0, 100, false},
         {"WT Position A", Percent, 0, 100, false},
         {"WT Position B", Percent, 0, 100, false},
+        {"Sub Level", Percent, 0, 100, false},
+        {"Noise Level", Percent, 0, 100, false},
+        {"Noise Tone", Percent, 0, 100, false},
+        {"Filter 2 Cutoff", Hertz, 40, 18000, true},
+        {"Filter 2 Resonance", Generic, 0.1, 8, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -84,6 +90,11 @@ inline double& field(Preset& p, int id) {
     case CompAmount: return p.fx.comp.amount;
     case WtPosA: return p.voice.osc1WtPos;
     case WtPosB: return p.voice.osc2WtPos;
+    case SubLevel: return p.voice.subLevel;
+    case NoiseLevel: return p.voice.noiseLevel;
+    case NoiseTone: return p.voice.noiseTone;
+    case Filter2Cutoff: return p.voice.filter2Cutoff;
+    case Filter2Reso: return p.voice.filter2Reso;
     default: return p.fx.reverb.mix;
     }
 }

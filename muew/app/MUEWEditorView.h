@@ -70,6 +70,8 @@ struct MUEWEditorHost {
     double wtLastVal;
     bool wtDrawing;
     int wtPosDrag;
+    // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE).
+    int filterPage;
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)

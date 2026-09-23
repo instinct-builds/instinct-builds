@@ -57,6 +57,7 @@ static NSUserDefaults* MUEWDefaults() {
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
+        filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
         user::load(UserPresetDir(), ui::library());
@@ -159,6 +160,12 @@ static NSUserDefaults* MUEWDefaults() {
     if (k == ui::UniDetuneA) return NSMakePoint(130, t - 192);
     if (k == ui::Width) return NSMakePoint(250, t - 192);
     if (k == ui::UniDetuneB) return NSMakePoint(370, t - 192);
+    // FILTER 2 + SUB/NOISE page reuses the FILTER 1 + AMP knob spots.
+    if (k == ui::F2Cutoff) return p[ui::Cutoff];
+    if (k == ui::F2Reso) return p[ui::Resonance];
+    if (k == ui::Sub) return p[ui::Attack];
+    if (k == ui::Noise) return p[ui::Release];
+    if (k == ui::NoiseTone) return p[ui::MsegTime];
     return p[k];
 }
 - (BOOL)oscRowKnob:(int)k {
@@ -167,7 +174,7 @@ static NSUserDefaults* MUEWDefaults() {
 - (CGFloat)knobRadius:(int)k {
     if (ui::isMacro(k)) return 13;
     if ([self oscRowKnob:k]) return 19;
-    return (k == ui::Cutoff || k == ui::Resonance) ? 30 : 25;
+    return (k == ui::Cutoff || k == ui::Resonance || k == ui::F2Cutoff || k == ui::F2Reso) ? 30 : 25;
 }
 // Unison strip under each oscillator display: 8 voice pips + readout.
 - (NSRect)unisonStrip:(int)osc { return NSMakeRect(osc ? 252 : 46, [self top] - 151, 190, 18); }
@@ -226,6 +233,11 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)oscDisplay:(int)o { return NSMakeRect(o ? 252 : 46, [self top] - 125, 190, 76); }
 - (NSRect)oscTitle:(int)o { return NSMakeRect(o ? 256 : 50, [self top] - 47, 186, 16); }
 - (NSRect)wtPosBar:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(r.origin.x + 10, r.origin.y + 5, r.size.width - 20, 7); }
+- (NSRect)filterTab:(int)i { return NSMakeRect(i ? 556 : 492, [self top] - 29, i ? 92 : 60, 17); }
+- (NSRect)f2Display { return NSMakeRect(686, [self top] - 138, 86, 94); }
+- (NSRect)f2TypeRect { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x, NSMaxY(r) - 18, r.size.width, 18); }
+- (NSRect)f2RouteRect:(int)i { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x + 5 + i * 39, r.origin.y + 4, 37, 13); }
+- (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 186 - i * 20, 48, 15); }
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 260, 440, 260); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
@@ -463,6 +475,50 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     }
 }
 
+// Filter 2 response, measured by running the real filter on test tones.
+- (void)filter2In:(NSRect)r {
+    const VoiceParams& v = current.voice;
+    FillRound(r, 7, C(0x0a0d12));
+    const bool on = v.filter2Type != 0;
+    Text([NSString stringWithFormat:@"F2 \u2022 %s", ui::filter2TypeName(v.filter2Type)], NSMakeRect(r.origin.x + 6, NSMaxY(r) - 15, r.size.width - 8, 12), 8,
+         on ? C(0xf2ab55) : C(0x6f7b8b), NSFontWeightSemibold);
+    NSRect plot = NSMakeRect(r.origin.x + 6, r.origin.y + 21, r.size.width - 12, r.size.height - 42);
+    FillRound(NSMakeRect(plot.origin.x, NSMidY(plot), plot.size.width, 1), 0, C(0x1c232d));
+    if (on) {
+        const double sr = 44100.0;
+        Filter2 f; f.setSampleRate(sr); f.setType(v.filter2Type); f.set(v.filter2Cutoff, v.filter2Reso);
+        const int pts = 44;
+        NSBezierPath* path = [NSBezierPath bezierPath];
+        for (int i = 0; i < pts; ++i) {
+            const double hz = 40.0 * std::pow(16000.0 / 40.0, i / (double)(pts - 1));
+            f.reset();
+            double pk = 0;
+            const int n = 1400;
+            for (int s = 0; s < n; ++s) {
+                float y = f.process((float)std::sin(2 * M_PI * hz * s / sr));
+                if (s > n - 400) pk = std::max(pk, (double)std::fabs(y));
+            }
+            const double db = std::clamp(20 * std::log10(pk + 1e-6), -36.0, 12.0);
+            CGFloat x = plot.origin.x + plot.size.width * i / (pts - 1);
+            CGFloat y = plot.origin.y + plot.size.height * (db + 36.0) / 48.0;
+            i ? [path lineToPoint:NSMakePoint(x, y)] : [path moveToPoint:NSMakePoint(x, y)];
+        }
+        [C(0xf2ab55, .25) setStroke]; path.lineWidth = 4; [path stroke];
+        [C(0xf2ab55) setStroke]; path.lineWidth = 1.5; [path stroke];
+    } else {
+        TextA(@"click to enable", NSMakeRect(plot.origin.x, NSMidY(plot) + 4, plot.size.width, 11), 7.5, C(0x4a5462),
+              NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
+    NSArray* routes = @[@"SER", @"PAR"];
+    for (int i = 0; i < 2; ++i) {
+        NSRect b = [self f2RouteRect:i];
+        bool sel = v.filterRouting == i;
+        FillRound(b, 3, sel ? C(0xf2ab55, .25) : C(0x161c25));
+        TextA(routes[i], NSMakeRect(b.origin.x, b.origin.y + 2, b.size.width, 10), 7, sel ? C(0xf2ab55) : C(0x6f7b8b),
+              NSFontWeightBold, NSTextAlignmentCenter);
+    }
+}
+
 - (void)msegIn:(NSRect)r {
     FillRound(r, 7, C(0x0a0d12));
     Text(current.voice.mseg1Loop ? @"MSEG 1 \u2022 LOOP" : @"MSEG 1", NSMakeRect(r.origin.x + 6, NSMaxY(r) - 15, r.size.width - 8, 12), 8, C(0x66e2d0), NSFontWeightSemibold);
@@ -541,7 +597,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
     CGFloat top = [self top];
     [self panel:NSMakeRect(24, top - 260, 440, 260) title:@"OSCILLATORS"];
-    [self panel:NSMakeRect(478, top - 260, 306, 260) title:@"FILTER + AMP"];
+    [self panel:NSMakeRect(478, top - 260, 306, 260) title:@""];
     [self panel:NSMakeRect(798, 38, b.size.width - 822, top - 38) title:@"PRESET BROWSER"];
 
     // Oscillators
@@ -579,14 +635,43 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [self knob:ui::UniDetuneB accent:C(0x9d7df2)];
     [self knob:ui::Detune accent:C(0x9d7df2)];
 
-    // Filter + amp
-    TextA(S(ui::filterModeName(v.filterMode)), NSMakeRect(640, top - 27, 128, 14), 9, C(0xf2ab55), NSFontWeightSemibold, NSTextAlignmentRight);
-    [self knob:ui::Cutoff accent:C(0xf2ab55)];
-    [self knob:ui::Resonance accent:C(0xf2ab55)];
-    [self msegIn:NSMakeRect(686, top - 138, 86, 94)];
-    [self knob:ui::Attack accent:C(0x6cb6ff)];
-    [self knob:ui::Release accent:C(0x6cb6ff)];
-    [self knob:ui::MsegTime accent:C(0x5adac8)];
+    // Filter + amp: two pages behind header tabs (0.10.0).
+    {
+        NSArray* tabs = @[@"FILTER 1", @"FILTER 2 + SUB"];
+        for (int i = 0; i < 2; ++i) {
+            NSRect r = [self filterTab:i];
+            bool on = filterPage == i;
+            bool live = i == 1 && (v.filter2Type != 0 || v.subLevel > 0 || v.noiseLevel > 0);
+            FillRound(r, 4, on ? C(0xf2ab55, .22) : C(0x1b222c));
+            TextA(tabs[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 11), 8, on ? C(0xf2ab55) : C(0x8793a3),
+                  NSFontWeightBold, NSTextAlignmentCenter);
+            if (live && !on) FillRound(NSMakeRect(NSMaxX(r) - 7, NSMaxY(r) - 7, 4, 4), 2, C(0xf2ab55));
+        }
+    }
+    if (filterPage == 0) {
+        TextA(S(ui::filterModeName(v.filterMode)), NSMakeRect(640, top - 27, 128, 14), 9, C(0xf2ab55), NSFontWeightSemibold, NSTextAlignmentRight);
+        [self knob:ui::Cutoff accent:C(0xf2ab55)];
+        [self knob:ui::Resonance accent:C(0xf2ab55)];
+        [self msegIn:NSMakeRect(686, top - 138, 86, 94)];
+        [self knob:ui::Attack accent:C(0x6cb6ff)];
+        [self knob:ui::Release accent:C(0x6cb6ff)];
+        [self knob:ui::MsegTime accent:C(0x5adac8)];
+    } else {
+        TextA(v.filterRouting ? @"PARALLEL" : @"SERIAL", NSMakeRect(650, top - 27, 118, 14), 9, C(0xf2ab55), NSFontWeightSemibold, NSTextAlignmentRight);
+        [self knob:ui::F2Cutoff accent:C(0xf2ab55)];
+        [self knob:ui::F2Reso accent:C(0xf2ab55)];
+        [self filter2In:[self f2Display]];
+        [self knob:ui::Sub accent:C(0x6cb6ff)];
+        [self knob:ui::Noise accent:C(0xc3cbd6)];
+        [self knob:ui::NoiseTone accent:C(0xc3cbd6)];
+        NSString* pills[2] = {v.subOctave >= 2 ? @"-2 OCT" : @"-1 OCT", S(ui::subShapeName(v.subShape))};
+        for (int i = 0; i < 2; ++i) {
+            NSRect r = [self subPill:i];
+            FillRound(r, 4, C(0x1b222c));
+            TextA(pills[i], NSMakeRect(r.origin.x, r.origin.y + 2.5, r.size.width, 10), 7.5, v.subLevel > 0 ? C(0x6cb6ff) : C(0x8793a3),
+                  NSFontWeightBold, NSTextAlignmentCenter);
+        }
+    }
 
     // Browser: chips
     NSArray* chips = ChipLabels();
@@ -806,6 +891,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 // ---- interaction ----
 - (NSInteger)hitKnob:(NSPoint)p {
     for (int k = 0; k < ui::KnobCount; ++k) {
+        if (ui::knobPage(k) >= 0 && ui::knobPage(k) != filterPage) continue; // other FILTER page
         NSPoint c = [self knobCenter:k];
         CGFloat reach = [self oscRowKnob:k] ? 6 : 8; // osc-row knobs sit 60 pt apart
         if (hypot(p.x - c.x, p.y - c.y) < [self knobRadius:k] + reach) return k;
@@ -1067,6 +1153,30 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     if (NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { wtDrawing = true; [self tableStrokeTo:p first:YES]; }
 }
 
+// FILTER panel page tabs and the FILTER 2 + SUB page's click controls.
+- (BOOL)filterPanelMouseDown:(NSPoint)p {
+    for (int i = 0; i < 2; ++i)
+        if (NSPointInRect(p, [self filterTab:i])) {
+            filterPage = i;
+            [MUEWDefaults() setInteger:i forKey:@"MUEWFilterPage"];
+            [self setNeedsDisplay:YES];
+            return YES;
+        }
+    if (filterPage != 1) return NO;
+    VoiceParams& v = current.voice;
+    bool hit = false;
+    for (int i = 0; i < 2 && !hit; ++i)
+        if (NSPointInRect(p, [self f2RouteRect:i])) { v.filterRouting = i; hit = true; }
+    if (!hit && NSPointInRect(p, [self f2Display])) { v.filter2Type = (v.filter2Type + 1) % kFilter2Types; hit = true; }
+    if (!hit && NSPointInRect(p, [self subPill:0])) { v.subOctave = v.subOctave >= 2 ? 1 : 2; hit = true; }
+    if (!hit && NSPointInRect(p, [self subPill:1])) { v.subShape = (v.subShape + 1) % kSubShapes; hit = true; }
+    if (!hit) return NO;
+    edited = true;
+    [self applySound];
+    [self setNeedsDisplay:YES];
+    return YES;
+}
+
 // Clicks on the oscillator header and displays: the name cycles the shape
 // (SINE..PULSE, USER), the WT POS bar drags the frame position, and the rest
 // of the display opens the wavetable editor. Returns YES if handled.
@@ -1098,6 +1208,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     dragKnob = -1;
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
     if ([self oscMouseDown:p]) return;
+    if ([self filterPanelMouseDown:p]) return;
     dragKnob = [self hitKnob:p];
     if (dragKnob >= kFxDrag) { // FX ring: drive / mix / amount, published as AU parameters
         int id = [self paramForDrag:dragKnob];
