@@ -27,7 +27,7 @@ public enum SheetExporter {
             case .vitals:
                 var lines = [
                     "## Vitals",
-                    "HP **\(c.currentHP)/\(c.maxHP)**\(c.tempHP > 0 ? " (+\(c.tempHP) temp)" : "") · AC **\(c.computedAC)** · Initiative **\(signed(c.initiative))** · Speed **\(c.speed) ft** · Passive Perception **\(c.passivePerception)**",
+                    "HP **\(c.currentHP)/\(c.maxHP)**\(c.tempHP > 0 ? " (+\(c.tempHP) temp)" : "") · AC **\(c.computedAC)** · Initiative **\(signed(c.initiative))** · Speed **\(c.speed) ft** · Passives **Perc \(c.passivePerception) / Inv \(c.passiveInvestigation) / Ins \(c.passiveInsight)**",
                     "Hit Dice **\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)** · Death saves **\(c.deathSaveSuccesses)✓ / \(c.deathSaveFailures)✗**",
                 ]
                 if c.exhaustion > 0 { lines.append("Exhaustion: **\(c.exhaustion)**") }
@@ -189,7 +189,7 @@ public enum SheetExporter {
                   <span class="chip">AC <b>\(c.computedAC)</b></span>
                   <span class="chip">Init <b>\(signed(c.initiative))</b></span>
                   <span class="chip">Speed <b>\(c.speed) ft</b></span>
-                  <span class="chip">Passive Perc <b>\(c.passivePerception)</b></span>
+                  <span class="chip">Passive Perc <b>\(c.passivePerception)</b></span><span class="chip">Passive Inv <b>\(c.passiveInvestigation)</b></span><span class="chip">Passive Ins <b>\(c.passiveInsight)</b></span>
                   <span class="chip">Hit Dice <b>\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)</b></span>
                   \(extra)
                 </div>\(c.conditions.isEmpty ? "" : "<p class=\"meta\">Conditions: " + esc(c.conditions.map { $0.displayName }.sorted().joined(separator: ", ")) + "</p>")</section>

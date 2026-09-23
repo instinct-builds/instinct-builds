@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.6.0
+
+- Passive senses: Perception, Investigation, and Insight computed as
+  10 + skill bonus, shown as stat plates in the vitals block and
+  included in Markdown, HTML, and PDF exports.
+
 ## What's in 2.5.0
 
 - Journal block: dated session-log entries on the sheet (date, title,

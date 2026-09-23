@@ -86,6 +86,25 @@ struct CharacterTests {
         #expect(c.features[1].usesRemaining == 0)
     }
 
+    @Test func passiveSensesDeriveFromSkills() {
+        var c = Character(name: "T", level: 5)
+        c.scores = AbilityScores([.strength: 10, .dexterity: 10, .constitution: 10,
+                                  .intelligence: 16, .wisdom: 14, .charisma: 10])
+        // No proficiencies yet: raw ability modifiers (WIS +2, INT +3).
+        #expect(c.passivePerception == 12)
+        #expect(c.passiveInvestigation == 13)
+        #expect(c.passiveInsight == 12)
+        // Proficiency at level 5 adds +3.
+        c.skills = c.skills.map { $0.name == "Perception" ? Skill(name: $0.name, ability: $0.ability, tier: .proficient) : $0 }
+        c.skills = c.skills.map { $0.name == "Insight" ? Skill(name: $0.name, ability: $0.ability, tier: .expert) : $0 }
+        #expect(c.passivePerception == 15)
+        #expect(c.passiveInsight == 18)
+        #expect(c.passiveInvestigation == 13)
+        // A sheet without the skill falls back to the raw ability modifier.
+        c.skills.removeAll { $0.name == "Investigation" }
+        #expect(c.passiveInvestigation == 13)
+    }
+
     @Test func xpAwardLevelsUp() {
         var c = Character(name: "T", level: 1)
         let noLevel = c.addXP(100)

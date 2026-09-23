@@ -64,8 +64,21 @@ struct VitalsBlock: View {
                     .help("Used when unarmored")
                 Stepper("Speed \(character.speed) ft", value: $character.speed, in: 0...120, step: 5)
                 Stepper("Init misc \(signed(character.initiativeBonus))", value: $character.initiativeBonus, in: -10...20)
-                Text("Initiative \(signed(character.initiative)) · Passive Perception \(character.passivePerception)")
+                Text("Initiative \(signed(character.initiative))")
                     .foregroundStyle(.secondary)
+            }
+            HStack(spacing: Theme.Gap.md) {
+                CardSectionLabel(text: "Passive senses")
+                StatPlate(label: "Perception", value: "\(character.passivePerception)", tint: Theme.accent)
+                    .frame(maxWidth: 100)
+                StatPlate(label: "Investigation", value: "\(character.passiveInvestigation)")
+                    .frame(maxWidth: 100)
+                StatPlate(label: "Insight", value: "\(character.passiveInsight)")
+                    .frame(maxWidth: 100)
+                Spacer()
+                Text("10 + skill bonus; counts when not actively rolling")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkFaint)
             }
             Divider().overlay(Theme.edge)
             // Hit dice + death saves + rests

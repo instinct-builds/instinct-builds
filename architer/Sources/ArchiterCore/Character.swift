@@ -481,9 +481,14 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
 
     public var proficiencyBonus: Int { RulesMath.proficiencyBonus(level: level) }
     public var initiative: Int { scores.modifier(.dexterity) + initiativeBonus }
-    public var passivePerception: Int {
-        let skill = skills.first { $0.name == "Perception" }
-        return 10 + (skill?.bonus(scores: scores, level: level) ?? scores.modifier(.wisdom))
+    public var passivePerception: Int { passiveScore(forSkill: "Perception", ability: .wisdom) }
+    public var passiveInvestigation: Int { passiveScore(forSkill: "Investigation", ability: .intelligence) }
+    public var passiveInsight: Int { passiveScore(forSkill: "Insight", ability: .wisdom) }
+    /// Passive value for a skill: 10 + its bonus (raw ability modifier when the
+    /// sheet has no such skill). The table standard for noticing without rolling.
+    public func passiveScore(forSkill name: String, ability: Ability) -> Int {
+        let skill = skills.first { $0.name == name }
+        return 10 + (skill?.bonus(scores: scores, level: level) ?? scores.modifier(ability))
     }
 
     /// Equipped-armor AC when armor is worn, else manual AC; shield and misc

@@ -190,6 +190,8 @@ public enum SheetPDFExporter {
                     ("Initiative", signed(c.initiative)),
                     ("Speed", "\(c.speed) ft"),
                     ("Passive Perc", "\(c.passivePerception)"),
+                    ("Passive Inv", "\(c.passiveInvestigation)"),
+                    ("Passive Ins", "\(c.passiveInsight)"),
                     ("Hit Dice", "\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)"),
                 ]
                 if c.exhaustion > 0 { chips.append(("Exhaustion", "\(c.exhaustion)")) }
