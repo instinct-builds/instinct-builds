@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.9.0
+
+- Custom spells: "Add custom" creates a spell straight on the sheet,
+  and expanding any spell now edits it inline - name, level, school,
+  casting time, range, duration, components, concentration/ritual,
+  and detail text. Library spells can be personalized the same way.
+
 ## What's in 2.8.0
 
 - Custom skills: add your own skills (name + governing ability) to the

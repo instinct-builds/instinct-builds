@@ -77,6 +77,11 @@ struct SpellcastingBlock: View {
                     if !searchText.isEmpty {
                         Button("Clear") { searchText = "" }
                     }
+                    Button("Add custom") {
+                        character.spellcasting?.spells.append(Spell(name: "New spell", level: 0))
+                    }
+                    .buttonStyle(RollButtonStyle())
+                    .disabled(character.spellcasting == nil)
                 }
                 if !searchText.isEmpty {
                     let matches = SpellLibrary.all.filter {
@@ -220,16 +225,43 @@ struct SpellGroup: View {
                                 .font(Theme.Typeface.caption)
                                 .foregroundStyle(Theme.inkMuted)
                             if expandedIDs.contains(spell.id) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Components: \(spell.components)")
-                                        .font(Theme.Typeface.caption)
-                                        .foregroundStyle(Theme.inkMuted)
-                                    if !spell.detail.isEmpty {
-                                        Text(spell.detail)
-                                            .font(Theme.Typeface.caption)
-                                            .foregroundStyle(Theme.ink)
-                                            .fixedSize(horizontal: false, vertical: true)
+                                let spellBinding = Binding<Spell>(
+                                    get: { spell },
+                                    set: { v in
+                                        if let idx = character.spellcasting?.spells.firstIndex(where: { $0.id == spell.id }) {
+                                            character.spellcasting?.spells[idx] = v
+                                        }
+                                    })
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(spacing: Theme.Gap.sm) {
+                                        TextField("Name", text: spellBinding.name)
+                                            .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 160)
+                                        Picker("Level", selection: spellBinding.level) {
+                                            Text("Cantrip").tag(0)
+                                            ForEach(1...9, id: \.self) { Text("Level \($0)").tag($0) }
+                                        }
+                                        .frame(maxWidth: 130)
+                                        TextField("School", text: spellBinding.school)
+                                            .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 110)
                                     }
+                                    HStack(spacing: Theme.Gap.sm) {
+                                        TextField("Casting time", text: spellBinding.castingTime)
+                                            .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 120)
+                                        TextField("Range", text: spellBinding.range)
+                                            .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 110)
+                                        TextField("Duration", text: spellBinding.duration)
+                                            .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 110)
+                                        TextField("Components", text: spellBinding.components)
+                                            .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 90)
+                                    }
+                                    HStack(spacing: Theme.Gap.md) {
+                                        Toggle("Concentration", isOn: spellBinding.concentration)
+                                            .toggleStyle(.checkbox).font(.caption)
+                                        Toggle("Ritual", isOn: spellBinding.ritual)
+                                            .toggleStyle(.checkbox).font(.caption)
+                                    }
+                                    TextField("Detail", text: spellBinding.detail)
+                                        .textFieldStyle(InsetFieldStyle())
                                 }
                                 .padding(Theme.Gap.sm)
                                 .frame(maxWidth: .infinity, alignment: .leading)
