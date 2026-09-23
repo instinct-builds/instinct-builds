@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.27.0
+
+- Free-roller defense notes: the Dice tab's free roller gains a damage-type
+  picker next to Roll. Typed rolls record with the same outgoing-defense
+  annotation attack rolls carry - what the total deals against resistance,
+  immunity, and vulnerability (e.g. "2d10+3 (fire: resist 7 - immune 0 -
+  vuln 28)"). "No type" keeps rolls untyped exactly as before. Pairs with
+  2.24.0's attack-side notes; quick-add to journal carries the note too.
+
 ## What's in 2.26.0
 
 - Macro duplicate button: every saved dice macro row (character and

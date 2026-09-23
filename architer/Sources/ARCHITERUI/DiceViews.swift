@@ -37,6 +37,8 @@ public struct DiceRollerView: View {
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
     @State private var macroNameDraft = ""
+    /// Free-roller damage type; nil keeps rolls untyped (no defense note).
+    @State private var damageType: DamageType? = nil
     /// Save scope for new macros: true binds them to the selected character.
     @State private var saveForCharacter = true
     /// History scope: false = whole table, true = selected character only.
@@ -53,10 +55,17 @@ public struct DiceRollerView: View {
                 TextField("Dice notation", text: $expression)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 200)
-                    .onSubmit { model.roll(expression) }
-                Button("Roll") { model.roll(expression) }
+                    .onSubmit { model.rollFree(expression, type: damageType) }
+                Button("Roll") { model.rollFree(expression, type: damageType) }
                     .buttonStyle(RollButtonStyle(prominent: true))
                     .keyboardShortcut(.return)
+                Picker("", selection: $damageType) {
+                    Text("No type").tag(DamageType?.none)
+                    ForEach(DamageType.allCases, id: \.self) { Text($0.displayName).tag(DamageType?.some($0)) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 110)
+                .help("Damage type: typed rolls note what they deal against resistance, immunity, and vulnerability")
                 Text("d20 · 2d6+3 · 4d6kh3 · 4d6dl1 · 1d8+1d4+2")
                     .font(.caption).foregroundStyle(.secondary)
             }

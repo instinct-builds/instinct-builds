@@ -195,6 +195,15 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
+    /// Free-roller roll with an optional damage type: when a type is picked
+    /// the history entry carries the same outgoing-defense note attack rolls
+    /// get (what the total deals against resist / immune / vuln). Untyped
+    /// rolls record exactly as before.
+    public func rollFree(_ expression: String, type: DamageType?) {
+        guard let type else { roll(expression); return }
+        recordDamageRoll(expression, expression, type: type)
+    }
+
     public func rollLabeled(_ label: String, _ expression: String) {
         if let r = try? roller.rollLabeled(label, expression) { record(r) }
     }
