@@ -1690,13 +1690,16 @@ struct AssetBrowser: View {
                 .padding(.horizontal, 12).padding(.vertical, 9)
                 .background(Theme.raised, in: RoundedRectangle(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11).stroke(Theme.hairline))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        KindChip(title: "All", symbol: "circle.grid.3x3", on: model.selectedKind == nil) { model.selectedKind = nil }
-                        ForEach(MediaKind.allCases) { k in KindChip(title: k.rawValue, symbol: k.symbol, on: model.selectedKind == k) { model.selectedKind = model.selectedKind == k ? nil : k } }
-                        Rectangle().fill(Theme.hairline).frame(width: 1, height: 18).padding(.horizontal, 2)
-                        RatingFilterChips()
+                HStack(spacing: 8) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            KindChip(title: "All", symbol: "circle.grid.3x3", on: model.selectedKind == nil) { model.selectedKind = nil }
+                            ForEach(MediaKind.allCases) { k in KindChip(title: k.rawValue, symbol: k.symbol, on: model.selectedKind == k) { model.selectedKind = model.selectedKind == k ? nil : k } }
+                        }
                     }
+                    // Pinned outside the scrolling media chips so an active rating or label filter is always visible.
+                    Rectangle().fill(Theme.hairline).frame(width: 1, height: 18)
+                    HStack(spacing: 6) { RatingFilterChips() }.fixedSize()
                 }
             }
             .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 10)
