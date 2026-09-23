@@ -91,6 +91,10 @@ struct RenderMain {
         app.appearance = NSAppearance(named: .darkAqua)
         let model = AppModel()
         let character = SampleContent.demoCharacter()
+        // Select the demo character so character-scoped UI (per-character
+        // roll history filter) exercises its populated state in renders.
+        model.characters = [character]
+        model.selectedID = character.id
         run(model: model, character: character, outDir: outDir)
         exit(0)
     }
