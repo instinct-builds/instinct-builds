@@ -1971,7 +1971,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 // Clicks on the oscillator header and displays: the name cycles the shape
 // (SINE..PULSE, USER), the WT POS bar drags the frame position, and the rest
 // of the display opens the wavetable editor. Returns YES if handled.
-- (BOOL)oscMouseDown:(NSPoint)p {
+- (BOOL)oscMouseDown:(NSPoint)p event:(NSEvent*)e {
     for (int o = 0; o < 2; ++o) {
         VoiceParams& v = current.voice;
         if (NSPointInRect(p, [self oscTitle:o])) {
@@ -1990,7 +1990,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         for (int sl = 0; sl < 2; ++sl) { // 0.19.0 warp slots: arrows/name step the mode, slot 2's bar drags its amount
             if (!NSPointInRect(p, [self warpChip:o slot:sl])) continue;
             if (sl == 1 && NSPointInRect(p, NSInsetRect([self warpAmt:o slot:sl], -2, -3))) {
-                if (NSApp.currentEvent.clickCount == 2) { ui::warpAmount(v, o, 1) = 0; edited = true; [self applySound]; }
+                if (e.clickCount == 2) { ui::warpAmount(v, o, 1) = 0; edited = true; [self applySound]; }
                 else { warpAmtDrag = o; dragValue = ui::warpAmount(v, o, 1); }
                 [self setNeedsDisplay:YES];
                 return YES;
@@ -2303,7 +2303,7 @@ static int SortForColumn(int c) {
     if (browserOpen) { [self browserMouseDown:p]; return; }
     if (NSPointInRect(p, [self expandRect]) || NSPointInRect(p, [self presetDisplayRect])) { [self setBrowserOpen:true]; return; }
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
-    if ([self oscMouseDown:p]) return;
+    if ([self oscMouseDown:p event:e]) return;
     if ([self filterPanelMouseDown:p]) return;
     if ([self msegMouseDown:p event:e]) return;
     if ([self fxDetailMouseDown:p event:e]) return;
