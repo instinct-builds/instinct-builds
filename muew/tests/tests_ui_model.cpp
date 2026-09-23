@@ -45,6 +45,8 @@ int main() {
     for (int i : pads) allPad = allPad && factoryPresets()[i].info.category == "Pad";
     check(allPad, "Pad chip shows only pads");
     check(ui::indexOfSlug("night-bloom") >= 8 && ui::indexOfSlug("pluck") == 3, "slugs resolve to AU numbers");
+    check(ui::indexOfName("Night Bloom") == ui::indexOfSlug("night-bloom") && ui::indexOfName("Nope") == -1,
+          "display names resolve to factory numbers");
     favs.insert("laser-drop");
     auto f = ui::visiblePresets({"", "", true}, favs);
     check(f.size() == 1 && f[0] == ui::indexOfSlug("laser-drop"), "favorites view");

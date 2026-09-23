@@ -132,29 +132,46 @@ jobs:
         run: cd muew && au/build_au.sh
       - name: Build designed MUEW standalone app + DMG
         run: cd muew && scripts/make_muew_dmg.sh
+      - name: Host MUEW AU editor like a DAW and capture proof
+        run: |
+          cd muew
+          clang++ -std=c++17 -O2 -fobjc-arc -isysroot "$(xcrun --show-sdk-path)" -Isrc -Iau \
+            au/au_view_host.mm -framework AppKit -framework AudioToolbox -framework AudioUnit -framework CoreFoundation \
+            -o build/au_view_host
+          ./build/au_view_host > out/au_view_host.log 2>&1 &
+          pid=$!
+          sleep 6
+          screencapture -x out/MUEW-0.4.0-au-editor.png
+          status=0
+          wait $pid || status=$?
+          cat out/au_view_host.log
+          test "$status" -eq 0
+          test -s out/MUEW-0.4.0-au-editor.png
       - name: Verify MUEW app and distribution
         run: |
           set -euo pipefail
           cd muew
           lipo out/MUEW.app/Contents/MacOS/MUEW -verify_arch arm64 x86_64
           codesign --verify --deep --strict out/MUEW.app
-          hdiutil verify out/MUEW-0.3.0.dmg
+          hdiutil verify out/MUEW-0.4.0.dmg
       - name: Capture MUEW designed UI proof
         run: |
           cd muew
           open out/MUEW.app
           sleep 8
-          screencapture -x out/MUEW-0.3.0-instrument.png
-          test -s out/MUEW-0.3.0-instrument.png
-          sips -g pixelWidth -g pixelHeight out/MUEW-0.3.0-instrument.png
-          test "$(sips -g pixelWidth out/MUEW-0.3.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
+          screencapture -x out/MUEW-0.4.0-instrument.png
+          test -s out/MUEW-0.4.0-instrument.png
+          sips -g pixelWidth -g pixelHeight out/MUEW-0.4.0-instrument.png
+          test "$(sips -g pixelWidth out/MUEW-0.4.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
       - name: Upload MUEW release + visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.3.0-preset-browser
+          name: muew-0.4.0-au-editor
           path: |
-            muew/out/MUEW-0.3.0.dmg
-            muew/out/MUEW-0.3.0-instrument.png
+            muew/out/MUEW-0.4.0.dmg
+            muew/out/MUEW-0.4.0-instrument.png
+            muew/out/MUEW-0.4.0-au-editor.png
+            muew/out/au_view_host.log
             muew/out/MUEW-AU-unsigned.zip
       - name: Upload AU artifact
         uses: actions/upload-artifact@v4

@@ -1,0 +1,120 @@
+// MUEWAUView.mm - Cocoa editor for the MUEW Audio Unit. Hosts such as
+// Ableton Live ask the AU for kAudioUnitProperty_CocoaUI, load this class
+// from the component bundle, and embed the returned view in the plugin
+// window. The view is the same editor the standalone app uses, bound to the
+// AU through its preset properties instead of an in-process synth.
+#import <AppKit/AppKit.h>
+#import <AudioToolbox/AudioToolbox.h>
+#if __has_include(<AudioToolbox/AUCocoaUIView.h>)
+#import <AudioToolbox/AUCocoaUIView.h>
+#else
+#import <AudioUnit/AUCocoaUIView.h>
+#endif
+#import "MUEWEditorView.h"
+#include "MUEWProperties.h"
+#include <string>
+
+using namespace muew;
+
+namespace {
+
+bool ReadAUState(AudioUnit au, Preset& out, SInt32& number, UInt32& generation) {
+    CFStringRef str = nullptr;
+    UInt32 size = sizeof(str);
+    if (AudioUnitGetProperty(au, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &str, &size) != noErr || !str)
+        return false;
+    NSString* ns = (__bridge_transfer NSString*)str; // we own the returned string
+    if (!out.parse(std::string(ns.UTF8String ?: ""))) return false;
+    AUPreset p{}; size = sizeof(p);
+    number = -1;
+    if (AudioUnitGetProperty(au, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &p, &size) == noErr) {
+        number = p.presetNumber;
+        if (p.presetName) CFRelease(p.presetName);
+    }
+    size = sizeof(generation);
+    generation = 0;
+    AudioUnitGetProperty(au, kMUEWProperty_StateGeneration, kAudioUnitScope_Global, 0, &generation, &size);
+    return true;
+}
+
+UInt32 ReadGeneration(AudioUnit au) {
+    UInt32 g = 0, size = sizeof(g);
+    AudioUnitGetProperty(au, kMUEWProperty_StateGeneration, kAudioUnitScope_Global, 0, &g, &size);
+    return g;
+}
+
+// Sends editor actions to the AU. Factory loads go through PresentPreset so
+// the host shows the preset name; edits send the full sound.
+struct AUEditorHost : MUEWEditorHost {
+    AudioUnit au;
+    UInt32 seenGeneration = 0;
+    explicit AUEditorHost(AudioUnit unit) : au(unit) {}
+    void applyPreset(const Preset& p, int factoryIndex, bool edited) override {
+        if (!edited && factoryIndex >= 0) {
+            AUPreset sel{factoryIndex, nullptr};
+            AudioUnitSetProperty(au, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel));
+        } else {
+            NSString* text = [NSString stringWithUTF8String:p.serialize().c_str()];
+            CFStringRef str = (__bridge CFStringRef)text;
+            AudioUnitSetProperty(au, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &str, sizeof(str));
+        }
+        seenGeneration = ReadGeneration(au);
+    }
+};
+
+} // namespace
+
+// Owns the AU binding and follows host-side changes (host preset menu,
+// project recall) by watching the AU's state generation.
+@interface MUEWAUEditorContainer_0_4 : MUEWEditorView {
+@public
+    AUEditorHost* auHost;
+    NSTimer* follow;
+}
+@end
+
+@implementation MUEWAUEditorContainer_0_4
+- (void)syncFromAU:(BOOL)force {
+    if (!auHost) return;
+    UInt32 g = ReadGeneration(auHost->au);
+    if (!force && g == auHost->seenGeneration) return;
+    Preset p; SInt32 number = -1; UInt32 gen = 0;
+    if (!ReadAUState(auHost->au, p, number, gen)) return;
+    auHost->seenGeneration = gen;
+    int index = number;
+    if (index < 0) index = ui::indexOfName(p.info.name); // edited sound: keep its origin for reset/stepping
+    bool wasEdited = number < 0;
+    [self adoptPreset:p index:index edited:wasEdited];
+}
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    [follow invalidate];
+    follow = nil;
+    if (self.window && auHost) {
+        __weak MUEWAUEditorContainer_0_4* weakSelf = self;
+        follow = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer* t) {
+            [weakSelf syncFromAU:NO];
+        }];
+    }
+}
+- (void)dealloc {
+    [follow invalidate];
+    delete auHost;
+}
+@end
+
+@interface MUEWViewFactory_0_4 : NSObject <AUCocoaUIBase>
+@end
+
+@implementation MUEWViewFactory_0_4
+- (unsigned)interfaceVersion { return 0; }
+- (NSString*)description { return @"MUEW Editor"; }
+- (NSView*)uiViewForAudioUnit:(AudioUnit)inAudioUnit withSize:(NSSize)inPreferredSize {
+    (void)inPreferredSize; // fixed-size editor
+    MUEWAUEditorContainer_0_4* v = [[MUEWAUEditorContainer_0_4 alloc] initWithFrame:NSMakeRect(0, 0, 1000, 680)];
+    v->auHost = new AUEditorHost(inAudioUnit);
+    v->host = v->auHost;
+    [v syncFromAU:YES];
+    return v;
+}
+@end

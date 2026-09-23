@@ -119,3 +119,15 @@ simple 3-device license key scheme follow there.
 - **Standalone browser**: category chips, search over name, category and tags, favorites saved between launches, prev/next buttons, arrow keys, and a scrolling list. Loading a preset changes the real engine state. The knobs edit real fields, so the oscillator previews, MSEG curve, modulation slots and FX cards all show the loaded sound. Double-click a knob to return it to the preset value, or hold Shift while dragging for fine control. Z and X shift the keyboard octave.
 - **Tests**: `muew-tests-bank` checks exact round-trips, v1 compatibility, manifest/embedding parity, metadata, browser filtering, bounded non-silent output for every preset at three pitches, and that the modulation is audible. `muew-tests-ui` checks the UI model. The AU host test now selects and renders all 30 presets through the host API.
 - Edit sounds in `scripts/author_factory_presets.py`, then run `python3 scripts/author_factory_presets.py && python3 scripts/embed_factory_bank.py` from `muew/`.
+
+## 0.4.0 Audio Unit editor
+
+- The AU now ships a Cocoa editor. Hosts such as Ableton Live read `kAudioUnitProperty_CocoaUI` and load `MUEWViewFactory_0_4` from `MUEW.component`. The plugin window shows the same designed instrument and preset browser as the standalone app.
+- The editor code is shared (`app/MUEWEditorView.*`). It talks to the sound only through `MUEWEditorHost`. The standalone binds it to its in-process synth. The AU binds it to AU properties:
+  - Factory loads go through `PresentPreset`, so the host shows the preset name.
+  - Knob edits send the full sound through the private property `kMUEWProperty_PresetState`.
+  - The editor watches `kMUEWProperty_StateGeneration`, so host-side preset changes and project recall show up in the open window.
+- AU state is now thread-safe. Host and editor changes are staged under a lock, and the render thread picks them up at the top of the next block.
+- Project recall saves the full sound (`muewState` in ClassInfo), so edits made in the editor survive a Live set reload. 0.3-style class info (preset number only) still loads.
+- `au/au_view_host.mm` is a CI harness that loads the editor the way a DAW does, drives it with real mouse events, and checks that the host, editor and AU stay in sync.
+- Not yet: AU parameters for host automation. That is the next milestone.

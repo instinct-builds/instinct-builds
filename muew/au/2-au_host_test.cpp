@@ -4,6 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include <string>
+#include "MUEWProperties.h"
+#include "preset.h"
 
 static AudioUnit openUnit() {
     AudioComponentDescription desc{};
@@ -22,6 +25,29 @@ static AudioUnit openUnit() {
     if (AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &fmt, sizeof(fmt)) != noErr ||
         AudioUnitInitialize(unit) != noErr) { AudioComponentInstanceDispose(unit); return nullptr; }
     return unit;
+}
+
+static bool getState(AudioUnit u, muew::Preset& out) {
+    CFStringRef str = nullptr; UInt32 size = sizeof(str);
+    if (AudioUnitGetProperty(u, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &str, &size) != noErr || !str) return false;
+    char buf[65536];
+    bool ok = CFStringGetCString(str, buf, sizeof(buf), kCFStringEncodingUTF8);
+    CFRelease(str);
+    return ok && out.parse(buf);
+}
+
+static bool setState(AudioUnit u, const muew::Preset& p) {
+    CFStringRef str = CFStringCreateWithCString(nullptr, p.serialize().c_str(), kCFStringEncodingUTF8);
+    OSStatus st = AudioUnitSetProperty(u, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &str, sizeof(str));
+    CFRelease(str);
+    return st == noErr;
+}
+
+static SInt32 presetNumber(AudioUnit u) {
+    AUPreset p{}; UInt32 size = sizeof(p);
+    if (AudioUnitGetProperty(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &p, &size) != noErr) return -99;
+    if (p.presetName) CFRelease(p.presetName);
+    return p.presetNumber;
 }
 
 static bool render(AudioUnit u, std::vector<float>& l, std::vector<float>& r) {
@@ -93,6 +119,68 @@ int main() {
         if(!finite||e<1e-6){printf("FAIL: preset %d silent or non-finite (energy %g)\n",(int)n,e);return 1;}
     }
     printf("all %d factory presets select and render through the host\n",kExpectedPresets);
+    // Editor edits: the full sound is readable/writable, an edit is no
+    // longer a factory preset, and the state generation moves.
+    {
+        AUPreset sel{26, nullptr}; // Bent Circuit
+        AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel));
+        muew::Preset p;
+        if (!getState(unit, p) || p.info.name != "Bent Circuit") { printf("FAIL: read editor state\n"); return 1; }
+        UInt32 g0 = 0, gs = sizeof(g0);
+        AudioUnitGetProperty(unit, kMUEWProperty_StateGeneration, kAudioUnitScope_Global, 0, &g0, &gs);
+        p.voice.filterCutoff = 1234.5; p.voice.osc1Warp = 0.61; p.fx.reverb.mix = 0.17;
+        if (!setState(unit, p)) { printf("FAIL: write editor state\n"); return 1; }
+        UInt32 g1 = 0; gs = sizeof(g1);
+        AudioUnitGetProperty(unit, kMUEWProperty_StateGeneration, kAudioUnitScope_Global, 0, &g1, &gs);
+        muew::Preset back;
+        if (!getState(unit, back) || !(back == p) || presetNumber(unit) != -1 || g1 == g0) {
+            printf("FAIL: editor state round trip\n"); return 1;
+        }
+        // Project save/recall: ClassInfo from this unit restores the exact
+        // edited sound in a fresh instance.
+        CFPropertyListRef plist = nullptr; UInt32 ps = sizeof(plist);
+        if (AudioUnitGetProperty(unit, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, &ps) != noErr || !plist) {
+            printf("FAIL: save class info\n"); return 1;
+        }
+        AudioUnit other = openUnit();
+        if (!other || AudioUnitSetProperty(other, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, sizeof(plist)) != noErr) {
+            printf("FAIL: restore class info\n"); return 1;
+        }
+        CFRelease(plist);
+        muew::Preset restored;
+        if (!getState(other, restored) || !(restored == p)) { printf("FAIL: edited sound not recalled exactly\n"); return 1; }
+        MusicDeviceMIDIEvent(other, 0x90, 60, 110, 0);
+        double e = 0;
+        for (int blk = 0; blk < 16; ++blk) { if (!render(other, l, r)) { printf("FAIL: recalled render\n"); return 1; } e += energy(l, 0, frames); }
+        if (e < 1e-6) { printf("FAIL: recalled sound is silent\n"); return 1; }
+        AudioUnitUninitialize(other); AudioComponentInstanceDispose(other);
+        // A 0.3-style class info (preset number only) still loads that preset.
+        CFMutableDictionaryRef legacy = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        SInt32 n16 = 16; CFNumberRef num = CFNumberCreate(nullptr, kCFNumberSInt32Type, &n16);
+        CFDictionarySetValue(legacy, CFSTR("presetNumber"), num); CFRelease(num);
+        CFPropertyListRef lp = legacy;
+        AudioUnitSetProperty(unit, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &lp, sizeof(lp));
+        CFRelease(legacy);
+        muew::Preset nb;
+        if (presetNumber(unit) != 16 || !getState(unit, nb) || nb.info.name != "Night Bloom") { printf("FAIL: legacy class info\n"); return 1; }
+        printf("editor state, full-sound recall and legacy recall: ok\n");
+    }
+
+    // Cocoa editor is advertised with a loadable bundle and class name.
+    {
+        UInt32 size = 0; Boolean writable = false;
+        if (AudioUnitGetPropertyInfo(unit, kAudioUnitProperty_CocoaUI, kAudioUnitScope_Global, 0, &size, &writable) != noErr
+            || size < sizeof(AudioUnitCocoaViewInfo)) { printf("FAIL: CocoaUI property info\n"); return 1; }
+        AudioUnitCocoaViewInfo info{}; size = sizeof(info);
+        if (AudioUnitGetProperty(unit, kAudioUnitProperty_CocoaUI, kAudioUnitScope_Global, 0, &info, &size) != noErr
+            || !info.mCocoaAUViewBundleLocation || !info.mCocoaAUViewClass[0]
+            || CFStringCompare(info.mCocoaAUViewClass[0], CFSTR(MUEW_VIEW_FACTORY_CLASS), 0) != kCFCompareEqualTo) {
+            printf("FAIL: CocoaUI view info\n"); return 1;
+        }
+        CFRelease(info.mCocoaAUViewBundleLocation); CFRelease(info.mCocoaAUViewClass[0]);
+        printf("cocoa editor advertised: %s\n", MUEW_VIEW_FACTORY_CLASS);
+    }
+
     AudioUnitUninitialize(unit); AudioComponentInstanceDispose(unit);
     printf("PASS: host presets, sample offsets and audio render\n");
     return 0;

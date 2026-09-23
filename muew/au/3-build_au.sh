@@ -10,9 +10,10 @@ mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources" build
 echo "== Compiling MUEW.component =="
 clang++ -std=c++17 -O2 -bundle -arch arm64 -arch x86_64 \
   -isysroot "$(xcrun --show-sdk-path)" \
-  -Isrc -Iau \
-  au/MUEWAU.cpp \
+  -Isrc -Iau -Iapp -fobjc-arc -DMUEW_EDITOR_CLASS=MUEWEditorView_AU_0_4 \
+  au/MUEWAU.cpp au/MUEWAUView.mm app/MUEWEditorView.mm \
   -framework AudioToolbox -framework CoreAudio -framework CoreMIDI -framework CoreFoundation \
+  -framework AppKit -framework AudioUnit \
   -o "$OUT/Contents/MacOS/MUEW"
 cp au/Info.plist "$OUT/Contents/Info.plist"
 echo "== Universal architecture check =="
@@ -42,7 +43,7 @@ echo "== auval =="
 auval -v aumu Muew Inst
 
 echo "== Host audio test =="
-clang++ -std=c++17 -O2 -isysroot "$(xcrun --show-sdk-path)" \
+clang++ -std=c++17 -O2 -isysroot "$(xcrun --show-sdk-path)" -Isrc -Iau \
   au/au_host_test.cpp -framework AudioToolbox -framework CoreAudio -framework CoreMIDI -framework CoreFoundation \
   -o build/au_host_test
 ./build/au_host_test

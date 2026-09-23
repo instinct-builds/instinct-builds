@@ -4,6 +4,7 @@
 #include "synth.h"
 #include "preset.h"
 #include "factory_bank.h"
+#include "MUEWProperties.h"
 
 #include <AudioToolbox/AudioUnitProperties.h>
 #include <AudioToolbox/MusicDevice.h>
@@ -12,6 +13,8 @@
 #include <new>
 #include <algorithm>
 #include <vector>
+#include <mutex>
+#include <string>
 
 namespace {
 
@@ -54,8 +57,15 @@ struct MUEWInstance {
     UInt32 maxFrames = 512;
     UInt32 renderQuality = 0x7F;
     bool initialized = false;
-    SInt32 presentPreset = 0;
+    SInt32 presentPreset = 7;
     std::vector<Listener> listeners;
+    // Current sound. Host/UI threads write it under stateLock; the render
+    // thread picks up changes at the top of the next block, so the engine is
+    // never modified while it is rendering.
+    std::mutex stateLock;
+    muew::Preset state = muew::factoryPresets()[7]; // Warm Pad power-on sound
+    bool stateDirty = true;
+    UInt32 generation = 1;
     std::vector<ScheduledEvent> events;
 
     AudioStreamBasicDescription streamFormat() const {
@@ -72,20 +82,46 @@ struct MUEWInstance {
         return d;
     }
 
+    void setState(const muew::Preset& p, SInt32 number) {
+        std::lock_guard<std::mutex> g(stateLock);
+        state = p;
+        presentPreset = number;
+        stateDirty = true;
+        ++generation;
+    }
+
+    // Render thread: never blocks. Host thread (initialize/reset): blocks.
+    void applyPendingState(bool block) {
+        std::unique_lock<std::mutex> g(stateLock, std::defer_lock);
+        if (block) g.lock(); else if (!g.try_lock()) return;
+        if (!stateDirty) return;
+        synth.setParams(state.voice, state.routes);
+        synth.setFX(state.fx);
+        stateDirty = false;
+    }
+
     bool loadFactoryPreset(SInt32 number) {
         const auto& bank = muew::factoryPresets();
         if (number < 0 || number >= (SInt32)bank.size()) return false;
-        const muew::Preset& preset = bank[number];
-        synth.setParams(preset.voice, preset.routes);
-        synth.setFX(preset.fx);
-        presentPreset = number;
+        setState(bank[number], number);
         return true;
     }
 
-    void loadDefaultSound() { loadFactoryPreset(7); }
+    SInt32 currentPresetNumber() { std::lock_guard<std::mutex> g(stateLock); return presentPreset; }
+    std::string stateText() { std::lock_guard<std::mutex> g(stateLock); return state.serialize(); }
 };
 
 MUEWInstance* Self(void* self) { return reinterpret_cast<MUEWInstance*>(self); }
+
+bool ParseStateString(CFStringRef str, muew::Preset& out) {
+    CFIndex len = CFStringGetLength(str);
+    CFIndex max = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8) + 1;
+    if (max <= 1 || max > (1 << 20)) return false;
+    std::string buf(static_cast<size_t>(max), '\0');
+    if (!CFStringGetCString(str, &buf[0], max, kCFStringEncodingUTF8)) return false;
+    buf.resize(std::strlen(buf.c_str()));
+    return out.parse(buf);
+}
 
 void NotifyListeners(MUEWInstance* u, AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement elem) {
     for (auto& l : u->listeners)
@@ -109,7 +145,8 @@ OSStatus MUEWClose(void* self) {
 OSStatus MUEWInitialize(void* self) {
     MUEWInstance* u = Self(self);
     u->synth.init(u->sampleRate);
-    u->loadDefaultSound();
+    { std::lock_guard<std::mutex> g(u->stateLock); u->stateDirty = true; }
+    u->applyPendingState(true); // keep whatever sound the host restored
     u->initialized = true;
     return noErr;
 }
@@ -175,6 +212,21 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
         case kAudioUnitProperty_ClassInfo:
             if (inScope == kAudioUnitScope_Global) {
                 *outDataSize = sizeof(CFPropertyListRef); if (outWritable) *outWritable = true; return noErr;
+            }
+            break;
+        case kAudioUnitProperty_CocoaUI:
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(AudioUnitCocoaViewInfo); if (outWritable) *outWritable = false; return noErr;
+            }
+            break;
+        case kMUEWProperty_PresetState:
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(CFStringRef); if (outWritable) *outWritable = true; return noErr;
+            }
+            break;
+        case kMUEWProperty_StateGeneration:
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(UInt32); if (outWritable) *outWritable = false; return noErr;
             }
             break;
         default: break;
@@ -256,11 +308,11 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
         case kAudioUnitProperty_PresentPreset:
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(AUPreset)) {
                 AUPreset* p = static_cast<AUPreset*>(outData);
-                p->presetNumber = u->presentPreset;
+                p->presetNumber = u->currentPresetNumber();
                 // AU convention: the caller owns and releases presetName.
                 // Names are created CFStrings now (not CFSTR literals), so
                 // hand out a retained reference or hosts over-release it.
-                p->presetName = (CFStringRef)CFRetain(PresetName(u->presentPreset));
+                p->presetName = (CFStringRef)CFRetain(PresetName(p->presetNumber));
                 *ioDataSize = sizeof(AUPreset);
                 return noErr;
             }
@@ -270,20 +322,52 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 // auval requires the component identity fields plus our state.
                 UInt32 type = kAudioUnitType_MusicDevice, sub = kSubType, mfr = kManufacturer;
                 CFStringRef keys[] = {CFSTR("type"), CFSTR("subtype"), CFSTR("manufacturer"),
-                                      CFSTR("name"), CFSTR("version"), CFSTR("presetNumber"), CFSTR("renderQuality")};
+                                      CFSTR("name"), CFSTR("version"), CFSTR("presetNumber"), CFSTR("renderQuality"),
+                                      CFSTR("muewState")};
                 CFNumberRef t = CFNumberCreate(nullptr, kCFNumberIntType, &type);
                 CFNumberRef st = CFNumberCreate(nullptr, kCFNumberIntType, &sub);
                 CFNumberRef m = CFNumberCreate(nullptr, kCFNumberIntType, &mfr);
                 SInt32 ver = 0x00010000;
                 CFNumberRef v = CFNumberCreate(nullptr, kCFNumberSInt32Type, &ver);
-                CFNumberRef num = CFNumberCreate(nullptr, kCFNumberSInt32Type, &u->presentPreset);
+                SInt32 presetNumber = u->currentPresetNumber();
+                CFNumberRef num = CFNumberCreate(nullptr, kCFNumberSInt32Type, &presetNumber);
                 CFNumberRef rq = CFNumberCreate(nullptr, kCFNumberSInt32Type, &u->renderQuality);
-                CFTypeRef vals[] = {t, st, m, CFSTR("Instinct: MUEW"), v, num, rq};
-                CFDictionaryRef dict = CFDictionaryCreate(nullptr, (const void**)keys, (const void**)vals, 7,
+                // Full sound, so knob edits made in the editor survive a project reload.
+                CFStringRef stateStr = CFStringCreateWithCString(nullptr, u->stateText().c_str(), kCFStringEncodingUTF8);
+                CFTypeRef vals[] = {t, st, m, CFSTR("Instinct: MUEW"), v, num, rq, stateStr};
+                CFDictionaryRef dict = CFDictionaryCreate(nullptr, (const void**)keys, (const void**)vals, 8,
                     &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-                CFRelease(t); CFRelease(st); CFRelease(m); CFRelease(v); CFRelease(num); CFRelease(rq);
+                CFRelease(t); CFRelease(st); CFRelease(m); CFRelease(v); CFRelease(num); CFRelease(rq); CFRelease(stateStr);
                 *static_cast<CFPropertyListRef*>(outData) = dict; // caller releases
                 *ioDataSize = sizeof(CFPropertyListRef);
+                return noErr;
+            }
+            break;
+        case kAudioUnitProperty_CocoaUI:
+            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(AudioUnitCocoaViewInfo)) {
+                CFBundleRef bundle = CFBundleGetBundleWithIdentifier(CFSTR(MUEW_AU_BUNDLE_ID));
+                if (!bundle) return kAudioUnitErr_InvalidProperty;
+                AudioUnitCocoaViewInfo* info = static_cast<AudioUnitCocoaViewInfo*>(outData);
+                info->mCocoaAUViewBundleLocation = CFBundleCopyBundleURL(bundle);               // caller releases
+                info->mCocoaAUViewClass[0] = CFStringCreateWithCString(nullptr, MUEW_VIEW_FACTORY_CLASS,
+                                                                       kCFStringEncodingUTF8); // caller releases
+                *ioDataSize = sizeof(AudioUnitCocoaViewInfo);
+                return noErr;
+            }
+            break;
+        case kMUEWProperty_PresetState:
+            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(CFStringRef)) {
+                *static_cast<CFStringRef*>(outData) =
+                    CFStringCreateWithCString(nullptr, u->stateText().c_str(), kCFStringEncodingUTF8); // caller releases
+                *ioDataSize = sizeof(CFStringRef);
+                return noErr;
+            }
+            break;
+        case kMUEWProperty_StateGeneration:
+            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(UInt32)) {
+                std::lock_guard<std::mutex> g(u->stateLock);
+                *static_cast<UInt32*>(outData) = u->generation;
+                *ioDataSize = sizeof(UInt32);
                 return noErr;
             }
             break;
@@ -335,7 +419,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
             if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(AUPreset)) {
                 const AUPreset* p = static_cast<const AUPreset*>(inData);
                 if (p->presetNumber < 0) {
-                    u->presentPreset = -1; // host-applied custom state
+                    { std::lock_guard<std::mutex> g(u->stateLock); u->presentPreset = -1; } // host-applied custom state
                 } else {
                     if (p->presetNumber >= kPresetCount || !u->loadFactoryPreset(p->presetNumber))
                         return kAudioUnitErr_InvalidPropertyValue;
@@ -349,13 +433,29 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 CFPropertyListRef plist = *static_cast<const CFPropertyListRef*>(inData);
                 if (plist && CFGetTypeID(plist) == CFDictionaryGetTypeID()) {
                     CFDictionaryRef dict = (CFDictionaryRef)plist;
+                    SInt32 n = -1;
                     CFNumberRef num = (CFNumberRef)CFDictionaryGetValue(dict, CFSTR("presetNumber"));
-                    if (num && CFGetTypeID(num) == CFNumberGetTypeID()) {
-                        SInt32 n = 0;
-                        if (CFNumberGetValue(num, kCFNumberSInt32Type, &n))
-                            if (n >= 0 && n < kPresetCount) u->loadFactoryPreset(n);
-                    }
+                    if (num && CFGetTypeID(num) == CFNumberGetTypeID()) CFNumberGetValue(num, kCFNumberSInt32Type, &n);
+                    if (n < 0 || n >= kPresetCount) n = -1;
+                    muew::Preset saved;
+                    CFStringRef stateStr = (CFStringRef)CFDictionaryGetValue(dict, CFSTR("muewState"));
+                    if (stateStr && CFGetTypeID(stateStr) == CFStringGetTypeID() && ParseStateString(stateStr, saved))
+                        u->setState(saved, n);          // 0.4+: exact sound, edits included
+                    else if (n >= 0)
+                        u->loadFactoryPreset(n);        // 0.3 and earlier: preset number only
+                    NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
                 }
+                return noErr;
+            }
+            break;
+        case kMUEWProperty_PresetState:
+            if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(CFStringRef)) {
+                CFStringRef str = *static_cast<const CFStringRef*>(inData);
+                muew::Preset p;
+                if (!str || CFGetTypeID(str) != CFStringGetTypeID() || !ParseStateString(str, p))
+                    return kAudioUnitErr_InvalidPropertyValue;
+                u->setState(p, -1); // an edited sound is no longer a factory preset
+                NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
                 return noErr;
             }
             break;
@@ -367,8 +467,9 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
 OSStatus MUEWReset(void* self, AudioUnitScope inScope, AudioUnitElement inElement) {
     (void)inScope; (void)inElement;
     MUEWInstance* u = Self(self);
-    u->synth.init(u->sampleRate);
-    u->loadDefaultSound();
+    u->synth.init(u->sampleRate); // clears voices and tails; the sound stays
+    { std::lock_guard<std::mutex> g(u->stateLock); u->stateDirty = true; }
+    u->applyPendingState(true);
     return noErr;
 }
 
@@ -382,6 +483,7 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
     if (inNumberFrames > u->maxFrames) return kAudioUnitErr_TooManyFramesToProcess;
     if (!ioData || ioData->mNumberBuffers < 2) return kAudioUnitErr_InvalidPropertyValue;
 
+    u->applyPendingState(false);
     float* left = static_cast<float*>(ioData->mBuffers[0].mData);
     float* right = static_cast<float*>(ioData->mBuffers[1].mData);
     // Never set kAudioUnitRenderAction_OutputIsSilence: hosts may answer that

@@ -155,5 +155,14 @@ inline int indexOfSlug(const std::string& slug) {
     return -1;
 }
 
+// Factory index of the preset whose display name matches (edited sounds keep
+// their original name), or -1.
+inline int indexOfName(const std::string& name) {
+    const auto& bank = factoryPresets();
+    for (int i = 0; i < (int)bank.size(); ++i)
+        if (bank[i].info.name == name) return i;
+    return -1;
+}
+
 } // namespace ui
 } // namespace muew
