@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.9.0
+
+- **Dice macros**: save the current dice notation as a named shortcut on
+  the Dice tab - the table's usual rolls become one tap. Macros persist
+  app-wide alongside the character files; invalid expressions never save.
+
 ## What's in 1.8.0
 
 - **Compendium filters**: spells filter by school alongside the level

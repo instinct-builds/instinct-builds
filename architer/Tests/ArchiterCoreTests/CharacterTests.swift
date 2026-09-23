@@ -414,6 +414,24 @@ struct CharacterTests {
         #expect(EquipmentLibrary.searchWeapons("", damageType: "not-a-type").isEmpty)
     }
 
+    @Test func macrosValidateAndPersist() throws {
+        let good = DiceMacro(name: "Fireball", expression: "8d6")
+        #expect(good.isValid)
+        #expect(!DiceMacro(name: "  ", expression: "8d6").isValid)
+        #expect(!DiceMacro(name: "Bad", expression: "not dice").isValid)
+        #expect(good.id == "fireball")
+
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("architer-macros-\(UUID().uuidString)")
+        let store = MacroStore(directory: dir)
+        #expect(store.load().isEmpty)
+        store.save([good, DiceMacro(name: "Sneak", expression: "1d8+3d6+3")])
+        let loaded = store.load()
+        #expect(loaded.count == 2)
+        #expect(loaded[0] == good)
+        try? FileManager.default.removeItem(at: dir)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

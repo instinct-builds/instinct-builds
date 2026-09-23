@@ -36,6 +36,7 @@ public struct DiceRollerView: View {
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
+    @State private var macroNameDraft = ""
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -61,6 +62,37 @@ public struct DiceRollerView: View {
                 Stepper("Modifier \(signed(d20Modifier))", value: $d20Modifier, in: -10...30)
                 Button("Roll d20") { model.rollCheck("d20 roll", bonus: d20Modifier, mode: d20Mode) }
                     .buttonStyle(RollButtonStyle(prominent: true))
+            }
+            VStack(alignment: .leading, spacing: Theme.Gap.sm) {
+                Text("Macros").font(.headline)
+                ForEach(model.macros) { macro in
+                    HStack {
+                        Text(macro.name)
+                            .font(Theme.Typeface.headline)
+                            .foregroundStyle(Theme.ink)
+                        Text(macro.expression)
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                        Spacer()
+                        Button("Roll") { model.roll(macro.expression) }
+                            .buttonStyle(RollButtonStyle())
+                        Button(role: .destructive) {
+                            model.deleteMacro(named: macro.name)
+                        } label: { Image(systemName: "minus.circle") }
+                    }
+                }
+                HStack {
+                    TextField("Macro name", text: $macroNameDraft)
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(width: 160)
+                    Button("Save current as macro") {
+                        model.saveMacro(name: macroNameDraft, expression: expression)
+                        macroNameDraft = ""
+                    }
+                    .buttonStyle(RollButtonStyle())
+                    .disabled(macroNameDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .help("Bind the dice notation above to a reusable shortcut")
+                }
             }
             HStack {
                 Text("History").font(.headline)

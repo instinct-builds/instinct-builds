@@ -27,6 +27,9 @@ public final class AppModel: ObservableObject {
     @Published public var favorites = CompendiumFavorites()
     public var favoritesStore: FavoritesStore { FavoritesStore(directory: store.directory) }
     public var rollHistoryStore: RollHistoryStore { RollHistoryStore(directory: store.directory) }
+    /// Saved dice shortcuts (app-wide, persisted next to the character files).
+    @Published public var macros: [DiceMacro] = []
+    public var macroStore: MacroStore { MacroStore(directory: store.directory) }
     public var rulesetStore: RulesetStore { RulesetStore(directory: store.directory) }
     /// User-defined ruleset library (persisted).
     @Published public var rulesets: [Ruleset] = []
@@ -54,6 +57,7 @@ public final class AppModel: ObservableObject {
         rulesets = rulesetStore.load()
         favorites = favoritesStore.load()
         rollHistory = rollHistoryStore.load()
+        macros = macroStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
                let uuid = UUID(uuidString: saved),
@@ -95,6 +99,23 @@ public final class AppModel: ObservableObject {
         characters.remove(at: idx)
         undoStacks.removeValue(forKey: id)
         selectedID = characters.first?.id
+    }
+
+    /// Adds or replaces a macro by name; invalid names/expressions are ignored.
+    public func saveMacro(name: String, expression: String) {
+        let macro = DiceMacro(
+            name: name.trimmingCharacters(in: .whitespaces),
+            expression: expression.trimmingCharacters(in: .whitespaces))
+        guard macro.isValid else { return }
+        macros.removeAll { $0.id == macro.id }
+        macros.append(macro)
+        macros.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        macroStore.save(macros)
+    }
+
+    public func deleteMacro(named name: String) {
+        macros.removeAll { $0.name.lowercased() == name.lowercased() }
+        macroStore.save(macros)
     }
 
     public func toggleFavorite(kind: CompendiumKind, name: String) {
