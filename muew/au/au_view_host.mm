@@ -282,7 +282,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             muew::Preset before;
             State(before);
-            NSPoint badge = NSMakePoint(304 + 2 * 22 + 10.25, 216 + 7.5); // LFO3 source badge
+            NSPoint badge = NSMakePoint(304 + 2 * 19 + 8.75, 216 + 7.5); // LFO3 source badge
             NSPoint cut = NSMakePoint(536, t - 94);                      // CUTOFF knob
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, badge, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(450, 300), w)];
@@ -452,7 +452,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
             auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
-            auto badge = [&](int i) { return NSMakePoint(304 + (i % 7) * 22 + 10.25, (i < 7 ? 216 : 198) + 7.5); };
+            auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.75, (i < 8 ? 216 : 198) + 7.5); };
             auto dropOn = [&](NSPoint from, NSPoint to) {
                 [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
                 [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
@@ -466,9 +466,9 @@ int main() {
             if (getenv("MUEW_FXDETAIL_PREFIX") && *getenv("MUEW_FXDETAIL_PREFIX"))
                 Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));     // close the DELAY detail left open above
             Click(view, w, NSMakePoint(468 + 3 * 78 + 70 - 11, 58 + h - 13)); // FLANGER LED (slot 8) on
-            dropOn(badge(12), card(7));                                         // FX LFO 1 -> FLANGER
+            dropOn(badge(13), card(7));                                         // FX LFO 1 -> FLANGER
             Click(view, w, shape);                                              // sine -> triangle
-            dropOn(badge(13), card(3));                                         // FX LFO 2 -> DELAY
+            dropOn(badge(14), card(3));                                         // FX LFO 2 -> DELAY
             Click(view, w, shape); Click(view, w, shape); Click(view, w, shape); // sine -> square
             Click(view, w, sync);                                               // FREE -> 1/4
             Snapshot(view, "MUEW_FXLFO_MOD_PNG", "FX LFO modulator snapshot written");
@@ -496,7 +496,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
             auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
-            auto badge = [&](int i) { return NSMakePoint(304 + (i % 7) * 22 + 10.25, (i < 7 ? 216 : 198) + 7.5); };
+            auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.75, (i < 8 ? 216 : 198) + 7.5); };
             auto curve = [&](int row) { return NSMakePoint(44 + 151 + 10, 190 - row * 44 + 4 + 7); };
             auto aux = [&](int row) { return NSMakePoint(44 + 174 + 13, 190 - row * 44 + 4 + 7); };
             auto drag = [&](NSPoint from, NSPoint to) {
@@ -509,12 +509,12 @@ int main() {
             Click(view, w, NSMakePoint(172 + 3 * 30 + 14, 234 + 7));    // page 13-16
             NSPoint c0 = curve(0);
             drag(c0, NSMakePoint(c0.x, c0.y + 30));                    // slot 13 (FX LFO 1 -> FL DEPTH): EXP 50%
-            drag(badge(13), aux(0));                                   // x FX LFO 2
-            drag(badge(8), aux(1));                                    // slot 14 (FX LFO 2 -> DELAY FB) x MACRO 1
+            drag(badge(14), aux(0));                                   // x FX LFO 2
+            drag(badge(9), aux(1));                                    // slot 14 (FX LFO 2 -> DELAY FB) x MACRO 1
             Snapshot(view, "MUEW_ROUTEAUX_PNG", "route curve/aux page 4 snapshot written");
             Click(view, w, NSMakePoint(172 + 14, 234 + 7));            // page 1-4
             drag(c0, NSMakePoint(c0.x, c0.y - 24));                    // slot 1: LOG 40%
-            drag(badge(7), aux(0));                                    // x VELOCITY
+            drag(badge(8), aux(0));                                    // x VELOCITY
             Snapshot(view, "MUEW_ROUTECURVE_PNG", "route curve/aux page 1 snapshot written");
             muew::Preset st;
             bool ok = State(st);
@@ -532,6 +532,53 @@ int main() {
             Check(ok && back.parse(st.serialize()) && back == st && st.serialize().find(" aux ") != std::string::npos,
                   "the AU state saves route curves and aux sources");
             Click(view, w, card(3));                                   // DELAY detail back open for the editor snapshot
+            fflush(stdout);
+        });
+        After(6.99, ^{ // 0.17.0 MSEG editor: open MSEG 2, add points, bend a segment, LOOP + sync, then route it to CUTOFF
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.75, (i < 8 ? 216 : 198) + 7.5); };
+            auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 147 + 59 * v); };
+            auto drag = [&](NSPoint from, NSPoint to) {
+                [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, to, w)];
+                [view mouseUp:Mouse(NSEventTypeLeftMouseUp, to, w)];
+            };
+            Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the DELAY detail
+            Click(view, w, badge(7));                                    // select MS2
+            Click(view, w, NSMakePoint(304 + 74, 122 + 29));             // its preview opens the MSEG editor
+            Click(view, w, NSMakePoint(36 + 12 + 2 * 58 + 27, 48 + 18.5)); // LOOP
+            Click(view, w, canvas(0.25, -1));                            // add a point at 1/4, bottom
+            Click(view, w, canvas(0.75, 1));                             // add a point at 3/4, top
+            NSPoint seg = canvas(0.075, 0.5);                            // bend handle of segment 1 (0 -> 0.15)
+            drag(seg, NSMakePoint(seg.x, seg.y + 30));                   // up 30 pt: LOG 50%
+            Click(view, w, NSMakePoint(36 + 381 + 15.5, 48 + 18.5));     // SYNC (1/4)
+            Snapshot(view, "MUEW_MSEG_PNG", "MSEG 2 editor snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            const auto& v = st.voice;
+            bool pts = ok && v.mseg2Points.size() == 6 && std::fabs(v.mseg2Points[2].time - 0.25) < 1e-9 && std::fabs(v.mseg2Points[2].value + 1) < 1e-3
+                       && std::fabs(v.mseg2Points[4].time - 0.75) < 1e-9 && std::fabs(v.mseg2Points[4].value - 1) < 1e-3;
+            printf("mseg 2: %zu points, seg 1 curve %.2f, mode %d, sync %d (%s)\n", v.mseg2Points.size(), v.mseg2Points.empty() ? 0.0 : v.mseg2Points[0].curve,
+                   v.mseg2Mode, v.mseg2Sync, muew::ui::syncName(v.mseg2Sync));
+            Check(pts, "canvas clicks added MSEG 2 points at 1/4 (-1) and 3/4 (+1) in the AU's sound");
+            Check(ok && std::fabs(v.mseg2Points[0].curve + 0.5) < 0.03 && v.mseg2Mode == 2 && v.mseg2Sync == 3,
+                  "bend handle, LOOP and SYNC reached the AU's sound");
+            Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the editor
+            Click(view, w, NSMakePoint(492 + 30, t - 29 + 8));           // FILTER 1 page
+            size_t n0 = st.routes.size();
+            drag(badge(7), NSMakePoint(536, t - 94));                    // MS2 -> CUTOFF
+            muew::Preset st2;
+            bool ok2 = State(st2);
+            Check(ok2 && st2.routes.size() == n0 + 1 && st2.routes.back().source == muew::ModRoute::Source::MSEG2
+                  && st2.routes.back().dest == muew::ModRoute::Dest::FilterCutoff, "dragging the MS2 badge onto CUTOFF added an MSEG 2 route");
+            muew::Preset back;
+            Check(ok2 && back.parse(st2.serialize()) && back == st2 && st2.serialize().find("\nmseg2 ") != std::string::npos,
+                  "the AU state saves MSEG 2 with the sound");
+            Click(view, w, NSMakePoint(556 + 46, t - 29 + 8));           // back to FILTER 2 + SUB
+            Click(view, w, card(3));                                     // DELAY detail for the editor snapshot
             fflush(stdout);
         });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).

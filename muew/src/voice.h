@@ -21,7 +21,8 @@ struct ModRoute {
     enum class Source { LFO1 = 0, ModEnv = 1, Velocity = 2, LFO2 = 3, MSEG1 = 4,
                         Macro1 = 5, Macro2 = 6, Macro3 = 7, Macro4 = 8,
                         LFO3 = 9, LFO4 = 10, Env3 = 11, // 0.8.0: LFO 3/4, ENV 3
-                        FxLfo1 = 12, FxLfo2 = 13 } source; // 0.15.0: rack LFOs (FX destinations only)
+                        FxLfo1 = 12, FxLfo2 = 13,  // 0.15.0: rack LFOs (FX destinations only)
+                        MSEG2 = 14 } source;         // 0.17.0
     enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6,
                       Osc1Unison = 7, Osc2Unison = 8, UnisonWidth = 9, // 0.7.0: unison detune A/B, stereo width (0..1 units)
                       DistDrive = 10,                                   // 0.7.0: FX-rack drive, macro sources only (global FX)
@@ -38,12 +39,12 @@ struct ModRoute {
     int aux = -1;
 };
 
-constexpr int kModSources = 14; // Source values 0..13
+constexpr int kModSources = 15; // Source values 0..14
 // Bipolar sources run -1..1; the rest 0..1.
 inline bool sourceBipolar(int s) {
     using S = ModRoute::Source;
     switch ((S)s) {
-    case S::LFO1: case S::LFO2: case S::LFO3: case S::LFO4: case S::MSEG1: case S::FxLfo1: case S::FxLfo2: return true;
+    case S::LFO1: case S::LFO2: case S::LFO3: case S::LFO4: case S::MSEG1: case S::MSEG2: case S::FxLfo1: case S::FxLfo2: return true;
     default: return false;
     }
 }
@@ -70,6 +71,14 @@ struct VoiceParams {
     // Breakpoints (time 0..1, value -1..1). Defaults match MSEG's built-in
     // shape so presets written before points were stored sound identical.
     std::vector<MSEG::Point> mseg1Points{{0.0, 0.0}, {0.15, 1.0}, {0.55, -0.3}, {1.0, 0.0}};
+    // 0.17.0 MSEG editor: tempo-synced length, loop span (point indices,
+    // end -1 = last point) and free LOOP mode (keeps cycling after release).
+    int mseg1Sync = 0, mseg1LoopStart = 1, mseg1LoopEnd = -1;
+    bool mseg1FreeLoop = false;
+    // 0.17.0 MSEG 2. mode: 0 one-shot, 1 sustain loop, 2 loop.
+    double mseg2Seconds = 1.0;
+    int mseg2Sync = 0, mseg2Mode = 0, mseg2LoopStart = 1, mseg2LoopEnd = -1;
+    std::vector<MSEG::Point> mseg2Points{{0.0, 0.0}, {0.15, 1.0}, {0.55, -0.3}, {1.0, 0.0}};
     // Macro knobs, 0..1. Unipolar mod sources: a route from a macro adds
     // nothing at 0, so presets sound as authored until a macro is turned.
     double macros[4] = {0.0, 0.0, 0.0, 0.0};
@@ -163,8 +172,15 @@ public:
             if (r.source == ModRoute::Source::LFO3) usesLfo3_ = true;
             if (r.source == ModRoute::Source::LFO4) usesLfo4_ = true;
         }
-        mseg1_.setRate(p.mseg1Seconds); mseg1_.setPoints(p.mseg1Points);
-        mseg1_.setLoop(1, (int)mseg1_.pointCount() - 1, p.mseg1Loop);
+        mseg1_.setPoints(p.mseg1Points);
+        mseg1_.setLoop(p.mseg1LoopStart, p.mseg1LoopEnd < 0 ? (int)mseg1_.pointCount() - 1 : p.mseg1LoopEnd, p.mseg1Loop);
+        mseg1_.setFreeLoop(p.mseg1FreeLoop);
+        mseg2_.setPoints(p.mseg2Points);
+        mseg2_.setLoop(p.mseg2LoopStart, p.mseg2LoopEnd < 0 ? (int)mseg2_.pointCount() - 1 : p.mseg2LoopEnd, p.mseg2Mode != 0);
+        mseg2_.setFreeLoop(p.mseg2Mode == 2);
+        usesMseg2_ = false;
+        for (const auto& r : routes) if (r.source == ModRoute::Source::MSEG2 || r.aux == (int)ModRoute::Source::MSEG2) usesMseg2_ = true;
+        applyMsegRates();
         
         usesSub_ = p.subLevel > 0; usesNoise_ = p.noiseLevel > 0;
         for (const auto& r : routes) {
@@ -185,6 +201,7 @@ public:
         if (!(bpm > 1.0 && bpm < 1000.0) || bpm == bpm_) return;
         bpm_ = bpm;
         applyRates();
+        applyMsegRates();
     }
 
     void noteOn(int note, float velocity) {
@@ -193,7 +210,7 @@ public:
         baseFreq_ = midiToFreq(note);
         ampEnv_.noteOn();
         modEnv_.noteOn();
-        lfo1_.reset(); lfo2_.reset(); lfo3_.reset(); lfo4_.reset(); mseg1_.reset();
+        lfo1_.reset(); lfo2_.reset(); lfo3_.reset(); lfo4_.reset(); mseg1_.reset(); mseg2_.reset();
         env3_.noteOn();
         // Stacked voices start at spread phases so a unison stack sounds wide
         // from the first cycle instead of flanging out of one phase. Voice 0
@@ -208,7 +225,7 @@ public:
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
     }
 
-    void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); }
+    void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); mseg2_.release(); }
 
     bool isActive() const { return ampEnv_.isActive(); }
     bool dcBlockerOn() const { return dcOn_; } // 0.12.0 (tests)
@@ -227,11 +244,12 @@ public:
         float lfo3 = usesLfo3_ ? lfo3_.process() : 0.0f;
         float lfo4 = usesLfo4_ ? lfo4_.process() : 0.0f;
         float env3 = env3_.process();
+        float mseg2 = usesMseg2_ ? mseg2_.process() : 0.0f;
 
         // Source values in Source order; the rack LFOs (12, 13) live in the FX rack.
         const double sv[kModSources] = {lfo, modEnv, velocity_, lfo2, mseg1,
                                         params_.macros[0], params_.macros[1], params_.macros[2], params_.macros[3],
-                                        lfo3, lfo4, env3, 0.0, 0.0};
+                                        lfo3, lfo4, env3, 0.0, 0.0, mseg2};
         auto modSum = [&](ModRoute::Dest d) {
             double sum = 0.0;
             for (const auto& r : routes_) {
@@ -440,7 +458,14 @@ private:
     SVFilter filter_, filterR_;
     Envelope ampEnv_, modEnv_;
     LFO lfo1_, lfo2_;
-    MSEG mseg1_;
+    MSEG mseg1_, mseg2_;
+    bool usesMseg2_ = false;
+    // MSEG length: seconds, or a synced division (beats) at the host tempo.
+    static double msegSeconds(double sec, int sync, double bpm) { double b = syncBeats(sync); return b > 0 ? b * 60.0 / bpm : sec; }
+    void applyMsegRates() {
+        mseg1_.setRate(msegSeconds(params_.mseg1Seconds, params_.mseg1Sync, bpm_));
+        mseg2_.setRate(msegSeconds(params_.mseg2Seconds, params_.mseg2Sync, bpm_));
+    }
     VoiceParams params_;
     std::vector<ModRoute> routes_;
 };

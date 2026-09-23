@@ -193,7 +193,7 @@ jobs:
           cp muew/au/2-au_host_test.cpp muew/au/au_host_test.cpp
           cp muew/au/3-build_au.sh muew/au/build_au.sh
       - name: MUEW parameter, unison/FX rack, user preset and bank tests
-        run: cd muew && make build/muew-tests-params build/muew-tests-ui build/muew-tests-user build/muew-tests-bank build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve && ./build/muew-tests-params && ./build/muew-tests-ui && ./build/muew-tests-user && ./build/muew-tests-bank && ./build/muew-tests-unison && ./build/muew-tests-matrix && ./build/muew-tests-usertable && ./build/muew-tests-layers && ./build/muew-tests-browser && ./build/muew-tests-dc && ./build/muew-tests-fxrack && ./build/muew-tests-fxdetail && ./build/muew-tests-racklfo && ./build/muew-tests-routecurve
+        run: cd muew && make build/muew-tests-params build/muew-tests-ui build/muew-tests-user build/muew-tests-bank build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 && ./build/muew-tests-params && ./build/muew-tests-ui && ./build/muew-tests-user && ./build/muew-tests-bank && ./build/muew-tests-unison && ./build/muew-tests-matrix && ./build/muew-tests-usertable && ./build/muew-tests-layers && ./build/muew-tests-browser && ./build/muew-tests-dc && ./build/muew-tests-fxrack && ./build/muew-tests-fxdetail && ./build/muew-tests-racklfo && ./build/muew-tests-routecurve && ./build/muew-tests-mseg2
       - name: Build, sign, install and validate MUEW AU
         run: cd muew && au/build_au.sh
       - name: Build designed MUEW standalone app + DMG
@@ -206,58 +206,61 @@ jobs:
             -o build/au_view_host
           export MUEW_USER_PRESETS="$RUNNER_TEMP/muew-user-presets"
           rm -rf "$MUEW_USER_PRESETS"
-          export MUEW_VIEW_PNG="$PWD/out/MUEW-0.16.0-au-editor-edited.png"
-          export MUEW_BROWSER_PNG="$PWD/out/MUEW-0.16.0-browser.png"
-          export MUEW_FXDETAIL_PREFIX="$PWD/out/MUEW-0.16.0-fx-"
-          export MUEW_FXLFO_MOD_PNG="$PWD/out/MUEW-0.16.0-lfo-modulators.png"
-          export MUEW_FXLFO1_PNG="$PWD/out/MUEW-0.16.0-lfo-flanger-range.png"
-          export MUEW_ROUTEAUX_PNG="$PWD/out/MUEW-0.16.0-route-aux.png"
-          export MUEW_ROUTECURVE_PNG="$PWD/out/MUEW-0.16.0-route-curve.png"
+          export MUEW_VIEW_PNG="$PWD/out/MUEW-0.17.0-au-editor-edited.png"
+          export MUEW_BROWSER_PNG="$PWD/out/MUEW-0.17.0-browser.png"
+          export MUEW_FXDETAIL_PREFIX="$PWD/out/MUEW-0.17.0-fx-"
+          export MUEW_FXLFO_MOD_PNG="$PWD/out/MUEW-0.17.0-lfo-modulators.png"
+          export MUEW_FXLFO1_PNG="$PWD/out/MUEW-0.17.0-lfo-flanger-range.png"
+          export MUEW_ROUTEAUX_PNG="$PWD/out/MUEW-0.17.0-route-aux.png"
+          export MUEW_ROUTECURVE_PNG="$PWD/out/MUEW-0.17.0-route-curve.png"
+          export MUEW_MSEG_PNG="$PWD/out/MUEW-0.17.0-mseg-editor.png"
           ./build/au_view_host > out/au_view_host.log 2>&1 &
           pid=$!
           sleep 7
-          screencapture -x out/MUEW-0.16.0-au-editor.png
+          screencapture -x out/MUEW-0.17.0-au-editor.png
           status=0
           wait $pid || status=$?
           cat out/au_view_host.log
           test "$status" -eq 0
-          test -s out/MUEW-0.16.0-au-editor.png
-          test -s out/MUEW-0.16.0-au-editor-edited.png
-          test -s out/MUEW-0.16.0-browser.png
-          test -s out/MUEW-0.16.0-fx-delay.png
-          test -s out/MUEW-0.16.0-lfo-modulators.png
-          test -s out/MUEW-0.16.0-lfo-flanger-range.png
-          test -s out/MUEW-0.16.0-route-aux.png
-          test -s out/MUEW-0.16.0-route-curve.png
+          test -s out/MUEW-0.17.0-au-editor.png
+          test -s out/MUEW-0.17.0-au-editor-edited.png
+          test -s out/MUEW-0.17.0-browser.png
+          test -s out/MUEW-0.17.0-fx-delay.png
+          test -s out/MUEW-0.17.0-lfo-modulators.png
+          test -s out/MUEW-0.17.0-lfo-flanger-range.png
+          test -s out/MUEW-0.17.0-route-aux.png
+          test -s out/MUEW-0.17.0-route-curve.png
+          test -s out/MUEW-0.17.0-mseg-editor.png
       - name: Verify MUEW app and distribution
         run: |
           set -euo pipefail
           cd muew
           lipo out/MUEW.app/Contents/MacOS/MUEW -verify_arch arm64 x86_64
           codesign --verify --deep --strict out/MUEW.app
-          hdiutil verify out/MUEW-0.16.0.dmg
+          hdiutil verify out/MUEW-0.17.0.dmg
       - name: Capture MUEW designed UI proof
         run: |
           cd muew
           open out/MUEW.app
           sleep 8
-          screencapture -x out/MUEW-0.16.0-instrument.png
-          test -s out/MUEW-0.16.0-instrument.png
-          sips -g pixelWidth -g pixelHeight out/MUEW-0.16.0-instrument.png
-          test "$(sips -g pixelWidth out/MUEW-0.16.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
+          screencapture -x out/MUEW-0.17.0-instrument.png
+          test -s out/MUEW-0.17.0-instrument.png
+          sips -g pixelWidth -g pixelHeight out/MUEW-0.17.0-instrument.png
+          test "$(sips -g pixelWidth out/MUEW-0.17.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
       - name: Upload MUEW release + visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.16.0-route-curves
+          name: muew-0.17.0-mseg-editor
           path: |
-            muew/out/MUEW-0.16.0.dmg
-            muew/out/MUEW-0.16.0-instrument.png
-            muew/out/MUEW-0.16.0-au-editor.png
-            muew/out/MUEW-0.16.0-au-editor-edited.png
-            muew/out/MUEW-0.16.0-browser.png
-            muew/out/MUEW-0.16.0-fx-*.png
-            muew/out/MUEW-0.16.0-lfo-*.png
-            muew/out/MUEW-0.16.0-route-*.png
+            muew/out/MUEW-0.17.0.dmg
+            muew/out/MUEW-0.17.0-instrument.png
+            muew/out/MUEW-0.17.0-au-editor.png
+            muew/out/MUEW-0.17.0-au-editor-edited.png
+            muew/out/MUEW-0.17.0-browser.png
+            muew/out/MUEW-0.17.0-fx-*.png
+            muew/out/MUEW-0.17.0-lfo-*.png
+            muew/out/MUEW-0.17.0-route-*.png
+            muew/out/MUEW-0.17.0-mseg-*.png
             muew/out/au_view_host.log
             muew/out/auval.log
             muew/out/au_host_test.log
@@ -266,7 +269,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.16.0-diagnostics
+          name: muew-0.17.0-diagnostics
           path: |
             muew/out/*.log
           if-no-files-found: ignore

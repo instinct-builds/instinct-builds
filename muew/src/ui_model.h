@@ -40,6 +40,7 @@ inline const char* sourceName(ModRoute::Source s) {
     case ModRoute::Source::Env3: return "ENV 3";
     case ModRoute::Source::FxLfo1: return "FX LFO 1";
     case ModRoute::Source::FxLfo2: return "FX LFO 2";
+    case ModRoute::Source::MSEG2: return "MSEG 2";
     }
     return "?";
 }
@@ -140,7 +141,7 @@ inline std::vector<std::pair<double, double>> curvePoints(double c, int n = 16) 
 // menu order; both are lists of the append-only enum values.
 inline const std::vector<ModRoute::Source>& matrixSources() {
     using S = ModRoute::Source;
-    static const std::vector<S> v{S::LFO1, S::LFO2, S::LFO3, S::LFO4, S::ModEnv, S::Env3, S::MSEG1, S::Velocity,
+    static const std::vector<S> v{S::LFO1, S::LFO2, S::LFO3, S::LFO4, S::ModEnv, S::Env3, S::MSEG1, S::MSEG2, S::Velocity,
                                   S::Macro1, S::Macro2, S::Macro3, S::Macro4, S::FxLfo1, S::FxLfo2};
     return v;
 }
@@ -152,7 +153,7 @@ inline const char* sourceBadge(ModRoute::Source s) {
     case ModRoute::Source::LFO4: return "LFO4";
     case ModRoute::Source::ModEnv: return "ENV2";
     case ModRoute::Source::Env3: return "ENV3";
-    case ModRoute::Source::MSEG1: return "MSEG";
+    case ModRoute::Source::MSEG1: return "MS1";
     case ModRoute::Source::Velocity: return "VEL";
     case ModRoute::Source::Macro1: return "M1";
     case ModRoute::Source::Macro2: return "M2";
@@ -160,6 +161,7 @@ inline const char* sourceBadge(ModRoute::Source s) {
     case ModRoute::Source::Macro4: return "M4";
     case ModRoute::Source::FxLfo1: return "FXL1";
     case ModRoute::Source::FxLfo2: return "FXL2";
+    case ModRoute::Source::MSEG2: return "MS2";
     }
     return "?";
 }
@@ -673,6 +675,81 @@ inline int indexOfName(const std::string& name) {
     for (int i = 0; i < (int)bank.size(); ++i)
         if (bank[i].info.name == name) return i;
     return -1;
+}
+
+
+// ---- 0.17.0 MSEG editor ----
+// One view of either MSEG's fields. mode: 0 ONE-SHOT, 1 SUSTAIN, 2 LOOP.
+struct MsegView {
+    double* seconds; int* sync; int* loopStart; int* loopEnd; std::vector<MSEG::Point>* points;
+    bool* loop1; bool* free1; int* mode2; // MSEG 1 keeps its original loop flag
+    int mode() const { return mode2 ? *mode2 : (*loop1 ? (*free1 ? 2 : 1) : 0); }
+    void setMode(int m) {
+        m = std::clamp(m, 0, 2);
+        if (mode2) *mode2 = m; else { *loop1 = m != 0; *free1 = m == 2; }
+    }
+    int loopEndIndex() const { return *loopEnd < 0 ? (int)points->size() - 1 : std::min(*loopEnd, (int)points->size() - 1); }
+};
+inline MsegView msegView(VoiceParams& v, int k) {
+    if (k == 0) return {&v.mseg1Seconds, &v.mseg1Sync, &v.mseg1LoopStart, &v.mseg1LoopEnd, &v.mseg1Points, &v.mseg1Loop, &v.mseg1FreeLoop, nullptr};
+    return {&v.mseg2Seconds, &v.mseg2Sync, &v.mseg2LoopStart, &v.mseg2LoopEnd, &v.mseg2Points, nullptr, nullptr, &v.mseg2Mode};
+}
+inline const char* msegModeName(int m) { static const char* n[] = {"ONE-SHOT", "SUSTAIN", "LOOP"}; return (m >= 0 && m < 3) ? n[m] : "?"; }
+inline std::string msegLengthReadout(const MsegView& m) {
+    if (*m.sync > 0) return syncName(*m.sync);
+    char b[16];
+    if (*m.seconds < 1) snprintf(b, sizeof b, "%.0f ms", *m.seconds * 1000); else snprintf(b, sizeof b, "%.2f s", *m.seconds);
+    return b;
+}
+// Snap grid: 0 off, else divisions of the length.
+inline int msegGridDivs(int g) { static const int d[] = {0, 4, 8, 16}; return (g >= 0 && g < 4) ? d[g] : 0; }
+inline double msegSnap(double t, int grid) { int d = msegGridDivs(grid); return d ? std::round(t * d) / d : t; }
+constexpr int kMsegMaxPoints = 32;
+// Insert a point in time order (not at the ends); keeps the loop span on the
+// same points. Returns its index, or -1 (full, or on an existing time).
+inline int msegInsert(MsegView m, double t, double v) {
+    auto& p = *m.points;
+    if ((int)p.size() >= kMsegMaxPoints) return -1;
+    t = std::clamp(t, 0.0, 1.0); v = std::clamp(v, -1.0, 1.0);
+    int i = 1;
+    while (i < (int)p.size() && p[i].time < t) ++i;
+    if (i >= (int)p.size() || t <= p[i - 1].time || t >= p[i].time) return -1;
+    const int le = m.loopEndIndex();
+    MSEG::Point np{t, v, 0.0};
+    p.insert(p.begin() + i, np);
+    if (i <= *m.loopStart) ++*m.loopStart;
+    if (*m.loopEnd >= 0 && i <= le) *m.loopEnd = le + 1;
+    return i;
+}
+// Delete an interior point; the loop span shrinks around it and stays valid.
+inline bool msegDelete(MsegView m, int i) {
+    auto& p = *m.points;
+    if (i <= 0 || i >= (int)p.size() - 1 || p.size() <= 2) return false;
+    const int le = m.loopEndIndex();
+    p.erase(p.begin() + i);
+    if (i < *m.loopStart) --*m.loopStart;
+    if (*m.loopEnd >= 0) *m.loopEnd = i <= le ? le - 1 : le;
+    const int last = (int)p.size() - 1;
+    *m.loopStart = std::clamp(*m.loopStart, 0, std::max(0, last - 1));
+    if (*m.loopEnd >= 0 && *m.loopEnd <= *m.loopStart) *m.loopEnd = std::min(last, *m.loopStart + 1);
+    if (*m.loopEnd == last) *m.loopEnd = -1;
+    return true;
+}
+// Move a point: interior points stay between their neighbours; the end
+// points keep their time.
+inline void msegMove(MsegView m, int i, double t, double v) {
+    auto& p = *m.points;
+    if (i < 0 || i >= (int)p.size()) return;
+    p[i].value = std::clamp(v, -1.0, 1.0);
+    if (i == 0 || i == (int)p.size() - 1) return;
+    const double lo = p[i - 1].time + 0.002, hi = p[i + 1].time - 0.002;
+    if (lo < hi) p[i].time = std::clamp(t, lo, hi);
+}
+// Set a loop edge to point index `i` (0 start, 1 end); start < end kept.
+inline void msegSetLoop(MsegView m, int edge, int i) {
+    const int last = (int)m.points->size() - 1;
+    if (edge == 0) *m.loopStart = std::clamp(i, 0, m.loopEndIndex() - 1);
+    else { int e = std::clamp(i, *m.loopStart + 1, last); *m.loopEnd = e == last ? -1 : e; }
 }
 
 } // namespace ui

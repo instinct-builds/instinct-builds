@@ -42,6 +42,7 @@ struct PresetInfo {
 //                  0.13.0 adds optional `phaser`, `flanger` and `fxorder` lines.
 //                  0.14.0 adds an optional `delaysync` line.
 //                  0.15.0 adds an optional `fxlfo` line (rack LFOs).
+//                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.16.0 adds optional `curve <c>` / `aux <source>` suffixes
 //                  on `route` lines (older builds read the first three fields).
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
@@ -80,6 +81,7 @@ struct Preset {
           << voice.mseg1Points.size();
         for (const auto& p : voice.mseg1Points) o << " " << p.time << " " << p.value;
         o << "\n";
+        writeMsegExtras(o);
         // Only when set, so factory files (all macros at 0) round-trip unchanged.
         if (voice.macros[0] != 0 || voice.macros[1] != 0 || voice.macros[2] != 0 || voice.macros[3] != 0)
             o << "macros " << voice.macros[0] << " " << voice.macros[1] << " " << voice.macros[2] << " " << voice.macros[3] << "\n";
@@ -203,6 +205,36 @@ struct Preset {
                 if (pts.size() < 2) return false;
                 voice.mseg1Points = pts;
             }
+            else if (key == "msegcurve") { // curves for the MSEG 1 points; a count mismatch is ignored
+                size_t n = 0; ls >> n;
+                std::vector<double> c;
+                for (size_t i = 0; i < n && i < 64; ++i) { double x; if (!(ls >> x) || !std::isfinite(x)) break; c.push_back(std::clamp(x, -1.0, 1.0)); }
+                if (c.size() == n && n == voice.mseg1Points.size()) for (size_t i = 0; i < n; ++i) voice.mseg1Points[i].curve = c[i];
+            }
+            else if (key == "msegx") {
+                int sy, a, b, f;
+                if (ls >> sy >> a >> b >> f) {
+                    voice.mseg1Sync = std::clamp(sy, 0, kSyncCount - 1);
+                    voice.mseg1LoopStart = std::clamp(a, 0, 63); voice.mseg1LoopEnd = std::clamp(b, -1, 63); voice.mseg1FreeLoop = f != 0;
+                }
+            }
+            else if (key == "mseg2") {
+                double sec; int sy, mode, a, b; size_t n = 0;
+                if (ls >> sec >> sy >> mode >> a >> b >> n && std::isfinite(sec) && n >= 2 && n <= 64) {
+                    std::vector<MSEG::Point> pts;
+                    for (size_t i = 0; i < n; ++i) {
+                        MSEG::Point p;
+                        if (!(ls >> p.time >> p.value >> p.curve) || !std::isfinite(p.time) || !std::isfinite(p.value) || !std::isfinite(p.curve)) break;
+                        p.time = std::clamp(p.time, 0.0, 1.0); p.value = std::clamp(p.value, -1.0, 1.0); p.curve = std::clamp(p.curve, -1.0, 1.0);
+                        pts.push_back(p);
+                    }
+                    if (pts.size() == n) {
+                        voice.mseg2Seconds = std::clamp(sec, 0.05, 8.0); voice.mseg2Sync = std::clamp(sy, 0, kSyncCount - 1);
+                        voice.mseg2Mode = std::clamp(mode, 0, 2); voice.mseg2LoopStart = std::clamp(a, 0, 63); voice.mseg2LoopEnd = std::clamp(b, -1, 63);
+                        voice.mseg2Points = pts;
+                    }
+                }
+            }
             else if (key == "macros") { for (double& m : voice.macros) { double v = 0; if (ls >> v) m = std::clamp(v, 0.0, 1.0); } }
             else if (key == "unison") {
                 ls >> voice.osc1Unison >> voice.osc2Unison >> voice.osc1UniDetune >> voice.osc2UniDetune
@@ -323,7 +355,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::FxLfo2 && d >= 0 && d <= (int)ModRoute::Dest::FxChorusDepth) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::MSEG2 && d >= 0 && d <= (int)ModRoute::Dest::FxChorusDepth) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
                     std::string k2;
@@ -392,9 +424,10 @@ struct Preset {
             && a.filterRouting == b.filterRouting
             && tables[0] == o.tables[0] && tables[1] == o.tables[1];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
-        for (size_t i = 0; i < a.mseg1Points.size(); ++i)
-            if (a.mseg1Points[i].time != b.mseg1Points[i].time
-                || a.mseg1Points[i].value != b.mseg1Points[i].value) return false;
+        if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;
+        if (a.mseg1Sync != b.mseg1Sync || a.mseg1LoopStart != b.mseg1LoopStart || a.mseg1LoopEnd != b.mseg1LoopEnd || a.mseg1FreeLoop != b.mseg1FreeLoop
+            || a.mseg2Seconds != b.mseg2Seconds || a.mseg2Sync != b.mseg2Sync || a.mseg2Mode != b.mseg2Mode
+            || a.mseg2LoopStart != b.mseg2LoopStart || a.mseg2LoopEnd != b.mseg2LoopEnd) return false;
         for (size_t i = 0; i < routes.size(); ++i)
             if (routes[i].source != o.routes[i].source || routes[i].dest != o.routes[i].dest
                 || routes[i].amount != o.routes[i].amount || routes[i].curve != o.routes[i].curve
@@ -439,6 +472,36 @@ private:
         o << "mod " << voice.modA << " " << voice.modD << " " << voice.modS << " " << voice.modR << "\n";
         o << "lfo1Rate " << voice.lfo1Rate << "\n";
         o << "lfo1Shape " << voice.lfo1Shape << "\n";
+    }
+
+    // 0.17.0 MSEG editor lines, each only when it differs from the default.
+    static bool anyCurve(const std::vector<MSEG::Point>& pts) { for (const auto& p : pts) if (p.curve != 0.0) return true; return false; }
+    void writeMsegExtras(std::ostringstream& o) const {
+        const VoiceParams d;
+        const auto& v = voice;
+        if (anyCurve(v.mseg1Points)) {
+            o << "msegcurve " << v.mseg1Points.size();
+            for (const auto& p : v.mseg1Points) o << " " << p.curve;
+            o << "\n";
+        }
+        if (v.mseg1Sync != d.mseg1Sync || v.mseg1LoopStart != d.mseg1LoopStart || v.mseg1LoopEnd != d.mseg1LoopEnd || v.mseg1FreeLoop != d.mseg1FreeLoop)
+            o << "msegx " << v.mseg1Sync << " " << v.mseg1LoopStart << " " << v.mseg1LoopEnd << " " << (v.mseg1FreeLoop ? 1 : 0) << "\n";
+        if (!mseg2IsDefault()) {
+            o << "mseg2 " << v.mseg2Seconds << " " << v.mseg2Sync << " " << v.mseg2Mode << " " << v.mseg2LoopStart << " " << v.mseg2LoopEnd
+              << " " << v.mseg2Points.size();
+            for (const auto& p : v.mseg2Points) o << " " << p.time << " " << p.value << " " << p.curve;
+            o << "\n";
+        }
+    }
+    static bool pointsEq(const std::vector<MSEG::Point>& a, const std::vector<MSEG::Point>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) if (a[i].time != b[i].time || a[i].value != b[i].value || a[i].curve != b[i].curve) return false;
+        return true;
+    }
+    bool mseg2IsDefault() const {
+        const VoiceParams d; const auto& v = voice;
+        return v.mseg2Seconds == d.mseg2Seconds && v.mseg2Sync == d.mseg2Sync && v.mseg2Mode == d.mseg2Mode
+            && v.mseg2LoopStart == d.mseg2LoopStart && v.mseg2LoopEnd == d.mseg2LoopEnd && pointsEq(v.mseg2Points, d.mseg2Points);
     }
 
     void writeRoutesAndFX(std::ostringstream& o) const {

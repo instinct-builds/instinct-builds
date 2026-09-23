@@ -60,7 +60,14 @@ struct MUEWEditorHost {
     int dropKnob;
     int dropFx;
     int dropAux;     // 0.16.0: route slot whose AUX chip is under a dragged badge, -1 none
-    int curveDrag;   // 0.16.0: route slot whose curve is being bent, -1 none      // FX rack slot under a dragged source badge (0.15.0), -1 none
+    int curveDrag;   // 0.16.0: route slot whose curve is being bent, -1 none
+    // 0.17.0 MSEG editor: open MSEG (0/1, -1 closed), snap grid, and the point,
+    // segment curve or loop edge being dragged (-1 none).
+    int msegEdit;
+    int msegGrid;
+    int msegPt;
+    int msegSeg;
+    int msegLoopEdge;
     int routeDrag;
     int modFieldDrag;
     // 0.13.0 FX chain: card slot being dragged to a new place (-1 = none)
