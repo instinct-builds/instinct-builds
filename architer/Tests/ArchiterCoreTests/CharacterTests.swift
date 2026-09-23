@@ -89,15 +89,19 @@ struct CharacterTests {
     @Test func customSkillsAddDedupesAndRemoves() {
         var c = Character(name: "T", level: 1)
         let before = c.skills.count
-        #expect(c.addSkill(name: "Boating", ability: .strength))
+        let added = c.addSkill(name: "Boating", ability: .strength)
+        #expect(added)
         #expect(c.skills.count == before + 1)
         #expect(c.skills.last?.name == "Boating")
         // Duplicates (any case) and blank names are refused.
-        #expect(!c.addSkill(name: "boating", ability: .wisdom))
-        #expect(!c.addSkill(name: "  ", ability: .wisdom))
+        let dupe = c.addSkill(name: "boating", ability: .wisdom)
+        let blank = c.addSkill(name: "  ", ability: .wisdom)
+        #expect(!dupe)
+        #expect(!blank)
         #expect(c.skills.count == before + 1)
         // Name is trimmed on the way in.
-        #expect(c.addSkill(name: "  Brewing ", ability: .intelligence))
+        let trimmed = c.addSkill(name: "  Brewing ", ability: .intelligence)
+        #expect(trimmed)
         #expect(c.skills.last?.name == "Brewing")
         c.removeSkill(named: "Boating")
         #expect(c.skills.count == before + 1)
