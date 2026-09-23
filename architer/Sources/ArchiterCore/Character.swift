@@ -254,16 +254,20 @@ public struct InventoryItem: Codable, Equatable, Sendable, Identifiable {
     public var weight: Double?
     public var equipped: Bool
     public var attuned: Bool
+    /// Stowed (dropped, cached, left at camp) gear does not count as carried.
+    public var stowed: Bool
     public var category: String
     public var notes: String
 
     public init(name: String, quantity: Int = 1, weight: Double? = nil,
-                equipped: Bool = false, attuned: Bool = false, category: String = "", notes: String = "") {
+                equipped: Bool = false, attuned: Bool = false, stowed: Bool = false,
+                category: String = "", notes: String = "") {
         self.name = name
         self.quantity = max(0, quantity)
         self.weight = weight
         self.equipped = equipped
         self.attuned = attuned
+        self.stowed = stowed
         self.category = category
         self.notes = notes
     }
@@ -276,6 +280,7 @@ public struct InventoryItem: Codable, Equatable, Sendable, Identifiable {
         weight = try c.decodeIfPresent(Double.self, forKey: .weight)
         equipped = try c.decodeIfPresent(Bool.self, forKey: .equipped) ?? false
         attuned = try c.decodeIfPresent(Bool.self, forKey: .attuned) ?? false
+        stowed = try c.decodeIfPresent(Bool.self, forKey: .stowed) ?? false
         category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
     }
@@ -513,8 +518,13 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var hitDiceTotal: Int { level }
     public var hitDiceRemaining: Int { max(0, hitDiceTotal - hitDiceSpent) }
 
+    /// Weight actually carried; stowed gear is excluded.
     public var totalWeight: Double {
-        inventory.reduce(0) { $0 + $1.totalWeight }
+        inventory.filter { !$0.stowed }.reduce(0) { $0 + $1.totalWeight }
+    }
+    /// Weight set aside as stowed.
+    public var stowedWeight: Double {
+        inventory.filter(\.stowed).reduce(0) { $0 + $1.totalWeight }
     }
     public var carryingCapacity: Int { RulesMath.carryingCapacity(strength: scores[.strength]) }
     public var encumbrance: Encumbrance {

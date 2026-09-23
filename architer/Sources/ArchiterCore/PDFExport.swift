@@ -312,6 +312,7 @@ public enum SheetPDFExporter {
                         let x = margin + Double(i % 2) * colW
                         var text = item.name
                         if item.quantity > 1 { text += " x\(item.quantity)" }
+                        if item.stowed { text += " (stowed)" }
                         if !item.notes.isEmpty { text += " - \(item.notes)" }
                         cursor.put(x, text, size: 9)
                         if i % 2 == 1 || i == c.inventory.count - 1 { cursor.advance(13) }

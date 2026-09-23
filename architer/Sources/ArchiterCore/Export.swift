@@ -79,6 +79,7 @@ public enum SheetExporter {
                     var line = "- \(item.name)\(item.quantity > 1 ? " ×\(item.quantity)" : "")"
                     if item.equipped { line += " (equipped)" }
                     if item.attuned { line += " (attuned)" }
+                    if item.stowed { line += " (stowed)" }
                     if !item.notes.isEmpty { line += " — \(item.notes)" }
                     lines.append(line)
                 }
@@ -236,7 +237,7 @@ public enum SheetExporter {
             case .inventory:
                 var items = ""
                 for item in c.inventory {
-                    items += "<li>\(esc(item.name))\(item.quantity > 1 ? " ×\(item.quantity)" : "")\(item.equipped ? " (equipped)" : "")\(item.notes.isEmpty ? "" : " — " + esc(item.notes))</li>"
+                    items += "<li>\(esc(item.name))\(item.quantity > 1 ? " ×\(item.quantity)" : "")\(item.equipped ? " (equipped)" : "")\(item.stowed ? " (stowed)" : "")\(item.notes.isEmpty ? "" : " — " + esc(item.notes))</li>"
                 }
                 if items.isEmpty { items = "<li class=\"dim\">Empty pack</li>" }
                 body.append("""

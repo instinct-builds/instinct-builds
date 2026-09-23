@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.10.0
+
+- Stowed gear: mark items stowed (dropped, cached, left at camp) to
+  exclude them from carried weight and encumbrance. Stowed rows dim,
+  the carried line shows the stowed total, and exports tag stowed
+  items. Old saves decode with nothing stowed.
+
 ## What's in 2.9.0
 
 - Custom spells: "Add custom" creates a spell straight on the sheet,

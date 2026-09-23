@@ -24,6 +24,11 @@ struct InventoryBlock: View {
             HStack {
                 Text("Carried \(fmtWeight(character.totalWeight)) / \(character.carryingCapacity) lb")
                     .monospacedDigit()
+                if character.stowedWeight > 0 {
+                    Text("(+\(fmtWeight(character.stowedWeight)) stowed)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                }
                 Text("Attuned \(character.attunedCount)/\(Character.attunementLimit)")
                     .monospacedDigit()
                     .foregroundStyle(character.overAttuned ? Theme.danger : Theme.inkMuted)
@@ -70,11 +75,14 @@ struct InventoryBlock: View {
                     ), format: .number)
                         .frame(width: 60)
                     Toggle("Attuned", isOn: $item.attuned).toggleStyle(.checkbox).font(.caption)
+                    Toggle("Stowed", isOn: $item.stowed).toggleStyle(.checkbox).font(.caption)
+                        .help("Dropped or cached: not counted as carried")
                     TextField("Notes", text: $item.notes)
                     Button(role: .destructive) {
                         character.inventory.removeAll { $0.id == item.id }
                     } label: { Image(systemName: "minus.circle") }
                 }
+                .opacity(item.stowed ? 0.55 : 1)
             }
         }
     }

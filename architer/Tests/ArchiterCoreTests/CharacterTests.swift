@@ -86,6 +86,19 @@ struct CharacterTests {
         #expect(c.features[1].usesRemaining == 0)
     }
 
+    @Test func stowedGearExcludedFromCarriedWeight() {
+        var c = Character(name: "T", level: 1)
+        c.inventory = [InventoryItem(name: "Rope", weight: 10),
+                       InventoryItem(name: "Anvil", weight: 50)]
+        #expect(c.totalWeight == 60)
+        #expect(c.stowedWeight == 0)
+        c.inventory[1].stowed = true
+        #expect(c.totalWeight == 10)
+        #expect(c.stowedWeight == 50)
+        // Encumbrance looks only at what is carried.
+        #expect(c.encumbrance == .normal)
+    }
+
     @Test func customSkillsAddDedupesAndRemoves() {
         var c = Character(name: "T", level: 1)
         let before = c.skills.count
