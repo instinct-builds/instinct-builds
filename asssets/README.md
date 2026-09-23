@@ -254,3 +254,22 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   across launches, so WATCH FOLDERS and the rest are reachable on small
   screens.
 - Logic and tests: `Duplicates.swift` and `DuplicateTests.swift`.
+
+## 1.4.0: Find Similar (plus 1.3.x fixes)
+
+- Find Similar: ⌥⌘F, the right-click menu, or the SIMILAR section in the
+  inspector. The grid switches to "Similar to X", ranked by look. Near
+  copies (resized, re-exported, recompressed or lightly edited) come first
+  with a green "Near copy" badge, then look-alikes with a percentage. Once
+  looks have been compared, the inspector shows the 8 closest matches for
+  whatever you select.
+- How it works (`Similarity.swift`): a 64-bit difference hash of each
+  preview (9x8 grayscale grid) catches shape and structure, and a palette
+  distance catches mood. The score is 70% hash and 30% palette. Near copy
+  means at most 6 of 64 bits differ. Hashes are cached per asset and path,
+  and files render off the main thread.
+- Duplicates now have an "Include look-alikes" switch that also groups
+  near copies, not just byte-identical files.
+- Fixes: Find Duplicates rescans watch folders first. Re-adding a folder
+  you already watch rescans it right away. The sidebar reads "N assets"
+  now that the count includes your own files.

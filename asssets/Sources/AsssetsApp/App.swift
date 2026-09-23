@@ -26,6 +26,7 @@ struct ASSSETSApp: App {
                 Button("Import Files…") { library.importFiles() }.keyboardShortcut("i")
                 Button("Watch Folder…") { library.addWatchFolder() }.keyboardShortcut("i", modifiers: [.command, .shift])
                 Button("Find Duplicates…") { library.findDuplicates() }.keyboardShortcut("d", modifiers: [.command, .option])
+                Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(after: .pasteboard) {
@@ -265,19 +266,28 @@ final class StudioLibrary: ObservableObject {
     // MARK: Browsing and selection
 
     var filtered: [StudioAsset] {
+        if let target = similarTo {
+            let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
+            let hits = similarMatches.compactMap { byID[$0.id] }
+            let visible = Set(catalog.filtered(search: search, kind: selectedKind, collection: StudioCatalog.allAssets).map(\.id))
+            return (byID[target].map { [$0] } ?? []) + hits.filter { visible.contains($0.id) }
+        }
         if selectedSmart == nil && selectedCollection == Self.missingCollection {
             return catalog.filtered(search: search, kind: selectedKind, collection: StudioCatalog.allAssets).filter { missing.contains($0.id) }
         }
         if let id = selectedSmart { return catalog.filtered(search: search, kind: selectedKind, smart: id) }
         return catalog.filtered(search: search, kind: selectedKind, collection: selectedCollection)
     }
-    var browsingTitle: String { selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection }
+    var browsingTitle: String {
+        if let t = similarTo { return "Similar to " + (catalog.assets.first { $0.id == t }?.title ?? "asset") }
+        return selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection
+    }
     var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil) }
     var focused: StudioAsset? { focusID.flatMap { id in catalog.assets.first { $0.id == id } } }
     var selectedAssets: [StudioAsset] { catalog.assets.filter { selection.contains($0.id) } }
 
-    func show(collection: String) { selectedCollection = collection; selectedSmart = nil; anchorID = nil }
-    func show(smart id: UUID) { selectedSmart = id; selectedCollection = StudioCatalog.allAssets; anchorID = nil }
+    func show(collection: String) { similarTo = nil; selectedCollection = collection; selectedSmart = nil; anchorID = nil }
+    func show(smart id: UUID) { similarTo = nil; selectedSmart = id; selectedCollection = StudioCatalog.allAssets; anchorID = nil }
 
     // MARK: Watch folders and missing files (1.2)
 
@@ -332,7 +342,8 @@ final class StudioLibrary: ObservableObject {
     func watch(_ paths: [String]) {
         var changed = false
         mutate { c in for path in paths { if c.addWatchFolder(path) { changed = true } } }
-        if changed { scanWatchFolders(); show(collection: StudioCatalog.inboxCollection) } else { flash("Already watching that folder") }
+        scanWatchFolders()   // also when the folder was already watched, so its newest files show up now
+        if changed { show(collection: StudioCatalog.inboxCollection) } else { flash("Already watching that folder - rescanned it") }
     }
 
     func stopWatching(_ folder: String) {
@@ -368,10 +379,11 @@ final class StudioLibrary: ObservableObject {
 
     /// Sizes every real file, hashes only same-size candidates (SHA-256, streamed) off the main thread,
     /// then shows groups of identical files.
-    func findDuplicates() {
+    func findDuplicates(nearToo: Bool = false) {
+        scanWatchFolders()   // results should include files that landed in watch folders a moment ago
         let order = catalog.assets.map(\.id)
         let paths = Dictionary(uniqueKeysWithValues: catalog.assets.compactMap { a in a.importedPath.map { (a.id, $0) } })
-        duplicates = DuplicateScan(scanning: true)
+        duplicates = DuplicateScan(scanning: true, near: nearToo)
         Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
             var sizes: [UUID: Int64] = [:]
@@ -379,14 +391,79 @@ final class StudioLibrary: ObservableObject {
             let candidates = Duplicates.needsHash(sizes: sizes)
             var hashes: [UUID: String] = [:]
             for id in candidates { if let p = paths[id], let h = Self.sha256(path: p) { hashes[id] = "\(sizes[id] ?? 0)-\(h)" } }
-            let groups = Duplicates.groups(hashes: hashes, order: order)
+            let exact = Duplicates.groups(hashes: hashes, order: order)
             let checked = sizes.count
             await MainActor.run {
                 guard self.duplicates != nil else { return }
-                self.duplicates = DuplicateScan(scanning: false, groups: groups, checked: checked)
+                self.duplicates = DuplicateScan(scanning: nearToo, groups: exact, checked: checked, near: nearToo)
+            }
+            guard nearToo else { return }
+            let looks = await self.lookHashes()
+            await MainActor.run {
+                guard self.duplicates?.near == true else { return }
+                var groups = Similarity.nearGroups(hashes: looks, order: order)
+                let covered = Set(groups.flatMap { $0 })
+                groups += exact.filter { g in g.allSatisfy { !covered.contains($0) } }
+                self.duplicates = DuplicateScan(scanning: false, groups: groups, checked: checked, near: true)
             }
         }
     }
+
+    // MARK: Find similar (1.4)
+
+    @Published var similarTo: UUID?
+    @Published var similarMatches: [Similarity.Match] = []
+    @Published var looksReady = false
+    private var lookCache: [String: UInt64] = [:]
+
+    private func lookKey(_ a: StudioAsset) -> String { a.id.uuidString + "|" + (a.importedPath ?? "") }
+
+    /// Perceptual hashes for every visual asset, cached by asset and path. Files render off the main thread.
+    func lookHashes() async -> [UUID: UInt64] {
+        let todo = catalog.assets.filter { $0.kind != .audio && lookCache[lookKey($0)] == nil && !missing.contains($0.id) }
+        for a in todo {
+            let key = lookKey(a)
+            if a.importedPath == nil {
+                if let cg = MediaRenderer.generated(a, width: 96), let px = MediaRenderer.pixelBuffer(from: cg, maxPixel: 64) { lookCache[key] = Similarity.dHash(px) }
+                await Task.yield()
+            } else {
+                let snap = a
+                let hash: UInt64? = await Task.detached(priority: .userInitiated) {
+                    guard let cg = await MediaRenderer.thumbnail(for: snap, maxPixel: 96), let px = MediaRenderer.pixelBuffer(from: cg, maxPixel: 64) else { return nil }
+                    return Similarity.dHash(px)
+                }.value
+                if let hash { lookCache[key] = hash }
+            }
+        }
+        looksReady = true
+        var out: [UUID: UInt64] = [:]
+        for a in catalog.assets { if let h = lookCache[lookKey(a)] { out[a.id] = h } }
+        return out
+    }
+
+    func matches(for id: UUID, limit: Int = 24) -> [Similarity.Match] {
+        guard let a = catalog.assets.first(where: { $0.id == id }) else { return [] }
+        let target = Similarity.Signature(hash: lookCache[lookKey(a)], palette: a.palette)
+        let others = catalog.assets.filter { $0.id != id && $0.kind != .audio }.map { ($0.id, Similarity.Signature(hash: lookCache[lookKey($0)], palette: $0.palette)) }
+        return Similarity.rank(target, among: others, limit: limit)
+    }
+
+    /// Shows the library ranked by likeness to one asset: near copies first, then the same structure and mood.
+    func findSimilar(_ id: UUID) {
+        guard let a = catalog.assets.first(where: { $0.id == id }), a.kind != .audio else { flash("Find Similar works on images, vectors, mockups, textures and footage"); return }
+        flash("Comparing looks…")
+        Task { @MainActor in
+            _ = await lookHashes()
+            similarMatches = matches(for: id)
+            similarTo = id
+            selectedSmart = nil; selectedCollection = StudioCatalog.allAssets
+            selection = [id]; focusID = id; anchorID = id
+            let near = similarMatches.filter(\.nearDuplicate).count
+            flash(near > 0 ? "\(near) near \(near == 1 ? "copy" : "copies") and \(similarMatches.count - near) look-alikes" : "\(similarMatches.count) look-alikes")
+        }
+    }
+
+    func similarScore(_ id: UUID) -> Similarity.Match? { similarTo == nil ? nil : similarMatches.first { $0.id == id } }
 
     nonisolated static func sha256(path: String) -> String? {
         guard let h = FileHandle(forReadingAtPath: path) else { return nil }
@@ -754,6 +831,20 @@ final class StudioLibrary: ObservableObject {
             }
             watch([drop.path])
             findDuplicates()
+        case "similar":
+            // A half-size JPEG re-export of a bundled texture, dropped into a watch folder: it should rank first as a near copy.
+            let fm = FileManager.default
+            let drop = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Client Drops", isDirectory: true)
+            try? fm.createDirectory(at: drop, withIntermediateDirectories: true)
+            let src = starterRoot.appendingPathComponent("terrazzo-texture.png")
+            if let isrc = CGImageSourceCreateWithURL(src as CFURL, nil),
+               let small = CGImageSourceCreateThumbnailAtIndex(isrc, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 1024] as CFDictionary),
+               let dst = CGImageDestinationCreateWithURL(drop.appendingPathComponent("terrazzo-web.jpg") as CFURL, UTType.jpeg.identifier as CFString, 1, nil) {
+                CGImageDestinationAddImage(dst, small, [kCGImageDestinationLossyCompressionQuality: 0.6] as CFDictionary)
+                CGImageDestinationFinalize(dst)
+            }
+            watch([drop.path])
+            if let a = catalog.assets.first(where: { $0.importedPath?.hasSuffix("terrazzo-texture.png") == true && $0.isStarter }) { findSimilar(a.id) }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -843,7 +934,7 @@ struct Sidebar: View {
                     }.frame(width: 32, height: 32)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("ASSSETS").font(.system(size: 14, weight: .black)).tracking(2.5)
-                        Text("\(model.catalog.assets.count) original assets").font(.caption).foregroundStyle(.secondary)
+                        Text("\(model.catalog.assets.count) assets").font(.caption).foregroundStyle(.secondary)
                     }
                 }.padding(.horizontal, 6).padding(.top, 4)
 
@@ -1223,6 +1314,7 @@ struct AssetMenu: View {
             Button("Open") { model.open(primary) }
             Button("Reveal in Finder") { model.reveal(ids) }
         }
+        if !many && primary.kind != .audio { Button("Find Similar") { model.findSimilar(primary.id) } }
         Button("Share…") { model.share(ids) }
         Button("Copy Keywords") { model.copyKeywords(ids) }
         Menu(many ? "Export \(ids.count) Assets" : "Export") {
@@ -1259,7 +1351,14 @@ struct AssetCard: View {
                     .aspectRatio(1.36, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 11))
                     .overlay(alignment: .bottomLeading) {
-                        if model.missing.contains(asset.id) {
+                        if let m = model.similarScore(asset.id) {
+                            Text(m.nearDuplicate ? "Near copy" : "\(Int((m.score * 100).rounded()))% alike").font(.system(size: 9.5, weight: .bold))
+                                .foregroundStyle(m.nearDuplicate ? .black : .white).padding(.horizontal, 7).padding(.vertical, 4)
+                                .background(m.nearDuplicate ? Theme.watch : Theme.smart.opacity(0.55), in: Capsule()).padding(8)
+                        } else if model.similarTo == asset.id {
+                            Label("Original", systemImage: "scope").font(.system(size: 9.5, weight: .bold))
+                                .padding(.horizontal, 7).padding(.vertical, 4).background(Theme.accent, in: Capsule()).padding(8)
+                        } else if model.missing.contains(asset.id) {
                             Label("Missing", systemImage: "exclamationmark.triangle.fill").font(.system(size: 9.5, weight: .bold))
                                 .foregroundStyle(.black).padding(.horizontal, 7).padding(.vertical, 4).background(Theme.warning, in: Capsule()).padding(8)
                         } else if asset.importedPath?.lowercased().hasSuffix(".psd") == true {
@@ -1468,6 +1567,50 @@ struct DuplicateScan: Equatable {
     var scanning: Bool
     var groups: [[UUID]] = []
     var checked = 0
+    var near = false
+}
+
+/// Inspector strip: the closest look-alikes for the focused asset, live once looks are compared.
+struct SimilarStrip: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                InspectorLabel(text: "SIMILAR")
+                Spacer()
+                Button(model.similarTo == asset.id ? "Showing in grid" : "Find Similar") { model.findSimilar(asset.id) }
+                    .buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                    .disabled(model.similarTo == asset.id)
+            }
+            if model.looksReady {
+                let hits = Array(model.matches(for: asset.id, limit: 8))
+                if hits.isEmpty {
+                    Text("Nothing in the library looks close.").font(.caption2).foregroundStyle(.tertiary)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(hits, id: \.id) { m in
+                                if let a = model.catalog.assets.first(where: { $0.id == m.id }) {
+                                    Button { model.selection = [a.id]; model.focusID = a.id } label: {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Thumbnail(asset: a, pixels: 160).frame(width: 74, height: 54).clipShape(RoundedRectangle(cornerRadius: 7))
+                                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(m.nearDuplicate ? Theme.watch : Theme.hairline, lineWidth: m.nearDuplicate ? 1.5 : 1))
+                                            Text(m.nearDuplicate ? "Near copy" : "\(Int((m.score * 100).rounded()))%").font(.system(size: 9.5, weight: .semibold))
+                                                .foregroundStyle(m.nearDuplicate ? Theme.watch : .secondary)
+                                        }
+                                    }.buttonStyle(.plain).help(a.title)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("Compares shapes and colors across the library. Near copies (resized, recompressed, lightly edited) come first.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+    }
 }
 
 struct DuplicatesSheet: View {
@@ -1480,11 +1623,14 @@ struct DuplicatesSheet: View {
                     Text("Duplicates").font(.system(size: 20, weight: .bold))
                     Text(scan.scanning ? "Comparing file contents…"
                          : scan.groups.isEmpty ? "No identical files among \(scan.checked) files."
-                         : "\(scan.groups.count) \(scan.groups.count == 1 ? "set" : "sets") of identical files among \(scan.checked). Keep one per set; the others leave the library, files on disk stay.")
+                         : "\(scan.groups.count) \(scan.groups.count == 1 ? "set" : "sets") of \(scan.near ? "identical or look-alike" : "identical") files among \(scan.checked). Keep one per set; the others leave the library, files on disk stay.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if scan.scanning { ProgressView().controlSize(.small) }
+                Toggle("Include look-alikes", isOn: Binding(get: { scan.near }, set: { model.findDuplicates(nearToo: $0) }))
+                    .toggleStyle(.switch).controlSize(.small).disabled(scan.scanning)
+                    .help("Also group images that look the same but are not byte-identical: resized, re-exported or lightly edited copies")
             }
             .padding(20)
             Divider().overlay(Theme.hairline)
@@ -1617,6 +1763,7 @@ struct Inspector: View {
                 Divider().overlay(Theme.hairline).padding(.top, 10)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        if asset.kind != .audio { SimilarStrip(asset: asset) }
                         if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
                         InspectorLabel(text: "COLOR PALETTE")
                         HStack(spacing: 5) {
