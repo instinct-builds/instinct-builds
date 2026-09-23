@@ -33,6 +33,7 @@ struct PresetInfo {
 //                  `unison`, `dist`, `eq` and `comp` lines. Optional lines are
 //                  written only when they differ from the defaults, so older
 //                  files round-trip byte-identical and older builds skip them.
+//                  0.8.0 adds optional `lfo34`, `sync` and `env3` lines.
 // Version 1 text still parses; fields it lacks keep their VoiceParams
 // defaults, which match how 0.1.x/0.2.0 rendered those presets.
 struct Preset {
@@ -69,6 +70,16 @@ struct Preset {
         if (hasUnison())
             o << "unison " << voice.osc1Unison << " " << voice.osc2Unison << " " << voice.osc1UniDetune << " "
               << voice.osc2UniDetune << " " << voice.uniWidth << " " << voice.uniBlend << "\n";
+        {
+            const VoiceParams d;
+            const auto& v = voice;
+            if (v.lfo3Rate != d.lfo3Rate || v.lfo3Shape != d.lfo3Shape || v.lfo4Rate != d.lfo4Rate || v.lfo4Shape != d.lfo4Shape)
+                o << "lfo34 " << v.lfo3Rate << " " << v.lfo3Shape << " " << v.lfo4Rate << " " << v.lfo4Shape << "\n";
+            if (v.lfoSync[0] || v.lfoSync[1] || v.lfoSync[2] || v.lfoSync[3])
+                o << "sync " << v.lfoSync[0] << " " << v.lfoSync[1] << " " << v.lfoSync[2] << " " << v.lfoSync[3] << "\n";
+            if (v.env3A != d.env3A || v.env3D != d.env3D || v.env3S != d.env3S || v.env3R != d.env3R)
+                o << "env3 " << v.env3A << " " << v.env3D << " " << v.env3S << " " << v.env3R << "\n";
+        }
         writeRoutesAndFX(o);
         const FXParams d;
         if (fx.dist.enabled != d.dist.enabled || fx.dist.mode != d.dist.mode || fx.dist.drive != d.dist.drive || fx.dist.mix != d.dist.mix)
@@ -151,6 +162,23 @@ struct Preset {
                 voice.uniWidth = std::clamp(voice.uniWidth, 0.0, 1.0);
                 voice.uniBlend = std::clamp(voice.uniBlend, 0.0, 1.0);
             }
+            else if (key == "lfo34") {
+                ls >> voice.lfo3Rate >> voice.lfo3Shape >> voice.lfo4Rate >> voice.lfo4Shape;
+                voice.lfo3Rate = std::clamp(voice.lfo3Rate, 0.01, 40.0);
+                voice.lfo4Rate = std::clamp(voice.lfo4Rate, 0.01, 40.0);
+                voice.lfo3Shape = std::clamp(voice.lfo3Shape, 0, 3);
+                voice.lfo4Shape = std::clamp(voice.lfo4Shape, 0, 3);
+            }
+            else if (key == "sync") {
+                for (int& sy : voice.lfoSync) { int x = 0; if (ls >> x) sy = std::clamp(x, 0, kSyncCount - 1); }
+            }
+            else if (key == "env3") {
+                ls >> voice.env3A >> voice.env3D >> voice.env3S >> voice.env3R;
+                voice.env3A = std::clamp(voice.env3A, 0.001, 10.0);
+                voice.env3D = std::clamp(voice.env3D, 0.001, 10.0);
+                voice.env3S = std::clamp(voice.env3S, 0.0, 1.0);
+                voice.env3R = std::clamp(voice.env3R, 0.001, 10.0);
+            }
             else if (key == "dist") {
                 int e = 0; ls >> e >> fx.dist.mode >> fx.dist.drive >> fx.dist.mix;
                 fx.dist.enabled = e != 0;
@@ -174,8 +202,11 @@ struct Preset {
             else if (key == "route") {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
-                r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
-                routes.push_back(r);
+                // Sources/destinations from a newer build are skipped, not guessed.
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Env3 && d >= 0 && d <= (int)ModRoute::Dest::DistDrive) {
+                    r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
+                    routes.push_back(r);
+                }
             }
             else if (key == "chorus") {
                 int e; ls >> e >> fx.chorus.rateHz >> fx.chorus.depthMs >> fx.chorus.baseMs >> fx.chorus.mix;
@@ -217,7 +248,10 @@ struct Preset {
             && a.macros[2] == b.macros[2] && a.macros[3] == b.macros[3]
             && a.osc1Unison == b.osc1Unison && a.osc2Unison == b.osc2Unison
             && a.osc1UniDetune == b.osc1UniDetune && a.osc2UniDetune == b.osc2UniDetune
-            && a.uniWidth == b.uniWidth && a.uniBlend == b.uniBlend;
+            && a.uniWidth == b.uniWidth && a.uniBlend == b.uniBlend
+            && a.lfo3Rate == b.lfo3Rate && a.lfo3Shape == b.lfo3Shape && a.lfo4Rate == b.lfo4Rate && a.lfo4Shape == b.lfo4Shape
+            && a.lfoSync[0] == b.lfoSync[0] && a.lfoSync[1] == b.lfoSync[1] && a.lfoSync[2] == b.lfoSync[2] && a.lfoSync[3] == b.lfoSync[3]
+            && a.env3A == b.env3A && a.env3D == b.env3D && a.env3S == b.env3S && a.env3R == b.env3R;
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         for (size_t i = 0; i < a.mseg1Points.size(); ++i)
             if (a.mseg1Points[i].time != b.mseg1Points[i].time

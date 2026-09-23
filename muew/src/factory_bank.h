@@ -1317,6 +1317,172 @@ dist 1 0 0.6 0.9
 eq 1 2 2 -2
 comp 1 0.6
 )MUEW"},
+    {"sync-wobble", R"MUEW(muew-preset 2
+name Sync Wobble
+category Bass
+author MUEW Factory
+tags wobble synced dubstep
+osc1Shape 2
+osc2Shape 3
+osc2Detune -12
+osc2Level 0.55
+filterCutoff 420
+filterReso 2.2
+filterMode 0
+amp 0.005 0.3 0.9 0.15
+mod 0.005 0.2 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 2 0.15
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.5 0.7
+lfo34 2 0 1 1
+sync 0 0 4 3
+env3 0.001 0.06 0 0.05
+routes 13
+route 9 2 2.6
+route 10 5 0.35
+route 11 0 7
+route 9 10 0.25
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.4 0.7
+eq 1 3 -1 1
+comp 1 0.5
+)MUEW"},
+    {"tempo-gate", R"MUEW(muew-preset 2
+name Tempo Gate
+category Pad
+author MUEW Factory
+tags gated synced trance
+osc1Shape 2
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.5
+filterCutoff 900
+filterReso 0.9
+filterMode 0
+amp 0.3 1 0.9 1.2
+mod 0.5 1 0.6 1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 4 0.25 0.2 0.9 0.8
+lfo34 2 3 0.25 1
+sync 0 0 5 9
+env3 0.001 0.3 1 0.3
+routes 11
+route 9 2 3.2
+route 10 9 -0.4
+route 1 2 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.35 5 12 0.25
+delay 1 0.375 0.5 0.35 0.2
+reverb 1 0.8 0.4 0.3
+comp 1 0.35
+)MUEW"},
+    {"triplet-pluck", R"MUEW(muew-preset 2
+name Triplet Pluck
+category Pluck
+author MUEW Factory
+tags triplet synced bright
+osc1Shape 1
+osc2Shape 4
+osc2Detune 12
+osc2Level 0.4
+filterCutoff 2400
+filterReso 1.4
+filterMode 0
+amp 0.002 0.45 0 0.35
+mod 0.002 0.25 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 1 0.2
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.8
+lfo34 3 1 0.3 0
+sync 0 0 7 0
+env3 0.001 0.35 0 0.3
+routes 10
+route 11 2 2.4
+route 9 6 0.45
+route 10 1 0.12
+route 2 2 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 1 0.333 0.5 0.42 0.28
+reverb 1 0.6 0.5 0.22
+)MUEW"},
+    {"drift-motion", R"MUEW(muew-preset 2
+name Drift Motion
+category Keys
+author MUEW Factory
+tags evolving drift warm
+osc1Shape 0
+osc2Shape 1
+osc2Detune 0.08
+osc2Level 0.5
+filterCutoff 1800
+filterReso 0.6
+filterMode 0
+amp 0.01 1.2 0.5 0.9
+mod 0.01 0.8 0.2 0.6
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 1 0.15
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 2 2 0.12 0.1 0.7 0.75
+lfo34 0.13 0 0.21 1
+env3 1.8 2.5 0.3 1.5
+routes 12
+route 9 1 0.18
+route 10 5 0.3
+route 11 2 1.6
+route 3 6 0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.4 4 12 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.7 0.5 0.3
+eq 1 1 0 2
+)MUEW"},
 };
 
 constexpr int kFactoryPresetCount = (int)(sizeof(kFactoryPresetTexts) / sizeof(kFactoryPresetTexts[0]));

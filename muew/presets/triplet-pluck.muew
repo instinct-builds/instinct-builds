@@ -1,0 +1,38 @@
+muew-preset 2
+name Triplet Pluck
+category Pluck
+author MUEW Factory
+tags triplet synced bright
+osc1Shape 1
+osc2Shape 4
+osc2Detune 12
+osc2Level 0.4
+filterCutoff 2400
+filterReso 1.4
+filterMode 0
+amp 0.002 0.45 0 0.35
+mod 0.002 0.25 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 1 0.2
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0.1 0.5 0.8
+lfo34 3 1 0.3 0
+sync 0 0 7 0
+env3 0.001 0.35 0 0.3
+routes 10
+route 11 2 2.4
+route 9 6 0.45
+route 10 1 0.12
+route 2 2 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+chorus 0 0.6 6 15 0.35
+delay 1 0.333 0.5 0.42 0.28
+reverb 1 0.6 0.5 0.22

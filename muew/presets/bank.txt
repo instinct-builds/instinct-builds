@@ -38,3 +38,7 @@ fold-screamer
 crushed-keys
 wide-pluck
 growl-stack
+sync-wobble
+tempo-gate
+triplet-pluck
+drift-motion

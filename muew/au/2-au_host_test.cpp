@@ -1,5 +1,6 @@
 // Host-level validation: discovery, factory presets, selection, sample-accurate MIDI and audio.
 #include <AudioToolbox/AudioToolbox.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -360,6 +361,49 @@ int main() {
         if (plist) CFRelease(plist);
         if (!ok) { printf("FAIL: custom preset name not kept in class info\n"); return 1; }
         printf("render notify pre/post and custom preset name: ok\n");
+    }
+
+    // 0.8.0: a mod route added through the state is audible, and a synced
+    // LFO follows the host tempo from kAudioUnitProperty_HostCallbacks.
+    {
+        static Float64 hostTempo = 120.0;
+        auto take = [&](const muew::Preset& p, double bpm, std::vector<float>& out) -> bool {
+            AudioUnit t = openUnit();
+            if (!t) return false;
+            hostTempo = bpm;
+            HostCallbackInfo hc{};
+            hc.beatAndTempoProc = [](void*, Float64* beat, Float64* tempo) -> OSStatus {
+                if (beat) { *beat = 0; }
+                if (tempo) { *tempo = hostTempo; }
+                return noErr;
+            };
+            bool ok = AudioUnitSetProperty(t, kAudioUnitProperty_HostCallbacks, kAudioUnitScope_Global, 0, &hc, sizeof(hc)) == noErr
+                      && setState(t, p);
+            std::vector<float> bl(512), br(512);
+            out.clear();
+            ok = ok && render(t, bl, br) && MusicDeviceMIDIEvent(t, 0x90, 48, 110, 0) == noErr;
+            for (int i = 0; ok && i < 172; ++i) { ok = render(t, bl, br); out.insert(out.end(), bl.begin(), bl.end()); }
+            AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+            return ok;
+        };
+        muew::Preset p = muew::factoryPresets()[0];
+        p.voice.osc2Level = 0; p.voice.filterCutoff = 900; p.routes.clear();
+        p.fx = muew::FXParams{};
+        std::vector<float> dry, routed, fast, freeA, freeB;
+        muew::Preset q = p; q.voice.lfoSync[2] = 3; q.routes.push_back({muew::ModRoute::Source::LFO3, muew::ModRoute::Dest::FilterCutoff, 3.0});
+        muew::Preset f = q; f.voice.lfoSync[2] = 0; f.voice.lfo3Rate = 2.0;
+        if (!take(p, 120, dry) || !take(q, 120, routed) || !take(q, 180, fast) || !take(f, 120, freeA) || !take(f, 180, freeB)) {
+            printf("FAIL: tempo/route renders\n"); return 1;
+        }
+        auto diff = [](const std::vector<float>& a, const std::vector<float>& b) { double d = 0; for (size_t i = 0; i < a.size() && i < b.size(); ++i) d = std::max(d, (double)std::fabs(a[i] - b[i])); return d; };
+        muew::Preset back; AudioUnit t = openUnit(); bool kept = t && setState(t, q) && getState(t, back) && back.routes.size() == 1
+            && back.routes[0].source == muew::ModRoute::Source::LFO3 && back.voice.lfoSync[2] == 3;
+        if (t) { AudioUnitUninitialize(t); AudioComponentInstanceDispose(t); }
+        printf("matrix: route delta %.3f, synced 120 vs 180 BPM delta %.3f, free-running delta %.6f\n", diff(dry, routed), diff(routed, fast), diff(freeA, freeB));
+        if (!kept || diff(dry, routed) < 0.01 || diff(routed, fast) < 0.01 || diff(freeA, freeB) != 0.0) {
+            printf("FAIL: state route, host tempo sync or recall\n"); return 1;
+        }
+        printf("mod matrix route via state, host-tempo LFO sync and recall: ok\n");
     }
 
     // Cocoa editor is advertised with a loadable bundle and class name.

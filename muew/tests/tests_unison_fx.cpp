@@ -163,7 +163,7 @@ int main() {
         char name[96]; snprintf(name, sizeof name, "%s renders (peak %.2f, rms %.3f)", p.info.name.c_str(), pk, level);
         check(ok, name);
     }
-    check(kFactoryPresetCount == 38 && factoryPresets()[29].info.name == "Laser Drop", "bank appended: 38 presets, 0-29 unchanged");
+    check(kFactoryPresetCount >= 38 && factoryPresets()[29].info.name == "Laser Drop" && factoryPresets()[37].info.name == "Growl Stack", "bank appended: 0-37 unchanged");
     check(stacks >= 6 && driven >= 4 && compressed >= 6, "new sounds use unison, distortion and compression");
 
     if (g_fail) { printf("%d UNISON/FX TEST(S) FAILED\n", g_fail); return 1; }

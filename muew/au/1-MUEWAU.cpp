@@ -95,6 +95,8 @@ struct MUEWInstance {
 
     MUEWInstance() { syncParamsFromState(); }
     std::vector<ScheduledEvent> events;
+    // Host transport callbacks (tempo for synced LFOs). Zeroed = no host info.
+    HostCallbackInfo hostCallbacks{};
 
     AudioStreamBasicDescription streamFormat() const {
         AudioStreamBasicDescription d;
@@ -318,6 +320,11 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
                 *outDataSize = sizeof(UInt32); if (outWritable) *outWritable = false; return noErr;
             }
             break;
+        case kAudioUnitProperty_HostCallbacks:
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(HostCallbackInfo); if (outWritable) *outWritable = true; return noErr;
+            }
+            break;
         default: break;
     }
     (void)u;
@@ -489,6 +496,12 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 return noErr;
             }
             break;
+        case kAudioUnitProperty_HostCallbacks:
+            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(HostCallbackInfo)) {
+                std::memcpy(outData, &u->hostCallbacks, sizeof(HostCallbackInfo));
+                *ioDataSize = sizeof(HostCallbackInfo); return noErr;
+            }
+            break;
         default: break;
     }
     return kAudioUnitErr_InvalidProperty;
@@ -498,6 +511,12 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                          AudioUnitElement inElement, const void* inData, UInt32 inDataSize) {
     MUEWInstance* u = Self(self);
     switch (inID) {
+        case kAudioUnitProperty_HostCallbacks:
+            if (inScope != kAudioUnitScope_Global) return kAudioUnitErr_InvalidScope;
+            // Hosts may pass an older, shorter struct; copy what they gave.
+            std::memset(&u->hostCallbacks, 0, sizeof(HostCallbackInfo));
+            if (inData) std::memcpy(&u->hostCallbacks, inData, std::min<size_t>(inDataSize, sizeof(HostCallbackInfo)));
+            return noErr;
         case kAudioUnitProperty_SampleRate:
             if (inDataSize >= sizeof(Float64)) {
                 double sr = *static_cast<const Float64*>(inData);
@@ -610,6 +629,11 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
     for (const auto& n : u->renderNotifies)
         n.proc(n.userData, &notifyFlags, inTimeStamp, inOutputBusNumber, inNumberFrames, ioData);
     u->applyPendingState(false);
+    if (u->hostCallbacks.beatAndTempoProc) {
+        Float64 beat = 0, tempo = 0;
+        if (u->hostCallbacks.beatAndTempoProc(u->hostCallbacks.hostUserData, &beat, &tempo) == noErr && tempo > 0)
+            u->synth.setTempo(tempo);
+    }
     float* left = static_cast<float*>(ioData->mBuffers[0].mData);
     float* right = static_cast<float*>(ioData->mBuffers[1].mData);
     // Never set kAudioUnitRenderAction_OutputIsSilence: hosts may answer that

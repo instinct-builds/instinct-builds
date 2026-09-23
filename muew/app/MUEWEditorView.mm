@@ -55,6 +55,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
         user::load(UserPresetDir(), ui::library());
@@ -102,6 +103,7 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
+    if (index != currentIndex || p.info.name != current.info.name) matrixPage = 0; // a different sound starts on page 1
     current = p;
     currentIndex = index;
     edited = wasEdited;
@@ -123,6 +125,7 @@ static NSUserDefaults* MUEWDefaults() {
     if (i < 0 || i >= lib.count()) return;
     currentIndex = i;
     current = lib.at(i);
+    matrixPage = 0;
     edited = false;
     [self applySound];
     [self revealCurrent];
@@ -206,6 +209,52 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)exportRect { return [self chipRect:11]; }
 - (NSRect)prevRect { return NSMakeRect(386, self.bounds.size.height - 62, 26, 30); }
 - (NSRect)nextRect { return NSMakeRect(668, self.bounds.size.height - 62, 26, 30); }
+// ---- mod matrix geometry (MODULATION area, x 44-452, y 58-250) ----
+// Left: 4 visible route rows of the 16-slot matrix plus page tabs.
+- (NSRect)routeRow:(int)i { return NSMakeRect(44, 190 - i * 44, 248, 38); }
+- (NSRect)routeSourcePill:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 28, r.origin.y + 20, 62, 14); }
+- (NSRect)routeDestPill:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 108, r.origin.y + 20, 110, 14); }
+- (NSRect)routeClear:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 226, r.origin.y + 20, 16, 14); }
+- (NSRect)routeBar:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 28, r.origin.y + 4, 150, 14); }
+- (NSRect)pageTab:(int)i { return NSMakeRect(172 + i * 30, 234, 28, 14); }
+// Right: 12 source badges (2 x 6), preview, and the selected modulator's controls.
+- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 6) * 25, i < 6 ? 216 : 198, 23, 15); }
+- (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
+- (int)modFieldCount;
+- (NSRect)modField:(int)j {
+    int n = [self modFieldCount];
+    CGFloat w = (148 - (n - 1) * 4) / (CGFloat)std::max(n, 1);
+    return NSMakeRect(304 + j * (w + 4), 62, w, 50);
+}
+static bool IsLfo(ModRoute::Source s) {
+    return s == ModRoute::Source::LFO1 || s == ModRoute::Source::LFO2 || s == ModRoute::Source::LFO3 || s == ModRoute::Source::LFO4;
+}
+static int LfoIndex(ModRoute::Source s) {
+    return s == ModRoute::Source::LFO1 ? 0 : s == ModRoute::Source::LFO2 ? 1 : s == ModRoute::Source::LFO3 ? 2 : 3;
+}
+static NSColor* SourceColor(ModRoute::Source s) {
+    if (IsLfo(s)) return C(0x6cb6ff);
+    if (s == ModRoute::Source::ModEnv || s == ModRoute::Source::Env3) return C(0xf2ab55);
+    if (s == ModRoute::Source::MSEG1) return C(0x66e2d0);
+    if (s == ModRoute::Source::Velocity) return C(0xc792ea);
+    return C(0xf27a55); // macros
+}
+// Envelope stage fields for ENV 2 (0) / ENV 3 (1): A, D, S, R.
+static double& EnvField(VoiceParams& v, bool env3, int j) {
+    if (env3) return j == 0 ? v.env3A : j == 1 ? v.env3D : j == 2 ? v.env3S : v.env3R;
+    return j == 0 ? v.modA : j == 1 ? v.modD : j == 2 ? v.modS : v.modR;
+}
+// Log-scaled 0..1 positions for drag: times 1 ms..10 s, rates 0.02..20 Hz.
+static double TimeTo01(double t) { return std::log(std::clamp(t, 0.001, 10.0) / 0.001) / std::log(10000.0); }
+static double TimeFrom01(double n) { return 0.001 * std::pow(10000.0, std::clamp(n, 0.0, 1.0)); }
+static double RateTo01(double hz) { return std::log(std::clamp(hz, 0.02, 20.0) / 0.02) / std::log(1000.0); }
+static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n, 0.0, 1.0)); }
+- (int)modFieldCount {
+    ModRoute::Source s = ui::matrixSources()[modSel];
+    if (IsLfo(s)) return 3;                                                   // SHAPE, RATE, SYNC
+    if (s == ModRoute::Source::ModEnv || s == ModRoute::Source::Env3) return 4; // A, D, S, R
+    return 0;
+}
 
 // ---- drawing ----
 - (void)panel:(NSRect)r title:(NSString*)title {
@@ -237,6 +286,20 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     CGFloat inset = ui::isMacro(k) ? 4 : 7;
     [line lineToPoint:NSMakePoint(c.x + cos(a) * (rad - inset), c.y + sin(a) * (rad - inset))];
     [C(0xeaf1f8) setStroke]; line.lineWidth = 2; [line stroke];
+    double depth = ui::knobModDepth(current.routes, k);
+    if (depth != 0) { // mod ring: where routed modulation can push this knob
+        double a0 = 225 - 270 * v, a1 = 225 - 270 * std::clamp(v + depth, 0.0, 1.0);
+        NSBezierPath* mr = [NSBezierPath bezierPath];
+        [mr appendBezierPathWithArcWithCenter:c radius:rad + 5 startAngle:a0 endAngle:a1 clockwise:depth > 0];
+        [C(0x5adac8, .9) setStroke]; mr.lineWidth = 2; mr.lineCapStyle = NSLineCapStyleRound; [mr stroke];
+    }
+    if (dragSource >= 0 && ui::knobDest(k) >= 0) { // drop targets while a source badge is dragged
+        NSBezierPath* t = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(c.x - rad - 8, c.y - rad - 8, rad * 2 + 16, rad * 2 + 16)];
+        CGFloat dash[2] = {3, 3};
+        if (dropKnob != k) [t setLineDash:dash count:2 phase:0];
+        [(dropKnob == k ? SourceColor(ui::matrixSources()[dragSource]) : C(0x5f6b7b)) setStroke];
+        t.lineWidth = dropKnob == k ? 2 : 1; [t stroke];
+    }
     NSString* label = dragKnob == k ? S(ui::knobReadout(current.voice, k)) : S(ui::knobLabel(k));
     bool macro = ui::isMacro(k);
     CGFloat lw2 = std::max<CGFloat>(60, rad * 2 + 32);
@@ -297,11 +360,12 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     std::vector<MSEG::Point> pts;
     if (src == ModRoute::Source::MSEG1) {
         pts = v.mseg1Points;
-    } else if (src == ModRoute::Source::ModEnv) {
-        double a = std::max(v.modA, 0.001), d = std::max(v.modD, 0.001), rel = std::max(v.modR, 0.001);
+    } else if (src == ModRoute::Source::ModEnv || src == ModRoute::Source::Env3) {
+        bool e3 = src == ModRoute::Source::Env3;
+        double a = std::max(e3 ? v.env3A : v.modA, 0.001), d = std::max(e3 ? v.env3D : v.modD, 0.001), rel = std::max(e3 ? v.env3R : v.modR, 0.001);
         double total = a + d + rel + (a + d + rel) * 0.4;
         double t1 = a / total, t2 = (a + d) / total, t3 = 1.0 - rel / total;
-        double sus = std::clamp(v.modS, 0.0, 1.0) * 2 - 1;
+        double sus = std::clamp(e3 ? v.env3S : v.modS, 0.0, 1.0) * 2 - 1;
         pts = {{0, -1}, {t1, 1}, {t2, sus}, {t3, sus}, {1, -1}};
     } else if (src == ModRoute::Source::Velocity) {
         pts = {{0, -1}, {1, 1}};
@@ -309,7 +373,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
         double m = v.macros[(int)src - (int)ModRoute::Source::Macro1] * 2 - 1; // current macro position
         pts = {{0, m}, {1, m}};
     } else {
-        int shape = src == ModRoute::Source::LFO1 ? v.lfo1Shape : v.lfo2Shape;
+        int shape = ui::lfoShape(const_cast<VoiceParams&>(v), LfoIndex(src));
         for (int i = 0; i <= 64; ++i) {
             double t = i / 64.0, ph = std::fmod(t * 2.0, 1.0), y = 0;
             switch (shape) {
@@ -453,26 +517,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     // Modulation + effects
     CGFloat low = top - 286;
     [self panel:NSMakeRect(24, 38, 760, low - 48) title:@"MODULATION + EFFECTS"];
-    CGFloat cardTop = low - 44, cardH = cardTop - 58;
-    for (int i = 0; i < 4; ++i) {
-        CGFloat x = 44 + i * 104;
-        bool has = i < (int)current.routes.size();
-        bool mseg = has && current.routes[i].source == ModRoute::Source::MSEG1;
-        FillRound(NSMakeRect(x, 58, 96, cardH), 8, mseg ? C(0x21423e) : C(0x202630));
-        Text([NSString stringWithFormat:@"SLOT %d", i + 1], NSMakeRect(x + 10, cardTop - 20, 80, 12), 8, C(0x5f6b7b), NSFontWeightSemibold);
-        if (!has) { Text(@"EMPTY", NSMakeRect(x + 10, cardTop - 40, 80, 16), 11, C(0x3b4552), NSFontWeightSemibold); continue; }
-        const ModRoute& rt = current.routes[i];
-        Text(S(ui::sourceName(rt.source)), NSMakeRect(x + 10, cardTop - 40, 80, 16), 11, mseg ? C(0x66e2d0) : C(0xb9c2ce), NSFontWeightSemibold);
-        Text(@"\u2193", NSMakeRect(x + 10, cardTop - 58, 80, 16), 11, C(0x5f6b7b));
-        Text(S(ui::destName(rt.dest)), NSMakeRect(x + 10, cardTop - 76, 80, 16), 11, C(0xeaf1f8), NSFontWeightMedium);
-        double amt = ui::routeDisplayAmount(rt);
-        NSRect bar = NSMakeRect(x + 10, cardTop - 96, 76, 6);
-        FillRound(bar, 3, C(0x111820));
-        CGFloat mid = NSMidX(bar), w = amt * bar.size.width / 2;
-        FillRound(NSMakeRect(w >= 0 ? mid : mid + w, bar.origin.y, std::fabs(w), 6), 3, mseg ? C(0x66e2d0) : C(0x6cb6ff));
-        TextA([NSString stringWithFormat:@"%+.2f", rt.amount], NSMakeRect(x + 10, cardTop - 114, 76, 12), 9, C(0x8793a3), NSFontWeightMedium, NSTextAlignmentCenter);
-        [self sourcePreview:rt.source in:NSMakeRect(x + 12, 72, 72, 44) color:mseg ? C(0x66e2d0) : C(0x6cb6ff)];
-    }
+    [self drawMatrix];
     // FX rack, signal order left to right, top to bottom.
     const FXParams& f = current.fx;
     char det[6][40];
@@ -524,6 +569,112 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
         Text([NSString stringWithFormat:@"%.0f%%", val * 100], NSMakeRect(r.origin.x + 48, r.origin.y + 12, 44, 16), 12,
              dragging ? acc : (on ? C(0xd5dce5) : C(0x5f6b7b)), NSFontWeightMedium);
     }
+    [self drawDragBadge];
+}
+
+- (void)drawMatrix {
+    const auto& srcs = ui::matrixSources();
+    int n = (int)current.routes.size();
+    Text(@"MATRIX", NSMakeRect(44, 235, 60, 12), 9, C(0xa8b2c1), NSFontWeightSemibold);
+    Text([NSString stringWithFormat:@"%d / %d", n, kMaxRoutes], NSMakeRect(96, 235, 60, 12), 9, C(0x5f6b7b), NSFontWeightMedium);
+    static NSString* pages[4] = {@"1-4", @"5-8", @"9-12", @"13-16"};
+    for (int i = 0; i < 4; ++i) {
+        NSRect t = [self pageTab:i];
+        bool sel = i == matrixPage, used = n > i * 4;
+        FillRound(t, 3, sel ? C(0x2c3a4a) : C(0x161b22));
+        TextA(pages[i], NSMakeRect(t.origin.x, t.origin.y + 1, t.size.width, 11), 8, sel ? C(0xeaf1f8) : used ? C(0x8793a3) : C(0x3b4552),
+              NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
+    for (int i = 0; i < 4; ++i) {
+        int slot = matrixPage * 4 + i;
+        NSRect r = [self routeRow:i];
+        bool has = slot < n;
+        FillRound(r, 6, has ? C(0x202630) : C(0x181d25));
+        Text([NSString stringWithFormat:@"%02d", slot + 1], NSMakeRect(r.origin.x + 8, r.origin.y + 21, 20, 12), 9, C(0x5f6b7b), NSFontWeightSemibold);
+        if (!has) {
+            if (slot == n)
+                Text(@"+  ADD ROUTE  or drag a source onto a knob", NSMakeRect(r.origin.x + 28, r.origin.y + 21, 214, 12), 9, C(0x4f5a69), NSFontWeightMedium);
+            continue;
+        }
+        const ModRoute& rt = current.routes[slot];
+        NSColor* col = SourceColor(rt.source);
+        NSRect sp = [self routeSourcePill:i], dp = [self routeDestPill:i];
+        FillRound(sp, 4, [col colorWithAlphaComponent:.18]);
+        TextA(S(std::string(ui::sourceName(rt.source)) + " \u25BE"), NSMakeRect(sp.origin.x, sp.origin.y + 1, sp.size.width, 12), 9, col,
+              NSFontWeightSemibold, NSTextAlignmentCenter);
+        TextA(@"\u2192", NSMakeRect(sp.origin.x + sp.size.width, sp.origin.y, 18, 13), 10, C(0x5f6b7b), NSFontWeightRegular, NSTextAlignmentCenter);
+        FillRound(dp, 4, C(0x2a323e));
+        TextA(S(std::string(ui::destName(rt.dest)) + " \u25BE"), NSMakeRect(dp.origin.x, dp.origin.y + 1, dp.size.width, 12), 9, C(0xeaf1f8),
+              NSFontWeightMedium, NSTextAlignmentCenter);
+        TextA(@"\u00D7", [self routeClear:i], 12, C(0x6f7b8b), NSFontWeightRegular, NSTextAlignmentCenter);
+        NSRect bar = [self routeBar:i];
+        NSRect track = NSMakeRect(bar.origin.x, bar.origin.y + 4, bar.size.width, 5);
+        FillRound(track, 2.5, C(0x111820));
+        FillRound(NSMakeRect(NSMidX(track) - 0.5, track.origin.y - 2, 1, 9), 0.5, C(0x3b4552));
+        double amt = ui::routeDisplayAmount(rt);
+        CGFloat mid = NSMidX(track), w = amt * track.size.width / 2;
+        FillRound(NSMakeRect(w >= 0 ? mid : mid + w, track.origin.y, std::fabs(w), 5), 2.5, col);
+        FillRound(NSMakeRect(mid + w - 3, track.origin.y - 2, 6, 9), 2, C(0xeaf1f8));
+        Text(S(ui::routeAmountReadout(rt)), NSMakeRect(bar.origin.x + bar.size.width + 8, r.origin.y + 4, 62, 12), 9,
+             routeDrag == slot ? col : C(0x8793a3), NSFontWeightMedium);
+    }
+    // Modulators: badges double as drag handles.
+    Text(@"SOURCES \u00B7 DRAG ONTO A KNOB", NSMakeRect(304, 235, 150, 12), 8, C(0x5f6b7b), NSFontWeightSemibold);
+    for (int i = 0; i < (int)srcs.size(); ++i) {
+        NSRect bdg = [self sourceBadge:i];
+        NSColor* col = SourceColor(srcs[i]);
+        bool used = false;
+        for (const auto& rt : current.routes) used |= rt.source == srcs[i];
+        FillRound(bdg, 3, i == modSel ? [col colorWithAlphaComponent:.85] : C(0x202630));
+        if (used && i != modSel) FillRound(NSMakeRect(NSMidX(bdg) - 5, bdg.origin.y + 1, 10, 1.5), .75, col);
+        TextA(S(ui::sourceBadge(srcs[i])), NSMakeRect(bdg.origin.x, bdg.origin.y + 2, bdg.size.width, 11), 7.5,
+              i == modSel ? C(0x0b0e13) : col, NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    ModRoute::Source sel = srcs[modSel];
+    NSColor* scol = SourceColor(sel);
+    NSRect pv = [self modPreview];
+    [self sourcePreview:sel in:NSInsetRect(pv, 4, 4) color:scol];
+    Text(S(ui::sourceName(sel)), NSMakeRect(pv.origin.x + 2, NSMaxY(pv) - 12, 80, 11), 8, C(0x8793a3), NSFontWeightSemibold);
+    VoiceParams& v = current.voice;
+    int nf = [self modFieldCount];
+    for (int j = 0; j < nf; ++j) {
+        NSRect f = [self modField:j];
+        FillRound(f, 5, modFieldDrag == j ? C(0x26303c) : C(0x1b212a));
+        NSString* lab = @""; std::string val;
+        char b[24];
+        if (IsLfo(sel)) {
+            int li = LfoIndex(sel);
+            if (j == 0) { lab = @"SHAPE"; val = ui::lfoShapeName(ui::lfoShape(v, li)); }
+            else if (j == 1) { lab = @"RATE"; val = ui::lfoRateReadout(v, li); }
+            else { lab = @"SYNC"; val = v.lfoSync[li] ? "ON" : "FREE"; }
+        } else {
+            bool e3 = sel == ModRoute::Source::Env3;
+            static NSString* L[4] = {@"A", @"D", @"S", @"R"};
+            lab = L[j];
+            double x = EnvField(v, e3, j);
+            if (j == 2) snprintf(b, sizeof b, "%.0f%%", x * 100);
+            else if (x < 1) snprintf(b, sizeof b, "%.0fms", x * 1000);
+            else snprintf(b, sizeof b, "%.2fs", x);
+            val = b;
+        }
+        TextA(lab, NSMakeRect(f.origin.x, NSMaxY(f) - 16, f.size.width, 11), 8, C(0x6f7b8b), NSFontWeightSemibold, NSTextAlignmentCenter);
+        TextA(S(val), NSMakeRect(f.origin.x, f.origin.y + 14, f.size.width, 14), nf == 4 ? 9 : 10,
+              modFieldDrag == j ? scol : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentCenter);
+    }
+    if (nf == 0) {
+        NSString* note = sel == ModRoute::Source::MSEG1 ? @"Shape it in the MSEG display above."
+                       : sel == ModRoute::Source::Velocity ? @"How hard each note is played."
+                       : @"Follows its macro knob.";
+        TextA(note, NSMakeRect(304, 80, 148, 24), 9, C(0x6f7b8b), NSFontWeightMedium, NSTextAlignmentCenter);
+    }
+}
+- (void)drawDragBadge {
+    const auto& srcs = ui::matrixSources();
+    if (dragSource >= 0 && hypot(dragPoint.x - dragStart.x, dragPoint.y - dragStart.y) > 3) { // badge following the pointer
+        NSRect fb = NSMakeRect(dragPoint.x - 16, dragPoint.y - 9, 32, 17);
+        FillRound(fb, 4, SourceColor(srcs[dragSource]));
+        TextA(S(ui::sourceBadge(srcs[dragSource])), NSMakeRect(fb.origin.x, fb.origin.y + 3, 32, 11), 8, C(0x0b0e13), NSFontWeightBold, NSTextAlignmentCenter);
+    }
 }
 
 // ---- interaction ----
@@ -539,6 +690,114 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
         if (hypot(p.x - c.x, p.y - c.y) < 22) return kFxDrag + i;
     }
     return -1;
+}
+
+// ---- mod matrix interaction ----
+- (BOOL)matrixMouseDown:(NSPoint)p event:(NSEvent*)e {
+    const auto& srcs = ui::matrixSources();
+    int n = (int)current.routes.size();
+    for (int i = 0; i < 4; ++i)
+        if (NSPointInRect(p, [self pageTab:i])) { matrixPage = i; [self setNeedsDisplay:YES]; return YES; }
+    for (int i = 0; i < (int)srcs.size(); ++i)
+        if (NSPointInRect(p, [self sourceBadge:i])) { // select; dragging it onto a knob assigns
+            modSel = i; dragSource = i; dragPoint = p; dropKnob = -1;
+            [self setNeedsDisplay:YES];
+            return YES;
+        }
+    for (int i = 0; i < 4; ++i) {
+        int slot = matrixPage * 4 + i;
+        if (!NSPointInRect(p, [self routeRow:i])) continue;
+        if (slot == n && n < kMaxRoutes) { [self popMenu:0 slot:slot at:p]; return YES; } // + ADD ROUTE
+        if (slot >= n) return YES;
+        if (NSPointInRect(p, [self routeClear:i])) {
+            ui::removeRoute(current.routes, slot);
+            edited = true; [self applySound]; [self setNeedsDisplay:YES];
+            return YES;
+        }
+        if (NSPointInRect(p, [self routeSourcePill:i])) { [self popMenu:1 slot:slot at:p]; return YES; }
+        if (NSPointInRect(p, [self routeDestPill:i])) { [self popMenu:2 slot:slot at:p]; return YES; }
+        if (NSPointInRect(p, NSInsetRect([self routeBar:i], -4, -4))) {
+            if (e.clickCount == 2) { // double-click: back to the default depth
+                current.routes[slot].amount = ui::defaultRouteAmount(current.routes[slot].dest);
+                edited = true; [self applySound];
+            }
+            routeDrag = slot; dragValue = ui::routeDisplayAmount(current.routes[slot]);
+            [self setNeedsDisplay:YES];
+            return YES;
+        }
+        return YES;
+    }
+    int nf = [self modFieldCount];
+    for (int j = 0; j < nf; ++j) {
+        if (!NSPointInRect(p, [self modField:j])) continue;
+        ModRoute::Source sel = srcs[modSel];
+        VoiceParams& v = current.voice;
+        if (IsLfo(sel)) {
+            int li = LfoIndex(sel);
+            if (j == 0) { int& sh = ui::lfoShape(v, li); sh = (sh + 1) % 4; }
+            else if (j == 2) v.lfoSync[li] = v.lfoSync[li] ? 0 : 3; // FREE <-> 1/4, rate then steps divisions
+            else { modFieldDrag = 1; dragValue = v.lfoSync[li] ? (v.lfoSync[li] - 1) / (double)(kSyncCount - 2) : RateTo01(ui::lfoRate(v, li)); }
+            if (j != 1) { edited = true; [self applySound]; }
+        } else {
+            bool e3 = sel == ModRoute::Source::Env3;
+            modFieldDrag = j;
+            dragValue = j == 2 ? EnvField(v, e3, j) : TimeTo01(EnvField(v, e3, j));
+        }
+        [self setNeedsDisplay:YES];
+        return YES;
+    }
+    return NO;
+}
+
+- (void)dragModField:(double)x {
+    ModRoute::Source sel = ui::matrixSources()[modSel];
+    VoiceParams& v = current.voice;
+    x = std::clamp(x, 0.0, 1.0);
+    if (IsLfo(sel)) {
+        int li = LfoIndex(sel);
+        if (v.lfoSync[li]) v.lfoSync[li] = 1 + (int)std::lround(x * (kSyncCount - 2));
+        else ui::lfoRate(v, li) = RateFrom01(x);
+    } else {
+        bool e3 = sel == ModRoute::Source::Env3;
+        EnvField(v, e3, modFieldDrag) = modFieldDrag == 2 ? x : TimeFrom01(x);
+    }
+    edited = true; [self applySound]; [self setNeedsDisplay:YES];
+}
+
+// kind 0: add a route (pick its source), 1: change source, 2: change destination.
+- (void)popMenu:(int)kind slot:(int)slot at:(NSPoint)p {
+    NSMenu* m = [[NSMenu alloc] initWithTitle:@""];
+    m.autoenablesItems = NO;
+    if (kind == 2) {
+        const auto& d = ui::matrixDests();
+        for (int i = 0; i < (int)d.size(); ++i) {
+            NSMenuItem* it = [m addItemWithTitle:S(ui::destName(d[i])) action:@selector(menuPicked:) keyEquivalent:@""];
+            it.target = self; it.tag = (kind * 100 + slot) * 100 + i;
+            if (slot < (int)current.routes.size() && current.routes[slot].dest == d[i]) it.state = NSControlStateValueOn;
+        }
+    } else {
+        const auto& s = ui::matrixSources();
+        for (int i = 0; i < (int)s.size(); ++i) {
+            NSMenuItem* it = [m addItemWithTitle:S(ui::sourceName(s[i])) action:@selector(menuPicked:) keyEquivalent:@""];
+            it.target = self; it.tag = (kind * 100 + slot) * 100 + i;
+            if (kind == 1 && slot < (int)current.routes.size() && current.routes[slot].source == s[i]) it.state = NSControlStateValueOn;
+        }
+    }
+    [m popUpMenuPositioningItem:nil atLocation:p inView:self];
+}
+
+- (void)menuPicked:(NSMenuItem*)it {
+    int i = (int)(it.tag % 100), slot = (int)(it.tag / 100 % 100), kind = (int)(it.tag / 10000);
+    if (kind == 0) {
+        ModRoute::Source src = ui::matrixSources()[i];
+        int got = ui::addRoute(current.routes, src, ModRoute::Dest::FilterCutoff);
+        if (got < 0) { NSBeep(); return; }
+        matrixPage = got / 4;
+    } else if (slot < (int)current.routes.size()) {
+        if (kind == 1) current.routes[slot].source = ui::matrixSources()[i];
+        else ui::setRouteDest(current.routes[slot], ui::matrixDests()[i]);
+    }
+    edited = true; [self applySound]; [self setNeedsDisplay:YES];
 }
 
 // ---- user presets ----
@@ -593,6 +852,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
         [self setNeedsDisplay:YES];
         return;
     }
+    if ([self matrixMouseDown:p event:e]) return;
     for (int i = 0; i < 6; ++i)
         if (NSPointInRect(p, [self fxLed:i])) { // toggle an FX stage
             bool& en = FxEnabled(current, i);
@@ -650,9 +910,26 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 }
 
 - (void)mouseDragged:(NSEvent*)e {
-    if (dragKnob < 0) return;
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
+    if (dragSource >= 0) {
+        dragPoint = p;
+        NSInteger k = [self hitKnob:p];
+        dropKnob = (k >= 0 && k < kFxDrag && ui::knobDest((int)k) >= 0) ? (int)k : -1;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+    if (routeDrag >= 0 && routeDrag < (int)current.routes.size()) { // bar spans -1..1 over 150 pt
+        double d = ((p.x - dragStart.x) + (p.y - dragStart.y)) / (scale / 2);
+        ui::setRouteDisplayAmount(current.routes[routeDrag], dragValue + d);
+        edited = true; [self applySound]; [self setNeedsDisplay:YES];
+        return;
+    }
+    if (modFieldDrag >= 0) {
+        [self dragModField:dragValue + (p.y - dragStart.y) / scale];
+        return;
+    }
+    if (dragKnob < 0) return;
     if (dragKnob >= kFxDrag) {
         int id = [self paramForDrag:dragKnob];
         params::set(current, id, std::clamp(dragValue + (p.y - dragStart.y) / scale, 0.0, 1.0) * 100.0);
@@ -668,6 +945,12 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 }
 
 - (void)mouseUp:(NSEvent*)e {
+    if (dragSource >= 0 && dropKnob >= 0) { // drop a source on a knob: new route (or reuse)
+        int slot = ui::addRoute(current.routes, ui::matrixSources()[dragSource], (ModRoute::Dest)ui::knobDest(dropKnob));
+        if (slot >= 0) { matrixPage = slot / 4; edited = true; [self applySound]; }
+        else NSBeep(); // matrix full
+    }
+    dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];

@@ -136,7 +136,7 @@ jobs:
           cp muew/au/2-au_host_test.cpp muew/au/au_host_test.cpp
           cp muew/au/3-build_au.sh muew/au/build_au.sh
       - name: MUEW parameter, unison/FX rack, user preset and bank tests
-        run: cd muew && make build/muew-tests-params build/muew-tests-ui build/muew-tests-user build/muew-tests-bank build/muew-tests-unison && ./build/muew-tests-params && ./build/muew-tests-ui && ./build/muew-tests-user && ./build/muew-tests-bank && ./build/muew-tests-unison
+        run: cd muew && make build/muew-tests-params build/muew-tests-ui build/muew-tests-user build/muew-tests-bank build/muew-tests-unison build/muew-tests-matrix && ./build/muew-tests-params && ./build/muew-tests-ui && ./build/muew-tests-user && ./build/muew-tests-bank && ./build/muew-tests-unison && ./build/muew-tests-matrix
       - name: Build, sign, install and validate MUEW AU
         run: cd muew && au/build_au.sh
       - name: Build designed MUEW standalone app + DMG
@@ -152,36 +152,36 @@ jobs:
           ./build/au_view_host > out/au_view_host.log 2>&1 &
           pid=$!
           sleep 7
-          screencapture -x out/MUEW-0.7.0-au-editor.png
+          screencapture -x out/MUEW-0.8.0-au-editor.png
           status=0
           wait $pid || status=$?
           cat out/au_view_host.log
           test "$status" -eq 0
-          test -s out/MUEW-0.7.0-au-editor.png
+          test -s out/MUEW-0.8.0-au-editor.png
       - name: Verify MUEW app and distribution
         run: |
           set -euo pipefail
           cd muew
           lipo out/MUEW.app/Contents/MacOS/MUEW -verify_arch arm64 x86_64
           codesign --verify --deep --strict out/MUEW.app
-          hdiutil verify out/MUEW-0.7.0.dmg
+          hdiutil verify out/MUEW-0.8.0.dmg
       - name: Capture MUEW designed UI proof
         run: |
           cd muew
           open out/MUEW.app
           sleep 8
-          screencapture -x out/MUEW-0.7.0-instrument.png
-          test -s out/MUEW-0.7.0-instrument.png
-          sips -g pixelWidth -g pixelHeight out/MUEW-0.7.0-instrument.png
-          test "$(sips -g pixelWidth out/MUEW-0.7.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
+          screencapture -x out/MUEW-0.8.0-instrument.png
+          test -s out/MUEW-0.8.0-instrument.png
+          sips -g pixelWidth -g pixelHeight out/MUEW-0.8.0-instrument.png
+          test "$(sips -g pixelWidth out/MUEW-0.8.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
       - name: Upload MUEW release + visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.7.0-unison-fx-rack
+          name: muew-0.8.0-mod-matrix
           path: |
-            muew/out/MUEW-0.7.0.dmg
-            muew/out/MUEW-0.7.0-instrument.png
-            muew/out/MUEW-0.7.0-au-editor.png
+            muew/out/MUEW-0.8.0.dmg
+            muew/out/MUEW-0.8.0-instrument.png
+            muew/out/MUEW-0.8.0-au-editor.png
             muew/out/au_view_host.log
             muew/out/auval.log
             muew/out/au_host_test.log

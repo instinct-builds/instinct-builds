@@ -50,6 +50,16 @@ struct MUEWEditorHost {
     double dragValue;
     int octave;
     NSSearchField* search;
+    // 0.8.0 mod matrix: visible page (4 slots each), selected modulator
+    // (index into ui::matrixSources), source badge being dragged onto a knob,
+    // route amount / modulator field being dragged.
+    int matrixPage;
+    int modSel;
+    int dragSource;
+    NSPoint dragPoint;
+    int dropKnob;
+    int routeDrag;
+    int modFieldDrag;
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)

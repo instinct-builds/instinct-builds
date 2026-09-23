@@ -16,7 +16,8 @@ inline double midiToFreq(int note) {
 struct ModRoute {
     // Append only: values are stored in presets and host projects.
     enum class Source { LFO1 = 0, ModEnv = 1, Velocity = 2, LFO2 = 3, MSEG1 = 4,
-                        Macro1 = 5, Macro2 = 6, Macro3 = 7, Macro4 = 8 } source;
+                        Macro1 = 5, Macro2 = 6, Macro3 = 7, Macro4 = 8,
+                        LFO3 = 9, LFO4 = 10, Env3 = 11 } source; // 0.8.0: LFO 3/4, ENV 3
     enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6,
                       Osc1Unison = 7, Osc2Unison = 8, UnisonWidth = 9, // 0.7.0: unison detune A/B, stereo width (0..1 units)
                       DistDrive = 10 } dest;                            // 0.7.0: FX-rack drive, macro sources only (global FX)
@@ -51,9 +52,30 @@ struct VoiceParams {
     double osc1UniDetune = 0.25, osc2UniDetune = 0.25; // 0..1: outer voices +-1 semitone at 1
     double uniWidth = 0.8;                       // 0..1 stereo spread of the stack
     double uniBlend = 0.75;                      // 0..1 level of the outer voices vs the center
+    // 0.8.0 modulators. They only matter once a route uses them.
+    double lfo3Rate = 1.0, lfo4Rate = 2.0;
+    int lfo3Shape = 0, lfo4Shape = 1;
+    // Tempo sync per LFO (1-4): 0 = free (Hz), else a note division (see
+    // kSyncBeats). Synced LFOs follow the host tempo.
+    int lfoSync[4] = {0, 0, 0, 0};
+    double env3A = 0.01, env3D = 0.4, env3S = 0.0, env3R = 0.3;
 };
 
 constexpr int kMaxUnison = 8;
+constexpr int kMaxRoutes = 16; // mod matrix slots
+
+// Tempo-sync divisions: beats per LFO cycle. Index 0 is free-running.
+// Append only (stored in presets).
+constexpr int kSyncCount = 10;
+inline double syncBeats(int i) {
+    static const double b[kSyncCount] = {0, 4, 2, 1, 0.5, 0.25, 2.0 / 3.0, 1.0 / 3.0, 1.5, 8};
+    return (i > 0 && i < kSyncCount) ? b[i] : 0.0;
+}
+// LFO rate in Hz for a free rate or a synced division at `bpm`.
+inline double lfoHz(double freeHz, int sync, double bpm) {
+    double beats = syncBeats(sync);
+    return beats > 0 ? (bpm / 60.0) / beats : freeHz;
+}
 
 class Voice {
 public:
@@ -67,6 +89,7 @@ public:
         ampEnv_.setSampleRate(sr);
         modEnv_.setSampleRate(sr);
         lfo1_.setSampleRate(sr); lfo2_.setSampleRate(sr);
+        lfo3_.setSampleRate(sr); lfo4_.setSampleRate(sr); env3_.setSampleRate(sr);
         mseg1_.setSampleRate(sr);
     }
 
@@ -77,11 +100,26 @@ public:
         filterR_.setMode(static_cast<SVFilter::Mode>(p.filterMode));
         ampEnv_.set(p.ampA, p.ampD, p.ampS, p.ampR);
         modEnv_.set(p.modA, p.modD, p.modS, p.modR);
-        lfo1_.setRate(p.lfo1Rate);
         lfo1_.setShape(static_cast<LFO::Shape>(p.lfo1Shape));
-        lfo2_.setRate(p.lfo2Rate); lfo2_.setShape(static_cast<LFO::Shape>(p.lfo2Shape));
+        lfo2_.setShape(static_cast<LFO::Shape>(p.lfo2Shape));
+        lfo3_.setShape(static_cast<LFO::Shape>(std::clamp(p.lfo3Shape, 0, 3)));
+        lfo4_.setShape(static_cast<LFO::Shape>(std::clamp(p.lfo4Shape, 0, 3)));
+        applyRates();
+        env3_.set(p.env3A, p.env3D, p.env3S, p.env3R);
+        usesLfo3_ = usesLfo4_ = false;
+        for (const auto& r : routes) {
+            if (r.source == ModRoute::Source::LFO3) usesLfo3_ = true;
+            if (r.source == ModRoute::Source::LFO4) usesLfo4_ = true;
+        }
         mseg1_.setRate(p.mseg1Seconds); mseg1_.setPoints(p.mseg1Points);
         mseg1_.setLoop(1, (int)mseg1_.pointCount() - 1, p.mseg1Loop);
+    }
+
+    // Host tempo for synced LFOs.
+    void setTempo(double bpm) {
+        if (!(bpm > 1.0 && bpm < 1000.0) || bpm == bpm_) return;
+        bpm_ = bpm;
+        applyRates();
     }
 
     void noteOn(int note, float velocity) {
@@ -90,7 +128,8 @@ public:
         baseFreq_ = midiToFreq(note);
         ampEnv_.noteOn();
         modEnv_.noteOn();
-        lfo1_.reset(); lfo2_.reset(); mseg1_.reset();
+        lfo1_.reset(); lfo2_.reset(); lfo3_.reset(); lfo4_.reset(); mseg1_.reset();
+        env3_.noteOn();
         // Stacked voices start at spread phases so a unison stack sounds wide
         // from the first cycle instead of flanging out of one phase. Voice 0
         // starts at 0 like the single-oscillator path.
@@ -101,7 +140,7 @@ public:
         age_ = 0;
     }
 
-    void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); mseg1_.release(); }
+    void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); }
 
     bool isActive() const { return ampEnv_.isActive(); }
     int note() const { return note_; }
@@ -116,6 +155,9 @@ public:
         float lfo2 = lfo2_.process();
         float modEnv = modEnv_.process();
         float mseg1 = mseg1_.process();
+        float lfo3 = usesLfo3_ ? lfo3_.process() : 0.0f;
+        float lfo4 = usesLfo4_ ? lfo4_.process() : 0.0f;
+        float env3 = env3_.process();
 
         auto modSum = [&](ModRoute::Dest d) {
             double sum = 0.0;
@@ -132,6 +174,9 @@ public:
                 case ModRoute::Source::Macro2: src = params_.macros[1]; break;
                 case ModRoute::Source::Macro3: src = params_.macros[2]; break;
                 case ModRoute::Source::Macro4: src = params_.macros[3]; break;
+                case ModRoute::Source::LFO3: src = lfo3; break;
+                case ModRoute::Source::LFO4: src = lfo4; break;
+                case ModRoute::Source::Env3: src = env3; break;
                 }
                 sum += src * r.amount;
             }
@@ -250,7 +295,18 @@ private:
         }
     }
 
+    void applyRates() {
+        lfo1_.setRate(lfoHz(params_.lfo1Rate, params_.lfoSync[0], bpm_));
+        lfo2_.setRate(lfoHz(params_.lfo2Rate, params_.lfoSync[1], bpm_));
+        lfo3_.setRate(lfoHz(params_.lfo3Rate, params_.lfoSync[2], bpm_));
+        lfo4_.setRate(lfoHz(params_.lfo4Rate, params_.lfoSync[3], bpm_));
+    }
+
     StackGains gains1_, gains2_;
+    LFO lfo3_, lfo4_;
+    Envelope env3_;
+    bool usesLfo3_ = false, usesLfo4_ = false;
+    double bpm_ = 120.0;
     Oscillator osc1_[kMaxUnison], osc2_[kMaxUnison];
     SVFilter filter_, filterR_;
     Envelope ampEnv_, modEnv_;

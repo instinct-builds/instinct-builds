@@ -259,8 +259,50 @@ int main() {
                   "distortion DRIVE ring drag reached the AU as parameter 19");
             fflush(stdout);
         });
+        After(6.1, ^{ // 0.8.0 mod matrix: drag LFO 3 onto CUTOFF, set its depth, sync it to the host tempo
+            CGFloat t = view.bounds.size.height - 100;
+            muew::Preset before;
+            State(before);
+            NSPoint badge = NSMakePoint(304 + 2 * 25 + 11.5, 216 + 7.5); // LFO3 source badge
+            NSPoint cut = NSMakePoint(536, t - 94);                      // CUTOFF knob
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, badge, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(450, 300), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, cut, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, cut, w)];
+            muew::Preset mid;
+            bool ok1 = State(mid);
+            size_t n = mid.routes.size();
+            Check(ok1 && n == before.routes.size() + 1 && mid.routes[n - 1].source == muew::ModRoute::Source::LFO3
+                  && mid.routes[n - 1].dest == muew::ModRoute::Dest::FilterCutoff,
+                  "dragging the LFO 3 badge onto CUTOFF added an LFO 3 -> cutoff route in the AU");
+            // New slot n is on page (n-1)/4, row (n-1)%4. Drag its amount bar handle right 30 pt (+0.4 of full scale).
+            int row = (int)((n - 1) % 4);
+            double amt0 = n ? mid.routes[n - 1].amount / 5.0 : 0;
+            NSPoint h = NSMakePoint(44 + 28 + 75 + amt0 * 75, 190 - row * 44 + 4 + 7);
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, h, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(h.x + 15, h.y), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(h.x + 30, h.y), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(h.x + 30, h.y), w)];
+            // LFO 3 is selected: SYNC on (1/4), then drag RATE up 30 pt to step the division to 1/16.
+            CGFloat fw = (148 - 8) / 3.0;
+            NSPoint sync = NSMakePoint(304 + 2 * (fw + 4) + fw / 2, 87), rate = NSMakePoint(304 + (fw + 4) + fw / 2, 87);
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, sync, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, sync, w)];
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, rate, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(rate.x, rate.y + 15), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(rate.x, rate.y + 30), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(rate.x, rate.y + 30), w)];
+            muew::Preset st;
+            bool ok = State(st);
+            double a = ok && st.routes.size() == n ? st.routes[n - 1].amount : 0;
+            printf("matrix: %zu routes, LFO 3 -> cutoff %.2f oct, LFO 3 sync %d, page shows slots %zu-%zu\n",
+                   st.routes.size(), a, st.voice.lfoSync[2], (n - 1) / 4 * 4 + 1, (n - 1) / 4 * 4 + 4);
+            Check(ok && std::fabs(a - 3.25) < 0.05, "amount bar drag set the route depth (+1.25 -> +3.25 oct)");
+            Check(ok && st.voice.lfoSync[2] == 5, "LFO 3 SYNC + RATE drag stored 1/16 in the AU's sound");
+            fflush(stdout);
+        });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison and FX rack\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack and mod matrix\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

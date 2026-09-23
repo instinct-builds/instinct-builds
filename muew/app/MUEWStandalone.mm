@@ -45,7 +45,7 @@ struct StandaloneHost : MUEWEditorHost {
     v = [[MUEWEditorView alloc] initWithFrame:f];
     v->host = binding;
     w.contentView = v;
-    int start = ui::indexOfSlug("hyper-saw");
+    int start = ui::indexOfSlug("sync-wobble");
     [v loadPresetIndex:start >= 0 ? start : 0];
     [w center]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
     engine = [AVAudioEngine new];

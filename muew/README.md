@@ -182,3 +182,29 @@ simple 3-device license key scheme follow there.
 - Eight new factory sounds (AU numbers 30-37): Hyper Saw, Anthem Stack, Reese
   Grind, Hoover Rise, Fold Screamer, Crushed Keys, Wide Pluck, Growl Stack.
   Authored by scripts/author_070_presets.py; bank.txt stays append-only.
+
+## 0.8.0 Editable mod matrix
+
+- **16-slot matrix**, shown four rows at a time with page tabs (1-4, 5-8,
+  9-12, 13-16). Each row has a source menu, a destination menu, a bipolar
+  depth bar (drag; shift for fine; double-click resets to a quarter of full
+  scale) with a readout in real units (st, oct, Q, %), and a clear button.
+  Changing a destination keeps the route's relative depth.
+- **Drag to assign**: drag any of the 12 source badges (LFO 1-4, ENV 2,
+  ENV 3, MSEG, velocity, macros 1-4) onto a knob to create a route. Valid
+  knobs show a dashed target while dragging. Every knob with routes draws a
+  teal mod ring showing how far modulation can push it.
+- **New modulators**: LFO 3 and LFO 4 (four shapes, free rate 0.02-20 Hz or
+  tempo sync at 1/1, 1/2, 1/4, 1/8, 1/16, 1/4T, 1/8T, 1/4D, 2/1) and ENV 3
+  (ADSR). LFO 1/2 can also sync. They cost nothing until a route uses them.
+- **Host tempo**: the Audio Unit reads tempo through
+  kAudioUnitProperty_HostCallbacks each block; the standalone runs at 120 BPM.
+- **Presets**: routes and the new modulator settings are saved in the preset
+  and AU state (the published parameter list stays at 21). Presets without the
+  new modulators write no new lines, and all 38 earlier factory sounds render
+  byte-identical to 0.7.0. Four new factory sounds (39-42): Sync Wobble,
+  Tempo Gate, Triplet Pluck, Drift Motion. The standalone opens on Sync Wobble.
+- Tests: `tests/tests_matrix.cpp` (route editing model, sync rates against
+  tempo, round trips, unknown-source rejection), an AU host test for a route
+  set through state plus host-tempo sync, and an editor harness step that
+  drags LFO 3 onto CUTOFF, sets depth and sync, and checks the AU's sound.

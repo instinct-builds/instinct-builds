@@ -34,6 +34,9 @@ inline const char* sourceName(ModRoute::Source s) {
     case ModRoute::Source::Macro2: return "MACRO 2";
     case ModRoute::Source::Macro3: return "MACRO 3";
     case ModRoute::Source::Macro4: return "MACRO 4";
+    case ModRoute::Source::LFO3: return "LFO 3";
+    case ModRoute::Source::LFO4: return "LFO 4";
+    case ModRoute::Source::Env3: return "ENV 3";
     }
     return "?";
 }
@@ -58,16 +61,92 @@ inline const char* filterModeName(int m) {
     return (m >= 0 && m < 5) ? n[m] : "?";
 }
 
-// Route amount normalized to -1..1 for drawing (units differ by dest).
-inline double routeDisplayAmount(const ModRoute& r) {
-    double scale = 1.0;
-    switch (r.dest) {
-    case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: scale = 24.0; break;
-    case ModRoute::Dest::FilterCutoff: scale = 5.0; break;
-    case ModRoute::Dest::FilterResonance: scale = 8.0; break;
-    default: scale = 1.0; break;
+// Full-scale route amount per destination (units differ by dest): the
+// matrix shows and edits amount / scale in -1..1.
+inline double routeScale(ModRoute::Dest d) {
+    switch (d) {
+    case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: return 24.0; // semitones
+    case ModRoute::Dest::FilterCutoff: return 5.0;                              // octaves
+    case ModRoute::Dest::FilterResonance: return 8.0;                           // Q
+    default: return 1.0;
     }
-    return std::clamp(r.amount / scale, -1.0, 1.0);
+}
+inline double routeDisplayAmount(const ModRoute& r) { return std::clamp(r.amount / routeScale(r.dest), -1.0, 1.0); }
+inline void setRouteDisplayAmount(ModRoute& r, double n) { r.amount = std::clamp(n, -1.0, 1.0) * routeScale(r.dest); }
+inline std::string routeAmountReadout(const ModRoute& r) {
+    char b[32];
+    switch (r.dest) {
+    case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: snprintf(b, sizeof b, "%+.2f st", r.amount); break;
+    case ModRoute::Dest::FilterCutoff: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
+    case ModRoute::Dest::FilterResonance: snprintf(b, sizeof b, "%+.2f Q", r.amount); break;
+    default: snprintf(b, sizeof b, "%+.0f%%", r.amount * 100); break;
+    }
+    return b;
+}
+
+// Mod matrix editing (0.8.0). Sources in badge order and destinations in
+// menu order; both are lists of the append-only enum values.
+inline const std::vector<ModRoute::Source>& matrixSources() {
+    using S = ModRoute::Source;
+    static const std::vector<S> v{S::LFO1, S::LFO2, S::LFO3, S::LFO4, S::ModEnv, S::Env3, S::MSEG1, S::Velocity,
+                                  S::Macro1, S::Macro2, S::Macro3, S::Macro4};
+    return v;
+}
+inline const char* sourceBadge(ModRoute::Source s) {
+    switch (s) {
+    case ModRoute::Source::LFO1: return "LFO1";
+    case ModRoute::Source::LFO2: return "LFO2";
+    case ModRoute::Source::LFO3: return "LFO3";
+    case ModRoute::Source::LFO4: return "LFO4";
+    case ModRoute::Source::ModEnv: return "ENV2";
+    case ModRoute::Source::Env3: return "ENV3";
+    case ModRoute::Source::MSEG1: return "MSEG";
+    case ModRoute::Source::Velocity: return "VEL";
+    case ModRoute::Source::Macro1: return "M1";
+    case ModRoute::Source::Macro2: return "M2";
+    case ModRoute::Source::Macro3: return "M3";
+    case ModRoute::Source::Macro4: return "M4";
+    }
+    return "?";
+}
+inline const std::vector<ModRoute::Dest>& matrixDests() {
+    using D = ModRoute::Dest;
+    static const std::vector<D> v{D::Osc1Pitch, D::Osc1Warp, D::Osc1Unison, D::Osc2Pitch, D::Osc2Warp, D::Osc2Unison,
+                                  D::Osc2Level, D::UnisonWidth, D::FilterCutoff, D::FilterResonance, D::DistDrive};
+    return v;
+}
+// A new route starts at a musical quarter of full scale.
+inline double defaultRouteAmount(ModRoute::Dest d) { return 0.25 * routeScale(d); }
+// Adds source -> dest. An existing identical route is reused (returns its
+// slot); a full matrix returns -1.
+inline int addRoute(std::vector<ModRoute>& routes, ModRoute::Source s, ModRoute::Dest d) {
+    for (size_t i = 0; i < routes.size(); ++i) if (routes[i].source == s && routes[i].dest == d) return (int)i;
+    if ((int)routes.size() >= kMaxRoutes) return -1;
+    routes.push_back({s, d, defaultRouteAmount(d)});
+    return (int)routes.size() - 1;
+}
+inline bool removeRoute(std::vector<ModRoute>& routes, int slot) {
+    if (slot < 0 || slot >= (int)routes.size()) return false;
+    routes.erase(routes.begin() + slot);
+    return true;
+}
+// Changing a route's destination keeps its position on the -1..1 scale.
+inline void setRouteDest(ModRoute& r, ModRoute::Dest d) { double n = routeDisplayAmount(r); r.dest = d; setRouteDisplayAmount(r, n); }
+inline const char* syncName(int i) {
+    static const char* n[kSyncCount] = {"FREE", "1/1", "1/2", "1/4", "1/8", "1/16", "1/4T", "1/8T", "1/4D", "2/1"};
+    return (i >= 0 && i < kSyncCount) ? n[i] : "?";
+}
+inline const char* lfoShapeName(int s) {
+    static const char* n[] = {"SINE", "TRIANGLE", "SAW", "SQUARE"};
+    return (s >= 0 && s < 4) ? n[s] : "?";
+}
+// LFO n (0-3) fields.
+inline double& lfoRate(VoiceParams& p, int n) { return n == 0 ? p.lfo1Rate : n == 1 ? p.lfo2Rate : n == 2 ? p.lfo3Rate : p.lfo4Rate; }
+inline int& lfoShape(VoiceParams& p, int n) { return n == 0 ? p.lfo1Shape : n == 1 ? p.lfo2Shape : n == 2 ? p.lfo3Shape : p.lfo4Shape; }
+inline std::string lfoRateReadout(const VoiceParams& p, int n) {
+    int sy = p.lfoSync[std::clamp(n, 0, 3)];
+    if (sy > 0) return syncName(sy);
+    char b[24]; snprintf(b, sizeof b, "%.2f Hz", lfoRate(const_cast<VoiceParams&>(p), n)); return b;
 }
 
 enum Knob { WarpA, Mix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime,
@@ -82,6 +161,21 @@ inline const char* macroName(int i) {
 }
 inline bool isMacro(int k) { return k >= Macro1 && k <= Macro4; }
 inline bool isUnison(int k) { return k >= UniDetuneA && k <= Width; }
+// Destination a knob modulates when a source is dropped on it (-1: none).
+inline int knobDest(int k) {
+    switch (k) {
+    case WarpA: return (int)ModRoute::Dest::Osc1Warp;
+    case Mix: return (int)ModRoute::Dest::Osc2Level;
+    case WarpB: return (int)ModRoute::Dest::Osc2Warp;
+    case Detune: return (int)ModRoute::Dest::Osc2Pitch;
+    case Cutoff: return (int)ModRoute::Dest::FilterCutoff;
+    case Resonance: return (int)ModRoute::Dest::FilterResonance;
+    case UniDetuneA: return (int)ModRoute::Dest::Osc1Unison;
+    case UniDetuneB: return (int)ModRoute::Dest::Osc2Unison;
+    case Width: return (int)ModRoute::Dest::UnisonWidth;
+    default: return -1;
+    }
+}
 
 inline const char* knobLabel(int k) {
     static const char* n[] = {"WARP A", "MIX", "WARP B", "DETUNE", "CUTOFF", "RESONANCE", "ATTACK", "RELEASE", "MSEG TIME",
@@ -143,6 +237,14 @@ inline double& knobField(VoiceParams& p, int k) {
 inline double knobValue(const VoiceParams& p, int k) { return to01(k, knobField(const_cast<VoiceParams&>(p), k)); }
 inline void setKnob(VoiceParams& p, int k, double n) { knobField(p, k) = from01(k, n); }
 
+// Summed modulation depth on a knob's destination (-1..1) for its mod ring.
+inline double knobModDepth(const std::vector<ModRoute>& routes, int k) {
+    int d = knobDest(k);
+    if (d < 0) return 0.0;
+    double sum = 0.0;
+    for (const auto& r : routes) if ((int)r.dest == d) sum += routeDisplayAmount(r);
+    return std::clamp(sum, -1.0, 1.0);
+}
 // Human-readable knob value for the hover/drag readout.
 inline std::string knobReadout(const VoiceParams& p, int k) {
     char b[32];

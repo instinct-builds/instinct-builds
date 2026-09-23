@@ -39,6 +39,9 @@ public:
         fx_.setDriveOffset(drive);
     }
 
+    // Host tempo (BPM) for tempo-synced LFOs; 120 until a host reports one.
+    void setTempo(double bpm) { for (auto& v : voices_) v.setTempo(bpm); }
+
     void noteOn(int note, float velocity) {
         // Reuse a voice already playing this note, else a free one, else steal oldest.
         Voice* target = nullptr;

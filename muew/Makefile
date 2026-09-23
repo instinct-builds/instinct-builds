@@ -1,7 +1,7 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
 
-all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison
+all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix
 
 build:
 	mkdir -p build out
@@ -46,13 +46,16 @@ build/muew-tests-user: tests/tests_user_presets.cpp src/user_presets.h src/ui_mo
 build/muew-tests-unison: tests/tests_unison_fx.cpp src/voice.h src/fx.h src/preset.h src/au_params.h src/ui_model.h src/factory_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_unison_fx.cpp
 
+build/muew-tests-matrix: tests/tests_matrix.cpp src/voice.h src/lfo.h src/preset.h src/ui_model.h src/factory_bank.h | build
+	$(CXX) $(CXXFLAGS) -o $@ tests/tests_matrix.cpp
+
 build/muew-license: src/license_tool.cpp src/license.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 build/muew-render-preset: src/render_preset.cpp src/preset.h src/preset_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison
+test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix
 	./build/muew-tests
 	./build/muew-tests-fx
 	./build/muew-tests-license
@@ -63,6 +66,7 @@ test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-t
 	./build/muew-tests-params
 	./build/muew-tests-user
 	./build/muew-tests-unison
+	./build/muew-tests-matrix
 
 render: build/muew-demo
 	./build/muew-demo
