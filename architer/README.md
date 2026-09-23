@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.8.0
+
+- Custom skills: add your own skills (name + governing ability) to the
+  skills block and remove any skill from the list. Duplicate and blank
+  names are refused; custom skills roll, export, and feed passive
+  scores like built-in ones.
+
 ## What's in 2.7.0
 
 - Ammunition tracking: opt-in ammo counter per attack, spent

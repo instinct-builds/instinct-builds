@@ -86,6 +86,24 @@ struct CharacterTests {
         #expect(c.features[1].usesRemaining == 0)
     }
 
+    @Test func customSkillsAddDedupesAndRemoves() {
+        var c = Character(name: "T", level: 1)
+        let before = c.skills.count
+        #expect(c.addSkill(name: "Boating", ability: .strength))
+        #expect(c.skills.count == before + 1)
+        #expect(c.skills.last?.name == "Boating")
+        // Duplicates (any case) and blank names are refused.
+        #expect(!c.addSkill(name: "boating", ability: .wisdom))
+        #expect(!c.addSkill(name: "  ", ability: .wisdom))
+        #expect(c.skills.count == before + 1)
+        // Name is trimmed on the way in.
+        #expect(c.addSkill(name: "  Brewing ", ability: .intelligence))
+        #expect(c.skills.last?.name == "Brewing")
+        c.removeSkill(named: "Boating")
+        #expect(c.skills.count == before + 1)
+        #expect(c.skills.allSatisfy { $0.name != "Boating" })
+    }
+
     @Test func ammunitionSpendsAndFloors() {
         var c = Character(name: "T", level: 1)
         c.attacks = [Attack(name: "Shortbow", damageExpression: "1d6", ammunition: 2),

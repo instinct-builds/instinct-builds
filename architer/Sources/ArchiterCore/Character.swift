@@ -687,6 +687,24 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         return "1d\(hitDiceType)" + (con >= 0 ? "+\(con)" : "\(con)")
     }
 
+    // MARK: Skills
+
+    /// Add a skill; false when the name is blank or already taken (any case).
+    @discardableResult
+    public mutating func addSkill(name: String, ability: Ability) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              !skills.contains(where: { $0.name.lowercased() == trimmed.lowercased() })
+        else { return false }
+        skills.append(Skill(name: trimmed, ability: ability))
+        return true
+    }
+
+    /// Remove a skill by name (the skill id).
+    public mutating func removeSkill(named name: String) {
+        skills.removeAll { $0.name == name }
+    }
+
     // MARK: Ammunition
 
     /// Spend one unit of ammunition for an attack. Returns false when the

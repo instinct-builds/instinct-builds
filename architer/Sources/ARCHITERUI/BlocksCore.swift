@@ -252,6 +252,8 @@ struct AbilityCell: View {
 struct SkillsBlock: View {
     @Binding var character: Character
     @EnvironmentObject var model: AppModel
+    @State private var newSkillName = ""
+    @State private var newSkillAbility: Ability = .wisdom
 
     var body: some View {
         BlockCard(title: "Skills") {
@@ -276,8 +278,29 @@ struct SkillsBlock: View {
                             .font(Theme.Typeface.body.monospacedDigit().bold())
                             .foregroundStyle(skill.tier == .none ? Theme.inkMuted : Theme.accent)
                         RollChip(label: skill.name, bonus: skill.bonus(scores: character.scores, level: character.level))
+                        Button(role: .destructive) {
+                            character.removeSkill(named: skill.name)
+                        } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.plain)
                     }
                 }
+            }
+            HStack(spacing: Theme.Gap.sm) {
+                TextField("New skill", text: $newSkillName)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(maxWidth: 160)
+                Picker("Ability", selection: $newSkillAbility) {
+                    ForEach(Ability.allCases, id: \.self) { Text($0.abbreviation).tag($0) }
+                }
+                .frame(width: 110)
+                Button("Add") {
+                    if character.addSkill(name: newSkillName, ability: newSkillAbility) {
+                        newSkillName = ""
+                    }
+                }
+                .buttonStyle(RollButtonStyle())
+                .disabled(newSkillName.trimmingCharacters(in: .whitespaces).isEmpty)
+                Spacer()
             }
         }
     }
