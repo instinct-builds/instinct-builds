@@ -116,6 +116,7 @@ jobs:
           shoot psd 1920x1200 psd-layers
           shoot textures 1920x1200 textures-tiling
           shoot seam-fix 1920x1200 seam-fix
+          shoot viewer 1920x1200 viewer
           for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
       - name: Upload ASSSETS release
         uses: actions/upload-artifact@v4

@@ -165,3 +165,19 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   textures fail the check, so they lose the tag and get the Fix button.
 - CI screenshots: textures-tiling (terrazzo 3x3) and seam-fix (a legacy
   texture repeated 2x2 with Fix on).
+
+## 0.9.0: full-window viewer (includes the 0.8.1 fixes)
+
+- Space opens the selected asset in a full-window viewer. Arrow keys move
+  through the visible assets and wrap at the ends. Esc, Space or a click
+  on the backdrop closes it. There is also an eye button in the toolbar.
+  The viewer respects the current effect, PSD layer toggles and texture
+  repeat, plays footage and audio, and shows the position ("3 of 28"),
+  palette, tags and a favorite button. Typing in the search field is
+  never taken over. Navigation order lives in `Viewer.swift` (core,
+  tested).
+- 0.8.1: the repeat control and seam badge sit on a solid dark backing, so
+  they are readable over light textures.
+- 0.8.1: bundled PNG and JPEG files take their color swatches from the
+  pixels rather than the collection default. Earlier installs are updated
+  on first launch.

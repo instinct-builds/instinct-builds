@@ -72,6 +72,41 @@ final class StudioLibrary: ObservableObject {
     @Published var psdToggled: [UUID: Set<Int>] = [:]
     /// Texture repeat preview (1 = off, 2 = 2 x 2, 3 = 3 x 3) and per-asset seam fixing, for this session.
     @Published var tileRepeat = 1
+    /// Asset shown in the full-window viewer (space bar), nil when closed.
+    @Published var viewerID: UUID?
+    private var keyMonitor: Any?
+
+    func openViewer() {
+        guard smartEditor == nil else { return }
+        viewerID = focusID ?? selection.first ?? filtered.first?.id
+    }
+    func closeViewer() { viewerID = nil }
+    func stepViewer(_ delta: Int) {
+        guard let next = ViewerNav.step(filtered.map(\.id), from: viewerID, by: delta) else { return }
+        viewerID = next
+        selection = [next]; focusID = next; anchorID = next
+    }
+
+    /// Space opens and closes the viewer; arrows browse and Esc closes while it is open. Typing in a field is left alone.
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            let handled = MainActor.assumeIsolated { self.handleKey(event) }
+            return handled ? nil : event
+        }
+    }
+
+    private func handleKey(_ e: NSEvent) -> Bool {
+        guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil else { return false }
+        if viewerID == nil, NSApp.keyWindow?.firstResponder is NSText { return false }
+        switch e.keyCode {
+        case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
+        case 53 where viewerID != nil: closeViewer(); return true
+        case 123 where viewerID != nil, 126 where viewerID != nil: stepViewer(-1); return true
+        case 124 where viewerID != nil, 125 where viewerID != nil: stepViewer(1); return true
+        default: return false
+        }
+    }
     @Published var fixSeams: Set<UUID> = []
     func tiles(for a: StudioAsset) -> Int { a.kind == .texture ? tileRepeat : 1 }
 
@@ -93,6 +128,7 @@ final class StudioLibrary: ObservableObject {
         try? FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
         install()
         applyLaunchArguments()
+        installKeyMonitor()
     }
 
     // MARK: Install and upgrade
@@ -172,6 +208,12 @@ final class StudioLibrary: ObservableObject {
                    let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int {
                     c.assets[i].resolution = "\(w) × \(h)"
                     StudioCatalog.correctResolutionClaims(&c.assets[i], width: w, height: h)
+                    // Real swatches instead of the collection default (also fixes 0.7/0.8 installs).
+                    if c.assets[i].palette == StarterCatalog.describe(filename: url.lastPathComponent)?.palette,
+                       let small = MediaRenderer.pixelBuffer(fromSource: src, maxPixel: 160) {
+                        let colors = PaletteExtractor.colors(from: small, count: 5).map(\.hex)
+                        if colors.count >= 3 { c.assets[i].palette = colors }
+                    }
                     // Only claim "seamless" for textures that actually repeat without a seam.
                     if c.assets[i].kind == .texture, let small = MediaRenderer.pixelBuffer(fromSource: src, maxPixel: 512) {
                         let tileable = Seamless.analyze(small).tileable
@@ -412,6 +454,11 @@ final class StudioLibrary: ObservableObject {
                 var rules = s.rules; rules.kinds = [.texture, .vector, .video]; rules.requiredTags = ["original"]
                 smartEditor = SmartEditorState(existing: s.id, name: "Cool Brand Kit", rules: rules)
             }
+        case "viewer":
+            show(collection: "Device Mockups")
+            if let a = filtered.first(where: { $0.importedPath?.hasSuffix("laptop-screen-mockup.psd") == true }) ?? filtered.first {
+                selection = [a.id]; focusID = a.id; viewerID = a.id
+            }
         case "textures", "seam-fix":
             show(collection: "Material Textures")
             let file = demo == "textures" ? "terrazzo-texture.png" : "night-grid-4k.png"
@@ -462,6 +509,7 @@ struct StudioView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button { model.importFiles() } label: { Label("Import", systemImage: "plus") }.help("Import files or folders")
+                Button { model.openViewer() } label: { Label("Quick Look", systemImage: "eye") }.help("View full size (Space)")
                 HStack(spacing: 6) {
                     Image(systemName: "square.grid.3x3").font(.caption)
                     Slider(value: $model.gridScale, in: 120...280).frame(width: 90)
@@ -475,6 +523,12 @@ struct StudioView: View {
             Button("Cancel", role: .cancel) { model.pendingRemoval = [] }
         } message: { Text("Files on disk stay where they are.") }
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
+        .overlay {
+            if let id = model.viewerID, let asset = model.catalog.assets.first(where: { $0.id == id }) {
+                AssetViewer(asset: asset).transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: model.viewerID)
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
                 Text(toast).font(.callout.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 9)
@@ -1076,6 +1130,77 @@ struct Inspector: View {
     }
 }
 
+/// Full-window viewer: Space opens it from the grid, arrows browse the visible assets, Esc or Space closes.
+struct AssetViewer: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    var body: some View {
+        let ids = model.filtered.map(\.id)
+        let pos = ViewerNav.position(ids, of: asset.id)
+        ZStack {
+            Color.black.opacity(0.93).ignoresSafeArea().onTapGesture { model.closeViewer() }
+            VStack(spacing: 14) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(asset.title).font(.system(size: 20, weight: .bold))
+                        Text("\(asset.kind.singular) • \(asset.resolution) • \(asset.collection)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if let pos { Text("\(pos.index) of \(pos.count)").font(.callout.monospacedDigit()).foregroundStyle(.secondary) }
+                    Button { model.toggleFavorite([asset.id]) } label: {
+                        Image(systemName: asset.favorite ? "heart.fill" : "heart").font(.title3).foregroundStyle(asset.favorite ? Color.pink : Color.white.opacity(0.8))
+                    }.buttonStyle(.plain).help("Favorite")
+                    Button { model.closeViewer() } label: {
+                        Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).padding(9).background(Color.white.opacity(0.1), in: Circle())
+                    }.buttonStyle(.plain).help("Close (Esc)")
+                }
+                HStack(spacing: 14) {
+                    ViewerArrow(symbol: "chevron.left") { model.stepViewer(-1) }
+                    media.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(color: .black.opacity(0.6), radius: 30, y: 12)
+                    ViewerArrow(symbol: "chevron.right") { model.stepViewer(1) }
+                }
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        ForEach(Array(asset.palette.prefix(5).enumerated()), id: \.offset) { _, hex in
+                            Circle().fill(Color(hex: hex)).frame(width: 14, height: 14).overlay(Circle().stroke(Color.white.opacity(0.2)))
+                        }
+                    }
+                    Text(asset.tags.prefix(6).joined(separator: "  ·  ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer()
+                    Text("← → browse   ·   Space or Esc to close").font(.caption).foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 28).padding(.vertical, 22)
+        }
+    }
+
+    @ViewBuilder private var media: some View {
+        if asset.kind == .video, let p = asset.importedPath {
+            LoopingVideo(url: URL(fileURLWithPath: p)).id(p)
+        } else {
+            ZStack {
+                ProcessedPreview(asset: asset, effect: model.effect, amount: model.intensity, pixels: 2400,
+                                 psdToggled: model.psdToggled[asset.id] ?? [], tiles: model.tiles(for: asset),
+                                 fixSeams: model.fixSeams.contains(asset.id), fit: true)
+                if asset.kind == .audio, let p = asset.importedPath { AudioButton(url: URL(fileURLWithPath: p)).id(p) }
+            }
+        }
+    }
+}
+
+struct ViewerArrow: View {
+    let symbol: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).frame(width: 40, height: 64)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.plain)
+    }
+}
+
 /// Repeat preview and seam status for textures, floating over the inspector preview.
 struct TileControls: View {
     @EnvironmentObject var model: StudioLibrary
@@ -1091,16 +1216,18 @@ struct TileControls: View {
                         Text(n == 1 ? "1×" : "\(n)×\(n)").font(.system(size: 10.5, weight: .semibold).monospacedDigit())
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(model.tileRepeat == n ? Theme.accent : Color.clear, in: Capsule())
-                            .foregroundStyle(model.tileRepeat == n ? Color.white : Color.secondary)
+                            .foregroundStyle(model.tileRepeat == n ? Color.white : Color.white.opacity(0.72))
                     }.buttonStyle(.plain).help(n == 1 ? "Single tile" : "Preview a \(n) × \(n) repeat")
                 }
             }
-            .padding(2).background(.black.opacity(0.55), in: Capsule())
+            .padding(2).background(Color(white: 0.07).opacity(0.9), in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.12)))
             Spacer(minLength: 4)
             if let report {
                 if report.tileable && !fixing {
                     Label("Seamless", systemImage: "checkmark.seal.fill").font(.system(size: 10.5, weight: .semibold))
-                        .padding(.horizontal, 9).padding(.vertical, 5).background(.black.opacity(0.55), in: Capsule()).foregroundStyle(Color.green)
+                        .padding(.horizontal, 9).padding(.vertical, 5).background(Color(white: 0.07).opacity(0.9), in: Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.12))).foregroundStyle(Color(red: 0.42, green: 0.92, blue: 0.55))
                 } else {
                     Button {
                         if fixing { model.fixSeams.remove(asset.id) } else { model.fixSeams.insert(asset.id) }
@@ -1108,7 +1235,8 @@ struct TileControls: View {
                         Label(fixing ? "Seams fixed" : "Visible seam · Fix", systemImage: fixing ? "wand.and.stars" : "exclamationmark.triangle.fill")
                             .font(.system(size: 10.5, weight: .semibold))
                             .padding(.horizontal, 9).padding(.vertical, 5)
-                            .background(fixing ? Theme.accent.opacity(0.85) : Color.black.opacity(0.55), in: Capsule())
+                            .background(fixing ? Theme.accent : Color(white: 0.07).opacity(0.9), in: Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.12)))
                             .foregroundStyle(fixing ? Color.white : Color.orange)
                     }.buttonStyle(.plain).help(fixing ? "Show the original file" : "Blend the edges so the texture repeats cleanly (preview and export only)")
                 }
@@ -1438,6 +1566,7 @@ struct ProcessedPreview: View {
     var psdToggled: Set<Int> = []
     var tiles = 1
     var fixSeams = false
+    var fit = false
     @ObservedObject private var store = ThumbnailStore.shared
     var body: some View {
         GeometryReader { geo in
@@ -1448,7 +1577,7 @@ struct ProcessedPreview: View {
                 let fx = store.processed(base, id: key, effect: effect, amount: amount)
                 let cg = (tiles > 1 || fixSeams) ? store.tiled(fx, id: key + "|\(effect.rawValue)|\(Int(amount * 50))", times: tiles, fixSeams: fixSeams) : fx
                 Image(decorative: cg, scale: 1).resizable()
-                    .aspectRatio(contentMode: asset.kind == .vector || asset.kind == .mockup ? .fit : .fill)
+                    .aspectRatio(contentMode: fit || asset.kind == .vector || asset.kind == .mockup ? .fit : .fill)
                     .frame(width: geo.size.width, height: geo.size.height).clipped()
             } else {
                 ProgressView().controlSize(.small).frame(width: geo.size.width, height: geo.size.height)
