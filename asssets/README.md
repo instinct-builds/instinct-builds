@@ -417,3 +417,28 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   sheet sit in a legend above the image with numbered frame tags, so a
   crop at the edge can't clip its label.
 - Logic and tests: `VersionStacks.swift` and `VersionStackTests.swift`.
+
+## 1.11.0: ratings and color labels
+
+- Star ratings (0-5) and color labels (red, orange, yellow, green, blue,
+  purple). With assets selected, or one open in the viewer, press 1-5 to
+  rate, 0 to clear, and 6-9 for red, yellow, green and blue labels.
+  Pressing a label key again removes it. Rating and Label are also in the
+  Asset menu and the right-click menu, and the inspector has clickable
+  stars and label dots under the title.
+- Cards show the label as a dot and a tinted edge, and the stars on the
+  right side of the info line.
+- Filter chips next to the media chips: a minimum-rating menu and label
+  toggles (any of the chosen labels), with a clear button. Save as Smart
+  carries them into the new collection, and the smart collection editor
+  has Rating and Label rows.
+- Compare has a "Keep:" menu. Keeps can get at least 3, 4 or 5 stars when
+  you press Done, or leave ratings alone (the default). The choice is
+  remembered between launches.
+- Imported and watched files get their real pixel size (or PSD, SVG, WAV
+  details) and palette as soon as they come in, instead of "Local file"
+  and gray placeholder swatches. Older catalogs are fixed on launch.
+- 1.10.0 polish: collapsed stacks have a clearer two-card pile edge, and
+  the grid header reads "4 items · 7 files" when stacks hide versions.
+- Logic and tests: `Ratings.swift` and `RatingTests.swift`; rating and
+  label rules in `SmartStudio.swift`, keep ratings in `Compare.swift`.

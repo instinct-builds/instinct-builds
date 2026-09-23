@@ -33,6 +33,14 @@ struct ASSSETSApp: App {
                 Divider()
                 Button("Stack as Versions") { library.stackSelection() }.keyboardShortcut("g", modifiers: [.command]).disabled(!library.canStack)
                 Button("Unstack") { library.unstackSelection() }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(!library.canUnstack)
+                Divider()
+                Menu("Rating") {
+                    ForEach(0...5, id: \.self) { n in Button(n == 0 ? "No Rating  (0)" : String(repeating: "★", count: n) + "  (\(n))") { library.rate(library.selection, n) } }
+                }.disabled(library.selection.isEmpty)
+                Menu("Label") {
+                    ForEach(ColorLabel.allCases) { l in Button(l.name + (l.key.map { "  (\($0))" } ?? "")) { library.label(library.selection, l) } }
+                    Divider(); Button("No Label") { library.label(library.selection, nil) }
+                }.disabled(library.selection.isEmpty)
             }
             CommandGroup(after: .pasteboard) {
                 Button("Select All Assets") { library.selectAllVisible() }.keyboardShortcut("a", modifiers: [.command, .option])
@@ -292,7 +300,8 @@ final class StudioLibrary: ObservableObject {
         guard let s = compare else { return }
         compare = nil
         guard apply, !(s.keeps.isEmpty && s.rejects.isEmpty) else { return }
-        mutate { $0.applyPicks(s) }
+        let stars = keepRating
+        mutate { $0.applyPicks(s, keepRating: stars) }
         flash(s.keeps.isEmpty ? "\(s.rejects.count) marked rejected" : "\(s.summary) · kept assets are in Picks")
         if !s.keeps.isEmpty { selection = Set(s.keeps); focusID = s.keeps.first }
     }
@@ -347,6 +356,13 @@ final class StudioLibrary: ObservableObject {
             }
         }
         if viewerID == nil, NSApp.keyWindow?.firstResponder is NSText { return false }
+        // 1-5 rate, 0 clears, 6-9 label the selection (or the asset in the viewer).
+        if let ch = e.charactersIgnoringModifiers, ch.count == 1, let d = Int(ch), !e.modifierFlags.contains(.shift) {
+            let ids: Set<UUID> = viewerID.map { [$0] } ?? selection
+            guard !ids.isEmpty else { return false }
+            if d <= 5 { rate(ids, d) } else if let l = ColorLabel.forKey(d) { label(ids, l) }
+            return true
+        }
         switch e.keyCode {
         case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
         case 53 where viewerID != nil: closeViewer(); return true
@@ -412,6 +428,7 @@ final class StudioLibrary: ObservableObject {
             c.mergeGenerated()
             c.seedSmartCollections()
         }
+        enrichStarterMetadata(&c, userFilesOnly: true)
         catalog = c
         save()
         focusID = catalog.assets.first?.id
@@ -425,9 +442,11 @@ final class StudioLibrary: ObservableObject {
         return "\(version)-\(size)"
     }
 
-    /// Reads real dimensions, durations and vector colors for the bundled files.
-    private func enrichStarterMetadata(_ c: inout StudioCatalog) {
-        for i in c.assets.indices where c.assets[i].isStarter {
+    /// Reads real dimensions, durations and vector colors for the bundled files, and for the user's own
+    /// imported or watched files that still show "Local file" (1.11: done right away instead of never).
+    private func enrichStarterMetadata(_ c: inout StudioCatalog, userFilesOnly: Bool = false) {
+        for i in c.assets.indices where userFilesOnly ? c.assets[i].needsFileMetadata : (c.assets[i].isStarter || c.assets[i].needsFileMetadata) {
+            let placeholder = c.assets[i].palette == StudioCatalog.placeholderPalette
             guard let path = c.assets[i].importedPath else { continue }
             let url = URL(fileURLWithPath: path)
             switch url.pathExtension.lowercased() {
@@ -435,12 +454,13 @@ final class StudioLibrary: ObservableObject {
                 if let text = try? String(contentsOf: url, encoding: .utf8), let scene = VectorScene.parse(text) {
                     let colors = Array(scene.colors.prefix(5))
                     if colors.count >= 3 { c.assets[i].palette = colors }
+                    else if placeholder { c.assets[i].palette = ["#1C1F26", "#E9ECF2", "#8B61FF"] }
                     c.assets[i].resolution = "SVG • \(Int(scene.width)) × \(Int(scene.height))"
                 }
             case "psd":
                 // Read once: on first install, or when the palette is still the collection default (0.6.0 installs).
                 let defaultPalette = StarterCatalog.describe(filename: url.lastPathComponent)?.palette
-                if !c.assets[i].resolution.hasPrefix("PSD") || c.assets[i].palette == defaultPalette,
+                if !c.assets[i].resolution.hasPrefix("PSD") || c.assets[i].palette == defaultPalette || placeholder,
                    let data = try? Data(contentsOf: url), let doc = try? PsdLayers.read(data) {
                     c.assets[i].resolution = "PSD • \(doc.width) × \(doc.height) • \(doc.panelLayers.count) layers"
                     if !c.assets[i].tags.contains("layered") { c.assets[i].tags.append("layered") }
@@ -459,7 +479,7 @@ final class StudioLibrary: ObservableObject {
                     c.assets[i].resolution = "\(w) × \(h)"
                     StudioCatalog.correctResolutionClaims(&c.assets[i], width: w, height: h)
                     // Real swatches instead of the collection default (also fixes 0.7/0.8 installs).
-                    if c.assets[i].palette == StarterCatalog.describe(filename: url.lastPathComponent)?.palette,
+                    if c.assets[i].palette == StarterCatalog.describe(filename: url.lastPathComponent)?.palette || placeholder,
                        let small = MediaRenderer.pixelBuffer(fromSource: src, maxPixel: 160) {
                         let colors = PaletteExtractor.colors(from: small, count: 5).map(\.hex)
                         if colors.count >= 3 { c.assets[i].palette = colors }
@@ -498,8 +518,16 @@ final class StudioLibrary: ObservableObject {
 
     /// Stacks whose versions are all shown in the grid (toggled from the card badge or the inspector).
     @Published var expandedStacks: Set<UUID> = []
+    /// Rating and label chips above the grid (1.11).
+    @Published var ratingFilter = RatingFilter()
+    /// Stars a compare "keep" gives an asset; 0 leaves ratings alone. Remembered between launches.
+    @Published var keepRating = UserDefaults.standard.integer(forKey: "compareKeepRating") {
+        didSet { UserDefaults.standard.set(keepRating, forKey: "compareKeepRating") }
+    }
+    /// Files in the current view before stacks collapse, for the header's "4 items · 7 files".
+    var filteredFileCount: Int { unstackedFiltered.filter(ratingFilter.matches).count }
     var filtered: [StudioAsset] {
-        let list = unstackedFiltered
+        let list = unstackedFiltered.filter(ratingFilter.matches)
         if similarTo != nil || (selectedSmart == nil && selectedCollection == Self.missingCollection) { return list }
         return catalog.collapsingStacks(list, expanded: expandedStacks)
     }
@@ -520,7 +548,24 @@ final class StudioLibrary: ObservableObject {
         if let t = similarTo { return "Similar to " + (catalog.assets.first { $0.id == t }?.title ?? "asset") }
         return selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection
     }
-    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil) }
+    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive) }
+
+    // MARK: Ratings and labels (1.11)
+
+    func rate(_ ids: Set<UUID>, _ stars: Int) {
+        guard !ids.isEmpty else { return }
+        mutate { $0.setRating(ids, stars) }
+        flash(stars == 0 ? "Rating cleared" : "Rated \(String(repeating: "★", count: stars))\(ids.count > 1 ? " · \(ids.count) assets" : "")")
+    }
+    func label(_ ids: Set<UUID>, _ l: ColorLabel?) {
+        guard !ids.isEmpty else { return }
+        var now: ColorLabel?
+        mutate { now = $0.toggleLabel(ids, l) }
+        flash(now.map { "\($0.name) label" } ?? "Label cleared")
+    }
+    func toggleLabelFilter(_ l: ColorLabel) {
+        if ratingFilter.labels.contains(l) { ratingFilter.labels.remove(l) } else { ratingFilter.labels.insert(l) }
+    }
     var focused: StudioAsset? { focusID.flatMap { id in catalog.assets.first { $0.id == id } } }
     var selectedAssets: [StudioAsset] { catalog.assets.filter { selection.contains($0.id) } }
 
@@ -608,7 +653,7 @@ final class StudioLibrary: ObservableObject {
         if !found.isEmpty {
             var c = catalog
             added = c.syncWatch(found: found)
-            if !added.isEmpty { c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
+            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
         }
         let now = catalog.missingIDs { fm.fileExists(atPath: $0) }
         if now != missing { missing = now }
@@ -858,10 +903,11 @@ final class StudioLibrary: ObservableObject {
 
     func beginNewSmart() {
         var rules = SmartRules(text: search, kinds: selectedKind.map { [$0] } ?? [])
+        ratingFilter.apply(to: &rules)
         if selectedCollection == StudioCatalog.favorites { rules.favoritesOnly = true }
         else if selectedCollection != StudioCatalog.allAssets { rules.collection = selectedCollection }
         let t = search.trimmingCharacters(in: .whitespaces)
-        smartEditor = SmartEditorState(existing: nil, name: t.isEmpty ? (selectedKind?.rawValue ?? "Smart Collection") : t.capitalized, rules: rules)
+        smartEditor = SmartEditorState(existing: nil, name: t.isEmpty ? (selectedKind?.rawValue ?? (ratingFilter.minRating > 0 ? "\(ratingFilter.minRating) Stars and Up" : "Smart Collection")) : t.capitalized, rules: rules)
     }
     func beginEdit(smart id: UUID) {
         guard let s = catalog.smartCollection(id) else { return }
@@ -876,7 +922,7 @@ final class StudioLibrary: ObservableObject {
         } else {
             var id = UUID()
             mutate { id = $0.createSmartCollection(named: state.name, rules: rules) }
-            search = ""; selectedKind = nil
+            search = ""; selectedKind = nil; ratingFilter = RatingFilter()
             show(smart: id)
             flash("Saved smart collection \(catalog.smartCollection(id)?.name ?? "")")
         }
@@ -1106,7 +1152,7 @@ final class StudioLibrary: ObservableObject {
                     for case let file as URL in e { if let id = c.importFile(path: file.path) { added.append(id) } }
                 } else if let id = c.importFile(path: url.path) { added.append(id) }
             }
-            if !added.isEmpty { c.autoStack() }
+            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); c.autoStack() }
         }
         if !added.isEmpty { refreshAutoTags(); show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
         else { flash("No new supported files found") }
@@ -1243,6 +1289,24 @@ final class StudioLibrary: ObservableObject {
                     compareVersions(v1.id, top.id); compareSwipe = true; swipeSplit = 0.5
                 }
             }
+        case "ratings", "label-filter":
+            // A rating pass on the mockups: stars and labels on the cards, the inspector row, then the chips narrowing the grid.
+            show(collection: "Device Mockups")
+            let ids = filtered.map(\.id)
+            let stars = [5, 4, 3, 0, 4, 2, 5, 1, 3, 0, 4, 5]
+            let labels: [ColorLabel?] = [.green, .blue, nil, .red, .green, nil, .purple, .yellow, nil, .red, .blue, .green]
+            mutate { c in
+                for (i, id) in ids.prefix(12).enumerated() {
+                    c.setRating([id], stars[i])
+                    if let l = labels[i] { c.toggleLabel([id], l) }
+                }
+            }
+            if demo == "label-filter" {
+                ratingFilter = RatingFilter(minRating: 4, labels: [.green, .blue])
+                if let a = filtered.first { selection = [a.id]; focusID = a.id }
+            } else if let first = ids.first {
+                selection = [first]; focusID = first
+            }
         case "contact-sheet":
             show(collection: "Material Textures")
             let ids = filtered.map(\.id)
@@ -1285,6 +1349,7 @@ final class StudioLibrary: ObservableObject {
             selection = Set(ids); focusID = ids.first
             openCompare(ids)
             if demo == "compare" {
+                keepRating = 4
                 markCompare(.keep); markCompare(.reject)
                 compareZoom.zoom(by: 2.5, anchorX: 0.3, anchorY: 0.35)
             } else { swipeSplit = 0.46; compareSwipe = true }
@@ -1601,7 +1666,10 @@ struct AssetBrowser: View {
                 HStack(alignment: .firstTextBaseline) {
                     if model.selectedSmart != nil { Image(systemName: "sparkles").foregroundStyle(Theme.smart).font(.title3) }
                     Text(model.browsingTitle).font(.system(size: 22, weight: .bold)).lineLimit(1)
-                    Text("\(items.count) \(items.count == 1 ? "asset" : "assets")").font(.callout).foregroundStyle(.secondary).fixedSize()
+                    let files = model.filteredFileCount
+                    Text(files > items.count ? "\(items.count) items · \(files) files" : "\(items.count) \(items.count == 1 ? "asset" : "assets")")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize()
+                        .help(files > items.count ? "Stacks show as one card; \(files - items.count) older versions are tucked inside" : "")
                     Spacer()
                     if let id = model.selectedSmart {
                         Button { model.beginEdit(smart: id) } label: { Label("Edit Rules", systemImage: "slider.horizontal.3").fixedSize() }
@@ -1626,6 +1694,8 @@ struct AssetBrowser: View {
                     HStack(spacing: 6) {
                         KindChip(title: "All", symbol: "circle.grid.3x3", on: model.selectedKind == nil) { model.selectedKind = nil }
                         ForEach(MediaKind.allCases) { k in KindChip(title: k.rawValue, symbol: k.symbol, on: model.selectedKind == k) { model.selectedKind = model.selectedKind == k ? nil : k } }
+                        Rectangle().fill(Theme.hairline).frame(width: 1, height: 18).padding(.horizontal, 2)
+                        RatingFilterChips()
                     }
                 }
             }
@@ -1653,6 +1723,75 @@ struct AssetBrowser: View {
             if model.selection.count > 1 { SelectionBar() }
         }
         .background(Theme.backdrop)
+    }
+}
+
+/// A clickable color-label dot (filter chips, smart editor, inspector).
+struct LabelDot: View {
+    let label: ColorLabel, on: Bool
+    var size: CGFloat = 14
+    var idle = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Circle().fill(Color(hex: label.hex).opacity(on ? 1 : idle ? 0.8 : 0.35)).frame(width: size, height: size)
+                .overlay(Circle().stroke(on ? Color.white : Color.clear, lineWidth: 2))
+                .padding(2)
+        }.buttonStyle(.plain).help(label.name + (label.key.map { " (\($0))" } ?? ""))
+    }
+}
+
+/// Minimum-rating menu and label toggles next to the media chips.
+struct RatingFilterChips: View {
+    @EnvironmentObject var model: StudioLibrary
+    var body: some View {
+        let r = model.ratingFilter.minRating
+        Menu {
+            Button("Any rating") { model.ratingFilter.minRating = 0 }
+            ForEach(1...5, id: \.self) { n in Button(n == 5 ? "★★★★★ only" : String(repeating: "★", count: n) + " and up") { model.ratingFilter.minRating = n } }
+        } label: {
+            Label(r == 0 ? "Rating" : String(repeating: "★", count: r) + (r < 5 ? "+" : ""), systemImage: "star").font(.system(size: 11.5, weight: .medium))
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(r > 0 ? Theme.warning.opacity(0.22) : Color.white.opacity(0.05), in: Capsule())
+        .overlay(Capsule().stroke(r > 0 ? Theme.warning.opacity(0.9) : Theme.hairline))
+        HStack(spacing: 3) {
+            ForEach(ColorLabel.allCases) { l in
+                LabelDot(label: l, on: model.ratingFilter.labels.contains(l), size: 12, idle: model.ratingFilter.labels.isEmpty) { model.toggleLabelFilter(l) }
+            }
+            if model.ratingFilter.isActive {
+                Button { model.ratingFilter = RatingFilter() } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 12)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Clear rating and label filters")
+            }
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(model.ratingFilter.labels.isEmpty ? Color.white.opacity(0.05) : Color.white.opacity(0.1), in: Capsule())
+        .overlay(Capsule().stroke(Theme.hairline))
+    }
+}
+
+/// Stars and label for the inspected asset.
+struct RatingLabelRow: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 2) {
+                ForEach(1...5, id: \.self) { n in
+                    Button { model.rate([asset.id], asset.rating == n ? 0 : n) } label: {
+                        Image(systemName: n <= asset.rating ? "star.fill" : "star").font(.system(size: 13))
+                            .foregroundStyle(n <= asset.rating ? Theme.warning : Color.secondary.opacity(0.6))
+                    }.buttonStyle(.plain).help("\(n) star\(n == 1 ? "" : "s") (\(n))")
+                }
+            }
+            Rectangle().fill(Theme.hairline).frame(width: 1, height: 14)
+            HStack(spacing: 4) {
+                ForEach(ColorLabel.allCases) { l in LabelDot(label: l, on: asset.label == l, size: 12) { model.label([asset.id], l) } }
+            }
+            Spacer(minLength: 0)
+            if let l = asset.label { Text(l.name).font(.caption.weight(.semibold)).foregroundStyle(Color(hex: l.hex)) }
+        }
     }
 }
 
@@ -1804,6 +1943,13 @@ struct AssetMenu: View {
         let many = ids.count > 1
         let allFav = model.catalog.assets.filter { ids.contains($0.id) }.allSatisfy { $0.favorite }
         Button(allFav ? "Remove from Favorites" : (many ? "Favorite \(ids.count) Assets" : "Add to Favorites")) { model.toggleFavorite(ids) }
+        Menu("Rating") {
+            ForEach(0...5, id: \.self) { n in Button(n == 0 ? "No Rating" : String(repeating: "★", count: n)) { model.rate(ids, n) } }
+        }
+        Menu("Label") {
+            ForEach(ColorLabel.allCases) { l in Button(l.name) { model.label(ids, l) } }
+            Divider(); Button("No Label") { model.label(ids, nil) }
+        }
         Menu("Move to") {
             ForEach(model.catalog.collections.filter { $0 != StudioCatalog.allAssets && $0 != StudioCatalog.favorites }, id: \.self) { name in
                 Button(name) { model.move(ids, to: name) }
@@ -1894,8 +2040,15 @@ struct AssetCard: View {
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(asset.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
-                Text("\(asset.kind.singular) • \(asset.resolution)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 5) {
+                    if let l = asset.label { Circle().fill(Color(hex: l.hex)).frame(width: 8, height: 8).help("\(l.name) label") }
+                    Text(asset.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                }
+                HStack(spacing: 4) {
+                    Text("\(asset.kind.singular) • \(asset.resolution)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 2)
+                    if asset.rating > 0 { Text(asset.stars).font(.system(size: 9.5)).foregroundStyle(Theme.warning).fixedSize() }
+                }
             }
             HStack(spacing: 2) { ForEach(Array(asset.palette.prefix(5).enumerated()), id: \.offset) { _, hex in Color(hex: hex).frame(height: 4) } }.clipShape(Capsule())
         }
@@ -1904,14 +2057,17 @@ struct AssetCard: View {
             // Collapsed stacks read as a pile: two offset card edges behind the top version.
             if asset.stackID != nil, model.similarTo == nil, !model.expandedStacks.contains(asset.stackID!) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 15).fill(Theme.raised.opacity(0.55)).padding(.horizontal, 14).offset(y: -8)
-                    RoundedRectangle(cornerRadius: 15).fill(Theme.raised.opacity(0.8)).overlay(RoundedRectangle(cornerRadius: 15).stroke(Theme.hairline))
-                        .padding(.horizontal, 7).offset(y: -4)
+                    RoundedRectangle(cornerRadius: 15).fill(Color(red: 0.13, green: 0.12, blue: 0.19))
+                        .overlay(RoundedRectangle(cornerRadius: 15).stroke(Theme.accent.opacity(0.35)))
+                        .padding(.horizontal, 16).offset(y: -11)
+                    RoundedRectangle(cornerRadius: 15).fill(Color(red: 0.17, green: 0.155, blue: 0.24))
+                        .overlay(RoundedRectangle(cornerRadius: 15).stroke(Theme.accent.opacity(0.5)))
+                        .padding(.horizontal, 8).offset(y: -5.5)
                 }
             }
         }
         .background(RoundedRectangle(cornerRadius: 15).fill(selected ? Theme.accent.opacity(0.17) : hovering ? Color.white.opacity(0.075) : Theme.raised))
-        .overlay(RoundedRectangle(cornerRadius: 15).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(selected ? Theme.accent : asset.label.map { Color(hex: $0.hex).opacity(0.55) } ?? Theme.hairline, lineWidth: selected ? 2 : 1))
         .shadow(color: .black.opacity(0.3), radius: 10, y: 6)
         .contentShape(RoundedRectangle(cornerRadius: 15))
         .onHover { hovering = $0 }
@@ -1987,6 +2143,25 @@ struct SmartEditor: View {
                         Text("Any collection").tag(String?.none)
                         ForEach(model.catalog.collections.filter { $0 != StudioCatalog.allAssets && $0 != StudioCatalog.favorites }, id: \.self) { Text($0).tag(String?.some($0)) }
                     }.labelsHidden().frame(maxWidth: 240)
+                }
+                GridRow {
+                    Text("Rating").foregroundStyle(.secondary)
+                    Picker("Rating", selection: $state.rules.minRating) {
+                        Text("Any").tag(0)
+                        ForEach(1...5, id: \.self) { n in Text(n == 5 ? "★★★★★" : String(repeating: "★", count: n) + "+").tag(n) }
+                    }.pickerStyle(.segmented).labelsHidden()
+                }
+                GridRow {
+                    Text("Label").foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        ForEach(ColorLabel.allCases) { l in
+                            let on = state.rules.labels.contains(l)
+                            LabelDot(label: l, on: on, size: 18) {
+                                if on { state.rules.labels.removeAll { $0 == l } } else { state.rules.labels = ColorLabel.allCases.filter { state.rules.labels.contains($0) || $0 == l } }
+                            }
+                        }
+                        Text(state.rules.labels.isEmpty ? "Any label" : "Any of these").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 GridRow {
                     Text("")
@@ -2521,6 +2696,7 @@ struct Inspector: View {
                     Button { model.toggleFavorite([asset.id]) } label: { Image(systemName: asset.favorite ? "heart.fill" : "heart").font(.title3).foregroundStyle(asset.favorite ? Color.pink : Color.secondary) }.buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16).padding(.top, 10)
+                RatingLabelRow(asset: asset).padding(.horizontal, 16).padding(.top, 8)
                 if model.missing.contains(asset.id) { MissingBanner(asset: asset).padding(.horizontal, 14).padding(.top, 8) }
                 if asset.kind != .audio { EffectStrip(asset: asset).padding(.top, 10) }
                 Divider().overlay(Theme.hairline).padding(.top, 10)
@@ -2936,6 +3112,13 @@ struct CompareView: View {
                 roundButton("plus") { model.compareZoom.zoom(by: 1.5) }
                 Button("Fit") { model.compareZoom.reset() }.buttonStyle(.bordered).disabled(model.compareZoom.isFit)
             }
+            Menu {
+                Button("Keeps don't change ratings") { model.keepRating = 0 }
+                ForEach(3...5, id: \.self) { n in Button("Keeps get at least " + String(repeating: "★", count: n)) { model.keepRating = n } }
+            } label: {
+                Label(model.keepRating == 0 ? "Keep: no rating" : "Keep: " + String(repeating: "★", count: model.keepRating), systemImage: "star.circle")
+                    .font(.system(size: 11.5, weight: .semibold))
+            }.menuStyle(.borderlessButton).fixedSize().help("Stars a kept asset gets when you press Done")
             Button { model.closeCompare(apply: true) } label: { Label("Done", systemImage: "checkmark") }
                 .buttonStyle(.borderedProminent).help("Save keeps to Picks (Return)")
             Button { model.closeCompare(apply: false) } label: {

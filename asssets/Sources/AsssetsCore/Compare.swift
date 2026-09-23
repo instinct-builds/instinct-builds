@@ -115,12 +115,14 @@ extension StudioCatalog {
     /// Writes a compare pass: keeps get the "pick" tag, rejects get "rejected" (and lose "pick").
     /// Assets stay in their own collections; a "Picks" smart collection lists every pick.
     /// Returns the Picks smart collection id when anything was kept.
+    /// `keepRating` (1-5) raises each kept asset to at least that many stars; 0 leaves ratings alone.
     @discardableResult
-    public mutating func applyPicks(_ session: CompareSession) -> UUID? {
+    public mutating func applyPicks(_ session: CompareSession, keepRating: Int = 0) -> UUID? {
         let keep = Set(session.keeps), reject = Set(session.rejects)
         for i in assets.indices {
             let id = assets[i].id
             if keep.contains(id) {
+                if keepRating > 0 { assets[i].rating = max(assets[i].rating, min(5, keepRating)) }
                 assets[i].tags.removeAll { $0 == Self.rejectTag }
                 if !assets[i].tags.contains(Self.pickTag) { assets[i].tags.append(Self.pickTag) }
             } else if reject.contains(id) {
