@@ -1636,7 +1636,7 @@ final class StudioLibrary: ObservableObject {
             show(collection: StudioCatalog.allAssets)
             selection = Set(ids); focusID = ids.first
             openPresetExport(ids)
-            presetExport?.presets = [.web]
+            presetExport?.presets = [.web, .social]
             presetExport?.folders = "{collection}/{label}"
             presetExport?.pattern = "{title}-{preset}"
             presetExport?.embedMetadata = true
@@ -3546,26 +3546,6 @@ struct PresetExportSheet: View {
                             Text("In the JPEG and TIFF copies. Originals are never changed.").font(.caption).foregroundStyle(.tertiary)
                         }
                     }.toggleStyle(.checkbox).padding(.top, 4)
-                    VStack(alignment: .leading, spacing: 6) {
-                        InspectorLabel(text: "FILE NAMES").padding(.top, 6)
-                        TextField(FilenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
-                        Text(FilenamePattern.tokens.joined(separator: "  ")).font(.caption2.monospaced()).foregroundStyle(.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        InspectorLabel(text: "FOLDERS").padding(.top, 6)
-                        TextField("Flat - everything in one folder", text: $state.folders).textFieldStyle(.roundedBorder).font(.callout.monospaced())
-                        FlowChips(items: FolderPattern.examples, perRow: 2, selected: state.folders) { state.folders = $0 }
-                    }
-                    if let a = first, let p = ExportPreset.allCases.first(where: state.presets.contains) {
-                        let o = p.outputs(width: base?.width ?? 2048, height: base?.height ?? 2048)[0]
-                        let sub = FolderPattern.relativePath(state.folders, asset: a)
-                        Text("e.g. " + (sub.isEmpty ? "" : sub + "/") + FilenamePattern.render(state.pattern, asset: a, preset: p, output: o, index: 1))
-                            .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                        if !state.folders.trimmingCharacters(in: .whitespaces).isEmpty {
-                            let groups = Dictionary(grouping: assets) { FolderPattern.relativePath(state.folders, asset: $0) }
-                            Text("\(groups.count) \(groups.count == 1 ? "folder" : "folders"): " + groups.keys.sorted().prefix(4).joined(separator: ", ") + (groups.count > 4 ? ", …" : ""))
-                                .font(.caption).foregroundStyle(.tertiary).lineLimit(2)
-                        }
-                    }
                 }
                 .frame(width: 330)
                 VStack(alignment: .leading, spacing: 8) {
@@ -3578,6 +3558,30 @@ struct PresetExportSheet: View {
                     } else {
                         ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
+                    // Names and folders sit under the crops, so the sheet stays short enough for a 768 pt screen (1.14).
+                    VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            InspectorLabel(text: "FILE NAMES").padding(.top, 6)
+                            TextField(FilenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
+                            Text(FilenamePattern.tokens.joined(separator: "  ")).font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            InspectorLabel(text: "FOLDERS").padding(.top, 6)
+                            TextField("Flat - everything in one folder", text: $state.folders).textFieldStyle(.roundedBorder).font(.callout.monospaced())
+                            FlowChips(items: FolderPattern.examples, perRow: 4, selected: state.folders) { state.folders = $0 }
+                        }
+                        if let a = first, let p = ExportPreset.allCases.first(where: state.presets.contains) {
+                            let o = p.outputs(width: base?.width ?? 2048, height: base?.height ?? 2048)[0]
+                            let sub = FolderPattern.relativePath(state.folders, asset: a)
+                            Text("e.g. " + (sub.isEmpty ? "" : sub + "/") + FilenamePattern.render(state.pattern, asset: a, preset: p, output: o, index: 1))
+                                .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            if !state.folders.trimmingCharacters(in: .whitespaces).isEmpty {
+                                let groups = Dictionary(grouping: assets) { FolderPattern.relativePath(state.folders, asset: $0) }
+                                Text("\(groups.count) \(groups.count == 1 ? "folder" : "folders"): " + groups.keys.sorted().prefix(4).joined(separator: ", ") + (groups.count > 4 ? ", …" : ""))
+                                    .font(.caption).foregroundStyle(.tertiary).lineLimit(2)
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
@@ -3590,7 +3594,7 @@ struct PresetExportSheet: View {
             }
         }
         .padding(22)
-        .frame(width: 820, height: 660)
+        .frame(width: 860, height: 600)
         .background(Theme.panel)
         .task(id: state.ids.first) { await load(first) }
     }
