@@ -183,6 +183,7 @@ jobs:
             -o build/au_view_host
           export MUEW_USER_PRESETS="$RUNNER_TEMP/muew-user-presets"
           rm -rf "$MUEW_USER_PRESETS"
+          export MUEW_VIEW_PNG="$PWD/out/MUEW-0.10.0-au-editor-edited.png"
           ./build/au_view_host > out/au_view_host.log 2>&1 &
           pid=$!
           sleep 7
@@ -192,6 +193,7 @@ jobs:
           cat out/au_view_host.log
           test "$status" -eq 0
           test -s out/MUEW-0.10.0-au-editor.png
+          test -s out/MUEW-0.10.0-au-editor-edited.png
       - name: Verify MUEW app and distribution
         run: |
           set -euo pipefail
@@ -216,6 +218,7 @@ jobs:
             muew/out/MUEW-0.10.0.dmg
             muew/out/MUEW-0.10.0-instrument.png
             muew/out/MUEW-0.10.0-au-editor.png
+            muew/out/MUEW-0.10.0-au-editor-edited.png
             muew/out/au_view_host.log
             muew/out/auval.log
             muew/out/au_host_test.log

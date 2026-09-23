@@ -368,6 +368,15 @@ int main() {
                   "SUB knob drag on page 2 reached the AU as parameter 23 without touching ATTACK");
             fflush(stdout);
         });
+        After(8.6, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
+            const char* png = getenv("MUEW_VIEW_PNG");
+            if (!png || !*png) return;
+            NSBitmapImageRep* rep = [view bitmapImageRepForCachingDisplayInRect:view.bounds];
+            [view cacheDisplayInRect:view.bounds toBitmapImageRep:rep];
+            NSData* d = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+            Check(d.length > 10000 && [d writeToFile:[NSString stringWithUTF8String:png] atomically:YES], "editor snapshot written after the scripted edits");
+            fflush(stdout);
+        });
         After(9.0, ^{
             printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack, mod matrix, wavetable editor and filter 2 + sub page\n");
             fflush(stdout);
