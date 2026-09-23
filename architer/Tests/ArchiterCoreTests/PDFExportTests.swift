@@ -65,6 +65,32 @@ struct PDFExportTests {
         #expect(compact.count < full.count)
     }
 
+    @Test func compactCollapsesZeroQuantityInventoryRows() throws {
+        var c = SampleContent.demoCharacter()
+        c.inventory.append(InventoryItem(name: "Arrows", quantity: 0, weight: 1, category: "Ammunition"))
+        c.inventory.append(InventoryItem(name: "Chalk", quantity: 0, category: "Gear"))
+        // Default behavior unchanged: zero-quantity rows still print.
+        let plain = String(data: SheetPDFExporter.export(c, style: .compact), encoding: .utf8) ?? ""
+        #expect(plain.contains("Arrows"))
+        #expect(plain.contains("Chalk"))
+        // Collapsed: empty rows drop, a count note keeps them honest,
+        // and stocked rows stay.
+        let collapsed = String(data: SheetPDFExporter.export(c, style: .compact, collapseEmptyInventory: true), encoding: .utf8) ?? ""
+        #expect(!collapsed.contains("Arrows"))
+        #expect(!collapsed.contains("Chalk"))
+        #expect(collapsed.contains("Quarterstaff"))
+        #expect(collapsed.contains("empty rows hidden"))
+        // The flag is compact-scoped: the styled layout ignores it.
+        let full = String(decoding: SheetPDFExporter.export(c, style: .full, collapseEmptyInventory: true), as: UTF8.self)
+        #expect(full.contains("Arrows"))
+        // An all-depleted pack still renders a line, not a blank section.
+        var spent = SampleContent.demoCharacter()
+        spent.inventory = [InventoryItem(name: "Arrows", quantity: 0)]
+        let spentText = String(data: SheetPDFExporter.export(spent, style: .compact, collapseEmptyInventory: true), encoding: .utf8) ?? ""
+        #expect(!spentText.contains("Arrows"))
+        #expect(spentText.contains("All items depleted"))
+    }
+
     @Test func compactLayoutFlowsInTwoColumns() throws {
         let demo = SampleContent.demoCharacter()
         let compact = SheetPDFExporter.export(demo, style: .compact)

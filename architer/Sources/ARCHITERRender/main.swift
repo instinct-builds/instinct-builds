@@ -104,6 +104,12 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? compactPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact.pdf"))
     let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
     try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))
+    // 2.34.0 proof: compact export with zero-quantity rows collapsed.
+    var depleted = character
+    depleted.inventory.append(InventoryItem(name: "Arrows", quantity: 0, weight: 1, category: "Ammunition"))
+    depleted.inventory.append(InventoryItem(name: "Chalk", quantity: 0, category: "Gear"))
+    let collapsedPdf = SheetPDFExporter.export(depleted, style: .compact, collapseEmptyInventory: true)
+    try? collapsedPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-collapsed.pdf"))
     try? SheetExporter.exportHTML(character).write(toFile: "\(outDir)/sample-sheet.html", atomically: true, encoding: .utf8)
     try? SheetExporter.exportMarkdown(character).write(toFile: "\(outDir)/sample-sheet.md", atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")

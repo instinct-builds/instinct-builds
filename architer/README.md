@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.34.0
+
+- Compact-PDF option to hide empty inventory rows: File > Compact PDF:
+  Hide Empty Rows toggles a persisted preference, and compact exports
+  (both orientations) then drop zero-quantity rows - depleted potions,
+  spent ammo - noting the hidden count ("(2 empty rows hidden)") so
+  nothing vanishes silently. An all-depleted pack prints "All items
+  depleted" instead of a blank section. The styled full-sheet PDF and
+  every other export are unchanged.
+
 ## What's in 2.33.0
 
 - Per-character free-roller type memory: the Dice tab damage-type picker

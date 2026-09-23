@@ -146,8 +146,11 @@ public enum SheetPDFExporter {
     /// styles adapt mechanically.
     public enum PageOrientation { case portrait, landscape }
 
+    /// collapseEmptyInventory (2.34.0): compact exports drop zero-quantity
+    /// inventory rows and note the hidden count. Ignored by the full layout.
     public static func export(_ c: Character, style: LayoutStyle = .full,
-                              orientation: PageOrientation = .portrait) -> Data {
+                              orientation: PageOrientation = .portrait,
+                              collapseEmptyInventory: Bool = false) -> Data {
         let compact = style == .compact
         let pageSize: PDFDocument.PageSize = orientation == .landscape
             ? PDFDocument.PageSize(width: PDFDocument.PageSize.letter.height,
@@ -387,12 +390,20 @@ public enum SheetPDFExporter {
             case .inventory:
                 cursor.section("Inventory", margin: margin)
                 cursor.line("Currency: \(c.currency.displayString) - Carried \(SheetExporter.fmtWeight(c.totalWeight)) / \(c.carryingCapacity) lb", margin: margin, gray: 0.3)
-                if c.inventory.isEmpty {
-                    cursor.line("Empty pack", margin: margin, gray: 0.45)
+                // 2.34.0: compact exports can drop zero-quantity rows
+                // (depleted consumables, spent ammo); the count stays
+                // visible as a trailing note. Full layout is untouched.
+                let items = compact && collapseEmptyInventory
+                    ? c.inventory.filter { $0.quantity > 0 }
+                    : c.inventory
+                let hiddenRows = c.inventory.count - items.count
+                if items.isEmpty {
+                    cursor.line(hiddenRows > 0 ? "All items depleted (\(hiddenRows) hidden)" : "Empty pack",
+                                margin: margin, gray: 0.45)
                 } else {
                     let subCols = cursor.columns > 1 ? 1 : 2
                     let colW = flowW / 2
-                    for (i, item) in c.inventory.enumerated() {
+                    for (i, item) in items.enumerated() {
                         if i % subCols == 0 { cursor.ensure(13) }
                         let x = margin + Double(i % subCols) * colW
                         var text = item.name
@@ -400,7 +411,11 @@ public enum SheetPDFExporter {
                         if item.stowed { text += " (stowed)" }
                         if !item.notes.isEmpty { text += " - \(item.notes)" }
                         cursor.put(x, text, size: 9)
-                        if i % subCols == subCols - 1 || i == c.inventory.count - 1 { cursor.advance(13) }
+                        if i % subCols == subCols - 1 || i == items.count - 1 { cursor.advance(13) }
+                    }
+                    if hiddenRows > 0 {
+                        cursor.ensure(13)
+                        cursor.line("(\(hiddenRows) empty rows hidden)", margin: margin, gray: 0.45)
                     }
                 }
             case .features:

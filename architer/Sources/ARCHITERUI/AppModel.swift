@@ -51,6 +51,15 @@ public final class AppModel: ObservableObject {
         (UserDefaults.standard.dictionary(forKey: AppModel.freeRollerTypesByCharacterKey) as? [String: String]) ?? [:]
     private static let freeRollerTypeKey = "architer.freeRollerDamageType"
     private static let freeRollerTypesByCharacterKey = "architer.freeRollerDamageTypesByCharacter"
+    /// Compact-PDF option (2.34.0): drop zero-quantity inventory rows from
+    /// compact exports. Persisted like the session restore above.
+    @Published public var compactPDFHideEmptyRows: Bool =
+        UserDefaults.standard.bool(forKey: AppModel.compactPDFHideEmptyRowsKey) {
+        didSet {
+            UserDefaults.standard.set(compactPDFHideEmptyRows, forKey: AppModel.compactPDFHideEmptyRowsKey)
+        }
+    }
+    private static let compactPDFHideEmptyRowsKey = "architer.compactPDFHideEmptyRows"
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
     @Published public var showCompendium = false
@@ -449,7 +458,8 @@ public final class AppModel: ObservableObject {
         panel.nameFieldStringValue = landscape ? "\(sel.name)-compact-landscape.pdf" : "\(sel.name)-compact.pdf"
         if panel.runModal() == .OK, let url = panel.url {
             try? SheetPDFExporter.export(sel, style: .compact,
-                                         orientation: landscape ? .landscape : .portrait).write(to: url)
+                                         orientation: landscape ? .landscape : .portrait,
+                                         collapseEmptyInventory: compactPDFHideEmptyRows).write(to: url)
         }
     }
 
