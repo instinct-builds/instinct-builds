@@ -108,6 +108,8 @@ jobs:
           shoot media 1920x1200 library
           shoot batch 960x640 batch-compact
           shoot vectors 1920x1200 vectors
+          shoot smart 1920x1200 smart-collection
+          shoot smart-editor 1920x1200 smart-editor
           for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
       - name: Upload ASSSETS release
         uses: actions/upload-artifact@v4

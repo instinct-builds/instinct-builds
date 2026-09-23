@@ -99,3 +99,16 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   playback, full-resolution PNG export.
 - CI: fresh-install, relaunch and 0.3-upgrade tests on the real app, plus
   screenshots at two window sizes.
+
+## 0.5.0: smart collections
+
+- `SmartStudio.swift` (core, tested) - rule-based collections whose
+  membership is recomputed live: words, media kinds, required tags,
+  favorites only, source collection, and palette tone (warm / cool /
+  neutral / vivid, classified from each asset's palette).
+- Four starter smart collections are added once; deleting one keeps it
+  deleted. Renaming a collection updates the rules that point at it.
+- App: Smart Collections sidebar section with live counts, "Save as Smart"
+  from any search or media filter, a rules editor with a live match
+  preview, rule summary in the browser header, and "In Smart Collections"
+  chips in the inspector.

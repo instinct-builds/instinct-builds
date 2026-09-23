@@ -40,6 +40,7 @@ enum Theme {
     static let panel = Color(red: 0.055, green: 0.058, blue: 0.09)
     static let raised = Color.white.opacity(0.055)
     static let hairline = Color.white.opacity(0.085)
+    static let smart = Color(red: 0.36, green: 0.82, blue: 0.95)
     static let backdrop = LinearGradient(colors: [Color(red: 0.045, green: 0.05, blue: 0.08), Color(red: 0.075, green: 0.05, blue: 0.115)], startPoint: .top, endPoint: .bottom)
     static let sidebar = LinearGradient(colors: [Color(red: 0.04, green: 0.043, blue: 0.07), Color(red: 0.03, green: 0.032, blue: 0.05)], startPoint: .top, endPoint: .bottom)
 }
@@ -65,6 +66,8 @@ final class StudioLibrary: ObservableObject {
     @Published var pendingRemoval: Set<UUID> = []
     @Published var renamingCollection: String?
     @Published var toast: String?
+    @Published var selectedSmart: UUID?
+    @Published var smartEditor: SmartEditorState?
     private var anchorID: UUID?
 
     let supportRoot: URL
@@ -105,8 +108,10 @@ final class StudioLibrary: ObservableObject {
                 c.mergeStarter(files: files, root: starterRoot.path, fingerprint: fingerprint)
             }
             enrichStarterMetadata(&c)
+            c.seedSmartCollections()
         } else if fresh {
             c.mergeGenerated()
+            c.seedSmartCollections()
         }
         catalog = c
         save()
@@ -170,11 +175,53 @@ final class StudioLibrary: ObservableObject {
 
     // MARK: Browsing and selection
 
-    var filtered: [StudioAsset] { catalog.filtered(search: search, kind: selectedKind, collection: selectedCollection) }
+    var filtered: [StudioAsset] {
+        if let id = selectedSmart { return catalog.filtered(search: search, kind: selectedKind, smart: id) }
+        return catalog.filtered(search: search, kind: selectedKind, collection: selectedCollection)
+    }
+    var browsingTitle: String { selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection }
+    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil) }
     var focused: StudioAsset? { focusID.flatMap { id in catalog.assets.first { $0.id == id } } }
     var selectedAssets: [StudioAsset] { catalog.assets.filter { selection.contains($0.id) } }
 
-    func show(collection: String) { selectedCollection = collection; anchorID = nil }
+    func show(collection: String) { selectedCollection = collection; selectedSmart = nil; anchorID = nil }
+    func show(smart id: UUID) { selectedSmart = id; selectedCollection = StudioCatalog.allAssets; anchorID = nil }
+
+    // MARK: Smart collections
+
+    func beginNewSmart() {
+        var rules = SmartRules(text: search, kinds: selectedKind.map { [$0] } ?? [])
+        if selectedCollection == StudioCatalog.favorites { rules.favoritesOnly = true }
+        else if selectedCollection != StudioCatalog.allAssets { rules.collection = selectedCollection }
+        let t = search.trimmingCharacters(in: .whitespaces)
+        smartEditor = SmartEditorState(existing: nil, name: t.isEmpty ? (selectedKind?.rawValue ?? "Smart Collection") : t.capitalized, rules: rules)
+    }
+    func beginEdit(smart id: UUID) {
+        guard let s = catalog.smartCollection(id) else { return }
+        smartEditor = SmartEditorState(existing: id, name: s.name, rules: s.rules)
+    }
+    func commit(_ state: SmartEditorState) {
+        var rules = state.rules
+        rules.requiredTags = StudioCatalog.parseTags(rules.requiredTags.joined(separator: ","))
+        if let id = state.existing {
+            mutate { $0.updateSmartCollection(id, name: state.name, rules: rules) }
+            flash("Updated \(catalog.smartCollection(id)?.name ?? "smart collection")")
+        } else {
+            var id = UUID()
+            mutate { id = $0.createSmartCollection(named: state.name, rules: rules) }
+            search = ""; selectedKind = nil
+            show(smart: id)
+            flash("Saved smart collection \(catalog.smartCollection(id)?.name ?? "")")
+        }
+        smartEditor = nil
+    }
+    func deleteSmart(_ id: UUID) {
+        let name = catalog.smartCollection(id)?.name ?? ""
+        mutate { $0.deleteSmartCollection(id) }
+        if selectedSmart == id { show(collection: StudioCatalog.allAssets) }
+        smartEditor = nil
+        flash("Deleted smart collection \(name). No assets were changed.")
+    }
 
     func click(_ id: UUID) {
         let flags = NSEvent.modifierFlags
@@ -312,6 +359,18 @@ final class StudioLibrary: ObservableObject {
             search = "bundled"
             if let v = filtered.first(where: { $0.kind == .texture }) { selection = [v.id]; focusID = v.id }
             effect = .warm; intensity = 0.8
+        case "smart":
+            if let s = catalog.smartCollections.first(where: { $0.name == "Warm Palettes" }) {
+                show(smart: s.id)
+                if let a = filtered.first(where: { $0.isStarter }) ?? filtered.first { selection = [a.id]; focusID = a.id }
+            }
+        case "smart-editor":
+            if let s = catalog.smartCollections.first(where: { $0.name == "Cool Palettes" }) {
+                show(smart: s.id)
+                if let a = filtered.first { selection = [a.id]; focusID = a.id }
+                var rules = s.rules; rules.kinds = [.texture, .vector, .video]; rules.requiredTags = ["original"]
+                smartEditor = SmartEditorState(existing: s.id, name: "Cool Brand Kit", rules: rules)
+            }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -366,6 +425,7 @@ struct StudioView: View {
             Button("Remove from Library", role: .destructive) { model.confirmRemoval() }
             Button("Cancel", role: .cancel) { model.pendingRemoval = [] }
         } message: { Text("Files on disk stay where they are.") }
+        .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
                 Text(toast).font(.callout.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 9)
@@ -395,19 +455,34 @@ struct Sidebar: View {
                 }.padding(.horizontal, 6).padding(.top, 4)
 
                 SidebarSection(title: "LIBRARY") {
-                    SidebarRow(title: StudioCatalog.allAssets, symbol: "square.grid.2x2", count: model.catalog.count(in: StudioCatalog.allAssets), selected: model.selectedCollection == StudioCatalog.allAssets) { model.show(collection: StudioCatalog.allAssets) }
-                    SidebarRow(title: StudioCatalog.favorites, symbol: "heart.fill", count: model.catalog.count(in: StudioCatalog.favorites), selected: model.selectedCollection == StudioCatalog.favorites, dropTarget: StudioCatalog.favorites) { model.show(collection: StudioCatalog.favorites) }
+                    SidebarRow(title: StudioCatalog.allAssets, symbol: "square.grid.2x2", count: model.catalog.count(in: StudioCatalog.allAssets), selected: model.selectedSmart == nil && model.selectedCollection == StudioCatalog.allAssets) { model.show(collection: StudioCatalog.allAssets) }
+                    SidebarRow(title: StudioCatalog.favorites, symbol: "heart.fill", count: model.catalog.count(in: StudioCatalog.favorites), selected: model.selectedSmart == nil && model.selectedCollection == StudioCatalog.favorites, dropTarget: StudioCatalog.favorites) { model.show(collection: StudioCatalog.favorites) }
                 }
 
                 SidebarSection(title: "COLLECTIONS", trailing: AnyView(
                     Button { model.newCollection(with: []) } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("New collection")
                 )) {
                     ForEach(model.catalog.collections.filter { $0 != StudioCatalog.allAssets && $0 != StudioCatalog.favorites }, id: \.self) { name in
-                        SidebarRow(title: name, symbol: symbol(for: name), count: model.catalog.count(in: name), selected: model.selectedCollection == name, dropTarget: name) { model.show(collection: name) }
+                        SidebarRow(title: name, symbol: symbol(for: name), count: model.catalog.count(in: name), selected: model.selectedSmart == nil && model.selectedCollection == name, dropTarget: name) { model.show(collection: name) }
                             .contextMenu {
                                 Button("Rename…") { renameText = name; model.renamingCollection = name }
                                 Button("Show") { model.show(collection: name) }
                             }
+                    }
+                }
+
+                SidebarSection(title: "SMART COLLECTIONS", trailing: AnyView(
+                    Button { model.beginNewSmart() } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("New smart collection")
+                )) {
+                    ForEach(model.catalog.smartCollections) { smart in
+                        SidebarRow(title: smart.name, symbol: smart.symbol, count: model.catalog.smartAssets(smart.id).count, selected: model.selectedSmart == smart.id, accent: .smart) { model.show(smart: smart.id) }
+                            .contextMenu {
+                                Button("Edit Rules…") { model.beginEdit(smart: smart.id) }
+                                Button("Delete Smart Collection", role: .destructive) { model.deleteSmart(smart.id) }
+                            }
+                    }
+                    if model.catalog.smartCollections.isEmpty {
+                        Text("Save any search as a live collection.").font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 9)
                     }
                 }
 
@@ -463,6 +538,8 @@ struct SidebarSection<Content: View>: View {
     }
 }
 
+enum RowAccent { case standard, smart }
+
 struct SidebarRow: View {
     @EnvironmentObject var model: StudioLibrary
     let title: String
@@ -470,6 +547,7 @@ struct SidebarRow: View {
     let count: Int?
     let selected: Bool
     var dropTarget: String? = nil
+    var accent: RowAccent = .standard
     let action: () -> Void
     @State private var targeted = false
     @State private var hovering = false
@@ -477,7 +555,7 @@ struct SidebarRow: View {
     var body: some View {
         let row = HStack(spacing: 9) {
             Image(systemName: symbol).font(.system(size: 12, weight: .semibold)).frame(width: 18)
-                .foregroundStyle(selected ? Theme.accent : Color.secondary)
+                .foregroundStyle(accent == .smart ? Theme.smart : (selected ? Theme.accent : Color.secondary))
             Text(title).font(.system(size: 12.5, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.tail).layoutPriority(1)
             Spacer(minLength: 6)
             if let count {
@@ -507,9 +585,20 @@ struct AssetBrowser: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(model.selectedCollection).font(.system(size: 22, weight: .bold)).lineLimit(1)
-                    Text("\(items.count) \(items.count == 1 ? "asset" : "assets")").font(.callout).foregroundStyle(.secondary)
+                    if model.selectedSmart != nil { Image(systemName: "sparkles").foregroundStyle(Theme.smart).font(.title3) }
+                    Text(model.browsingTitle).font(.system(size: 22, weight: .bold)).lineLimit(1)
+                    Text("\(items.count) \(items.count == 1 ? "asset" : "assets")").font(.callout).foregroundStyle(.secondary).fixedSize()
                     Spacer()
+                    if let id = model.selectedSmart {
+                        Button { model.beginEdit(smart: id) } label: { Label("Edit Rules", systemImage: "slider.horizontal.3").fixedSize() }
+                            .buttonStyle(.bordered).controlSize(.small)
+                    } else if model.canSaveSearch {
+                        Button { model.beginNewSmart() } label: { Label("Save as Smart", systemImage: "sparkles").fixedSize() }
+                            .buttonStyle(.borderedProminent).controlSize(.small).help("Save this search as a live smart collection")
+                    }
+                }
+                if let id = model.selectedSmart, let smart = model.catalog.smartCollection(id) {
+                    Label(smart.rules.summary, systemImage: "line.3.horizontal.decrease.circle").font(.caption).foregroundStyle(Theme.smart).lineLimit(1)
                 }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -701,6 +790,117 @@ struct AssetCard: View {
     }
 }
 
+// MARK: - Smart collection editor
+
+struct SmartEditorState: Identifiable {
+    let id = UUID()
+    var existing: UUID?
+    var name: String
+    var rules: SmartRules
+}
+
+struct SmartEditor: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State var state: SmartEditorState
+    @State private var tagsText = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var effectiveRules: SmartRules {
+        var r = state.rules
+        r.requiredTags = StudioCatalog.parseTags(tagsText)
+        return r
+    }
+
+    var body: some View {
+        let rules = effectiveRules
+        let matches = model.catalog.assets.filter(rules.matches)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles").font(.title2).foregroundStyle(Theme.smart)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(state.existing == nil ? "New Smart Collection" : "Edit Smart Collection").font(.title3.bold())
+                    Text("Membership updates live as you import, tag and favorite.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    Text("Name").foregroundStyle(.secondary)
+                    TextField("Name", text: $state.name).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Matching").foregroundStyle(.secondary)
+                    TextField("Any words in titles, tags or colors", text: $state.rules.text).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Media").foregroundStyle(.secondary)
+                    WrapLayout(spacing: 6) {
+                        ForEach(MediaKind.allCases) { kind in
+                            let on = state.rules.kinds.contains(kind)
+                            KindChip(title: kind.rawValue, symbol: kind.symbol, on: on) {
+                                if on { state.rules.kinds.removeAll { $0 == kind } } else { state.rules.kinds.append(kind) }
+                            }
+                        }
+                    }
+                }
+                GridRow {
+                    Text("Tagged").foregroundStyle(.secondary)
+                    TextField("All of these tags, comma separated", text: $tagsText).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Palette").foregroundStyle(.secondary)
+                    Picker("Palette", selection: $state.rules.tone) {
+                        Text("Any").tag(PaletteTone?.none)
+                        ForEach(PaletteTone.allCases) { Text($0.rawValue).tag(PaletteTone?.some($0)) }
+                    }.pickerStyle(.segmented).labelsHidden()
+                }
+                GridRow {
+                    Text("In").foregroundStyle(.secondary)
+                    Picker("Collection", selection: $state.rules.collection) {
+                        Text("Any collection").tag(String?.none)
+                        ForEach(model.catalog.collections.filter { $0 != StudioCatalog.allAssets && $0 != StudioCatalog.favorites }, id: \.self) { Text($0).tag(String?.some($0)) }
+                    }.labelsHidden().frame(maxWidth: 240)
+                }
+                GridRow {
+                    Text("")
+                    Toggle("Favorites only", isOn: $state.rules.favoritesOnly)
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("\(matches.count) matching \(matches.count == 1 ? "asset" : "assets")").font(.callout.weight(.semibold))
+                    Spacer()
+                    Text(rules.summary).font(.caption).foregroundStyle(Theme.smart).lineLimit(1)
+                }
+                HStack(spacing: 6) {
+                    ForEach(matches.prefix(6)) { a in
+                        Thumbnail(asset: a, pixels: 240).frame(width: 72, height: 53).clipShape(RoundedRectangle(cornerRadius: 7))
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.hairline))
+                    }
+                    if matches.isEmpty { Text("Nothing matches yet. It will fill in as assets fit the rules.").font(.caption).foregroundStyle(.tertiary).frame(height: 53) }
+                }
+            }
+            .padding(12).background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+            HStack {
+                if let id = state.existing {
+                    Button("Delete", role: .destructive) { model.deleteSmart(id) }
+                }
+                Spacer()
+                Button("Cancel") { model.smartEditor = nil; dismiss() }.keyboardShortcut(.cancelAction)
+                Button(state.existing == nil ? "Create" : "Save") {
+                    var final = state; final.rules = effectiveRules
+                    model.commit(final)
+                }
+                .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                .disabled(state.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 560)
+        .background(Theme.panel)
+        .onAppear { tagsText = state.rules.requiredTags.joined(separator: ", ") }
+    }
+}
+
 // MARK: - Inspectors
 
 struct EmptyInspector: View {
@@ -764,6 +964,18 @@ struct Inspector: View {
                                     Text(hex).font(.system(size: 8, design: .monospaced)).foregroundStyle(.secondary)
                                 }
                                 .onTapGesture { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(hex, forType: .string); model.flash("Copied \(hex)") }
+                            }
+                        }
+                        let smarts = model.catalog.smartCollections.filter { $0.rules.matches(asset) }
+                        if !smarts.isEmpty {
+                            InspectorLabel(text: "IN SMART COLLECTIONS")
+                            WrapLayout(spacing: 5) {
+                                ForEach(smarts) { smart in
+                                    Button { model.show(smart: smart.id) } label: {
+                                        Label(smart.name, systemImage: smart.symbol).font(.caption).padding(.horizontal, 8).padding(.vertical, 4)
+                                            .background(Theme.smart.opacity(0.14), in: Capsule()).overlay(Capsule().stroke(Theme.smart.opacity(0.5)))
+                                    }.buttonStyle(.plain)
+                                }
                             }
                         }
                         InspectorLabel(text: "TAGS")

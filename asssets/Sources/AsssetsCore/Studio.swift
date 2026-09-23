@@ -102,8 +102,12 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var starterFingerprint: String?
     /// Bundled records the user removed; upgrades never bring them back.
     public var dismissedKeys: [String] = []
+    /// Rule-based collections whose membership is recomputed live (0.5).
+    public var smartCollections: [StudioSmartCollection] = []
+    /// Whether the starter smart collections were offered already.
+    public var smartSeeded = false
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -111,6 +115,8 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         userCollections = try c.decodeIfPresent([String].self, forKey: .userCollections) ?? []
         starterFingerprint = try c.decodeIfPresent(String.self, forKey: .starterFingerprint)
         dismissedKeys = try c.decodeIfPresent([String].self, forKey: .dismissedKeys) ?? []
+        smartCollections = try c.decodeIfPresent([StudioSmartCollection].self, forKey: .smartCollections) ?? []
+        smartSeeded = try c.decodeIfPresent(Bool.self, forKey: .smartSeeded) ?? false
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {
@@ -273,6 +279,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         let name = new.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !Self.reserved(old), !name.isEmpty, !Self.reserved(name), name != old, !collections.contains(name) else { return false }
         for i in assets.indices where assets[i].collection == old { assets[i].collection = name }
+        for i in smartCollections.indices where smartCollections[i].rules.collection == old { smartCollections[i].rules.collection = name }
         userCollections = userCollections.map { $0 == old ? name : $0 }
         if !userCollections.contains(name) && collections.contains(name) == false { userCollections.append(name) }
         return true
