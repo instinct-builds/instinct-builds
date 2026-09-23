@@ -27,6 +27,7 @@ struct ARCHITERApp: App {
                 Button("Export HTML…") { model.exportHTML() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
                 Button("Export PDF…") { model.exportPDF() }
+                Button("Export Compact PDF…") { model.exportCompactPDF() }
                     .keyboardShortcut("p", modifiers: [.command])
                 Divider()
                 Button("Export Character File…") { model.exportCharacterJSON() }

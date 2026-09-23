@@ -137,27 +137,47 @@ public enum SheetPDFExporter {
     /// Print-friendly brass, echoing the app's ink-and-brass theme.
     private static let brass = (r: 0.55, g: 0.40, b: 0.15)
 
-    public static func export(_ c: Character) -> Data {
+    /// Layout flavor: the styled full sheet, or an ink-light compact layout
+    /// for cheap printing (no boxes, no fills, no color, tighter spacing).
+    public enum LayoutStyle { case full, compact }
+
+    public static func export(_ c: Character, style: LayoutStyle = .full) -> Data {
+        let compact = style == .compact
         var doc = PDFDocument()
         var cursor = Cursor(doc: doc)
-        let margin = 54.0
+        cursor.compact = compact
+        let margin = compact ? 40.0 : 54.0
         let contentW = doc.pageSize.width - margin * 2
 
-        cursor.ensure(120)
+        cursor.ensure(compact ? 92 : 120)
         // Header
-        cursor.text(margin, c.name, size: 22, face: .bold)
-        cursor.advance(26)
+        cursor.text(margin, c.name, size: compact ? 16 : 22, face: .bold)
+        cursor.advance(compact ? 20 : 26)
         let subtitle = "Level \(c.level) \(c.lineage) \(c.calling)"
             .trimmingCharacters(in: .whitespaces)
-        cursor.text(margin, subtitle, size: 12)
-        cursor.advance(16)
+        cursor.text(margin, subtitle, size: compact ? 10 : 12)
+        cursor.advance(compact ? 13 : 16)
         var meta = "XP \(c.experience)  ·  Proficiency bonus +\(c.proficiencyBonus)  ·  \(c.era.displayName)"
         if !c.background.isEmpty { meta += "  ·  \(c.background)" }
         if let ruleset = c.rulesetName { meta += "  ·  \(ruleset) ruleset" }
         cursor.text(margin, meta, size: 9, gray: 0.35)
         cursor.advance(10)
-        cursor.ruleColored(margin, width: contentW, rgb: brass)
-        cursor.advance(14)
+        if !c.proficienciesText.isEmpty {
+            for line in wrap("Proficiencies: \(c.proficienciesText)", width: contentW, size: 8) {
+                cursor.text(margin, line, size: 8, gray: 0.35)
+                cursor.advance(11)
+            }
+        }
+        if !c.toolProficiencies.isEmpty {
+            cursor.text(margin, "Tools: \(c.toolSummary)", size: 8, gray: 0.35)
+            cursor.advance(11)
+        }
+        if compact {
+            cursor.rule(margin, width: contentW, gray: 0.6)
+        } else {
+            cursor.ruleColored(margin, width: contentW, rgb: brass)
+        }
+        cursor.advance(compact ? 10 : 14)
 
         for block in c.layout.visibleBlocks {
             switch block.kind {
@@ -165,6 +185,15 @@ public enum SheetPDFExporter {
                 continue // already the header
             case .abilities:
                 cursor.section("Abilities", margin: margin)
+                if compact {
+                    let parts = Ability.allCases.map { a in
+                        "\(a.abbreviation) \(c.scores[a]) (\(signed(RulesMath.modifier(for: c.scores[a]))), save \(signed(c.savingThrow(a))))"
+                    }
+                    for line in wrap(parts.joined(separator: "  "), width: contentW, size: 9) {
+                        cursor.line(line, margin: margin)
+                    }
+                    break
+                }
                 let boxW = (contentW - 5 * 8) / 6
                 cursor.ensure(58)
                 let top = cursor.y
@@ -198,6 +227,22 @@ public enum SheetPDFExporter {
                 if !SheetExporter.defenseSummary(c).isEmpty {
                     chips.append(("Defenses", SheetExporter.defenseSummary(c)))
                 }
+                if !c.activeConditionNames.isEmpty {
+                    cursor.line("Conditions: " + c.activeConditionNames.joined(separator: ", "), margin: margin, gray: 0.3)
+                }
+                if c.exhaustion > 0 {
+                    cursor.line("Exhaustion \(c.exhaustion): \(c.exhaustionStepNote)", margin: margin, gray: 0.3)
+                }
+                if compact {
+                    let texts = chips.map { "\($0.0) \($0.1)" }
+                    var i = 0
+                    while i < texts.count {
+                        let pair = texts[i..<min(i + 2, texts.count)].joined(separator: "    ")
+                        cursor.line(pair, margin: margin)
+                        i += 2
+                    }
+                    break
+                }
                 let perRow = 4
                 let chipW = (contentW - Double(perRow - 1) * 8) / Double(perRow)
                 let rowsNeeded = (chips.count + perRow - 1) / perRow
@@ -213,12 +258,6 @@ public enum SheetPDFExporter {
                                     t, size: 8)
                 }
                 cursor.advance(Double(rowsNeeded) * 36)
-                if !c.activeConditionNames.isEmpty {
-                    cursor.line("Conditions: " + c.activeConditionNames.joined(separator: ", "), margin: margin, gray: 0.3)
-                }
-                if c.exhaustion > 0 {
-                    cursor.line("Exhaustion \(c.exhaustion): \(c.exhaustionStepNote)", margin: margin, gray: 0.3)
-                }
             case .skills:
                 cursor.section("Skills", margin: margin)
                 let trained = c.skills.filter { $0.tier != .none }
@@ -242,7 +281,9 @@ public enum SheetPDFExporter {
                     ? [("Attack", 0), ("Bonus", 150), ("Damage", 205), ("Type", 290), ("Mastery", 350), ("Range", 430)]
                     : [("Attack", 0), ("Bonus", 170), ("Damage", 230), ("Type", 320), ("Range", 400)]
                 cursor.ensure(16)
-                cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
+                if !compact {
+                    cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
+                }
                 for (title, off) in cols {
                     cursor.put(margin + 4 + off, title, size: 8, face: .bold)
                 }
@@ -399,7 +440,7 @@ public enum SheetPDFExporter {
                     }
                 }
             }
-            cursor.advance(8)
+            cursor.advance(compact ? 4 : 8)
         }
 
         // Custom ruleset sections and user-defined templated blocks.
@@ -407,7 +448,9 @@ public enum SheetPDFExporter {
             cursor.section("\(c.rulesetName ?? "Custom") Abilities", margin: margin)
             let cols: [(String, Double)] = [("Ability", 0), ("Score", 200), ("Mod", 270)]
             cursor.ensure(16)
-            cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
+            if !compact {
+                cursor.doc.fillRect(page: cursor.page, x: margin, y: cursor.y - 14, w: contentW, h: 16, gray: 0.9)
+            }
             for (title, off) in cols {
                 cursor.put(margin + 4 + off, title, size: 8, face: .bold)
             }
@@ -489,6 +532,7 @@ public enum SheetPDFExporter {
         var doc: PDFDocument
         var page: Int
         var y: Double
+        var compact = false
         let bottom = 60.0
 
         init(doc: PDFDocument) {
@@ -519,12 +563,19 @@ public enum SheetPDFExporter {
         }
 
         mutating func section(_ title: String, margin: Double) {
-            ensure(30)
-            doc.text(page: page, x: margin, y: y, title.uppercased(), size: 10, face: .bold,
-                     rgb: SheetPDFExporter.brass)
-            advance(13)
-            ruleColored(margin, width: doc.pageSize.width - margin * 2, rgb: SheetPDFExporter.brass)
-            advance(11)
+            ensure(compact ? 24 : 30)
+            if compact {
+                doc.text(page: page, x: margin, y: y, title.uppercased(), size: 9, face: .bold)
+                advance(11)
+                rule(margin, width: doc.pageSize.width - margin * 2, gray: 0.6)
+                advance(8)
+            } else {
+                doc.text(page: page, x: margin, y: y, title.uppercased(), size: 10, face: .bold,
+                         rgb: SheetPDFExporter.brass)
+                advance(13)
+                ruleColored(margin, width: doc.pageSize.width - margin * 2, rgb: SheetPDFExporter.brass)
+                advance(11)
+            }
         }
 
         mutating func ruleColored(_ x: Double, width: Double, rgb: (r: Double, g: Double, b: Double)) {

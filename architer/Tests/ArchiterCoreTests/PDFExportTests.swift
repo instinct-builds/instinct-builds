@@ -42,6 +42,29 @@ private func aria() -> Character {
 @Suite("PDF export")
 struct PDFExportTests {
 
+    @Test func compactLayoutIsInkLightAndComplete() throws {
+        var c = aria()
+        c.proficienciesText = "Armor: light - Weapons: simple, martial"
+        c.toolProficiencies = [ToolProficiency(name: "Thieves' tools", tier: .expert)]
+        let full = SheetPDFExporter.export(c)
+        let compact = SheetPDFExporter.export(c, style: .compact)
+        let fullText = String(data: full, encoding: .utf8) ?? ""
+        let compactText = String(data: compact, encoding: .utf8) ?? ""
+        // Proficiencies and tools lines ship in BOTH layouts.
+        #expect(fullText.contains("Proficiencies: Armor: light"))
+        #expect(compactText.contains("Proficiencies: Armor: light"))
+        #expect(compactText.contains("Tools: Thieves' tools (expertise)"))
+        // Compact uses no color operators and no filled rects (ink-light).
+        #expect(!compactText.contains(" rg"))
+        #expect(!compactText.contains(" RG"))
+        #expect(!compactText.contains(" re f"))
+        // The content still makes it in.
+        #expect(compactText.contains("Aria Thorne"))
+        #expect(compactText.contains("Longbow"))
+        // And it is genuinely smaller than the styled layout.
+        #expect(compact.count < full.count)
+    }
+
     @Test func validPDFStructure() throws {
         let data = SheetPDFExporter.export(aria())
         let text = String(decoding: data, as: UTF8.self)

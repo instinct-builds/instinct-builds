@@ -74,6 +74,8 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Exports as files.
     let pdf = SheetPDFExporter.export(character)
     try? pdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet.pdf"))
+    let compactPdf = SheetPDFExporter.export(character, style: .compact)
+    try? compactPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact.pdf"))
     try? SheetExporter.exportHTML(character).write(toFile: "\(outDir)/sample-sheet.html", atomically: true, encoding: .utf8)
     try? SheetExporter.exportMarkdown(character).write(toFile: "\(outDir)/sample-sheet.md", atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")

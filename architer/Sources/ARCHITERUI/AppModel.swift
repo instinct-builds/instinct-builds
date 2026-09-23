@@ -323,6 +323,15 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    public func exportCompactPDF() {
+        guard let sel = selected?.wrappedValue else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(sel.name)-compact.pdf"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? SheetPDFExporter.export(sel, style: .compact).write(to: url)
+        }
+    }
+
     public func exportCharacterJSON() {
         guard let sel = selected?.wrappedValue,
               let data = try? CharacterIO.exportJSON(sel),

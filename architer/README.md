@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.17.0
+
+- Print-friendly compact PDF: a second layout style for export -
+  ink-light (no boxes, fills, or color), tighter spacing, abilities and
+  vitals as text lines. File menu gains "Export Compact PDF...";
+  "Export PDF..." keeps the styled layout.
+- Both PDF layouts now include the proficiencies and tool lines in the
+  header (previously Markdown/HTML only).
+
 ## What's in 2.16.0
 
 - Conditions meet movement: grappled and restrained drop every speed
