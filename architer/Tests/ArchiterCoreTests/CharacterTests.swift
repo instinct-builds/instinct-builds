@@ -580,7 +580,7 @@ struct JournalTests {
         let html = SheetExporter.exportHTML(c)
         #expect(html.contains("<h2>Journal</h2>"))
         let pdf = String(decoding: SheetPDFExporter.export(c), as: UTF8.self)
-        #expect(pdf.contains("(Journal"))
+        #expect(pdf.contains("(JOURNAL"))
         // Empty journal stays out of every export.
         let empty = SheetExporter.exportMarkdown(Character(name: "Test"))
         #expect(!empty.contains("## Journal"))
