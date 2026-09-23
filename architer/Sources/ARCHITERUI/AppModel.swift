@@ -135,6 +135,8 @@ public final class AppModel: ObservableObject {
     }
 
     private func record(_ r: RollResult) {
+        var r = r
+        r.characterName = selected?.wrappedValue.name
         rollHistory.insert(r, at: 0)
         if rollHistory.count > 200 { rollHistory.removeLast(rollHistory.count - 200) }
         rollHistoryStore.save(rollHistory)

@@ -39,6 +39,17 @@ public struct RollResult: Equatable, Codable, Sendable {
     public let alternateTotal: Int?
     /// What the roll was for ("Stealth check", "Longsword damage"); nil for raw notation.
     public var label: String? = nil
+    /// Name of the character selected when the roll was made; nil for
+    /// rolls made with no character selected (or pre-2.2 saves).
+    public var characterName: String? = nil
+}
+
+public extension Array where Element == RollResult {
+    /// Rolls made for one character. nil returns the full table log.
+    func forCharacter(_ name: String?) -> [RollResult] {
+        guard let name else { return self }
+        return filter { $0.characterName == name }
+    }
 }
 
 /// Parses and evaluates dice notation: `d20`, `2d6+3`, `4d6kh3` (keep highest 3),

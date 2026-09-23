@@ -94,3 +94,41 @@ struct DiceRollingTests {
         }
     }
 }
+
+@Suite("Per-character roll history")
+struct CharacterRollHistoryTests {
+
+    private func roll(_ label: String, character: String?) -> RollResult {
+        var r = RollResult(expression: "1d20", dice: [], modifier: 0, total: 10, alternateTotal: nil)
+        r.label = label
+        r.characterName = character
+        return r
+    }
+
+    @Test func forCharacterFiltersByTag() {
+        let rolls = [roll("a", character: "Wren"), roll("b", character: "Bram"),
+                     roll("c", character: nil), roll("d", character: "Wren")]
+        #expect(rolls.forCharacter(nil).count == 4)
+        #expect(rolls.forCharacter("Wren").map { $0.label ?? "" } == ["a", "d"])
+        #expect(rolls.forCharacter("Bram").count == 1)
+        #expect(rolls.forCharacter("Nobody").isEmpty)
+    }
+
+    @Test func oldHistoryWithoutCharacterDecodes() throws {
+        // Pre-2.2 roll-history entries have no characterName key.
+        let json = Data(#"[{"expression":"1d20","dice":[],"modifier":0,"total":7}]"#.utf8)
+        let rolls = try JSONDecoder().decode([RollResult].self, from: json)
+        #expect(rolls.count == 1)
+        #expect(rolls[0].characterName == nil)
+        #expect(rolls[0].total == 7)
+    }
+
+    @Test func characterNameRoundTrips() throws {
+        var r = RollResult(expression: "2d6", dice: [], modifier: 0, total: 9, alternateTotal: nil)
+        r.characterName = "Wren"
+        let data = try JSONEncoder().encode(r)
+        let decoded = try JSONDecoder().decode(RollResult.self, from: data)
+        #expect(decoded == r)
+        #expect(decoded.characterName == "Wren")
+    }
+}

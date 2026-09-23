@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.2.0
+
+- Per-character roll history: every roll is tagged with the selected
+  character, and the Dice tab history can filter between the whole table
+  log and the current character's rolls. Older saved rolls stay in the
+  shared log.
+
 ## What's in 2.1.0
 
 - Versatile weapons: attacks added from the weapon library carry their two-handed damage die; a 1H/2H toggle on the attack row switches the rolled damage expression (genre-standard grip behavior). Roll labels note "(two-handed)".

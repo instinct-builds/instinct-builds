@@ -37,6 +37,13 @@ public struct DiceRollerView: View {
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
     @State private var macroNameDraft = ""
+    /// History scope: false = whole table, true = selected character only.
+    @State private var historyForCharacter = false
+
+    private var visibleHistory: [RollResult] {
+        let name = historyForCharacter ? model.selected?.wrappedValue.name : nil
+        return model.rollHistory.forCharacter(name)
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -96,13 +103,22 @@ public struct DiceRollerView: View {
             }
             HStack {
                 Text("History").font(.headline)
+                if let name = model.selected?.wrappedValue.name {
+                    Picker("", selection: $historyForCharacter) {
+                        Text("All").tag(false)
+                        Text(name).tag(true)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 220)
+                }
                 Spacer()
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }
             ScrollView {
                 LazyVStack(spacing: Theme.Gap.sm) {
-                    ForEach(model.rollHistory.indices, id: \.self) { i in
-                        RollCard(roll: model.rollHistory[i])
+                    ForEach(Array(visibleHistory.enumerated()), id: \.offset) { _, roll in
+                        RollCard(roll: roll)
                     }
                 }
             }
