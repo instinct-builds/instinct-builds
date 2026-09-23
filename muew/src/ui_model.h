@@ -69,6 +69,8 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::FxChorusDepth: return "CH DEPTH";
     case ModRoute::Dest::Osc1Warp2: return "WARP 2 A";
     case ModRoute::Dest::Osc2Warp2: return "WARP 2 B";
+    case ModRoute::Dest::FilterDrive: return "F DRIVE";
+    case ModRoute::Dest::FilterMorph: return "F MORPH";
     }
     return "?";
 }
@@ -81,8 +83,8 @@ inline const char* subShapeName(int s) {
     return (s >= 0 && s < 3) ? n[s] : "?";
 }
 inline const char* filterModeName(int m) {
-    static const char* n[] = {"LOW PASS", "BAND PASS", "HIGH PASS", "NOTCH", "PEAK"};
-    return (m >= 0 && m < 5) ? n[m] : "?";
+    static const char* n[] = {"LOW PASS", "BAND PASS", "HIGH PASS", "NOTCH", "PEAK", "LADDER 24", "COMB +", "COMB -", "MORPH"}; // 5-8: 0.21.0
+    return (m >= 0 && m < kFilterModes) ? n[m] : "?";
 }
 
 // Full-scale route amount per destination (units differ by dest): the
@@ -187,7 +189,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::Osc2Level, D::UnisonWidth, D::FilterCutoff, D::FilterResonance, D::DistDrive,
                                   D::Osc1WtPos, D::Osc2WtPos, D::SubLevel, D::NoiseLevel, D::Filter2Cutoff,
                                   D::FxDelayFeedback, D::FxReverbDecay, D::FxPhaserDepth, D::FxFlangerDepth, D::FxChorusDepth,
-                                  D::Osc1Warp2, D::Osc2Warp2}; // 0.19.0 appended
+                                  D::Osc1Warp2, D::Osc2Warp2, // 0.19.0 appended
+                                  D::FilterDrive, D::FilterMorph}; // 0.21.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.

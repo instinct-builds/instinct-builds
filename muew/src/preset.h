@@ -45,6 +45,7 @@ struct PresetInfo {
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
+//                  0.21.0 adds optional `filterx <drive> <keytrack> <morph>`; filterMode 5-8.
 //                  0.19.0 adds optional `warpx <modeA> <amtA> <modeB> <amtB>` (second
 //                  warp slots) and `remap <osc> <n> (<t> <v> <c>)*` lines.
 //                  0.16.0 adds optional `curve <c>` / `aux <source>` suffixes
@@ -188,7 +189,7 @@ struct Preset {
             else if (key == "osc2Level") ls >> voice.osc2Level;
             else if (key == "filterCutoff") ls >> voice.filterCutoff;
             else if (key == "filterReso") ls >> voice.filterReso;
-            else if (key == "filterMode") ls >> voice.filterMode;
+            else if (key == "filterMode") { ls >> voice.filterMode; voice.filterMode = std::clamp(voice.filterMode, 0, kFilterModes - 1); }
             else if (key == "amp") ls >> voice.ampA >> voice.ampD >> voice.ampS >> voice.ampR;
             else if (key == "mod") ls >> voice.modA >> voice.modD >> voice.modS >> voice.modR;
             else if (key == "lfo1Rate") ls >> voice.lfo1Rate;
@@ -196,6 +197,12 @@ struct Preset {
             else if (key == "lfo2") ls >> voice.lfo2Rate >> voice.lfo2Shape;
             else if (key == "warp1") ls >> voice.osc1WarpMode >> voice.osc1Warp;
             else if (key == "warp2") ls >> voice.osc2WarpMode >> voice.osc2Warp;
+            else if (key == "filterx") { // 0.21.0: drive keytrack morph
+                double d = 0, k = 0, m = 0;
+                if (ls >> d >> k >> m && std::isfinite(d) && std::isfinite(k) && std::isfinite(m)) {
+                    voice.filterDrive = std::clamp(d, 0.0, 1.0); voice.filterKeytrack = std::clamp(k, 0.0, 1.0); voice.filterMorph = std::clamp(m, 0.0, 1.0);
+                }
+            }
             else if (key == "warpx") { // 0.19.0
                 int m1 = 0, m2 = 0; double a1 = 0, a2 = 0;
                 if (ls >> m1 >> a1 >> m2 >> a2 && std::isfinite(a1) && std::isfinite(a2)) {
@@ -399,7 +406,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::MSEG2 && d >= 0 && d <= (int)ModRoute::Dest::Osc2Warp2) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::MSEG2 && d >= 0 && d <= (int)ModRoute::Dest::FilterMorph) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
                     std::string k2;
@@ -469,6 +476,7 @@ struct Preset {
             && tables[0] == o.tables[0] && tables[1] == o.tables[1];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;
+        if (a.filterDrive != b.filterDrive || a.filterKeytrack != b.filterKeytrack || a.filterMorph != b.filterMorph) return false; // 0.21.0
         if (a.osc1Warp2Mode != b.osc1Warp2Mode || a.osc1Warp2 != b.osc1Warp2 || a.osc2Warp2Mode != b.osc2Warp2Mode || a.osc2Warp2 != b.osc2Warp2
             || !pointsEq(a.remapPoints[0], b.remapPoints[0]) || !pointsEq(a.remapPoints[1], b.remapPoints[1])) return false;
         for (int i = 0; i < 4; ++i)
@@ -541,6 +549,8 @@ private:
             for (const auto& p : v.mseg2Points) o << " " << p.time << " " << p.value << " " << p.curve;
             o << "\n";
         }
+        if (v.filterDrive != 0 || v.filterKeytrack != 0 || v.filterMorph != 0) // 0.21.0
+            o << "filterx " << v.filterDrive << " " << v.filterKeytrack << " " << v.filterMorph << "\n";
         if (v.osc1Warp2Mode != 0 || v.osc1Warp2 != 0 || v.osc2Warp2Mode != 0 || v.osc2Warp2 != 0) // 0.19.0
             o << "warpx " << v.osc1Warp2Mode << " " << v.osc1Warp2 << " " << v.osc2Warp2Mode << " " << v.osc2Warp2 << "\n";
         for (int k = 0; k < 2; ++k)

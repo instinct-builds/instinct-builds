@@ -719,6 +719,35 @@ int main() {
             Check(ok && back.parse(txt) && back == st && txt.find("\nwt1 64 ") != std::string::npos, "the AU state saves the 64-frame table");
             fflush(stdout);
         });
+        After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
+            CGFloat t = view.bounds.size.height - 100;
+            Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab
+            muew::Preset st0;
+            bool ok0 = State(st0);
+            for (int i = 0; i < 9 && ok0 && st0.voice.filterMode != 5; ++i) {
+                Click(view, w, NSMakePoint(656 + 116 - 8, t - 29 + 8.5));      // model right arrow
+                ok0 = State(st0);
+            }
+            Check(ok0 && st0.voice.filterMode == 5, "the FILTER 1 model arrows reached LADDER 24 in the AU's sound");
+            Click(view, w, NSMakePoint(656 + 8, t - 29 + 8.5));                // left arrow: back one model
+            muew::Preset back1;
+            bool ok1 = State(back1);
+            Click(view, w, NSMakePoint(656 + 116 - 8, t - 29 + 8.5));          // right arrow: LADDER 24 again
+            Check(ok1 && back1.voice.filterMode == 4, "the left arrow stepped the model back to PEAK");
+            Click(view, w, NSMakePoint(494 + 0.45 * 88, t - 167 + 6.5));       // DRIVE bar at 45%
+            Click(view, w, NSMakePoint(494 + 94 + 0.75 * 88, t - 167 + 6.5));  // KEYTRACK bar at 75%
+            Snapshot(view, "MUEW_FILTER_PNG", "FILTER 1 panel snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            printf("filter 1: model %d, drive %.3f, keytrack %.3f, morph %.3f\n", st.voice.filterMode, st.voice.filterDrive, st.voice.filterKeytrack, st.voice.filterMorph);
+            Check(ok && st.voice.filterMode == 5 && std::fabs(st.voice.filterDrive - 0.45) < 0.01 && std::fabs(st.voice.filterKeytrack - 0.75) < 0.01,
+                  "the DRIVE and KEYTRACK bars set 45% / 75% on LADDER 24 in the AU");
+            muew::Preset rt;
+            std::string txt = ok ? st.serialize() : "";
+            Check(ok && rt.parse(txt) && rt == st && txt.find("\nfilterx ") != std::string::npos && txt.find("\nfilterMode 5\n") != std::string::npos,
+                  "the AU state saves the filter model, drive and keytrack");
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });

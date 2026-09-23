@@ -62,7 +62,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -305,6 +305,10 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)f2Display { return NSMakeRect(686, [self top] - 138, 86, 94); }
 - (NSRect)f2TypeRect { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x, NSMaxY(r) - 18, r.size.width, 18); }
 - (NSRect)f2RouteRect:(int)i { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x + 5 + i * 39, r.origin.y + 4, 37, 13); }
+// 0.21.0 FILTER 1 page: model selector (arrows step the model), response display, DRIVE / KEYTRACK / MORPH bars.
+- (NSRect)f1ModelRect { return NSMakeRect(656, [self top] - 29, 116, 17); }
+- (NSRect)f1MsegChip { NSRect r = [self f2Display]; return NSMakeRect(NSMaxX(r) - 37, r.origin.y + 4, 33, 13); }
+- (NSRect)f1Bar:(int)i { return NSMakeRect(494 + i * 94, [self top] - 167, 88, 13); }
 - (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 186 - i * 20, 48, 15); }
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 260, 440, 260); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
@@ -582,9 +586,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             const int fi = ThumbFrame(i, nT);
             const bool on = i == selT;
             FillRound(r, 4, on ? [col colorWithAlphaComponent:.22] : C(0x0f141b));
-            StrokeFrame(t[fi], NSInsetRect(r, 2, 4), .4, on ? col : [col colorWithAlphaComponent:.55], 1);
-            if (nT > 16) TextA([NSString stringWithFormat:@"%d", fi + 1], NSMakeRect(r.origin.x, r.origin.y + 1, r.size.width - 2, 8), 5.5,
-                               C(0x6f7b8b), NSFontWeightSemibold, NSTextAlignmentRight);
+            if (nT > 16) { // 0.21.0: the frame number gets its own band under the wave instead of sitting on it
+                StrokeFrame(t[fi], NSMakeRect(r.origin.x + 2, r.origin.y + 11, r.size.width - 4, r.size.height - 13), .4,
+                            on ? col : [col colorWithAlphaComponent:.55], 1);
+                FillRound(NSMakeRect(r.origin.x + 2, r.origin.y + 2, r.size.width - 4, 9), 2, on ? [col colorWithAlphaComponent:.28] : C(0x161c25));
+                TextA([NSString stringWithFormat:@"%d", fi + 1], NSMakeRect(r.origin.x, r.origin.y + 2.5, r.size.width, 9), 7,
+                      on ? C(0xeaf1f8) : C(0xa8b2c1), NSFontWeightSemibold, NSTextAlignmentCenter);
+            } else
+                StrokeFrame(t[fi], NSInsetRect(r, 2, 4), .4, on ? col : [col colorWithAlphaComponent:.55], 1);
             if (on) {
                 NSBezierPath* sel = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, .5, .5) xRadius:4 yRadius:4];
                 [col setStroke]; sel.lineWidth = 1; [sel stroke];
@@ -658,6 +667,73 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(b, 3, sel ? C(0xf2ab55, .25) : C(0x161c25));
         TextA(routes[i], NSMakeRect(b.origin.x, b.origin.y + 2, b.size.width, 10), 7, sel ? C(0xf2ab55) : C(0x6f7b8b),
               NSFontWeightBold, NSTextAlignmentCenter);
+    }
+}
+
+// Filter 1 response, measured by running the real filter 1 model on test tones.
+- (void)filter1In:(NSRect)r {
+    const VoiceParams& v = current.voice;
+    FillRound(r, 7, C(0x0a0d12));
+    Text(@"RESPONSE", NSMakeRect(r.origin.x + 6, NSMaxY(r) - 15, r.size.width - 8, 12), 8, C(0xf2ab55), NSFontWeightSemibold);
+    NSRect plot = NSMakeRect(r.origin.x + 5, r.origin.y + 21, r.size.width - 10, r.size.height - 40);
+    for (int g = 0; g < 3; ++g) // 0 dB, -18 dB, -36 dB guides
+        FillRound(NSMakeRect(plot.origin.x, plot.origin.y + plot.size.height * (48.0 - 12.0 - g * 18.0) / 48.0, plot.size.width, 1), 0, C(g ? 0x141a22 : 0x1c232d));
+    const double sr = 44100.0, lo = 30.0, hi = 18000.0;
+    const double fc = std::clamp((double)v.filterCutoff, lo, hi);
+    CGFloat cx = plot.origin.x + plot.size.width * std::log(fc / lo) / std::log(hi / lo);
+    FillRound(NSMakeRect(cx - .5, plot.origin.y, 1, plot.size.height), 0, C(0xf2ab55, .22));
+    Filter1 f; f.setSampleRate(sr); f.setMode(v.filterMode); f.setDrive(v.filterDrive); f.setMorph(v.filterMorph); f.set(v.filterCutoff, v.filterReso);
+    const bool comb = v.filterMode == 6 || v.filterMode == 7;
+    const int pts = comb ? 80 : 48;
+    const double amp = 0.25;
+    NSBezierPath* path = [NSBezierPath bezierPath];
+    for (int i = 0; i < pts; ++i) {
+        const double hz = lo * std::pow(hi / lo, i / (double)(pts - 1));
+        f.reset();
+        double pk = 0;
+        const int n = comb ? 2600 : 1400;
+        for (int s2 = 0; s2 < n; ++s2) {
+            float y = f.process((float)(amp * std::sin(2 * M_PI * hz * s2 / sr)));
+            if (s2 > n - 500) pk = std::max(pk, (double)std::fabs(y));
+        }
+        const double db = std::clamp(20 * std::log10(pk / amp + 1e-6), -36.0, 12.0);
+        CGFloat x = plot.origin.x + plot.size.width * i / (pts - 1);
+        CGFloat y = plot.origin.y + plot.size.height * (db + 36.0) / 48.0;
+        i ? [path lineToPoint:NSMakePoint(x, y)] : [path moveToPoint:NSMakePoint(x, y)];
+    }
+    NSBezierPath* fill = [path copy];
+    [fill lineToPoint:NSMakePoint(NSMaxX(plot), plot.origin.y)]; [fill lineToPoint:NSMakePoint(plot.origin.x, plot.origin.y)]; [fill closePath];
+    [C(0xf2ab55, .10) setFill]; [fill fill];
+    [C(0xf2ab55, .25) setStroke]; path.lineWidth = 4; [path stroke];
+    [C(0xf2ab55) setStroke]; path.lineWidth = 1.5; [path stroke];
+    char b[16];
+    if (fc >= 1000) snprintf(b, sizeof b, "%.1fk", fc / 1000); else snprintf(b, sizeof b, "%.0f", fc);
+    TextA(S(b), NSMakeRect(r.origin.x + 5, r.origin.y + 5, 36, 10), 7, C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentLeft);
+    NSRect m = [self f1MsegChip]; // MSEG 1 lives one click away (its editor)
+    FillRound(m, 3, C(0x161c25));
+    TextA(@"MSEG", NSMakeRect(m.origin.x, m.origin.y + 2, m.size.width, 10), 7, C(0x66e2d0), NSFontWeightBold, NSTextAlignmentCenter);
+}
+
+- (void)filter1Controls {
+    const VoiceParams& v = current.voice;
+    NSRect mr = [self f1ModelRect];
+    FillRound(mr, 4, C(0x1b222c));
+    TextA(@"\u25C2", NSMakeRect(mr.origin.x + 3, mr.origin.y + 2.5, 12, 12), 9, C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA(@"\u25B8", NSMakeRect(NSMaxX(mr) - 15, mr.origin.y + 2.5, 12, 12), 9, C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA(S(ui::filterModeName(v.filterMode)), NSMakeRect(mr.origin.x + 14, mr.origin.y + 3, mr.size.width - 28, 11), 8.5, C(0xf2ab55),
+          NSFontWeightBold, NSTextAlignmentCenter);
+    const char* names[3] = {"DRIVE", "KEYTRACK", "MORPH"};
+    const double vals[3] = {v.filterDrive, v.filterKeytrack, v.filterMorph};
+    for (int i = 0; i < 3; ++i) {
+        NSRect r = [self f1Bar:i];
+        const bool live = i != 2 || v.filterMode == 8; // MORPH shapes only the MORPH model
+        NSColor* col = live ? C(0xf2ab55) : C(0x4a5462);
+        FillRound(r, 3, C(0x1c232d));
+        if (vals[i] > 0) FillRound(NSMakeRect(r.origin.x, r.origin.y, std::max<CGFloat>(4, r.size.width * vals[i]), r.size.height), 3, live ? C(0xf2ab55, .55) : C(0x4a5462, .6));
+        TextA(S(names[i]), NSMakeRect(r.origin.x + 5, r.origin.y + 2, r.size.width - 10, 10), 7, live ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
+        char b[8]; snprintf(b, sizeof b, "%.0f%%", vals[i] * 100);
+        TextA(S(b), NSMakeRect(r.origin.x + 5, r.origin.y + 2, r.size.width - 10, 10), 7, live ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
+        (void)col;
     }
 }
 
@@ -832,10 +908,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         }
     }
     if (filterPage == 0) {
-        TextA(S(ui::filterModeName(v.filterMode)), NSMakeRect(640, top - 27, 128, 14), 9, C(0xf2ab55), NSFontWeightSemibold, NSTextAlignmentRight);
+        [self filter1Controls];
         [self knob:ui::Cutoff accent:C(0xf2ab55)];
         [self knob:ui::Resonance accent:C(0xf2ab55)];
-        [self msegIn:NSMakeRect(686, top - 138, 86, 94)];
+        [self filter1In:[self f2Display]]; // 0.21.0: the response curve takes the MSEG 1 spot; its MSEG chip opens the editor
         [self knob:ui::Attack accent:C(0x6cb6ff)];
         [self knob:ui::Release accent:C(0x6cb6ff)];
         [self knob:ui::MsegTime accent:C(0x5adac8)];
@@ -2011,7 +2087,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 }
 
 // FILTER panel page tabs and the FILTER 2 + SUB page's click controls.
-- (BOOL)filterPanelMouseDown:(NSPoint)p {
+- (BOOL)filterPanelMouseDown:(NSPoint)p event:(NSEvent*)e {
     for (int i = 0; i < 2; ++i)
         if (NSPointInRect(p, [self filterTab:i])) {
             filterPage = i;
@@ -2019,7 +2095,34 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             [self setNeedsDisplay:YES];
             return YES;
         }
-    if (filterPage == 0 && NSPointInRect(p, [self f2Display])) { // MSEG 1 display: open its editor
+    if (filterPage == 0) { // 0.21.0: model arrows, DRIVE / KEYTRACK / MORPH bars, response display
+        VoiceParams& v = current.voice;
+        NSRect mr = [self f1ModelRect];
+        if (NSPointInRect(p, mr)) {
+            const int step = (p.x < NSMidX(mr) - 20) ? -1 : 1; // left arrow steps back, the rest steps forward
+            v.filterMode = (v.filterMode + step + kFilterModes) % kFilterModes;
+            edited = true; [self applySound]; [self setNeedsDisplay:YES];
+            return YES;
+        }
+        for (int i = 0; i < 3; ++i)
+            if (NSPointInRect(p, NSInsetRect([self f1Bar:i], -2, -3))) {
+                double& val = i == 0 ? v.filterDrive : i == 1 ? v.filterKeytrack : v.filterMorph;
+                if (e.clickCount == 2) { val = 0; edited = true; [self applySound]; }
+                else {
+                    NSRect r = [self f1Bar:i]; // click sets the value under the pointer, then drags
+                    val = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
+                    filterXDrag = i; dragValue = val; edited = true; [self applySound];
+                }
+                [self setNeedsDisplay:YES];
+                return YES;
+            }
+        if (NSPointInRect(p, [self f2Display]) && !NSPointInRect(p, NSInsetRect([self f1MsegChip], -3, -3))) {
+            v.filterMode = (v.filterMode + 1) % kFilterModes; // the display cycles the model, like FILTER 2's
+            edited = true; [self applySound]; [self setNeedsDisplay:YES];
+            return YES;
+        }
+    }
+    if (filterPage == 0 && NSPointInRect(p, NSInsetRect([self f1MsegChip], -3, -3))) { // MSEG chip: open MSEG 1's editor
         msegEdit = 0; fxDetail = -1;
         const auto& srcs = ui::matrixSources();
         for (int i = 0; i < (int)srcs.size(); ++i) if (srcs[i] == ModRoute::Source::MSEG1) modSel = i;
@@ -2377,7 +2480,7 @@ static int SortForColumn(int c) {
     if (NSPointInRect(p, [self expandRect]) || NSPointInRect(p, [self presetDisplayRect])) { [self setBrowserOpen:true]; return; }
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
     if ([self oscMouseDown:p event:e]) return;
-    if ([self filterPanelMouseDown:p]) return;
+    if ([self filterPanelMouseDown:p event:e]) return;
     if ([self msegMouseDown:p event:e]) return;
     if ([self fxDetailMouseDown:p event:e]) return;
     dragKnob = [self hitKnob:p];
@@ -2474,6 +2577,13 @@ static int SortForColumn(int c) {
         return;
     }
     if (msegEdit >= 0 && (msegPt >= 0 || msegSeg >= 0 || msegLoopEdge >= 0)) { [self msegDragTo:p shift:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return; }
+    if (filterXDrag >= 0) { // 0.21.0 FILTER 1 bars: the full bar width is 0..100%
+        VoiceParams& v = current.voice;
+        double& val = filterXDrag == 0 ? v.filterDrive : filterXDrag == 1 ? v.filterKeytrack : v.filterMorph;
+        val = std::clamp(dragValue + (p.x - dragStart.x) / ([self f1Bar:filterXDrag].size.width * scale / 150.0), 0.0, 1.0);
+        edited = true; [self applySound]; [self setNeedsDisplay:YES];
+        return;
+    }
     if (warpAmtDrag >= 0) { // WARP 2 amount: the full bar width is 0..100%
         ui::warpAmount(current.voice, warpAmtDrag, 1) =
             std::clamp(dragValue + (p.x - dragStart.x) / ([self warpAmt:warpAmtDrag slot:1].size.width * scale / 150.0), 0.0, 1.0);
@@ -2581,7 +2691,7 @@ static int SortForColumn(int c) {
         fxRowDrag = -1;
     }
     dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
-    msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1;
+    msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];

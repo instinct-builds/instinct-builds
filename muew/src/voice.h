@@ -30,7 +30,8 @@ struct ModRoute {
                       SubLevel = 13, NoiseLevel = 14, Filter2Cutoff = 15, // 0.10.0 (0..1 levels, octaves)
                       // 0.14.0: FX detail controls, macro sources only (global FX)
                       FxDelayFeedback = 16, FxReverbDecay = 17, FxPhaserDepth = 18, FxFlangerDepth = 19, FxChorusDepth = 20,
-                      Osc1Warp2 = 21, Osc2Warp2 = 22 } dest;          // 0.19.0: second warp slot amounts (0..1)
+                      Osc1Warp2 = 21, Osc2Warp2 = 22,                 // 0.19.0: second warp slot amounts (0..1)
+                      FilterDrive = 23, FilterMorph = 24 } dest;      // 0.21.0: filter 1 drive / morph (0..1)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -60,7 +61,8 @@ struct VoiceParams {
     double osc2Level = 0.5;
     double filterCutoff = 8000.0;
     double filterReso = 0.7;
-    int filterMode = 0;      // SVFilter::Mode
+    int filterMode = 0;      // 0-4 SVF modes, 5 LADDER 24, 6 COMB +, 7 COMB -, 8 MORPH (0.21.0)
+    double filterDrive = 0.0, filterKeytrack = 0.0, filterMorph = 0.0; // 0.21.0 (0..1)
     double ampA = 0.005, ampD = 0.15, ampS = 0.8, ampR = 0.3;
     double modA = 0.01, modD = 0.3, modS = 0.0, modR = 0.2;
     double lfo1Rate = 5.0, lfo2Rate = 0.35;
@@ -174,8 +176,12 @@ public:
         params_ = p; routes_ = routes;
         for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setShape(std::clamp(p.osc1Shape, 0, 4)); osc2_[i].setShape(std::clamp(p.osc2Shape, 0, 4)); }
         applyCustom();
-        filter_.setMode(static_cast<SVFilter::Mode>(p.filterMode));
-        filterR_.setMode(static_cast<SVFilter::Mode>(p.filterMode));
+        filter_.setMode(p.filterMode);
+        filterR_.setMode(p.filterMode);
+        filter_.setDrive(p.filterDrive); filterR_.setDrive(p.filterDrive);   // 0.21.0
+        filter_.setMorph(p.filterMorph); filterR_.setMorph(p.filterMorph);
+        usesFilterX_ = false;
+        for (const auto& r : routes) if (r.dest == ModRoute::Dest::FilterDrive || r.dest == ModRoute::Dest::FilterMorph) usesFilterX_ = true;
         ampEnv_.set(p.ampA, p.ampD, p.ampS, p.ampR);
         modEnv_.set(p.modA, p.modD, p.modS, p.modR);
         lfo1_.setShape(static_cast<LFO::Shape>(p.lfo1Shape));
@@ -360,8 +366,14 @@ public:
 
         // Cutoff modulation is exponential: amount 1.0 = one octave up at full source.
         double cutoffMod = modSum(ModRoute::Dest::FilterCutoff);
+        if (params_.filterKeytrack > 0 && note_ >= 0) cutoffMod += params_.filterKeytrack * (note_ - 60) / 12.0; // 0.21.0
         double cutoff = params_.filterCutoff * std::pow(2.0, cutoffMod);
         double resonance = std::clamp(params_.filterReso + modSum(ModRoute::Dest::FilterResonance), 0.1, 18.0);
+        if (usesFilterX_) { // routed drive/morph: per-sample
+            const double dv = std::clamp(params_.filterDrive + modSum(ModRoute::Dest::FilterDrive), 0.0, 1.0);
+            const double mv = std::clamp(params_.filterMorph + modSum(ModRoute::Dest::FilterMorph), 0.0, 1.0);
+            filter_.setDrive(dv); filterR_.setDrive(dv); filter_.setMorph(mv); filterR_.setMorph(mv);
+        }
         filter_.set(cutoff, resonance);
         l = filter_.process(l);
         if (stereo) { filterR_.set(cutoff, resonance); r = filterR_.process(r); }
@@ -496,6 +508,7 @@ private:
     std::vector<MSEG::Point> remapPts_[2];
     bool remapValid_[2] = {false, false};
     bool usesWarpX_ = false;
+    bool usesFilterX_ = false; // 0.21.0: a route targets FILTER DRIVE or MORPH
     double w2a_ = 0.0, w2b_ = 0.0;
     static bool warp2Prone(int mode) { return mode >= 2 && mode != 5 && mode != 6 ? true : false; }
     void applyLfoExtras() {
@@ -544,7 +557,7 @@ private:
     bool active1_ = false, active2_ = false;
     double bpm_ = 120.0;
     Oscillator osc1_[kMaxUnison], osc2_[kMaxUnison];
-    SVFilter filter_, filterR_;
+    Filter1 filter_, filterR_; // 0.21.0 (SVF modes run exactly as the old SVFilter)
     Envelope ampEnv_, modEnv_;
     LFO lfo1_, lfo2_;
     MSEG mseg1_, mseg2_;
