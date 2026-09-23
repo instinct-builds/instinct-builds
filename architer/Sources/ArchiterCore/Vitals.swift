@@ -27,6 +27,31 @@ public enum Condition: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// A user-defined condition: a name plus which d20 side effects it carries.
+/// Complements the built-in list for homebrew states ("Dazed", "Marked").
+public struct CustomCondition: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID = UUID()
+    public var name: String
+    /// Attack disadvantage, mirroring the built-in flag.
+    public var hindersAttacks: Bool
+    /// Ability-check disadvantage.
+    public var hindersChecks: Bool
+
+    public init(name: String, hindersAttacks: Bool = false, hindersChecks: Bool = false) {
+        self.name = name
+        self.hindersAttacks = hindersAttacks
+        self.hindersChecks = hindersChecks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        hindersAttacks = try c.decodeIfPresent(Bool.self, forKey: .hindersAttacks) ?? false
+        hindersChecks = try c.decodeIfPresent(Bool.self, forKey: .hindersChecks) ?? false
+    }
+}
+
 /// Coin purse with genre-standard denominations: 10 cp = 1 sp, 5 sp = 1 ep,
 /// 10 sp (or 2 ep) = 1 gp, 10 gp = 1 pp. Totals convert to copper.
 public struct Currency: Codable, Equatable, Sendable {

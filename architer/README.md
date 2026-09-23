@@ -4,6 +4,17 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.14.0
+
+- Custom conditions: name your own states (homebrew, module-specific)
+  with the same side-effect flags the built-ins carry - attack
+  disadvantage and check disadvantage. They drive effective roll mode
+  exactly like built-in conditions, show up in the roll UI's
+  disadvantage source list, and export in the conditions line of
+  Markdown, HTML, and PDF. Old saves decode with none.
+- Sample sheet: Wren is "Vault-marked" (hinders checks) after the
+  singing vault.
+
 ## What's in 2.13.0
 
 - Movement modes: fly, swim, climb, and burrow speeds alongside walking

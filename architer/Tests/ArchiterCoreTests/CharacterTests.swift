@@ -132,6 +132,40 @@ struct CharacterTests {
         #expect(old.movementSummary == "30 ft")
     }
 
+    @Test func customConditionsDecodeAndHinder() throws {
+        var c = Character(name: "T", level: 1)
+        #expect(c.customConditions.isEmpty)
+        #expect(c.activeConditionNames.isEmpty)
+        let marked = CustomCondition(name: "Marked", hindersChecks: true)
+        let dazed = CustomCondition(name: "Dazed", hindersAttacks: true)
+        c.customConditions = [marked, dazed]
+        c.conditions = [.poisoned]
+        // Built-ins sort first, then custom names.
+        #expect(c.activeConditionNames == ["Poisoned", "Dazed", "Marked"])
+        #expect(c.customDisadvantageSources(for: .check).map(\.name) == ["Marked"])
+        #expect(c.customDisadvantageSources(for: .attack).map(\.name) == ["Dazed"])
+        #expect(c.customDisadvantageSources(for: .save).isEmpty)
+        // Combined display names feed the roll UI.
+        #expect(c.disadvantageSourceNames(for: .check) == ["Poisoned", "Marked"])
+        // Custom conditions drive effective roll mode like built-ins.
+        #expect(c.effectiveRollMode(.normal, for: .attack) == .disadvantage)
+        c.customConditions = [marked]
+        #expect(c.effectiveRollMode(.normal, for: .attack) == .normal)
+        #expect(c.effectiveRollMode(.advantage, for: .check) == .normal)
+        // Old saves without the customConditions key decode empty.
+        let json = """
+        {"id":"00000000-0000-0000-0000-000000000003",
+        "name":"Old","lineage":"","calling":"","background":"",
+        "level":1,"experience":0,"scores":{},"skills":[],
+        "savingThrowProficiencies":[],"maxHP":8,"currentHP":8,"armorClass":10,"speed":30,
+        "attacks":[],"inventory":[],"notes":"",
+        "layout":{"blocks":[{"kind":"identity","visible":true,"size":"regular"}]}}
+        """.data(using: .utf8)!
+        let old = try JSONDecoder().decode(Character.self, from: json)
+        #expect(old.customConditions.isEmpty)
+        #expect(old.activeConditionNames.isEmpty)
+    }
+
     @Test func defensesAdjustIncomingDamage() {
         var c = Character(name: "T", level: 1, maxHP: 30)
         c.resistances = [.fire]

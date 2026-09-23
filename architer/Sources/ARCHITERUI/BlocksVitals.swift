@@ -192,6 +192,22 @@ struct ConditionGrid: View {
                 .font(.caption)
             }
         }
+        ForEach($character.customConditions) { $cc in
+            HStack(spacing: Theme.Gap.sm) {
+                TextField("Custom condition", text: $cc.name)
+                    .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 160)
+                Toggle("Atk dis", isOn: $cc.hindersAttacks).toggleStyle(.checkbox)
+                Toggle("Check dis", isOn: $cc.hindersChecks).toggleStyle(.checkbox)
+                Button(role: .destructive) {
+                    character.customConditions.removeAll { $0.id == cc.id }
+                } label: { Image(systemName: "minus.circle") }
+            }
+            .font(.caption)
+        }
+        Button("Add custom condition") {
+            character.customConditions.append(CustomCondition(name: ""))
+        }
+        .controlSize(.small)
     }
 }
 
@@ -210,8 +226,8 @@ struct AttacksBlock: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 300)
-                if !character.disadvantageSources(for: .attack).isEmpty {
-                    Text("Disadvantage from \(character.disadvantageSources(for: .attack).map(\.displayName).joined(separator: ", "))")
+                if !character.disadvantageSourceNames(for: .attack).isEmpty {
+                    Text("Disadvantage from \(character.disadvantageSourceNames(for: .attack).joined(separator: ", "))")
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.danger)
                 }

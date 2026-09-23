@@ -213,8 +213,8 @@ public enum SheetPDFExporter {
                                     t, size: 8)
                 }
                 cursor.advance(Double(rowsNeeded) * 36)
-                if !c.conditions.isEmpty {
-                    cursor.line("Conditions: " + c.conditions.map { $0.displayName }.sorted().joined(separator: ", "), margin: margin, gray: 0.3)
+                if !c.activeConditionNames.isEmpty {
+                    cursor.line("Conditions: " + c.activeConditionNames.joined(separator: ", "), margin: margin, gray: 0.3)
                 }
                 if c.exhaustion > 0 {
                     cursor.line("Exhaustion \(c.exhaustion): \(c.exhaustionStepNote)", margin: margin, gray: 0.3)

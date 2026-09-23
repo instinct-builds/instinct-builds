@@ -140,6 +140,9 @@ public enum SampleContent {
                                          attuned: true, category: "Wondrous",
                                          notes: "Grants a swim speed equal to walking speed."))
         c.extraSpeeds = [MovementSpeed(mode: .swim, feet: 30, label: "Tideglass clasp")]
+        // Story residue from the singing vault: a homebrew state that hinders
+        // ability checks until Wren shakes it.
+        c.customConditions = [CustomCondition(name: "Vault-marked", hindersChecks: true)]
         c.armorClass = 15 // Mage Armor active: 13 + DEX
         return c
     }

@@ -179,7 +179,7 @@ public final class AppModel: ObservableObject {
         var tags: [String] = []
         if penalty > 0 { tags.append("exhaustion -\(penalty)") }
         if effective != mode, effective == .disadvantage {
-            let names = c.disadvantageSources(for: kind).map(\.displayName).joined(separator: ", ")
+            let names = c.disadvantageSourceNames(for: kind).joined(separator: ", ")
             tags.append("disadvantage: \(names)")
         } else if mode == .advantage, effective == .normal {
             tags.append("advantage canceled by condition")
@@ -194,7 +194,7 @@ public final class AppModel: ObservableObject {
         var tags: [String] = []
         if c.exhaustionRollPenalty > 0 { tags.append("exhaustion -\(c.exhaustionRollPenalty)") }
         if effective != mode, effective == .disadvantage {
-            tags.append("disadvantage: \(c.disadvantageSources(for: .attack).map(\.displayName).joined(separator: ", "))")
+            tags.append("disadvantage: \(c.disadvantageSourceNames(for: .attack).joined(separator: ", "))")
         } else if mode == .advantage, effective == .normal {
             tags.append("advantage canceled by condition")
         }

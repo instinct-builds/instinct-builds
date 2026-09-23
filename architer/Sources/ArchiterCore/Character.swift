@@ -402,6 +402,8 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var initiativeBonus: Int      // misc initiative on top of DEX
     public var speed: Int
     public var conditions: Set<Condition>
+    /// User-defined conditions active on the sheet, alongside the built-ins.
+    public var customConditions: [CustomCondition]
     public var resistances: Set<DamageType>
     public var immunities: Set<DamageType>
     public var vulnerabilities: Set<DamageType>
@@ -465,6 +467,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         initiativeBonus: Int = 0,
         speed: Int = 30,
         conditions: Set<Condition> = [],
+        customConditions: [CustomCondition] = [],
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
@@ -513,6 +516,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.initiativeBonus = initiativeBonus
         self.speed = speed
         self.conditions = conditions
+        self.customConditions = customConditions
         self.resistances = resistances
         self.immunities = immunities
         self.vulnerabilities = vulnerabilities
@@ -566,6 +570,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         initiativeBonus = try c.decodeIfPresent(Int.self, forKey: .initiativeBonus) ?? 0
         speed = try c.decode(Int.self, forKey: .speed)
         conditions = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditions) ?? []
+        customConditions = try c.decodeIfPresent([CustomCondition].self, forKey: .customConditions) ?? []
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
@@ -784,10 +789,33 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         }.sorted { $0.rawValue < $1.rawValue }
     }
 
+    /// Active custom conditions imposing disadvantage on the roll kind.
+    public func customDisadvantageSources(for kind: D20RollKind) -> [CustomCondition] {
+        customConditions.filter {
+            switch kind {
+            case .check: return $0.hindersChecks
+            case .attack: return $0.hindersAttacks
+            case .save: return false
+            }
+        }.sorted { $0.name < $1.name }
+    }
+
+    /// Display names of every active disadvantage source, built-ins first.
+    public func disadvantageSourceNames(for kind: D20RollKind) -> [String] {
+        disadvantageSources(for: kind).map(\.displayName)
+            + customDisadvantageSources(for: kind).map(\.name)
+    }
+
+    /// Names of all active conditions (built-in + custom), for exports.
+    public var activeConditionNames: [String] {
+        conditions.map(\.displayName).sorted() + customConditions.map(\.name).sorted()
+    }
+
     /// Effective roll mode after condition side effects: disadvantage from a
     /// condition and a chosen advantage cancel to normal (genre-standard).
     public func effectiveRollMode(_ chosen: RollMode, for kind: D20RollKind) -> RollMode {
         let hindered = !disadvantageSources(for: kind).isEmpty
+            || !customDisadvantageSources(for: kind).isEmpty
         switch (chosen, hindered) {
         case (.disadvantage, _), (.normal, true): return .disadvantage
         case (.advantage, true): return .normal

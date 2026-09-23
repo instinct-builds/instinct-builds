@@ -42,8 +42,8 @@ public enum SheetExporter {
                 if c.exhaustion > 0 { lines.append("Exhaustion: **\(c.exhaustion)**") }
                 let defenses = defenseSummary(c)
                 if !defenses.isEmpty { lines.append(defenses) }
-                if !c.conditions.isEmpty {
-                    lines.append("Conditions: " + c.conditions.map { $0.displayName }.sorted().joined(separator: ", "))
+                if !c.activeConditionNames.isEmpty {
+                    lines.append("Conditions: " + c.activeConditionNames.joined(separator: ", "))
                 }
                 out.append(lines.joined(separator: "\n"))
             case .skills:
@@ -215,7 +215,7 @@ public enum SheetExporter {
                   <span class="chip">Hit Dice <b>\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)</b></span>
                   \(defenseSummary(c).isEmpty ? "" : "<span class=\"chip\">" + esc(defenseSummary(c)) + "</span>")
                   \(extra)
-                </div>\(c.conditions.isEmpty ? "" : "<p class=\"meta\">Conditions: " + esc(c.conditions.map { $0.displayName }.sorted().joined(separator: ", ")) + "</p>")</section>
+                </div>\(c.activeConditionNames.isEmpty ? "" : "<p class=\"meta\">Conditions: " + esc(c.activeConditionNames.joined(separator: ", ")) + "</p>")</section>
                 """)
             case .skills:
                 var items = ""
