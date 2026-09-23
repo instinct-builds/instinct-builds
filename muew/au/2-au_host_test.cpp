@@ -274,6 +274,31 @@ int main() {
         printf("parameters: %d published; get/set, schedule, preset sync, audible automation and recall: ok\n", (int)mp::Count);
     }
 
+    // Render notifications fire before and after each render (auval checks this).
+    {
+        static int pre = 0, post = 0;
+        AURenderCallback cb = [](void*, AudioUnitRenderActionFlags* f, const AudioTimeStamp*, UInt32, UInt32, AudioBufferList*) -> OSStatus {
+            if (*f & kAudioUnitRenderAction_PreRender) ++pre;
+            if (*f & kAudioUnitRenderAction_PostRender) ++post;
+            return noErr;
+        };
+        if (AudioUnitAddRenderNotify(unit, cb, nullptr) != noErr) { printf("FAIL: add render notify\n"); return 1; }
+        for (int i = 0; i < 3; ++i) render(unit, l, r);
+        AudioUnitRemoveRenderNotify(unit, cb, nullptr);
+        render(unit, l, r);
+        if (pre != 3 || post != 3) { printf("FAIL: render notify pre %d post %d\n", pre, post); return 1; }
+        // A host-named custom preset keeps its name in PresentPreset and class info.
+        AUPreset custom{-1, CFSTR("My Riser")};
+        AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &custom, sizeof(custom));
+        CFPropertyListRef plist = nullptr; UInt32 ps = sizeof(plist);
+        AudioUnitGetProperty(unit, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, &ps);
+        CFStringRef nm = plist ? (CFStringRef)CFDictionaryGetValue((CFDictionaryRef)plist, CFSTR("name")) : nullptr;
+        bool ok = nm && CFStringCompare(nm, CFSTR("My Riser"), 0) == kCFCompareEqualTo;
+        if (plist) CFRelease(plist);
+        if (!ok) { printf("FAIL: custom preset name not kept in class info\n"); return 1; }
+        printf("render notify pre/post and custom preset name: ok\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;

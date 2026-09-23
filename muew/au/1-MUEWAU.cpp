@@ -63,6 +63,23 @@ struct MUEWInstance {
     bool initialized = false;
     SInt32 presentPreset = 7;
     std::vector<Listener> listeners;
+    // Render notifications (hosts and auval use these around each render
+    // call, e.g. to schedule parameter changes).
+    struct RenderNotify { AURenderCallback proc; void* userData; };
+    std::vector<RenderNotify> renderNotifies;
+    // Name a host gave a custom (-1) preset, kept for PresentPreset and ClassInfo.
+    CFStringRef customName = nullptr;
+    ~MUEWInstance() { if (customName) CFRelease(customName); }
+    void setCustomName(CFStringRef n) {
+        if (n) CFRetain(n);
+        if (customName) CFRelease(customName);
+        customName = n;
+    }
+    // Retained name of the current sound; caller releases.
+    CFStringRef copyCurrentName(SInt32 number) {
+        if (number < 0 && customName) return (CFStringRef)CFRetain(customName);
+        return (CFStringRef)CFRetain(PresetName(number));
+    }
     // Current sound. Host/UI threads write it under stateLock; the render
     // thread picks up changes at the top of the next block, so the engine is
     // never modified while it is rendering.
@@ -384,7 +401,7 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 // AU convention: the caller owns and releases presetName.
                 // Names are created CFStrings now (not CFSTR literals), so
                 // hand out a retained reference or hosts over-release it.
-                p->presetName = (CFStringRef)CFRetain(PresetName(p->presetNumber));
+                p->presetName = u->copyCurrentName(p->presetNumber);
                 *ioDataSize = sizeof(AUPreset);
                 return noErr;
             }
@@ -406,10 +423,11 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 CFNumberRef rq = CFNumberCreate(nullptr, kCFNumberSInt32Type, &u->renderQuality);
                 // Full sound, so knob edits made in the editor survive a project reload.
                 CFStringRef stateStr = CFStringCreateWithCString(nullptr, u->stateText().c_str(), kCFStringEncodingUTF8);
-                CFTypeRef vals[] = {t, st, m, CFSTR("Instinct: MUEW"), v, num, rq, stateStr};
+                CFStringRef nameStr = u->copyCurrentName(presetNumber); // the preset name, as hosts expect
+                CFTypeRef vals[] = {t, st, m, nameStr, v, num, rq, stateStr};
                 CFDictionaryRef dict = CFDictionaryCreate(nullptr, (const void**)keys, (const void**)vals, 8,
                     &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-                CFRelease(t); CFRelease(st); CFRelease(m); CFRelease(v); CFRelease(num); CFRelease(rq); CFRelease(stateStr);
+                CFRelease(t); CFRelease(st); CFRelease(m); CFRelease(v); CFRelease(num); CFRelease(rq); CFRelease(stateStr); CFRelease(nameStr);
                 *static_cast<CFPropertyListRef*>(outData) = dict; // caller releases
                 *ioDataSize = sizeof(CFPropertyListRef);
                 return noErr;
@@ -520,6 +538,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 const AUPreset* p = static_cast<const AUPreset*>(inData);
                 if (p->presetNumber < 0) {
                     { std::lock_guard<std::mutex> g(u->stateLock); u->presentPreset = -1; } // host-applied custom state
+                    if (p->presetName && CFGetTypeID(p->presetName) == CFStringGetTypeID()) u->setCustomName(p->presetName);
                 } else {
                     if (p->presetNumber >= kPresetCount || !u->loadFactoryPreset(p->presetNumber))
                         return kAudioUnitErr_InvalidPropertyValue;
@@ -538,6 +557,8 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                     CFNumberRef num = (CFNumberRef)CFDictionaryGetValue(dict, CFSTR("presetNumber"));
                     if (num && CFGetTypeID(num) == CFNumberGetTypeID()) CFNumberGetValue(num, kCFNumberSInt32Type, &n);
                     if (n < 0 || n >= kPresetCount) n = -1;
+                    CFStringRef savedName = (CFStringRef)CFDictionaryGetValue(dict, CFSTR("name"));
+                    if (n < 0 && savedName && CFGetTypeID(savedName) == CFStringGetTypeID()) u->setCustomName(savedName);
                     muew::Preset saved;
                     CFStringRef stateStr = (CFStringRef)CFDictionaryGetValue(dict, CFSTR("muewState"));
                     if (stateStr && CFGetTypeID(stateStr) == CFStringGetTypeID() && ParseStateString(stateStr, saved))
@@ -579,13 +600,15 @@ OSStatus MUEWReset(void* self, AudioUnitScope inScope, AudioUnitElement inElemen
 OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
                     const AudioTimeStamp* inTimeStamp, UInt32 inOutputBusNumber,
                     UInt32 inNumberFrames, AudioBufferList* ioData) {
-    (void)inTimeStamp;
     MUEWInstance* u = Self(self);
     if (!u->initialized) return kAudioUnitErr_Uninitialized;
     if (inOutputBusNumber != 0) return kAudioUnitErr_InvalidElement;
     if (inNumberFrames > u->maxFrames) return kAudioUnitErr_TooManyFramesToProcess;
     if (!ioData || ioData->mNumberBuffers < 2) return kAudioUnitErr_InvalidPropertyValue;
 
+    AudioUnitRenderActionFlags notifyFlags = (ioActionFlags ? *ioActionFlags : 0) | kAudioUnitRenderAction_PreRender;
+    for (const auto& n : u->renderNotifies)
+        n.proc(n.userData, &notifyFlags, inTimeStamp, inOutputBusNumber, inNumberFrames, ioData);
     u->applyPendingState(false);
     float* left = static_cast<float*>(ioData->mBuffers[0].mData);
     float* right = static_cast<float*>(ioData->mBuffers[1].mData);
@@ -619,6 +642,9 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(inNumberFrames - cursor));
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));
     for (auto& e : u->events) e.offset -= inNumberFrames;
+    notifyFlags = (ioActionFlags ? *ioActionFlags : 0) | kAudioUnitRenderAction_PostRender;
+    for (const auto& n : u->renderNotifies)
+        n.proc(n.userData, &notifyFlags, inTimeStamp, inOutputBusNumber, inNumberFrames, ioData);
     return noErr;
 }
 
@@ -716,6 +742,19 @@ OSStatus MUEWRemovePropertyListenerWithUserData(void* self, AudioUnitPropertyID 
     return noErr;
 }
 
+OSStatus MUEWAddRenderNotify(void* self, AURenderCallback inProc, void* inProcUserData) {
+    if (!inProc) return kAudio_ParamError;
+    Self(self)->renderNotifies.push_back({inProc, inProcUserData});
+    return noErr;
+}
+
+OSStatus MUEWRemoveRenderNotify(void* self, AURenderCallback inProc, void* inProcUserData) {
+    auto& ns = Self(self)->renderNotifies;
+    for (auto it = ns.begin(); it != ns.end(); ++it)
+        if (it->proc == inProc && it->userData == inProcUserData) { ns.erase(it); break; }
+    return noErr;
+}
+
 AudioComponentMethod MUEWLookup(SInt16 selector) {
     switch (selector) {
         case kAudioUnitInitializeSelect:   return (AudioComponentMethod)MUEWInitialize;
@@ -731,6 +770,8 @@ AudioComponentMethod MUEWLookup(SInt16 selector) {
         case kAudioUnitGetParameterSelect: return (AudioComponentMethod)MUEWGetParameter;
         case kAudioUnitSetParameterSelect: return (AudioComponentMethod)MUEWSetParameter;
         case kAudioUnitScheduleParametersSelect: return (AudioComponentMethod)MUEWScheduleParameters;
+        case kAudioUnitAddRenderNotifySelect: return (AudioComponentMethod)MUEWAddRenderNotify;
+        case kAudioUnitRemoveRenderNotifySelect: return (AudioComponentMethod)MUEWRemoveRenderNotify;
         case kMusicDeviceMIDIEventSelect:  return (AudioComponentMethod)MUEWMIDIEvent;
         case kMusicDeviceSysExSelect:      return (AudioComponentMethod)MUEWSysEx;
         case kMusicDeviceStartNoteSelect:  return (AudioComponentMethod)MUEWStartNote;
