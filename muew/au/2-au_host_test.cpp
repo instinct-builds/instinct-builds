@@ -59,6 +59,10 @@ int main() {
     if(AudioUnitSetProperty(unit,kAudioUnitProperty_PresentPreset,kAudioUnitScope_Global,0,&chosen,sizeof(chosen))!=noErr){printf("FAIL: select preset\n");return 1;}
     AUPreset current{}; size=sizeof(current);
     if(AudioUnitGetProperty(unit,kAudioUnitProperty_PresentPreset,kAudioUnitScope_Global,0,&current,&size)!=noErr || current.presetNumber!=3){printf("FAIL: selected preset identity\n");return 1;}
+    if(current.presetName) CFRelease(current.presetName); // hosts own the returned name
+    size=sizeof(current);
+    if(AudioUnitGetProperty(unit,kAudioUnitProperty_PresentPreset,kAudioUnitScope_Global,0,&current,&size)!=noErr || !current.presetName || CFStringCompare(current.presetName,CFSTR("Pluck"),0)!=kCFCompareEqualTo){printf("FAIL: preset name after host release\n");return 1;}
+    CFRelease(current.presetName);
 
     const UInt32 frames=512, offset=257;
     std::vector<float> l(frames),r(frames);

@@ -257,7 +257,10 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(AUPreset)) {
                 AUPreset* p = static_cast<AUPreset*>(outData);
                 p->presetNumber = u->presentPreset;
-                p->presetName = PresetName(u->presentPreset);
+                // AU convention: the caller owns and releases presetName.
+                // Names are created CFStrings now (not CFSTR literals), so
+                // hand out a retained reference or hosts over-release it.
+                p->presetName = (CFStringRef)CFRetain(PresetName(u->presentPreset));
                 *ioDataSize = sizeof(AUPreset);
                 return noErr;
             }
