@@ -134,6 +134,12 @@ public enum SampleContent {
         c.companions = [Companion(name: "Inkpot", kind: "Familiar (owl)", maxHP: 3,
                                   armorClass: 11,
                                   notes: "Perches on the spellbook. Delivers notes across the reading room.")]
+        // Original curio: a clasp that lets the wearer move through water
+        // as if it were air.
+        c.inventory.append(InventoryItem(name: "Tideglass clasp", quantity: 1, weight: 0.2,
+                                         attuned: true, category: "Wondrous",
+                                         notes: "Grants a swim speed equal to walking speed."))
+        c.extraSpeeds = [MovementSpeed(mode: .swim, feet: 30, label: "Tideglass clasp")]
         c.armorClass = 15 // Mage Armor active: 13 + DEX
         return c
     }

@@ -255,6 +255,49 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// Non-walking movement kinds. Genre-standard categories; walking speed
+/// stays the base `speed` field.
+public enum MovementMode: String, Codable, CaseIterable, Sendable {
+    case fly, swim, climb, burrow
+
+    public var displayName: String { rawValue.capitalized }
+}
+
+/// One additional movement speed, e.g. "fly 60 ft (hover)". `label` is a
+/// free-text note for the source ("winged boots", "wild shape").
+public struct MovementSpeed: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID = UUID()
+    public var mode: MovementMode
+    public var feet: Int
+    public var hover: Bool
+    public var label: String
+
+    public init(mode: MovementMode, feet: Int, hover: Bool = false, label: String = "") {
+        self.mode = mode
+        self.feet = max(0, feet)
+        self.hover = hover && mode == .fly
+        self.label = label
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        mode = try c.decode(MovementMode.self, forKey: .mode)
+        feet = try c.decodeIfPresent(Int.self, forKey: .feet) ?? 0
+        hover = try c.decodeIfPresent(Bool.self, forKey: .hover) ?? false
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+    }
+
+    /// "fly 60 ft (hover)"; label joins the note list when present.
+    public var displayString: String {
+        var notes: [String] = []
+        if hover { notes.append("hover") }
+        if !label.isEmpty { notes.append(label) }
+        let suffix = notes.isEmpty ? "" : " (\(notes.joined(separator: ", ")))"
+        return "\(mode.rawValue) \(feet) ft\(suffix)"
+    }
+}
+
 /// A familiar, mount, pet, or hireling tracked alongside the sheet.
 public struct Companion: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID = UUID()
@@ -373,6 +416,8 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     // Gear & story
     public var inventory: [InventoryItem]
     public var companions: [Companion]
+    /// Extra movement modes beyond walking speed (fly, swim, climb, burrow).
+    public var extraSpeeds: [MovementSpeed]
     /// Genre-standard cap on simultaneously attuned magic items.
     public static let attunementLimit = 3
     /// Items currently attuned.
@@ -427,6 +472,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         spellcasting: Spellcasting? = nil,
         inventory: [InventoryItem] = [],
         companions: [Companion] = [],
+        extraSpeeds: [MovementSpeed] = [],
         currency: Currency = Currency(),
         proficienciesText: String = "",
         features: [Feature] = [],
@@ -477,6 +523,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.spellcasting = spellcasting
         self.inventory = inventory
         self.companions = companions
+        self.extraSpeeds = extraSpeeds
         self.currency = currency
         self.journal = journal
         self.proficienciesText = proficienciesText
@@ -530,6 +577,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         spellcasting = try c.decodeIfPresent(Spellcasting.self, forKey: .spellcasting)
         inventory = try c.decode([InventoryItem].self, forKey: .inventory)
         companions = try c.decodeIfPresent([Companion].self, forKey: .companions) ?? []
+        extraSpeeds = try c.decodeIfPresent([MovementSpeed].self, forKey: .extraSpeeds) ?? []
         currency = try c.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
         journal = try c.decodeIfPresent([JournalEntry].self, forKey: .journal) ?? []
         proficienciesText = try c.decodeIfPresent(String.self, forKey: .proficienciesText) ?? ""
@@ -549,6 +597,11 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var passivePerception: Int { passiveScore(forSkill: "Perception", ability: .wisdom) }
     public var passiveInvestigation: Int { passiveScore(forSkill: "Investigation", ability: .intelligence) }
     public var passiveInsight: Int { passiveScore(forSkill: "Insight", ability: .wisdom) }
+    /// Full movement readout: walk speed plus any extra modes, e.g.
+    /// "30 ft, fly 60 ft (hover)".
+    public var movementSummary: String {
+        (["\(speed) ft"] + extraSpeeds.map(\.displayString)).joined(separator: ", ")
+    }
     /// Passive value for a skill: 10 + its bonus (raw ability modifier when the
     /// sheet has no such skill). The table standard for noticing without rolling.
     public func passiveScore(forSkill name: String, ability: Ability) -> Int {

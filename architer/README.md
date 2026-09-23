@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.13.0
+
+- Movement modes: fly, swim, climb, and burrow speeds alongside walking
+  speed, with hover (fly only) and a free-text source note. Shown in the
+  vitals block and exported to Markdown, HTML, and PDF as one movement
+  line. Old saves decode with walking speed only.
+- Sample sheet: Wren gains an original Tideglass clasp curio that grants
+  a swim speed.
+
 ## What's in 2.12.0
 
 - Companions block: familiars, mounts, pets, and hirelings on the

@@ -106,6 +106,32 @@ struct CharacterTests {
         #expect(old.companions.isEmpty)
     }
 
+    @Test func movementSpeedsSummaryAndDecode() throws {
+        var c = Character(name: "T", level: 1)
+        c.speed = 30
+        #expect(c.extraSpeeds.isEmpty)
+        #expect(c.movementSummary == "30 ft")
+        // Summary joins extra modes with their notes.
+        let fly = MovementSpeed(mode: .fly, feet: 60, hover: true)
+        let climb = MovementSpeed(mode: .climb, feet: 20, label: "claws")
+        c.extraSpeeds = [fly, climb]
+        #expect(c.movementSummary == "30 ft, fly 60 ft (hover), climb 20 ft (claws)")
+        // Hover only applies to fly.
+        #expect(MovementSpeed(mode: .swim, feet: 30, hover: true).hover == false)
+        // Old saves without the extraSpeeds key decode empty.
+        let json = """
+        {"id":"00000000-0000-0000-0000-000000000002",
+        "name":"Old","lineage":"","calling":"","background":"",
+        "level":1,"experience":0,"scores":{},"skills":[],
+        "savingThrowProficiencies":[],"maxHP":8,"currentHP":8,"armorClass":10,"speed":30,
+        "attacks":[],"inventory":[],"notes":"",
+        "layout":{"blocks":[{"kind":"identity","visible":true,"size":"regular"}]}}
+        """.data(using: .utf8)!
+        let old = try JSONDecoder().decode(Character.self, from: json)
+        #expect(old.extraSpeeds.isEmpty)
+        #expect(old.movementSummary == "30 ft")
+    }
+
     @Test func defensesAdjustIncomingDamage() {
         var c = Character(name: "T", level: 1, maxHP: 30)
         c.resistances = [.fire]

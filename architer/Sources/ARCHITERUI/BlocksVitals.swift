@@ -80,6 +80,39 @@ struct VitalsBlock: View {
                 Text("Initiative \(signed(character.initiative))")
                     .foregroundStyle(.secondary)
             }
+            ForEach($character.extraSpeeds) { $ms in
+                HStack(spacing: Theme.Gap.sm) {
+                    Picker("", selection: Binding(
+                        get: { ms.mode },
+                        set: {
+                            ms.mode = $0
+                            if $0 != .fly { ms.hover = false }
+                        })) {
+                        ForEach(MovementMode.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 90)
+                    Stepper("\(ms.feet) ft", value: $ms.feet, in: 0...240, step: 5)
+                    if ms.mode == .fly {
+                        Toggle("Hover", isOn: $ms.hover).toggleStyle(.checkbox)
+                    }
+                    TextField("Note (source)", text: $ms.label)
+                        .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 140)
+                    Button(role: .destructive) {
+                        character.extraSpeeds.removeAll { $0.id == ms.id }
+                    } label: { Image(systemName: "minus.circle") }
+                }
+                .font(.caption)
+            }
+            HStack {
+                Button("Add movement") {
+                    character.extraSpeeds.append(MovementSpeed(mode: .fly, feet: 30))
+                }
+                .controlSize(.small)
+                Text(character.movementSummary)
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+            }
             HStack(spacing: Theme.Gap.md) {
                 CardSectionLabel(text: "Passive senses")
                 StatPlate(label: "Perception", value: "\(character.passivePerception)", tint: Theme.accent)
