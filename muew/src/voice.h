@@ -94,6 +94,15 @@ struct VoiceParams {
     // Tempo sync per LFO (1-4): 0 = free (Hz), else a note division (see
     // kSyncBeats). Synced LFOs follow the host tempo.
     int lfoSync[4] = {0, 0, 0, 0};
+    // 0.18.0 LFO extras (LFO 1-4). custom plays the drawn lfoPoints cycle
+    // instead of the shape; phase is the start phase (0..1); delay/rise in
+    // seconds fade the LFO in after each note; free keeps a shared running
+    // phase instead of restarting per note. Defaults change nothing.
+    bool lfoCustom[4] = {false, false, false, false};
+    double lfoPhase[4] = {0, 0, 0, 0}, lfoDelay[4] = {0, 0, 0, 0}, lfoRise[4] = {0, 0, 0, 0};
+    bool lfoFree[4] = {false, false, false, false};
+    std::vector<MSEG::Point> lfoPoints[4] = {kDefaultLfoPoints(), kDefaultLfoPoints(), kDefaultLfoPoints(), kDefaultLfoPoints()};
+    static std::vector<MSEG::Point> kDefaultLfoPoints() { return {{0.0, 0.0, 0.0}, {0.25, 1.0, 0.0}, {0.75, -1.0, 0.0}, {1.0, 0.0, 0.0}}; }
     double env3A = 0.01, env3D = 0.4, env3S = 0.0, env3R = 0.3;
     // 0.9.0: frame position (0..1) through each oscillator's user table; only
     // heard when the oscillator's shape is kCustomShape.
@@ -165,6 +174,7 @@ public:
         lfo2_.setShape(static_cast<LFO::Shape>(p.lfo2Shape));
         lfo3_.setShape(static_cast<LFO::Shape>(std::clamp(p.lfo3Shape, 0, 3)));
         lfo4_.setShape(static_cast<LFO::Shape>(std::clamp(p.lfo4Shape, 0, 3)));
+        applyLfoExtras();
         applyRates();
         env3_.set(p.env3A, p.env3D, p.env3S, p.env3R);
         usesLfo3_ = usesLfo4_ = false;
@@ -210,7 +220,8 @@ public:
         baseFreq_ = midiToFreq(note);
         ampEnv_.noteOn();
         modEnv_.noteOn();
-        lfo1_.reset(); lfo2_.reset(); lfo3_.reset(); lfo4_.reset(); mseg1_.reset(); mseg2_.reset();
+        resetLfos();
+        mseg1_.reset(); mseg2_.reset();
         env3_.noteOn();
         // Stacked voices start at spread phases so a unison stack sounds wide
         // from the first cycle instead of flanging out of one phase. Voice 0
@@ -417,6 +428,9 @@ private:
     // Shape kCustomShape plays the oscillator's table; without one it falls
     // back to the saw so an incomplete preset still sounds.
 public:
+    // 0.18.0: shared clock (samples since the synth started) for free-run LFOs.
+    void setClock(uint64_t samples) { clock_ = samples; }
+    LFO& lfo(int i) { return i == 0 ? lfo1_ : i == 1 ? lfo2_ : i == 2 ? lfo3_ : lfo4_; }
     // Oscillator settings that can leave a DC offset: bending or splitting the
     // phase of an asymmetric table, the PULSE shape, and user-drawn tables.
     // Per oscillator: the PULSE shape and user tables can always carry DC;
@@ -432,6 +446,38 @@ private:
         }
     }
     static const CustomTable* fallback() { static const CustomTable t{TableFrames{}}; return &t; }
+
+    void resetLfos() {
+        for (int i = 0; i < 4; ++i) {
+            if (params_.lfoFree[i]) {
+                const double hz = lfoHz(i == 0 ? params_.lfo1Rate : i == 1 ? params_.lfo2Rate : i == 2 ? params_.lfo3Rate : params_.lfo4Rate, params_.lfoSync[i], bpm_);
+                lfo(i).resetTo(std::fmod((double)clock_ / sr_ * hz, 1.0) + params_.lfoPhase[i]);
+            } else lfo(i).reset();
+        }
+    }
+    void applyLfoExtras() {
+        for (int i = 0; i < 4; ++i) {
+            LFO& l = lfo(i);
+            l.setStartPhase(params_.lfoPhase[i]);
+            l.setFade(params_.lfoDelay[i] * sr_, params_.lfoRise[i] * sr_);
+            if (params_.lfoCustom[i]) {
+                if (!(lfoTablePts_[i].size() == params_.lfoPoints[i].size() && lfoTableValid_[i] && samePoints(lfoTablePts_[i], params_.lfoPoints[i]))) {
+                    MSEG m; m.setPoints(params_.lfoPoints[i]);
+                    for (int k = 0; k <= LFO::kTable; ++k) lfoTable_[i][k] = static_cast<float>(m.valueAt((double)k / LFO::kTable));
+                    lfoTablePts_[i] = params_.lfoPoints[i]; lfoTableValid_[i] = true;
+                }
+                l.setCustom(lfoTable_[i]);
+            } else l.setCustom(nullptr);
+        }
+    }
+    static bool samePoints(const std::vector<MSEG::Point>& a, const std::vector<MSEG::Point>& b) {
+        for (size_t k = 0; k < a.size(); ++k) if (a[k].time != b[k].time || a[k].value != b[k].value || a[k].curve != b[k].curve) return false;
+        return true;
+    }
+    float lfoTable_[4][LFO::kTable + 1] = {};
+    std::vector<MSEG::Point> lfoTablePts_[4];
+    bool lfoTableValid_[4] = {false, false, false, false};
+    uint64_t clock_ = 0;
 
     void applyRates() {
         lfo1_.setRate(lfoHz(params_.lfo1Rate, params_.lfoSync[0], bpm_));

@@ -220,6 +220,14 @@ inline std::string lfoRateReadout(const VoiceParams& p, int n) {
     if (sy > 0) return syncName(sy);
     char b[24]; snprintf(b, sizeof b, "%.2f Hz", lfoRate(const_cast<VoiceParams&>(p), n)); return b;
 }
+// 0.18.0: SHAPE field cycles SINE, TRIANGLE, SAW, SQUARE, CUSTOM (the drawn cycle).
+inline int lfoShapeIndex(const VoiceParams& p, int n) { n = std::clamp(n, 0, 3); return p.lfoCustom[n] ? 4 : lfoShape(const_cast<VoiceParams&>(p), n); }
+inline void setLfoShapeIndex(VoiceParams& p, int n, int s) {
+    n = std::clamp(n, 0, 3); s = ((s % 5) + 5) % 5;
+    p.lfoCustom[n] = s == 4;
+    if (s < 4) lfoShape(p, n) = s;
+}
+inline const char* lfoShapeIndexName(int s) { return s == 4 ? "CUSTOM" : lfoShapeName(s); }
 // Rack DELAY card summary: note divisions when synced, ms otherwise (0.15.0 fix).
 inline std::string delayCardReadout(const DelayParams& d) {
     auto side = [](int sync, double sec) {
@@ -751,6 +759,31 @@ inline void msegSetLoop(MsegView m, int edge, int i) {
     if (edge == 0) *m.loopStart = std::clamp(i, 0, m.loopEndIndex() - 1);
     else { int e = std::clamp(i, *m.loopStart + 1, last); *m.loopEnd = e == last ? -1 : e; }
 }
+
+
+// ---- 0.18.0 LFO editor ----
+// The MSEG editor also draws LFO 1-4 cycles. An LFO has no length or loop,
+// so its view points those fields at per-LFO scratch the engine never reads
+// (mode 0 keeps the loop span hidden); sync is the LFO's own tempo sync.
+inline MsegView lfoEditView(VoiceParams& v, int li) {
+    static double secs[4] = {1, 1, 1, 1};
+    static int ls[4] = {0, 0, 0, 0}, le[4] = {-1, -1, -1, -1}, mode[4] = {0, 0, 0, 0};
+    li = std::clamp(li, 0, 3);
+    mode[li] = 0;
+    return {&secs[li], &v.lfoSync[li], &ls[li], &le[li], &v.lfoPoints[li], nullptr, nullptr, &mode[li]};
+}
+// Editor index: 0-1 MSEG 1/2, 2-5 LFO 1-4.
+inline MsegView editView(VoiceParams& v, int k) { return k >= 2 ? lfoEditView(v, k - 2) : msegView(v, k); }
+inline std::string lfoPhaseReadout(double ph) { char b[16]; snprintf(b, sizeof b, "%.0f\u00B0", std::clamp(ph, 0.0, 1.0) * 360.0); return b; }
+inline std::string lfoFadeReadout(double sec) {
+    if (sec <= 0) return "OFF";
+    char b[16];
+    if (sec < 1) snprintf(b, sizeof b, "%.0f ms", sec * 1000); else snprintf(b, sizeof b, "%.2f s", sec);
+    return b;
+}
+// Seconds <-> 0..1 for delay/rise drags: 0 = off, then 10 ms .. 8 s log.
+inline double fadeFrom01(double x) { x = std::clamp(x, 0.0, 1.0); return x < 0.02 ? 0.0 : 0.01 * std::pow(800.0, (x - 0.02) / 0.98); }
+inline double fadeTo01(double s) { return s <= 0 ? 0.0 : 0.02 + 0.98 * std::log(std::clamp(s, 0.01, 8.0) / 0.01) / std::log(800.0); }
 
 } // namespace ui
 } // namespace muew

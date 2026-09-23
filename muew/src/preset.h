@@ -43,6 +43,8 @@ struct PresetInfo {
 //                  0.14.0 adds an optional `delaysync` line.
 //                  0.15.0 adds an optional `fxlfo` line (rack LFOs).
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
+//                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
+//                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
 //                  0.16.0 adds optional `curve <c>` / `aux <source>` suffixes
 //                  on `route` lines (older builds read the first three fields).
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
@@ -216,6 +218,26 @@ struct Preset {
                 if (ls >> sy >> a >> b >> f) {
                     voice.mseg1Sync = std::clamp(sy, 0, kSyncCount - 1);
                     voice.mseg1LoopStart = std::clamp(a, 0, 63); voice.mseg1LoopEnd = std::clamp(b, -1, 63); voice.mseg1FreeLoop = f != 0;
+                }
+            }
+            else if (key == "lfox") { // 0.18.0
+                int i = -1, c = 0, f = 0; double ph = 0, de = 0, ri = 0;
+                if (ls >> i >> c >> ph >> de >> ri >> f && i >= 0 && i < 4 && std::isfinite(ph) && std::isfinite(de) && std::isfinite(ri)) {
+                    voice.lfoCustom[i] = c != 0; voice.lfoPhase[i] = std::clamp(ph, 0.0, 1.0);
+                    voice.lfoDelay[i] = std::clamp(de, 0.0, 8.0); voice.lfoRise[i] = std::clamp(ri, 0.0, 8.0); voice.lfoFree[i] = f != 0;
+                }
+            }
+            else if (key == "lfopts") {
+                int i = -1; size_t n = 0;
+                if (ls >> i >> n && i >= 0 && i < 4 && n >= 2 && n <= 64) {
+                    std::vector<MSEG::Point> pts;
+                    for (size_t k = 0; k < n; ++k) {
+                        MSEG::Point p;
+                        if (!(ls >> p.time >> p.value >> p.curve) || !std::isfinite(p.time) || !std::isfinite(p.value) || !std::isfinite(p.curve)) break;
+                        p.time = std::clamp(p.time, 0.0, 1.0); p.value = std::clamp(p.value, -1.0, 1.0); p.curve = std::clamp(p.curve, -1.0, 1.0);
+                        pts.push_back(p);
+                    }
+                    if (pts.size() == n) voice.lfoPoints[i] = pts;
                 }
             }
             else if (key == "mseg2") {
@@ -425,6 +447,9 @@ struct Preset {
             && tables[0] == o.tables[0] && tables[1] == o.tables[1];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;
+        for (int i = 0; i < 4; ++i)
+            if (a.lfoCustom[i] != b.lfoCustom[i] || a.lfoPhase[i] != b.lfoPhase[i] || a.lfoDelay[i] != b.lfoDelay[i] || a.lfoRise[i] != b.lfoRise[i]
+                || a.lfoFree[i] != b.lfoFree[i] || !pointsEq(a.lfoPoints[i], b.lfoPoints[i])) return false;
         if (a.mseg1Sync != b.mseg1Sync || a.mseg1LoopStart != b.mseg1LoopStart || a.mseg1LoopEnd != b.mseg1LoopEnd || a.mseg1FreeLoop != b.mseg1FreeLoop
             || a.mseg2Seconds != b.mseg2Seconds || a.mseg2Sync != b.mseg2Sync || a.mseg2Mode != b.mseg2Mode
             || a.mseg2LoopStart != b.mseg2LoopStart || a.mseg2LoopEnd != b.mseg2LoopEnd) return false;
@@ -491,6 +516,16 @@ private:
               << " " << v.mseg2Points.size();
             for (const auto& p : v.mseg2Points) o << " " << p.time << " " << p.value << " " << p.curve;
             o << "\n";
+        }
+        for (int i = 0; i < 4; ++i) { // 0.18.0
+            if (v.lfoCustom[i] || v.lfoPhase[i] != 0 || v.lfoDelay[i] != 0 || v.lfoRise[i] != 0 || v.lfoFree[i])
+                o << "lfox " << i << " " << (v.lfoCustom[i] ? 1 : 0) << " " << v.lfoPhase[i] << " " << v.lfoDelay[i] << " " << v.lfoRise[i]
+                  << " " << (v.lfoFree[i] ? 1 : 0) << "\n";
+            if (!pointsEq(v.lfoPoints[i], VoiceParams::kDefaultLfoPoints())) {
+                o << "lfopts " << i << " " << v.lfoPoints[i].size();
+                for (const auto& p : v.lfoPoints[i]) o << " " << p.time << " " << p.value << " " << p.curve;
+                o << "\n";
+            }
         }
     }
     static bool pointsEq(const std::vector<MSEG::Point>& a, const std::vector<MSEG::Point>& b) {

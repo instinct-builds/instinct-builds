@@ -539,7 +539,7 @@ int main() {
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
             auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
             auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.75, (i < 8 ? 216 : 198) + 7.5); };
-            auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 147 + 59 * v); };
+            auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 152 + 54 * v); }; // canvas y 94..210 since 0.18.0
             auto drag = [&](NSPoint from, NSPoint to) {
                 [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
                 [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
@@ -578,6 +578,49 @@ int main() {
             Check(ok2 && back.parse(st2.serialize()) && back == st2 && st2.serialize().find("\nmseg2 ") != std::string::npos,
                   "the AU state saves MSEG 2 with the sound");
             Click(view, w, NSMakePoint(556 + 46, t - 29 + 8));           // back to FILTER 2 + SUB
+            Click(view, w, card(3));                                     // DELAY detail for the editor snapshot
+            fflush(stdout);
+        });
+        After(6.995, ^{ // 0.18.0 LFO editor: draw LFO 3's cycle, bend it, FREE, PHASE 90 degrees, RISE
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.5, (i < 8 ? 216 : 198) + 7.5); };
+            auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 152 + 54 * v); };
+            auto drag = [&](NSPoint from, NSPoint to) {
+                [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, to, w)];
+                [view mouseUp:Mouse(NSEventTypeLeftMouseUp, to, w)];
+            };
+            Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the DELAY detail
+            Click(view, w, badge(2));                                    // select LFO3
+            Click(view, w, NSMakePoint(304 + 74, 122 + 29));             // its preview opens the LFO editor
+            Click(view, w, canvas(0.5, 1));                              // add a point at 1/2, top
+            Click(view, w, canvas(0.875, 0.5));                          // add a point at 7/8, +0.5
+            NSPoint seg = canvas(0.625, 0);                              // bend handle of segment 3 (1/2 -> 3/4, falling)
+            drag(seg, NSMakePoint(seg.x, seg.y - 30));                   // down 30 pt: LOG 50%
+            Click(view, w, NSMakePoint(36 + 12 + 44 + 21, 48 + 18.5));   // FREE
+            NSPoint ph = NSMakePoint(36 + 104 + 23, 48 + 18.5), ri = NSMakePoint(36 + 104 + 96 + 23, 48 + 18.5);
+            drag(ph, NSMakePoint(ph.x, ph.y + 37.5));                    // PHASE +0.25 -> 90 degrees
+            drag(ri, NSMakePoint(ri.x, ri.y + 75));                      // RISE to mid-range (about 0.26 s)
+            Snapshot(view, "MUEW_LFO_PNG", "LFO 3 editor snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            const auto& v = st.voice;
+            const auto& lp = v.lfoPoints[2];
+            printf("lfo 3: custom %d, %zu points, seg 3 curve %.2f, free %d, phase %.3f, rise %.3f s\n", (int)v.lfoCustom[2], lp.size(),
+                   lp.size() > 2 ? lp[2].curve : 0.0, (int)v.lfoFree[2], v.lfoPhase[2], v.lfoRise[2]);
+            bool pts = ok && lp.size() == 6 && std::fabs(lp[2].time - 0.5) < 1e-9 && std::fabs(lp[2].value - 1) < 1e-3
+                       && std::fabs(lp[4].time - 0.875) < 1e-9 && std::fabs(lp[4].value - 0.5) < 1e-3;
+            Check(pts && v.lfoCustom[2], "canvas clicks drew LFO 3 points at 1/2 (+1) and 7/8 (+0.5) and turned CUSTOM on in the AU's sound");
+            Check(ok && std::fabs(lp[2].curve + 0.5) < 0.03 && v.lfoFree[2] && std::fabs(v.lfoPhase[2] - 0.25) < 1e-9 && v.lfoRise[2] > 0.2 && v.lfoRise[2] < 0.33,
+                  "bend handle, FREE, PHASE 90 and RISE reached the AU's sound");
+            muew::Preset back;
+            std::string txt = ok ? st.serialize() : "";
+            Check(ok && back.parse(txt) && back == st && txt.find("\nlfox 2 1 ") != std::string::npos && txt.find("\nlfopts 2 6 ") != std::string::npos,
+                  "the AU state saves the drawn LFO 3 with the sound");
+            Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));   // close the editor
             Click(view, w, card(3));                                     // DELAY detail for the editor snapshot
             fflush(stdout);
         });

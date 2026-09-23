@@ -61,7 +61,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -269,15 +269,24 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)routeAux:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 174, r.origin.y + 4, 26, 14); }
 - (NSRect)pageTab:(int)i { return NSMakeRect(172 + i * 30, 234, 28, 14); }
 // Right: 15 source badges (2 x 8), preview, and the selected modulator's controls.
-- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 8) * 19, i < 8 ? 216 : 198, 17.5, 15); }
+- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 8) * 19, i < 8 ? 216 : 198, 17, 15); } // 2 pt gaps (0.18.0)
 // 0.17.0 MSEG editor: opens over the matrix like the FX detail panel.
 - (NSRect)msegPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)msegClose { NSRect r = [self msegPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)msegTab:(int)k { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 150 + k * 56, NSMaxY(r) - 25, 52, 16); }
-- (NSRect)msegCanvas { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 14, r.origin.y + 36, r.size.width - 28, r.size.height - 36 - 38); }
+- (NSRect)msegCanvas { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 14, r.origin.y + 46, r.size.width - 28, r.size.height - 46 - 38); } // hint line sits below it (0.18.0)
 - (NSRect)msegModePill:(int)i { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 12 + i * 58, r.origin.y + 10, 54, 17); }
-- (NSRect)msegGridPill:(int)i { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 216 + i * 27, r.origin.y + 10, 25, 17); }
-- (NSRect)msegLenPill { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 328, r.origin.y + 10, 50, 17); }
+- (NSRect)msegGridPill:(int)i {
+    NSRect r = [self msegPanel];
+    if (msegEdit >= 2) return NSMakeRect(r.origin.x + 252 + i * 20, r.origin.y + 10, 18, 17);
+    return NSMakeRect(r.origin.x + 216 + i * 27, r.origin.y + 10, 25, 17);
+}
+// 0.18.0 LFO editor: LFO 1-4 tabs, CUSTOM toggle, RETRIG/FREE and PHASE/DELAY/RISE pills.
+- (NSRect)lfoTab:(int)i { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 150 + i * 44, NSMaxY(r) - 25, 40, 16); }
+- (NSRect)lfoCustomChip { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 334, NSMaxY(r) - 25, 52, 16); }
+- (NSRect)lfoTrigPill:(int)i { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 12 + i * 44, r.origin.y + 10, 42, 17); }
+- (NSRect)lfoXPill:(int)j { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 104 + j * 48, r.origin.y + 10, 46, 17); }
+- (NSRect)msegLenPill { NSRect r = [self msegPanel]; return msegEdit >= 2 ? NSMakeRect(r.origin.x + 334, r.origin.y + 10, 44, 17) : NSMakeRect(r.origin.x + 328, r.origin.y + 10, 50, 17); }
 - (NSRect)msegSyncPill { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 381, r.origin.y + 10, 31, 17); }
 - (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
 // 0.9.0 oscillator displays and the wavetable editor that opens over the
@@ -310,6 +319,13 @@ static int LfoIndex(ModRoute::Source s) {
 static bool IsMseg(ModRoute::Source s) { return s == ModRoute::Source::MSEG1 || s == ModRoute::Source::MSEG2; }
 static int MsegIndex(ModRoute::Source s) { return s == ModRoute::Source::MSEG2 ? 1 : 0; }
 static bool IsRack(ModRoute::Source s) { return s == ModRoute::Source::FxLfo1 || s == ModRoute::Source::FxLfo2; }
+// 0.18.0: editor index for a source (MSEG 1/2 = 0/1, LFO 1-4 = 2-5) and back.
+static int EditIndex(ModRoute::Source s) { return IsLfo(s) ? 2 + LfoIndex(s) : MsegIndex(s); }
+static ModRoute::Source EditSource(int k) {
+    static const ModRoute::Source src[6] = {ModRoute::Source::MSEG1, ModRoute::Source::MSEG2, ModRoute::Source::LFO1,
+                                            ModRoute::Source::LFO2, ModRoute::Source::LFO3, ModRoute::Source::LFO4};
+    return src[std::clamp(k, 0, 5)];
+}
 static int RackIndex(ModRoute::Source s) { return s == ModRoute::Source::FxLfo2 ? 1 : 0; }
 static NSColor* SourceColor(ModRoute::Source s) {
     if (IsRack(s)) return C(0xb68cff);
@@ -619,6 +635,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             if (shape == 3 && (i % 32 == 16)) pts.push_back({t - 1e-6, rackLfoValue(shape, 0.49)});
             pts.push_back({t, rackLfoValue(shape, ph)});
         }
+    } else if (v.lfoCustom[LfoIndex(src)]) { // 0.18.0: the drawn cycle, twice
+        MSEG m; m.setPoints(v.lfoPoints[LfoIndex(src)]);
+        for (int i = 0; i <= 96; ++i) { double t = i / 96.0; pts.push_back({t, m.valueAt(std::fmod(t * 2.0, 1.0) + (i == 96 ? 1.0 : 0.0))}); }
     } else {
         int shape = ui::lfoShape(const_cast<VoiceParams&>(v), LfoIndex(src));
         for (int i = 0; i <= 64; ++i) {
@@ -1017,9 +1036,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         for (const auto& rt : current.routes) used |= rt.source == srcs[i];
         FillRound(bdg, 3, i == modSel ? [col colorWithAlphaComponent:.85] : C(0x202630));
         if (used && i != modSel) FillRound(NSMakeRect(NSMidX(bdg) - 5, bdg.origin.y + 1, 10, 1.5), .75, col);
-        // 15 badges share 152 pt: labels drawn in a rect a little wider than the chip, shrinking to fit so
-        // four-letter names (LFO1, ENV2, FXL2) never truncate.
-        TextFit(S(ui::sourceBadge(srcs[i])), NSMakeRect(bdg.origin.x - 1, bdg.origin.y + 2.5, bdg.size.width + 2, 10), 6.5, 5.5,
+        // 15 badges share 152 pt: labels shrink to fit inside the chip with 1 pt padding, so four-letter
+        // names (LFO1, ENV2, FXL2) never truncate or touch the next chip (0.18.0).
+        TextFit(S(ui::sourceBadge(srcs[i])), NSMakeRect(bdg.origin.x + 1, bdg.origin.y + 2.5, bdg.size.width - 2, 10), 6.5, 4.75,
                 i == modSel ? C(0x0b0e13) : col, NSFontWeightBold, NSTextAlignmentCenter);
     }
     ModRoute::Source sel = srcs[modSel];
@@ -1027,8 +1046,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     NSRect pv = [self modPreview];
     [self sourcePreview:sel in:NSInsetRect(pv, 4, 4) color:scol];
     Text(S(ui::sourceName(sel)), NSMakeRect(pv.origin.x + 2, NSMaxY(pv) + 2, 90, 11), 8, C(0x8793a3), NSFontWeightSemibold);
-    if (IsMseg(sel)) { // the preview opens the MSEG editor
-        bool open = msegEdit == MsegIndex(sel);
+    if (IsMseg(sel) || IsLfo(sel)) { // the preview opens the MSEG / LFO editor
+        bool open = msegEdit == EditIndex(sel);
         NSRect ed = NSMakeRect(NSMaxX(pv) - 34, NSMaxY(pv) + 1, 34, 12);
         FillRound(ed, 3, open ? [scol colorWithAlphaComponent:.85] : [scol colorWithAlphaComponent:.18]);
         TextA(open ? @"EDITING" : @"EDIT", NSMakeRect(ed.origin.x, ed.origin.y + 2, ed.size.width, 9), 6.5, open ? C(0x0b0e13) : scol,
@@ -1053,7 +1072,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             else { lab = @"SYNC"; val = rl.sync ? "ON" : "FREE"; }
         } else if (IsLfo(sel)) {
             int li = LfoIndex(sel);
-            if (j == 0) { lab = @"SHAPE"; val = ui::lfoShapeName(ui::lfoShape(v, li)); }
+            if (j == 0) { lab = @"SHAPE"; val = ui::lfoShapeIndexName(ui::lfoShapeIndex(v, li)); }
             else if (j == 1) { lab = @"RATE"; val = ui::lfoRateReadout(v, li); }
             else { lab = @"SYNC"; val = v.lfoSync[li] ? "ON" : "FREE"; }
         } else {
@@ -1092,15 +1111,33 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 }
 - (void)drawMsegEditor {
     const int k = msegEdit;
-    auto mv = ui::msegView(current.voice, k);
+    const bool isLfo = k >= 2;
+    auto mv = ui::editView(current.voice, k);
     const auto& pts = *mv.points;
-    NSColor* acc = SourceColor(k ? ModRoute::Source::MSEG2 : ModRoute::Source::MSEG1);
+    NSColor* acc = SourceColor(EditSource(k));
+    const bool drawn = !isLfo || current.voice.lfoCustom[k - 2]; // an LFO plays its drawing only with CUSTOM on
     NSRect P = [self msegPanel];
     FillRound(P, 10, C(0x19202a));
     NSBezierPath* edge = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(P, 0.5, 0.5) xRadius:10 yRadius:10];
     [[acc colorWithAlphaComponent:.45] setStroke]; edge.lineWidth = 1; [edge stroke];
     FillRound(NSMakeRect(P.origin.x + 12, NSMaxY(P) - 22, 3, 12), 1.5, acc);
-    Text(@"MSEG EDITOR", NSMakeRect(P.origin.x + 21, NSMaxY(P) - 24, 120, 15), 11, acc, NSFontWeightBold);
+    Text(isLfo ? @"LFO EDITOR" : @"MSEG EDITOR", NSMakeRect(P.origin.x + 21, NSMaxY(P) - 24, 120, 15), 11, acc, NSFontWeightBold);
+    if (isLfo) {
+        for (int i = 0; i < 4; ++i) {
+            NSRect t = [self lfoTab:i];
+            NSColor* tc = SourceColor(EditSource(2 + i));
+            FillRound(t, 4, 2 + i == k ? [tc colorWithAlphaComponent:.22] : C(0x131820));
+            TextA([NSString stringWithFormat:@"LFO %d", i + 1], NSMakeRect(t.origin.x, t.origin.y + 3, t.size.width, 11), 8, 2 + i == k ? tc : C(0x6f7b8b),
+                  NSFontWeightBold, NSTextAlignmentCenter);
+        }
+        NSRect cc = [self lfoCustomChip];
+        FillRound(cc, 4, drawn ? [acc colorWithAlphaComponent:.85] : C(0x131820));
+        if (!drawn) {
+            NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(cc, 0.5, 0.5) xRadius:4 yRadius:4];
+            [[acc colorWithAlphaComponent:.5] setStroke]; o.lineWidth = 1; [o stroke];
+        }
+        TextA(@"CUSTOM", NSMakeRect(cc.origin.x, cc.origin.y + 3.5, cc.size.width, 10), 7.5, drawn ? C(0x0b0e13) : acc, NSFontWeightBold, NSTextAlignmentCenter);
+    } else
     for (int i = 0; i < 2; ++i) {
         NSRect t = [self msegTab:i];
         NSColor* tc = SourceColor(i ? ModRoute::Source::MSEG2 : ModRoute::Source::MSEG1);
@@ -1142,8 +1179,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         if (i) [fill lineToPoint:q]; else { [fill moveToPoint:NSMakePoint(q.x, NSMidY(c))]; [fill lineToPoint:q]; }
     }
     [fill lineToPoint:NSMakePoint(NSMaxX(c) - 0, NSMidY(c))]; [fill closePath];
-    [[acc colorWithAlphaComponent:.12] setFill]; [fill fill];
-    [acc setStroke]; line.lineWidth = 1.8; line.lineJoinStyle = NSLineJoinStyleRound; [line stroke];
+    [[acc colorWithAlphaComponent:drawn ? .12 : .05] setFill]; [fill fill];
+    [(drawn ? acc : [acc colorWithAlphaComponent:.4]) setStroke]; line.lineWidth = 1.8; line.lineJoinStyle = NSLineJoinStyleRound; [line stroke];
     for (int i = 0; i + 1 < (int)pts.size(); ++i) { // bend handles at segment centres
         double tm = 0.5 * (pts[i].time + pts[i + 1].time);
         NSPoint q = [self msegPointAt:tm value:m.valueAt(tm)];
@@ -1160,22 +1197,45 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [C(0xeaf1f8) setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(q.x - r, q.y - r, r * 2, r * 2)] fill];
         [acc setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(q.x - 1.5, q.y - 1.5, 3, 3)] fill];
     }
-    Text(@"CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND", NSMakeRect(c.origin.x + 8, c.origin.y + 4, 300, 10), 6.5,
-         C(0x4a5462), NSFontWeightSemibold);
+    // Hint on its own line under the canvas so the shape never runs through it (0.18.0).
+    Text(isLfo && !drawn ? @"EDITING TURNS CUSTOM ON  \u2022  CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND"
+                         : @"CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND",
+         NSMakeRect(c.origin.x + 2, P.origin.y + 32, 380, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
     if (msegPt >= 0 && msegPt < (int)pts.size()) {
         char b[48]; snprintf(b, sizeof b, "%.0f%%  \u2192  %+.2f", pts[msegPt].time * 100, pts[msegPt].value);
-        TextA(S(b), NSMakeRect(NSMaxX(c) - 108, c.origin.y + 4, 100, 10), 7, acc, NSFontWeightBold, NSTextAlignmentRight);
+        TextA(S(b), NSMakeRect(NSMaxX(c) - 100, P.origin.y + 32, 100, 10), 7, acc, NSFontWeightBold, NSTextAlignmentRight);
     } else if (msegSeg >= 0 && msegSeg < (int)pts.size()) {
-        TextA(S(ui::curveReadout(pts[msegSeg].curve)), NSMakeRect(NSMaxX(c) - 108, c.origin.y + 4, 100, 10), 7, acc, NSFontWeightBold, NSTextAlignmentRight);
+        TextA(S(ui::curveReadout(pts[msegSeg].curve)), NSMakeRect(NSMaxX(c) - 100, P.origin.y + 32, 100, 10), 7, acc, NSFontWeightBold, NSTextAlignmentRight);
     }
-    // Footer: mode, grid, length.
+    // Footer: mode (LFO: RETRIG/FREE + PHASE/DELAY/RISE), grid, length.
+    if (isLfo) {
+        const VoiceParams& v = current.voice;
+        const int li = k - 2;
+        for (int i = 0; i < 2; ++i) {
+            NSRect r = [self lfoTrigPill:i];
+            bool on = (i == 1) == v.lfoFree[li];
+            FillRound(r, 4, on ? [acc colorWithAlphaComponent:.22] : C(0x131820));
+            TextA(i ? @"FREE" : @"RETRIG", NSMakeRect(r.origin.x, r.origin.y + 4, r.size.width, 10), 7.5, on ? acc : C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
+        }
+        static NSString* xl[3] = {@"PHASE", @"DELAY", @"RISE"};
+        for (int j = 0; j < 3; ++j) {
+            NSRect r = [self lfoXPill:j];
+            double val = j == 0 ? v.lfoPhase[li] : j == 1 ? v.lfoDelay[li] : v.lfoRise[li];
+            bool live = lfoXDrag == j;
+            FillRound(r, 4, live ? C(0x26303c) : C(0x131820));
+            Text(xl[j], NSMakeRect(r.origin.x + 4, r.origin.y + 5, 20, 8), 5.5, C(0x5f6b7b), NSFontWeightBold);
+            std::string ro = j == 0 ? ui::lfoPhaseReadout(val) : ui::lfoFadeReadout(val);
+            TextFit(S(ro), NSMakeRect(r.origin.x + 21, r.origin.y + 4, r.size.width - 24, 10), 7.5, 5.5, live ? acc : (val > 0 ? C(0xd5dce5) : C(0x6f7b8b)),
+                    NSFontWeightSemibold, NSTextAlignmentRight);
+        }
+    } else
     for (int i = 0; i < 3; ++i) {
         NSRect r = [self msegModePill:i];
         FillRound(r, 4, mode == i ? [acc colorWithAlphaComponent:.22] : C(0x131820));
         TextA(S(ui::msegModeName(i)), NSMakeRect(r.origin.x, r.origin.y + 4, r.size.width, 10), 7.5, mode == i ? acc : C(0x6f7b8b),
               NSFontWeightBold, NSTextAlignmentCenter);
     }
-    TextA(@"GRID", NSMakeRect(P.origin.x + 182, P.origin.y + 14, 30, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentRight);
+    if (!isLfo) TextA(@"GRID", NSMakeRect(P.origin.x + 182, P.origin.y + 14, 30, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentRight);
     static NSString* grids[4] = {@"OFF", @"4", @"8", @"16"};
     for (int i = 0; i < 4; ++i) {
         NSRect r = [self msegGridPill:i];
@@ -1185,7 +1245,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     }
     NSRect lp = [self msegLenPill], sp = [self msegSyncPill];
     FillRound(lp, 4, modFieldDrag == 1 ? C(0x26303c) : C(0x131820));
-    TextFit(S(ui::msegLengthReadout(mv)), NSMakeRect(lp.origin.x + 2, lp.origin.y + 3.5, lp.size.width - 4, 11), 8.5, 6.5,
+    TextFit(S(isLfo ? ui::lfoRateReadout(current.voice, k - 2) : ui::msegLengthReadout(mv)), NSMakeRect(lp.origin.x + 2, lp.origin.y + 3.5, lp.size.width - 4, 11), 8.5, 6.5,
             modFieldDrag == 1 ? acc : C(0xd5dce5), NSFontWeightSemibold, NSTextAlignmentCenter);
     FillRound(sp, 4, *mv.sync ? [acc colorWithAlphaComponent:.22] : C(0x131820));
     TextA(@"SYNC", NSMakeRect(sp.origin.x, sp.origin.y + 4, sp.size.width, 10), 7, *mv.sync ? acc : C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
@@ -1193,9 +1253,30 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
 - (BOOL)msegMouseDown:(NSPoint)p event:(NSEvent*)e {
     if (msegEdit < 0 || !NSPointInRect(p, [self msegPanel])) return NO;
-    auto mv = ui::msegView(current.voice, msegEdit);
+    auto mv = ui::editView(current.voice, msegEdit);
     auto& pts = *mv.points;
+    const int li = msegEdit - 2; // LFO index when >= 0
     if (NSPointInRect(p, NSInsetRect([self msegClose], -4, -4))) { msegEdit = -1; [self setNeedsDisplay:YES]; return YES; }
+    if (li >= 0) {
+        VoiceParams& v = current.voice;
+        auto selectEditor = [&](int k) {
+            msegEdit = k;
+            const auto& srcs = ui::matrixSources();
+            for (int j = 0; j < (int)srcs.size(); ++j) if (srcs[j] == EditSource(k)) modSel = j;
+        };
+        for (int i = 0; i < 4; ++i)
+            if (NSPointInRect(p, [self lfoTab:i])) { selectEditor(2 + i); [self setNeedsDisplay:YES]; return YES; }
+        if (NSPointInRect(p, [self lfoCustomChip])) { v.lfoCustom[li] = !v.lfoCustom[li]; edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES; }
+        for (int i = 0; i < 2; ++i)
+            if (NSPointInRect(p, [self lfoTrigPill:i])) { v.lfoFree[li] = i == 1; edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES; }
+        for (int j = 0; j < 3; ++j)
+            if (NSPointInRect(p, [self lfoXPill:j])) {
+                if (e.clickCount == 2) { (j == 0 ? v.lfoPhase[li] : j == 1 ? v.lfoDelay[li] : v.lfoRise[li]) = 0; edited = true; [self applySound]; }
+                else { lfoXDrag = j; dragValue = j == 0 ? v.lfoPhase[li] : ui::fadeTo01(j == 1 ? v.lfoDelay[li] : v.lfoRise[li]); }
+                [self setNeedsDisplay:YES];
+                return YES;
+            }
+    } else
     for (int i = 0; i < 2; ++i)
         if (NSPointInRect(p, [self msegTab:i])) {
             msegEdit = i;
@@ -1204,13 +1285,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             [self setNeedsDisplay:YES];
             return YES;
         }
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3 && li < 0; ++i)
         if (NSPointInRect(p, [self msegModePill:i])) { mv.setMode(i); edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES; }
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self msegGridPill:i])) { msegGrid = i; [self setNeedsDisplay:YES]; return YES; }
     if (NSPointInRect(p, [self msegSyncPill])) { *mv.sync = *mv.sync ? 0 : 3; edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES; }
     if (NSPointInRect(p, [self msegLenPill])) { // drag like the LENGTH field (modSel is this MSEG while the editor is open)
-        modFieldDrag = 1; dragValue = *mv.sync ? (*mv.sync - 1) / (double)(kSyncCount - 2) : TimeTo01(*mv.seconds);
+        modFieldDrag = 1;
+        dragValue = *mv.sync ? (*mv.sync - 1) / (double)(kSyncCount - 2) : li >= 0 ? RateTo01(ui::lfoRate(current.voice, li)) : TimeTo01(*mv.seconds);
         [self setNeedsDisplay:YES];
         return YES;
     }
@@ -1229,7 +1311,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         if (d < bd) { bd = d; best = i; }
     }
     if (best >= 0) {
-        if (e.clickCount == 2) { if (ui::msegDelete(mv, best)) { edited = true; [self applySound]; } }
+        if (e.clickCount == 2) { if (ui::msegDelete(mv, best)) { if (li >= 0) current.voice.lfoCustom[li] = true; edited = true; [self applySound]; } }
         else msegPt = best;
         [self setNeedsDisplay:YES];
         return YES;
@@ -1239,7 +1321,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         double tm = 0.5 * (pts[i].time + pts[i + 1].time);
         NSPoint q = [self msegPointAt:tm value:m.valueAt(tm)];
         if (hypot(q.x - p.x, q.y - p.y) < 7) {
-            if (e.clickCount == 2) { pts[i].curve = 0; edited = true; [self applySound]; }
+            if (e.clickCount == 2) { pts[i].curve = 0; if (li >= 0) current.voice.lfoCustom[li] = true; edited = true; [self applySound]; }
             else { msegSeg = i; dragValue = pts[i].curve; }
             [self setNeedsDisplay:YES];
             return YES;
@@ -1249,13 +1331,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     double v = (p.y - NSMidY(c)) / (c.size.height / 2 - 4);
     int i = ui::msegInsert(mv, t, v);
     if (i < 0) NSBeep();
-    else { msegPt = i; edited = true; [self applySound]; }
+    else { msegPt = i; if (li >= 0) current.voice.lfoCustom[li] = true; edited = true; [self applySound]; }
     [self setNeedsDisplay:YES];
     return YES;
 }
 
 - (void)msegDragTo:(NSPoint)p shift:(bool)fine {
-    auto mv = ui::msegView(current.voice, msegEdit);
+    auto mv = ui::editView(current.voice, msegEdit);
+    if (msegEdit >= 2 && (msegPt >= 0 || msegSeg >= 0)) current.voice.lfoCustom[msegEdit - 2] = true; // drawing turns CUSTOM on
     auto& pts = *mv.points;
     NSRect c = [self msegCanvas];
     double t = std::clamp((p.x - c.origin.x) / c.size.width, 0.0, 1.0);
@@ -1486,8 +1569,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     int n = (int)current.routes.size();
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self pageTab:i])) { matrixPage = i; [self setNeedsDisplay:YES]; return YES; }
-    if (IsMseg(srcs[modSel]) && NSPointInRect(p, NSMakeRect([self modPreview].origin.x, [self modPreview].origin.y, [self modPreview].size.width, [self modPreview].size.height + 14))) { // open / close the MSEG editor
-        int k = MsegIndex(srcs[modSel]);
+    if ((IsMseg(srcs[modSel]) || IsLfo(srcs[modSel])) && NSPointInRect(p, NSMakeRect([self modPreview].origin.x, [self modPreview].origin.y, [self modPreview].size.width, [self modPreview].size.height + 14))) { // open / close the MSEG or LFO editor
+        int k = EditIndex(srcs[modSel]);
         msegEdit = msegEdit == k ? -1 : k;
         if (msegEdit >= 0) fxDetail = -1;
         [self setNeedsDisplay:YES];
@@ -1552,7 +1635,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             if (j != 1) { edited = true; [self applySound]; }
         } else if (IsLfo(sel)) {
             int li = LfoIndex(sel);
-            if (j == 0) { int& sh = ui::lfoShape(v, li); sh = (sh + 1) % 4; }
+            if (j == 0) ui::setLfoShapeIndex(v, li, ui::lfoShapeIndex(v, li) + 1); // ... SQUARE, CUSTOM, SINE
             else if (j == 2) v.lfoSync[li] = v.lfoSync[li] ? 0 : 3; // FREE <-> 1/4, rate then steps divisions
             else { modFieldDrag = 1; dragValue = v.lfoSync[li] ? (v.lfoSync[li] - 1) / (double)(kSyncCount - 2) : RateTo01(ui::lfoRate(v, li)); }
             if (j != 1) { edited = true; [self applySound]; }
@@ -2221,6 +2304,15 @@ static int SortForColumn(int c) {
         return;
     }
     if (msegEdit >= 0 && (msegPt >= 0 || msegSeg >= 0 || msegLoopEdge >= 0)) { [self msegDragTo:p shift:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return; }
+    if (msegEdit >= 2 && lfoXDrag >= 0) { // PHASE 0..360 degrees, DELAY/RISE off .. 8 s
+        VoiceParams& v = current.voice;
+        const int li = msegEdit - 2;
+        double x = std::clamp(dragValue + (p.y - dragStart.y) / scale, 0.0, 1.0);
+        if (lfoXDrag == 0) v.lfoPhase[li] = std::round(x * 72) / 72; // 5 degree steps
+        else (lfoXDrag == 1 ? v.lfoDelay[li] : v.lfoRise[li]) = ui::fadeFrom01(x);
+        edited = true; [self applySound]; [self setNeedsDisplay:YES];
+        return;
+    }
     if (fxRowDrag >= 0 && fxDetail >= 0) {
         NSRect bar = [self fxDetailBar:fxRowDrag];
         [self setFxRow:fxRowDrag value:ui::fxFromNorm(ui::fxControls(fxDetail)[fxRowDrag], (p.x - bar.origin.x) / bar.size.width)];
@@ -2313,7 +2405,7 @@ static int SortForColumn(int c) {
         fxRowDrag = -1;
     }
     dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
-    msegPt = -1; msegSeg = -1; msegLoopEdge = -1;
+    msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];

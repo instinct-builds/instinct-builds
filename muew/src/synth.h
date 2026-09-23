@@ -101,6 +101,7 @@ public:
             target = &voices_[0];
             for (auto& v : voices_) if (v.age() > target->age()) target = &v;
         }
+        target->setClock(clock_);
         target->noteOn(note, velocity);
     }
 
@@ -153,6 +154,7 @@ public:
     }
 
     inline float mixVoices() {
+        ++clock_;
         float mix = 0.0f;
         for (auto& v : voices_) if (v.isActive()) mix += v.process();
         return mix * 0.25f;  // headroom
@@ -161,6 +163,7 @@ public:
     // Stereo voice sum (unison stacks spread across the field). For mono
     // voices l == r == mixVoices(), bit for bit.
     inline void mixVoicesStereo(float& l, float& r) {
+        ++clock_;
         float ml = 0.0f, mr = 0.0f;
         for (auto& v : voices_) if (v.isActive()) { float a, b; v.processStereo(a, b); ml += a; mr += b; }
         l = ml * 0.25f; r = mr * 0.25f;
@@ -172,6 +175,7 @@ private:
     double sr_ = 44100.0;
     std::unique_ptr<Wavetable> table_;
     std::vector<Voice> voices_;
+    uint64_t clock_ = 0; // 0.18.0: samples rendered, for free-run LFOs
     TableFrames tableFrames_[2];
     std::shared_ptr<const CustomTable> tables_[2];
 };
