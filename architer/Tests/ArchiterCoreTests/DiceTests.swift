@@ -158,6 +158,44 @@ struct RollHistoryFilterTests {
         #expect([RollResult]().historyText == "")
     }
 
+    @Test func historyTextIncludesTimestamps() throws {
+        var a = roll("1d20+7", label: "Stealth check")
+        var b = roll("2d6+3")
+        let t1 = Date(timeIntervalSince1970: 1_700_000_000)
+        let t2 = Date(timeIntervalSince1970: 1_700_000_600)
+        a.rolledAt = t1
+        b.rolledAt = t2
+        let s1 = RollResult.historyTimeFormatter.string(from: t1)
+        let s2 = RollResult.historyTimeFormatter.string(from: t2)
+        // History is newest-first; export reads oldest first with stamps.
+        let text = [a, b].historyText
+        #expect(text == "[\(s2)] 2d6+3: 10\n[\(s1)] Stealth check: 10 (1d20+7)")
+        // Rolls without a recorded time keep the 2.32.0 format.
+        let plain = [roll("2d6+3")].historyText
+        #expect(plain == "2d6+3: 10")
+    }
+
+    @Test func oldRollsWithoutTimestampsDecode() throws {
+        // Pre-2.35.0 journal/history entries have no rolledAt key.
+        let json = Data(#"[{"expression":"1d20","dice":[],"modifier":0,"total":7,"characterName":"Wren"}]"#.utf8)
+        let rolls = try JSONDecoder().decode([RollResult].self, from: json)
+        #expect(rolls.count == 1)
+        #expect(rolls[0].rolledAt == nil)
+        #expect(rolls[0].characterName == "Wren")
+    }
+
+    @Test func engineRollsAreTimestamped() throws {
+        let before = Date(timeIntervalSinceNow: -5)
+        let d20 = DiceRoller(seed: 42).rollD20(mode: .normal)
+        let stamped = try #require(d20.rolledAt)
+        #expect(stamped >= before)
+        #expect(stamped <= Date())
+        let expr = try DiceRoller(seed: 42).roll("2d6+3")
+        #expect(expr.rolledAt != nil)
+        let adv = DiceRoller(seed: 42).rollD20(mode: .advantage)
+        #expect(adv.rolledAt != nil)
+    }
+
     @Test func matchesLabelsAndExpressions() throws {
         let rolls = [
             roll("2d10+3", label: "Fire Bolt damage (fire: resist 7 - immune 0 - vuln 28)", character: "Wren"),

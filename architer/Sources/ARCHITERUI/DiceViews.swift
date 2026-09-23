@@ -272,6 +272,12 @@ struct RollCard: View {
                 }
             }
             Spacer()
+            if let rolledAt = roll.rolledAt {
+                Text(RollResult.historyTimeFormatter.string(from: rolledAt))
+                    .font(Theme.Typeface.captionSmall.monospacedDigit())
+                    .foregroundStyle(Theme.inkFaint)
+                    .help(rolledAt.formatted(date: .abbreviated, time: .shortened))
+            }
             Button {
                 model.addRollToJournal(roll)
             } label: { Image(systemName: "square.and.pencil") }

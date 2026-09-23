@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.35.0
+
+- Roll history timestamps: every roll now records when it was made. The
+  Dice tab history rows show a small clock time (hover for the full
+  date), and the Copy export gains a leading "[HH:mm]" time column -
+  "[18:42] Stealth check: 25 (1d20+7)". Rolls saved before this version
+  have no recorded time: they decode unchanged and export in the 2.32.0
+  format.
+
 ## What's in 2.34.0
 
 - Compact-PDF option to hide empty inventory rows: File > Compact PDF:

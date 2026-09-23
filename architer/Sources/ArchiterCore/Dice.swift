@@ -42,6 +42,21 @@ public struct RollResult: Equatable, Codable, Sendable {
     /// Name of the character selected when the roll was made; nil for
     /// rolls made with no character selected (or pre-2.2 saves).
     public var characterName: String? = nil
+    /// When the roll was made (2.35.0); nil for pre-2.35.0 saved rolls.
+    /// Optional so old journal/history saves decode unchanged.
+    public var rolledAt: Date? = nil
+}
+
+public extension RollResult {
+    /// Short clock time for history rows and the text export ("18:42").
+    /// POSIX locale, local timezone, 24-hour: exports stay aligned and
+    /// tests can pin expectations through the same formatter.
+    static let historyTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 }
 
 public extension Array where Element == RollResult {
@@ -56,10 +71,14 @@ public extension Array where Element == RollResult {
     /// Pairs with forCharacter/matching - export exactly what you see.
     var historyText: String {
         reversed().map { roll in
+            // 2.35.0: "[HH:mm] " time column when the roll was timestamped;
+            // pre-2.35.0 rolls keep the 2.32.0 format.
+            let stamp = roll.rolledAt
+                .map { "[\(RollResult.historyTimeFormatter.string(from: $0))] " } ?? ""
             if let label = roll.label {
-                return "\(label): \(roll.total) (\(roll.expression))"
+                return "\(stamp)\(label): \(roll.total) (\(roll.expression))"
             }
-            return "\(roll.expression): \(roll.total)"
+            return "\(stamp)\(roll.expression): \(roll.total)"
         }.joined(separator: "\n")
     }
 
@@ -199,7 +218,7 @@ public struct DiceExpression: Equatable, Sendable {
                 if kept[i] { total += term.sign * v }
             }
         }
-        return RollResult(expression: source, dice: results, modifier: modifier, total: total, alternateTotal: nil)
+        return RollResult(expression: source, dice: results, modifier: modifier, total: total, alternateTotal: nil, rolledAt: Date())
     }
 }
 
@@ -215,7 +234,7 @@ public struct DiceRoller: Sendable {
         case .normal:
             let v = d20()
             return RollResult(expression: "d20", dice: [DieResult(sides: 20, value: v, kept: true)],
-                              modifier: modifier, total: v + modifier, alternateTotal: nil)
+                              modifier: modifier, total: v + modifier, alternateTotal: nil, rolledAt: Date())
         case .advantage, .disadvantage:
             let a = d20(), b = d20()
             let chosen = mode == .advantage ? max(a, b) : min(a, b)
@@ -223,7 +242,8 @@ public struct DiceRoller: Sendable {
             return RollResult(expression: "d20 \(mode.rawValue)",
                               dice: [DieResult(sides: 20, value: chosen, kept: true),
                                      DieResult(sides: 20, value: other, kept: false)],
-                              modifier: modifier, total: chosen + modifier, alternateTotal: other + modifier)
+                              modifier: modifier, total: chosen + modifier, alternateTotal: other + modifier,
+                              rolledAt: Date())
         }
     }
 
