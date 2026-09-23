@@ -1929,7 +1929,10 @@ struct BoardCanvas: View {
     private var z: Double { model.boardZoom }
     private var canvas: CGSize {
         let b = board.bounds
-        return CGSize(width: max(1600.0, (b?.maxX ?? 0) + 400), height: max(1100.0, (b?.maxY ?? 0) + 400))
+        // At low zoom the canvas still reaches the edges of the view, so the dot grid never stops short.
+        let z = max(0.25, model.boardZoom)
+        return CGSize(width: max(1600.0, (b?.maxX ?? 0) + 400, Double(viewport.width) / z),
+                      height: max(1100.0, (b?.maxY ?? 0) + 400, Double(viewport.height) / z))
     }
     private var zf: CGFloat { CGFloat(model.boardZoom) }
 
@@ -1940,7 +1943,7 @@ struct BoardCanvas: View {
             GeometryReader { geo in
                 ScrollView([.horizontal, .vertical]) {
                     ZStack(alignment: .topLeading) {
-                        BoardGrid(step: board.grid).frame(width: canvas.width, height: canvas.height)
+                        BoardGrid(step: board.grid, zoom: model.boardZoom).frame(width: canvas.width, height: canvas.height)
                             .contentShape(Rectangle())
                             .onTapGesture { model.boardItem = nil; model.editingNote = nil }
                         ForEach(board.layered) { item in card(item) }
@@ -1949,6 +1952,8 @@ struct BoardCanvas: View {
                     .frame(width: canvas.width, height: canvas.height, alignment: .topLeading)
                     .scaleEffect(zf, anchor: .topLeading)
                     .frame(width: canvas.width * zf, height: canvas.height * zf, alignment: .topLeading)
+                    // Pinned top-left; a board smaller than the view used to float in the middle.
+                    .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
                     .onDrop(of: [UTType.asssetsSelection], isTargeted: $dropTargeted) { providers, loc in
                         model.dropSelection(providers, onBoard: board.id, at: CGPoint(x: loc.x / zf, y: loc.y / zf))
                     }
@@ -1974,7 +1979,7 @@ struct BoardCanvas: View {
             Image(systemName: "rectangle.3.group").foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(board.name).font(.system(size: 15, weight: .bold)).lineLimit(1)
-                Text("\(board.items.count) item\(board.items.count == 1 ? "" : "s") · drag assets onto the board in the sidebar").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text("\(board.items.count) item\(board.items.count == 1 ? "" : "s")").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }.layoutPriority(1)
             Spacer(minLength: 8)
             Button { model.addNote() } label: { Image(systemName: "note.text.badge.plus") }.help("Add a note")
@@ -2087,8 +2092,12 @@ struct BoardCanvas: View {
 
 struct BoardGrid: View {
     let step: Double
+    var zoom = 1.0
     var body: some View {
         Canvas { ctx, size in
+            // Dots keep the same size on screen at any zoom; minor dots drop out when they would crowd.
+            let z = max(0.1, zoom)
+            let minor = step * z >= 8
             let s = max(10.0, step)
             let W = Double(size.width), H = Double(size.height)
             var y = 0.0
@@ -2096,8 +2105,8 @@ struct BoardGrid: View {
                 var x = 0.0
                 while x <= W {
                     let major = Int((x / s).rounded()) % 5 == 0 && Int((y / s).rounded()) % 5 == 0
-                    let d = major ? 2.2 : 1.2
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - d / 2, y: y - d / 2, width: d, height: d)), with: .color(.white.opacity(major ? 0.13 : 0.06)))
+                    let d = (major ? 2.2 : 1.2) / z
+                    if major || minor { ctx.fill(Path(ellipseIn: CGRect(x: x - d / 2, y: y - d / 2, width: d, height: d)), with: .color(.white.opacity(major ? 0.16 : 0.07))) }
                     x += s
                 }
                 y += s
