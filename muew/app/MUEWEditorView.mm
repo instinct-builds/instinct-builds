@@ -83,6 +83,10 @@ static NSUserDefaults* MUEWDefaults() {
     if (host) host->applyPreset(current, currentIndex, edited);
 }
 
+- (void)knobEdited:(int)k {
+    if (!host || !host->editParameter(k, current)) [self applySound];
+}
+
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
     current = p;
     currentIndex = index;
@@ -406,9 +410,10 @@ static NSUserDefaults* MUEWDefaults() {
     dragKnob = [self hitKnob:p];
     dragStart = p;
     if (dragKnob >= 0) {
+        if (host) host->parameterGesture((int)dragKnob, true);
         if (e.clickCount == 2 && currentIndex >= 0) { // double-click restores the preset value
             ui::knobField(current.voice, (int)dragKnob) = ui::knobField(const_cast<VoiceParams&>(factoryPresets()[currentIndex].voice), (int)dragKnob);
-            [self applySound];
+            [self knobEdited:(int)dragKnob];
         }
         dragValue = ui::knobValue(current.voice, (int)dragKnob);
         [self setNeedsDisplay:YES];
@@ -455,11 +460,15 @@ static NSUserDefaults* MUEWDefaults() {
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
     ui::setKnob(current.voice, (int)dragKnob, dragValue + (p.y - dragStart.y) / scale);
     edited = true;
-    [self applySound];
+    [self knobEdited:(int)dragKnob];
     [self setNeedsDisplay:YES];
 }
 
-- (void)mouseUp:(NSEvent*)e { dragKnob = -1; [self setNeedsDisplay:YES]; }
+- (void)mouseUp:(NSEvent*)e {
+    if (dragKnob >= 0 && host) host->parameterGesture((int)dragKnob, false);
+    dragKnob = -1;
+    [self setNeedsDisplay:YES];
+}
 
 - (void)scrollWheel:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];

@@ -21,6 +21,12 @@ struct MUEWEditorHost {
     // factoryIndex is the bank/AU number the sound came from (-1 if none);
     // edited is true once a knob has changed it.
     virtual void applyPreset(const muew::Preset& p, int factoryIndex, bool edited) = 0;
+    // Knob edits. A host that publishes parameters (the AU) takes the edit as
+    // a parameter change so the DAW can record automation, and returns true;
+    // otherwise the editor falls back to applyPreset. Knob ids match
+    // muew::params IDs 0-8. Gestures bracket a drag.
+    virtual bool editParameter(int, const muew::Preset&) { return false; }
+    virtual void parameterGesture(int, bool /*begin*/) {}
     virtual bool playsNotes() const { return false; }
     virtual void noteOn(int, float) {}
     virtual void noteOff(int) {}

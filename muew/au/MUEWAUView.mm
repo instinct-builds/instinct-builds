@@ -5,6 +5,7 @@
 // AU through its preset properties instead of an in-process synth.
 #import <AppKit/AppKit.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <AudioToolbox/AudioUnitUtilities.h>
 #if __has_include(<AudioToolbox/AUCocoaUIView.h>)
 #import <AudioToolbox/AUCocoaUIView.h>
 #else
@@ -12,6 +13,7 @@
 #endif
 #import "MUEWEditorView.h"
 #include "MUEWProperties.h"
+#include "au_params.h"
 #include <string>
 
 using namespace muew;
@@ -60,20 +62,36 @@ struct AUEditorHost : MUEWEditorHost {
         }
         seenGeneration = ReadGeneration(au);
     }
+    // Knob drags become AU parameter changes, announced to the host so Live
+    // records automation and moves any mapped controls.
+    bool editParameter(int id, const Preset& p) override {
+        if (!params::valid(id)) return false;
+        AudioUnitParameter param{au, static_cast<AudioUnitParameterID>(id), kAudioUnitScope_Global, 0};
+        AUParameterSet(nullptr, nullptr, &param, static_cast<AudioUnitParameterValue>(params::get(p, id)), 0);
+        seenGeneration = ReadGeneration(au);
+        return true;
+    }
+    void parameterGesture(int id, bool begin) override {
+        if (!params::valid(id)) return;
+        AudioUnitEvent e{};
+        e.mEventType = begin ? kAudioUnitEvent_BeginParameterChangeGesture : kAudioUnitEvent_EndParameterChangeGesture;
+        e.mArgument.mParameter = AudioUnitParameter{au, static_cast<AudioUnitParameterID>(id), kAudioUnitScope_Global, 0};
+        AUEventListenerNotify(nullptr, nullptr, &e);
+    }
 };
 
 } // namespace
 
 // Owns the AU binding and follows host-side changes (host preset menu,
 // project recall) by watching the AU's state generation.
-@interface MUEWAUEditorContainer_0_4 : MUEWEditorView {
+@interface MUEWAUEditorContainer_0_5 : MUEWEditorView {
 @public
     AUEditorHost* auHost;
     NSTimer* follow;
 }
 @end
 
-@implementation MUEWAUEditorContainer_0_4
+@implementation MUEWAUEditorContainer_0_5
 - (void)syncFromAU:(BOOL)force {
     if (!auHost) return;
     UInt32 g = ReadGeneration(auHost->au);
@@ -86,13 +104,20 @@ struct AUEditorHost : MUEWEditorHost {
     bool wasEdited = number < 0;
     [self adoptPreset:p index:index edited:wasEdited];
 }
+// The sound the editor is showing, as preset text (read by the CI harness
+// through KVC to prove host automation reaches the open editor).
+- (NSString*)muewDisplayedState {
+    return [NSString stringWithUTF8String:current.serialize().c_str()];
+}
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     [follow invalidate];
     follow = nil;
     if (self.window && auHost) {
-        __weak MUEWAUEditorContainer_0_4* weakSelf = self;
-        follow = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer* t) {
+        __weak MUEWAUEditorContainer_0_5* weakSelf = self;
+        // 30 Hz: host automation moves the knobs smoothly. Only the generation
+        // number is read unless the sound actually changed.
+        follow = [NSTimer scheduledTimerWithTimeInterval:1.0 / 30.0 repeats:YES block:^(NSTimer* t) {
             [weakSelf syncFromAU:NO];
         }];
     }
@@ -103,15 +128,15 @@ struct AUEditorHost : MUEWEditorHost {
 }
 @end
 
-@interface MUEWViewFactory_0_4 : NSObject <AUCocoaUIBase>
+@interface MUEWViewFactory_0_5 : NSObject <AUCocoaUIBase>
 @end
 
-@implementation MUEWViewFactory_0_4
+@implementation MUEWViewFactory_0_5
 - (unsigned)interfaceVersion { return 0; }
 - (NSString*)description { return @"MUEW Editor"; }
 - (NSView*)uiViewForAudioUnit:(AudioUnit)inAudioUnit withSize:(NSSize)inPreferredSize {
     (void)inPreferredSize; // fixed-size editor
-    MUEWAUEditorContainer_0_4* v = [[MUEWAUEditorContainer_0_4 alloc] initWithFrame:NSMakeRect(0, 0, 1000, 680)];
+    MUEWAUEditorContainer_0_5* v = [[MUEWAUEditorContainer_0_5 alloc] initWithFrame:NSMakeRect(0, 0, 1000, 680)];
     v->auHost = new AUEditorHost(inAudioUnit);
     v->host = v->auHost;
     [v syncFromAU:YES];

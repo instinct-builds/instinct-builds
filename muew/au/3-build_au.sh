@@ -10,7 +10,7 @@ mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources" build
 echo "== Compiling MUEW.component =="
 clang++ -std=c++17 -O2 -bundle -arch arm64 -arch x86_64 \
   -isysroot "$(xcrun --show-sdk-path)" \
-  -Isrc -Iau -Iapp -fobjc-arc -DMUEW_EDITOR_CLASS=MUEWEditorView_AU_0_4 \
+  -Isrc -Iau -Iapp -fobjc-arc -DMUEW_EDITOR_CLASS=MUEWEditorView_AU_0_5 \
   au/MUEWAU.cpp au/MUEWAUView.mm app/MUEWEditorView.mm \
   -framework AudioToolbox -framework CoreAudio -framework CoreMIDI -framework CoreFoundation \
   -framework AppKit -framework AudioUnit \
@@ -40,13 +40,13 @@ echo "== Discovery check =="
 auval -a | grep -i muew || { echo "FAIL: component not discovered after registrar restart"; exit 1; }
 
 echo "== auval =="
-auval -v aumu Muew Inst
+auval -v aumu Muew Inst 2>&1 | tee out/auval.log
 
 echo "== Host audio test =="
 clang++ -std=c++17 -O2 -isysroot "$(xcrun --show-sdk-path)" -Isrc -Iau \
   au/au_host_test.cpp -framework AudioToolbox -framework CoreAudio -framework CoreMIDI -framework CoreFoundation \
   -o build/au_host_test
-./build/au_host_test
+./build/au_host_test 2>&1 | tee out/au_host_test.log
 
 echo "== Packaging =="
 cd out && zip -qry MUEW-AU-unsigned.zip MUEW.component && cd ..

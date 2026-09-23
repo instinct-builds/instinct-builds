@@ -7,6 +7,7 @@
 #include <string>
 #include "MUEWProperties.h"
 #include "preset.h"
+#include "au_params.h"
 
 static AudioUnit openUnit() {
     AudioComponentDescription desc{};
@@ -164,6 +165,113 @@ int main() {
         muew::Preset nb;
         if (presetNumber(unit) != 16 || !getState(unit, nb) || nb.info.name != "Night Bloom") { printf("FAIL: legacy class info\n"); return 1; }
         printf("editor state, full-sound recall and legacy recall: ok\n");
+    }
+
+    // Host automation: parameter list, info, get/set, scheduling, audible
+    // effect, preset loads updating parameters, and recall.
+    {
+        namespace mp = muew::params;
+        UInt32 size = 0; Boolean writable = false;
+        if (AudioUnitGetPropertyInfo(unit, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, &size, &writable) != noErr
+            || size != mp::Count * sizeof(AudioUnitParameterID)) { printf("FAIL: parameter list size %u\n", size); return 1; }
+        std::vector<AudioUnitParameterID> ids(mp::Count);
+        if (AudioUnitGetProperty(unit, kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0, ids.data(), &size) != noErr) {
+            printf("FAIL: parameter list\n"); return 1;
+        }
+        for (int i = 0; i < mp::Count; ++i) {
+            if (ids[i] != (AudioUnitParameterID)i) { printf("FAIL: parameter id %d\n", i); return 1; }
+            AudioUnitParameterInfo info{}; UInt32 is = sizeof(info);
+            if (AudioUnitGetProperty(unit, kAudioUnitProperty_ParameterInfo, kAudioUnitScope_Global, ids[i], &info, &is) != noErr) {
+                printf("FAIL: parameter info %d\n", i); return 1;
+            }
+            const mp::Def& d = mp::def(i);
+            bool ok = std::string(info.name) == d.name && info.minValue == (float)d.lo && info.maxValue == (float)d.hi
+                && info.defaultValue >= info.minValue && info.defaultValue <= info.maxValue
+                && (info.flags & kAudioUnitParameterFlag_IsReadable) && (info.flags & kAudioUnitParameterFlag_IsWritable)
+                && info.cfNameString && CFStringCompare(info.cfNameString, CFStringCreateWithCString(nullptr, d.name, kCFStringEncodingUTF8), 0) == kCFCompareEqualTo;
+            if (info.cfNameString && (info.flags & kAudioUnitParameterFlag_CFNameRelease)) CFRelease(info.cfNameString);
+            if (!ok) { printf("FAIL: parameter info contents %d (%s)\n", i, d.name); return 1; }
+        }
+        size = 99;
+        if (AudioUnitGetPropertyInfo(unit, kAudioUnitProperty_ParameterList, kAudioUnitScope_Output, 0, &size, &writable) != noErr || size != 0) {
+            printf("FAIL: output-scope parameter list should be empty\n"); return 1;
+        }
+        AudioUnitParameterValue v = 0;
+        if (AudioUnitGetParameter(unit, 99, kAudioUnitScope_Global, 0, &v) != kAudioUnitErr_InvalidParameter
+            || AudioUnitSetParameter(unit, mp::Cutoff, kAudioUnitScope_Input, 0, 100, 0) != kAudioUnitErr_InvalidScope) {
+            printf("FAIL: invalid parameter/scope errors\n"); return 1;
+        }
+
+        // A factory preset load updates every parameter to that preset's values.
+        const int kInitSaw = 2;
+        AUPreset sel{kInitSaw, nullptr};
+        if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
+            printf("FAIL: select Init Saw\n"); return 1;
+        }
+        const muew::Preset& fp = muew::factoryPresets()[kInitSaw];
+        for (int i = 0; i < mp::Count; ++i) {
+            AudioUnitGetParameter(unit, i, kAudioUnitScope_Global, 0, &v);
+            if (v != (float)mp::get(fp, i)) { printf("FAIL: preset load -> parameter %s (%g vs %g)\n", mp::def(i).name, v, mp::get(fp, i)); return 1; }
+        }
+        if (presetNumber(unit) != kInitSaw) { printf("FAIL: preset number before automation\n"); return 1; }
+
+        // Automation changes the sound: bright vs dark cutoff on the same note.
+        auto brightness = [&](float cutoff) -> double {
+            AudioUnitSetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, cutoff, 0);
+            AudioUnitReset(unit, kAudioUnitScope_Global, 0);
+            MusicDeviceMIDIEvent(unit, 0x90, 48, 110, 0);
+            double total = 0, hf = 0;
+            for (int blk = 0; blk < 24; ++blk) {
+                if (!render(unit, l, r)) return -1;
+                if (blk < 4) continue;
+                for (UInt32 i = 1; i < frames; ++i) { total += l[i] * l[i]; double d = l[i] - l[i - 1]; hf += d * d; }
+            }
+            MusicDeviceMIDIEvent(unit, 0x80, 48, 0, 0);
+            return total > 1e-9 ? hf / total : -1;
+        };
+        double bright = brightness(18000), dark = brightness(200);
+        printf("automation: cutoff 18000 Hz brightness %.4f, 200 Hz brightness %.4f\n", bright, dark);
+        if (bright <= 0 || dark <= 0 || bright < dark * 3) { printf("FAIL: cutoff automation not audible\n"); return 1; }
+
+        AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
+        muew::Preset st;
+        if (v != 200.0f || presetNumber(unit) != -1 || !getState(unit, st) || std::fabs(st.voice.filterCutoff - 200.0) > 1e-3
+            || std::fabs(mp::get(st, mp::Resonance) - mp::get(fp, mp::Resonance)) > 1e-6) {
+            printf("FAIL: automated value not reflected in state/preset number\n"); return 1;
+        }
+        // Scheduled (ramped) parameter events land on their end value; out-of-range values clamp.
+        AudioUnitParameterEvent ev{};
+        ev.scope = kAudioUnitScope_Global; ev.parameter = mp::Resonance; ev.eventType = kParameterEvent_Ramped;
+        ev.eventValues.ramp.startValue = 1.0f; ev.eventValues.ramp.endValue = 3.5f; ev.eventValues.ramp.durationInFrames = 256;
+        AudioUnitParameterEvent ev2{};
+        ev2.scope = kAudioUnitScope_Global; ev2.parameter = mp::ReverbMix; ev2.eventType = kParameterEvent_Immediate;
+        ev2.eventValues.immediate.value = 250.0f;
+        AudioUnitParameterEvent evs[2] = {ev, ev2};
+        if (AudioUnitScheduleParameters(unit, evs, 2) != noErr) { printf("FAIL: schedule parameters\n"); return 1; }
+        AudioUnitParameterValue reso = 0, rev = 0;
+        AudioUnitGetParameter(unit, mp::Resonance, kAudioUnitScope_Global, 0, &reso);
+        AudioUnitGetParameter(unit, mp::ReverbMix, kAudioUnitScope_Global, 0, &rev);
+        if (reso != 3.5f || rev != 100.0f) { printf("FAIL: scheduled values %g %g\n", reso, rev); return 1; }
+
+        // Automated values are saved with the project.
+        CFPropertyListRef plist = nullptr; UInt32 ps = sizeof(plist);
+        AudioUnitGetProperty(unit, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, &ps);
+        AudioUnit other = openUnit();
+        if (!plist || !other || AudioUnitSetProperty(other, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &plist, sizeof(plist)) != noErr) {
+            printf("FAIL: automation recall\n"); return 1;
+        }
+        CFRelease(plist);
+        AudioUnitParameterValue oc = 0, orr = 0;
+        AudioUnitGetParameter(other, mp::Cutoff, kAudioUnitScope_Global, 0, &oc);
+        AudioUnitGetParameter(other, mp::Resonance, kAudioUnitScope_Global, 0, &orr);
+        AudioUnitUninitialize(other); AudioComponentInstanceDispose(other);
+        if (std::fabs(oc - 200.0f) > 1e-3 || std::fabs(orr - 3.5f) > 1e-5) { printf("FAIL: recalled parameters %g %g\n", oc, orr); return 1; }
+        // Parameters survive Reset and re-Initialize (auval expects this too).
+        AudioUnitUninitialize(unit);
+        if (AudioUnitInitialize(unit) != noErr) { printf("FAIL: reinitialize\n"); return 1; }
+        AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
+        if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
+        printf("parameters: %d published; get/set, schedule, preset sync, audible automation and recall: ok\n", (int)mp::Count);
     }
 
     // Cocoa editor is advertised with a loadable bundle and class name.

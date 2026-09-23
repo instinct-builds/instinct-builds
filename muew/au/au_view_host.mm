@@ -5,10 +5,16 @@
 //   1. host selects Chrome Motion  -> editor must follow (host -> editor)
 //   2. click the header "next" arrow -> AU must report Rising Tide (editor -> AU)
 //   3. drag the cutoff knob up      -> AU holds an edited Rising Tide with a
-//                                      higher cutoff and no factory number
+//                                      higher cutoff and no factory number; the
+//                                      drag reaches the AU as the Cutoff
+//                                      parameter with begin/end gestures, the
+//                                      events a DAW records automation from
+//   4. host automates Cutoff, Resonance and Warp A -> the open editor shows
+//                                      the automated values
 // The window stays up long enough for the workflow to screenshot it.
 #import <AppKit/AppKit.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <AudioToolbox/AudioUnitUtilities.h>
 #if __has_include(<AudioToolbox/AUCocoaUIView.h>)
 #import <AudioToolbox/AUCocoaUIView.h>
 #else
@@ -16,11 +22,15 @@
 #endif
 #include "MUEWProperties.h"
 #include "preset.h"
+#include "au_params.h"
 #include <cstdio>
+#include <cmath>
 #include <string>
 
 static AudioUnit gUnit = nullptr;
 static int gFailures = 0;
+static int gBegin = 0, gEnd = 0, gValue = 0;
+static float gLastValue = 0;
 
 static void Check(bool ok, const char* what) {
     printf("%s %s\n", ok ? "ok:  " : "FAIL:", what);
@@ -95,6 +105,23 @@ int main() {
         [w makeKeyAndOrderFront:nil];
         [app activateIgnoringOtherApps:YES];
 
+        // Listen for the cutoff parameter the way a DAW's automation recorder does.
+        AUEventListenerRef listener = nullptr;
+        AUEventListenerCreateWithDispatchQueue(&listener, 0.0f, 0.0f, dispatch_get_main_queue(),
+            ^(void*, const AudioUnitEvent* ev, UInt64, AudioUnitParameterValue value) {
+                if (ev->mEventType == kAudioUnitEvent_BeginParameterChangeGesture) ++gBegin;
+                else if (ev->mEventType == kAudioUnitEvent_EndParameterChangeGesture) ++gEnd;
+                else if (ev->mEventType == kAudioUnitEvent_ParameterValueChange) { ++gValue; gLastValue = value; }
+            });
+        Check(listener != nullptr, "automation listener attached");
+        for (AudioUnitEventType t : {kAudioUnitEvent_BeginParameterChangeGesture, kAudioUnitEvent_EndParameterChangeGesture,
+                                     kAudioUnitEvent_ParameterValueChange}) {
+            AudioUnitEvent ev{};
+            ev.mEventType = t;
+            ev.mArgument.mParameter = AudioUnitParameter{gUnit, (AudioUnitParameterID)muew::params::Cutoff, kAudioUnitScope_Global, 0};
+            if (listener) AUEventListenerAddEventType(listener, nullptr, &ev);
+        }
+
         After(1.0, ^{ SelectPreset(27); }); // host picks Chrome Motion
         After(2.0, ^{
             // Header "next" arrow (view coordinates == window coordinates here).
@@ -116,10 +143,36 @@ int main() {
                   "cutoff drag in the editor changed the AU's sound");
             Check(PresetNumber() == -1, "edited sound is reported as a custom preset");
             printf("cutoff %.1f Hz -> %.1f Hz\n", before.voice.filterCutoff, after.voice.filterCutoff);
+            AudioUnitParameterValue pv = 0;
+            AudioUnitGetParameter(gUnit, muew::params::Cutoff, kAudioUnitScope_Global, 0, &pv);
+            Check(std::fabs(pv - after.voice.filterCutoff) < 0.01 * after.voice.filterCutoff,
+                  "the AU's Cutoff parameter matches the edited sound");
+            fflush(stdout);
+        });
+        After(3.2, ^{
+            printf("automation events from the drag: begin %d, value %d, end %d, last %.1f Hz\n", gBegin, gValue, gEnd, gLastValue);
+            Check(gBegin == 1 && gEnd == 1 && gValue >= 1, "knob drag announced to the host as a parameter gesture (automation-recordable)");
+        });
+        After(3.4, ^{
+            // Host automation playback.
+            AudioUnitSetParameter(gUnit, muew::params::Cutoff, kAudioUnitScope_Global, 0, 900.0f, 0);
+            AudioUnitSetParameter(gUnit, muew::params::Resonance, kAudioUnitScope_Global, 0, 5.0f, 0);
+            AudioUnitSetParameter(gUnit, muew::params::WarpA, kAudioUnitScope_Global, 0, 70.0f, 0);
+        });
+        After(4.0, ^{
+            NSString* shown = [view respondsToSelector:NSSelectorFromString(@"muewDisplayedState")]
+                ? [view valueForKey:@"muewDisplayedState"] : nil;
+            muew::Preset p;
+            bool ok = shown && p.parse(std::string(shown.UTF8String ?: ""));
+            printf("editor shows cutoff %.1f Hz, resonance %.2f, warp A %.0f%%\n",
+                   p.voice.filterCutoff, p.voice.filterReso, p.voice.osc1Warp * 100);
+            Check(ok && std::fabs(p.voice.filterCutoff - 900) < 0.5 && std::fabs(p.voice.filterReso - 5.0) < 1e-3
+                     && std::fabs(p.voice.osc1Warp - 0.70) < 1e-4 && p.info.name == "Rising Tide",
+                  "host automation reached the open editor (cutoff, resonance, warp A)");
             fflush(stdout);
         });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted, host->editor and editor->AU sync\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU and automation sync\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

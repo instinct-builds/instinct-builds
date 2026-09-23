@@ -5,15 +5,19 @@
 #include "preset.h"
 #include "factory_bank.h"
 #include "MUEWProperties.h"
+#include "au_params.h"
 
 #include <AudioToolbox/AudioUnitProperties.h>
 #include <AudioToolbox/MusicDevice.h>
+#include <AudioToolbox/AudioUnitUtilities.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <cstring>
 #include <new>
 #include <algorithm>
 #include <vector>
 #include <mutex>
+#include <atomic>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -65,7 +69,14 @@ struct MUEWInstance {
     std::mutex stateLock;
     muew::Preset state = muew::factoryPresets()[7]; // Warm Pad power-on sound
     bool stateDirty = true;
-    UInt32 generation = 1;
+    std::atomic<UInt32> generation{1};
+    // Host-facing parameter values (automation, MIDI mapping). Any thread may
+    // set them without locking, including a host's render thread; they are
+    // folded into `state` under stateLock at the next block or state read.
+    std::atomic<float> paramValues[muew::params::Count];
+    std::atomic<bool> paramsDirty{false};
+
+    MUEWInstance() { syncParamsFromState(); }
     std::vector<ScheduledEvent> events;
 
     AudioStreamBasicDescription streamFormat() const {
@@ -82,18 +93,52 @@ struct MUEWInstance {
         return d;
     }
 
+    // stateLock held (or no other thread yet).
+    void syncParamsFromState() {
+        for (int id = 0; id < muew::params::Count; ++id)
+            paramValues[id].store(static_cast<float>(muew::params::get(state, id)));
+        paramsDirty.store(false);
+    }
+
+    // stateLock held. Moves pending parameter changes into the sound. A real
+    // change makes the sound custom (no longer a factory preset).
+    void foldParams() {
+        if (!paramsDirty.exchange(false)) return;
+        bool changed = false;
+        for (int id = 0; id < muew::params::Count; ++id) {
+            float v = paramValues[id].load();
+            if (static_cast<float>(muew::params::get(state, id)) != v) {
+                muew::params::set(state, id, v);
+                changed = true;
+            }
+        }
+        if (changed) { stateDirty = true; presentPreset = -1; }
+    }
+
     void setState(const muew::Preset& p, SInt32 number) {
         std::lock_guard<std::mutex> g(stateLock);
         state = p;
         presentPreset = number;
         stateDirty = true;
+        syncParamsFromState();
         ++generation;
+    }
+
+    float getParameter(int id) { return paramValues[id].load(); }
+
+    void setParameter(int id, float v) {
+        v = static_cast<float>(muew::params::clampValue(id, v));
+        if (paramValues[id].exchange(v) != v) {
+            paramsDirty.store(true);
+            ++generation;
+        }
     }
 
     // Render thread: never blocks. Host thread (initialize/reset): blocks.
     void applyPendingState(bool block) {
         std::unique_lock<std::mutex> g(stateLock, std::defer_lock);
         if (block) g.lock(); else if (!g.try_lock()) return;
+        foldParams();
         if (!stateDirty) return;
         synth.setParams(state.voice, state.routes);
         synth.setFX(state.fx);
@@ -107,8 +152,8 @@ struct MUEWInstance {
         return true;
     }
 
-    SInt32 currentPresetNumber() { std::lock_guard<std::mutex> g(stateLock); return presentPreset; }
-    std::string stateText() { std::lock_guard<std::mutex> g(stateLock); return state.serialize(); }
+    SInt32 currentPresetNumber() { std::lock_guard<std::mutex> g(stateLock); foldParams(); return presentPreset; }
+    std::string stateText() { std::lock_guard<std::mutex> g(stateLock); foldParams(); return state.serialize(); }
 };
 
 MUEWInstance* Self(void* self) { return reinterpret_cast<MUEWInstance*>(self); }
@@ -126,6 +171,25 @@ bool ParseStateString(CFStringRef str, muew::Preset& out) {
 void NotifyListeners(MUEWInstance* u, AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement elem) {
     for (auto& l : u->listeners)
         l.proc(l.userData, u->componentInstance, id, scope, elem);
+}
+
+// Tells the host (automation lanes, generic views) that every parameter may
+// have a new value, after a preset load or state recall.
+void NotifyAllParameters(MUEWInstance* u) {
+    for (int id = 0; id < muew::params::Count; ++id) {
+        AudioUnitParameter p{u->componentInstance, static_cast<AudioUnitParameterID>(id), kAudioUnitScope_Global, 0};
+        AUParameterListenerNotify(nullptr, nullptr, &p);
+    }
+}
+
+AudioUnitParameterUnit UnitFor(muew::params::Unit unit) {
+    switch (unit) {
+        case muew::params::Percent: return kAudioUnitParameterUnit_Percent;
+        case muew::params::Hertz: return kAudioUnitParameterUnit_Hertz;
+        case muew::params::Semitones: return kAudioUnitParameterUnit_RelativeSemiTones;
+        case muew::params::Seconds: return kAudioUnitParameterUnit_Seconds;
+        default: return kAudioUnitParameterUnit_Generic;
+    }
 }
 
 // ---- AudioComponentPlugInInterface ----
@@ -214,6 +278,14 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
                 *outDataSize = sizeof(CFPropertyListRef); if (outWritable) *outWritable = true; return noErr;
             }
             break;
+        case kAudioUnitProperty_ParameterList:
+            *outDataSize = inScope == kAudioUnitScope_Global ? muew::params::Count * sizeof(AudioUnitParameterID) : 0;
+            return noErr;
+        case kAudioUnitProperty_ParameterInfo:
+            if (inScope != kAudioUnitScope_Global) return kAudioUnitErr_InvalidScope;
+            if (!muew::params::valid(static_cast<int>(inElement))) return kAudioUnitErr_InvalidParameter;
+            *outDataSize = sizeof(AudioUnitParameterInfo);
+            return noErr;
         case kAudioUnitProperty_CocoaUI:
             if (inScope == kAudioUnitScope_Global) {
                 *outDataSize = sizeof(AudioUnitCocoaViewInfo); if (outWritable) *outWritable = false; return noErr;
@@ -343,6 +415,34 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 return noErr;
             }
             break;
+        case kAudioUnitProperty_ParameterList: {
+            UInt32 need = inScope == kAudioUnitScope_Global ? muew::params::Count * sizeof(AudioUnitParameterID) : 0;
+            if (*ioDataSize < need) return kAudioUnitErr_InvalidPropertyValue;
+            AudioUnitParameterID* ids = static_cast<AudioUnitParameterID*>(outData);
+            for (UInt32 i = 0; i < need / sizeof(AudioUnitParameterID); ++i) ids[i] = i;
+            *ioDataSize = need;
+            return noErr;
+        }
+        case kAudioUnitProperty_ParameterInfo: {
+            if (inScope != kAudioUnitScope_Global) return kAudioUnitErr_InvalidScope;
+            int id = static_cast<int>(inElement);
+            if (!muew::params::valid(id)) return kAudioUnitErr_InvalidParameter;
+            if (*ioDataSize < sizeof(AudioUnitParameterInfo)) return kAudioUnitErr_InvalidPropertyValue;
+            const muew::params::Def& d = muew::params::def(id);
+            AudioUnitParameterInfo* info = static_cast<AudioUnitParameterInfo*>(outData);
+            std::memset(info, 0, sizeof(*info));
+            std::strncpy(info->name, d.name, sizeof(info->name) - 1);
+            info->cfNameString = CFStringCreateWithCString(nullptr, d.name, kCFStringEncodingUTF8); // host releases (CFNameRelease)
+            info->unit = UnitFor(d.unit);
+            info->minValue = static_cast<AudioUnitParameterValue>(d.lo);
+            info->maxValue = static_cast<AudioUnitParameterValue>(d.hi);
+            info->defaultValue = static_cast<AudioUnitParameterValue>(muew::params::defaultValue(id));
+            info->flags = kAudioUnitParameterFlag_IsReadable | kAudioUnitParameterFlag_IsWritable |
+                          kAudioUnitParameterFlag_HasCFNameString | kAudioUnitParameterFlag_CFNameRelease |
+                          (d.log ? kAudioUnitParameterFlag_DisplayLogarithmic : 0);
+            *ioDataSize = sizeof(AudioUnitParameterInfo);
+            return noErr;
+        }
         case kAudioUnitProperty_CocoaUI:
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(AudioUnitCocoaViewInfo)) {
                 CFBundleRef bundle = CFBundleGetBundleWithIdentifier(CFSTR(MUEW_AU_BUNDLE_ID));
@@ -425,6 +525,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                         return kAudioUnitErr_InvalidPropertyValue;
                 }
                 NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+                NotifyAllParameters(u);
                 return noErr;
             }
             break;
@@ -444,6 +545,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                     else if (n >= 0)
                         u->loadFactoryPreset(n);        // 0.3 and earlier: preset number only
                     NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+                    NotifyAllParameters(u);
                 }
                 return noErr;
             }
@@ -456,6 +558,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                     return kAudioUnitErr_InvalidPropertyValue;
                 u->setState(p, -1); // an edited sound is no longer a factory preset
                 NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+                NotifyAllParameters(u);
                 return noErr;
             }
             break;
@@ -516,6 +619,39 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(inNumberFrames - cursor));
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));
     for (auto& e : u->events) e.offset -= inNumberFrames;
+    return noErr;
+}
+
+// ---- Parameters ----
+
+OSStatus MUEWGetParameter(void* self, AudioUnitParameterID inID, AudioUnitScope inScope,
+                          AudioUnitElement inElement, AudioUnitParameterValue* outValue) {
+    (void)inElement;
+    if (inScope != kAudioUnitScope_Global) return kAudioUnitErr_InvalidScope;
+    if (!muew::params::valid(static_cast<int>(inID))) return kAudioUnitErr_InvalidParameter;
+    if (!outValue) return kAudio_ParamError;
+    *outValue = Self(self)->getParameter(static_cast<int>(inID));
+    return noErr;
+}
+
+OSStatus MUEWSetParameter(void* self, AudioUnitParameterID inID, AudioUnitScope inScope,
+                          AudioUnitElement inElement, AudioUnitParameterValue inValue,
+                          UInt32 inBufferOffsetInFrames) {
+    (void)inElement; (void)inBufferOffsetInFrames; // applied at block start
+    if (inScope != kAudioUnitScope_Global) return kAudioUnitErr_InvalidScope;
+    if (!muew::params::valid(static_cast<int>(inID))) return kAudioUnitErr_InvalidParameter;
+    Self(self)->setParameter(static_cast<int>(inID), inValue);
+    return noErr;
+}
+
+OSStatus MUEWScheduleParameters(void* self, const AudioUnitParameterEvent* inEvents, UInt32 inNumEvents) {
+    for (UInt32 i = 0; i < inNumEvents; ++i) {
+        const AudioUnitParameterEvent& e = inEvents[i];
+        if (e.scope != kAudioUnitScope_Global) return kAudioUnitErr_InvalidScope;
+        if (!muew::params::valid(static_cast<int>(e.parameter))) return kAudioUnitErr_InvalidParameter;
+        float v = e.eventType == kParameterEvent_Ramped ? e.eventValues.ramp.endValue : e.eventValues.immediate.value;
+        Self(self)->setParameter(static_cast<int>(e.parameter), v);
+    }
     return noErr;
 }
 
@@ -592,6 +728,9 @@ AudioComponentMethod MUEWLookup(SInt16 selector) {
         case kAudioUnitRemovePropertyListenerSelect: return (AudioComponentMethod)MUEWRemovePropertyListener;
         case kAudioUnitRemovePropertyListenerWithUserDataSelect: return (AudioComponentMethod)MUEWRemovePropertyListenerWithUserData;
         case kAudioUnitRenderSelect:       return (AudioComponentMethod)MUEWRender;
+        case kAudioUnitGetParameterSelect: return (AudioComponentMethod)MUEWGetParameter;
+        case kAudioUnitSetParameterSelect: return (AudioComponentMethod)MUEWSetParameter;
+        case kAudioUnitScheduleParametersSelect: return (AudioComponentMethod)MUEWScheduleParameters;
         case kMusicDeviceMIDIEventSelect:  return (AudioComponentMethod)MUEWMIDIEvent;
         case kMusicDeviceSysExSelect:      return (AudioComponentMethod)MUEWSysEx;
         case kMusicDeviceStartNoteSelect:  return (AudioComponentMethod)MUEWStartNote;

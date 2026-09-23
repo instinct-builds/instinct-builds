@@ -131,3 +131,18 @@ simple 3-device license key scheme follow there.
 - Project recall saves the full sound (`muewState` in ClassInfo), so edits made in the editor survive a Live set reload. 0.3-style class info (preset number only) still loads.
 - `au/au_view_host.mm` is a CI harness that loads the editor the way a DAW does, drives it with real mouse events, and checks that the host, editor and AU stay in sync.
 - Not yet: AU parameters for host automation. That is the next milestone.
+
+## 0.5.0 Automation and MIDI mapping
+
+- The AU publishes 12 parameters that Live can automate and MIDI-map: Warp A, Osc Mix, Warp B, Osc B Detune, Cutoff, Resonance, Attack, Release, MSEG Time, Chorus Mix, Delay Mix and Reverb Mix. They use real units (Hz, seconds, semitones, percent), and log-scaled ones display that way.
+- Parameter IDs are append-only (`src/au_params.h`), like the factory bank, so saved automation keeps pointing at the same control.
+- Parameters are views onto the current sound, not a separate copy:
+  - Loading a preset moves every parameter to that preset's values, and the host is told.
+  - Automating a parameter changes the sound and marks it as custom.
+  - Project recall stores the full sound, so automated values come back with the set.
+- Editor knobs are parameters now. A drag sends begin/end gesture events plus value changes, so Live records automation from the MUEW window. Host automation moves the editor's knobs as it plays; the editor follows at 30 Hz.
+- Parameter changes are lock-free from any thread, including a host's render thread. They're folded into the sound at the start of the next block.
+- CI proof:
+  - The host test checks the parameter list, info, get/set, scheduled ramps, clamping, preset-to-parameter sync, an audible cutoff sweep, recall, and survival across re-initialize.
+  - The editor harness checks that knob drags reach a DAW-style automation listener as gestures, and that host automation reaches the open editor.
+  - auval and host-test logs ship with the artifact.
