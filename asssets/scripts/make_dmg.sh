@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 APP=ASSSETS
 PRODUCT=asssets
-VERSION=${VERSION:-0.9.0}
+VERSION=${VERSION:-1.0.0}
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 APP_DIR="$STAGE/$APP.app"
@@ -29,8 +29,13 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>$APP</string><key>CFBundleDisplayName</key><string>$APP</string>
   <key>CFBundleIdentifier</key><string>co.instinct.asssets</string><key>CFBundleExecutable</key><string>$APP</string>
   <key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>10</string><key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>CFBundleVersion</key><string>11</string><key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>UTExportedTypeDeclarations</key><array><dict>
+    <key>UTTypeIdentifier</key><string>co.instinct.asssets.selection</string>
+    <key>UTTypeDescription</key><string>ASSSETS selection</string>
+    <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+  </dict></array>
 </dict></plist>
 PLIST
 plutil -lint "$APP_DIR/Contents/Info.plist"

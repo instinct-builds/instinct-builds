@@ -181,3 +181,18 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - 0.8.1: bundled PNG and JPEG files take their color swatches from the
   pixels rather than the collection default. Earlier installs are updated
   on first launch.
+
+## 1.0.0: drag out (includes the 0.9.1 fix)
+
+- Drag any card, the viewer image, or the "Drag out" chip in the inspector
+  into Finder, Keynote, Figma or any app that accepts files. When the
+  preview matches the file, you get the original file (PSD, SVG, PNG, WAV,
+  MP4). When layer toggles, an effect, tiling or seam fixing are on, or the
+  asset is a generated study, you get a PNG of exactly what the preview
+  shows, named after the asset ("Phone Screen Mockup (layers).png").
+  Decision and file naming live in `DragOut.swift` (core, tested).
+- Dragging onto sidebar collections still moves assets. That payload uses a
+  private type (`co.instinct.asssets.selection`, declared in Info.plist)
+  that only ASSSETS can see, so Finder never gets text clippings.
+- 0.9.1: the viewer backdrop is now a blur material under 90% black, so the
+  window behind it no longer shows through.

@@ -34,6 +34,11 @@ struct ASSSETSApp: App {
     }
 }
 
+extension UTType {
+    /// Internal drag payload (asset IDs); declared in Info.plist and only visible inside ASSSETS.
+    static let asssetsSelection = UTType(exportedAs: "co.instinct.asssets.selection")
+}
+
 enum Theme {
     static let accent = Color(red: 0.55, green: 0.38, blue: 1.0)
     static let ink = Color(red: 0.035, green: 0.04, blue: 0.065)
@@ -352,6 +357,48 @@ final class StudioLibrary: ObservableObject {
 
     static let dragPrefix = "asssets-ids:"
     func dragPayload(for id: UUID) -> String { Self.dragPrefix + targets(for: id).map(\.uuidString).joined(separator: ",") }
+
+    /// One drag carries both: the asset IDs for dropping on a sidebar collection (visible only inside ASSSETS)
+    /// and a real file for Finder, Keynote, Figma and the like - the original, or a PNG of what the preview shows.
+    func dragProvider(for asset: StudioAsset) -> NSItemProvider {
+        let provider: NSItemProvider
+        if let url = dragFile(for: asset), let p = NSItemProvider(contentsOf: url) {
+            provider = p
+            provider.suggestedName = url.deletingPathExtension().lastPathComponent
+        } else {
+            provider = NSItemProvider()
+        }
+        let payload = Data(dragPayload(for: asset.id).utf8)
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.asssetsSelection.identifier, visibility: .ownProcess) { done in
+            done(payload, nil); return nil
+        }
+        return provider
+    }
+
+    func dragFile(for a: StudioAsset) -> URL? {
+        let look = DragOut.Look(effectApplied: effect != .original, psdLayersChanged: !(psdToggled[a.id] ?? []).isEmpty,
+                                tiled: tiles(for: a) > 1, seamsFixed: fixSeams.contains(a.id))
+        let exists = a.importedPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
+        switch DragOut.plan(title: a.title, importedPath: a.importedPath, fileExists: exists, look: look) {
+        case .file(let path): return URL(fileURLWithPath: path)
+        case .render(let name):
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-drag/\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(name)
+            let ok = MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [],
+                                             tiles: tiles(for: a), fixSeams: fixSeams.contains(a.id), to: url)
+            return ok ? url : nil
+        }
+    }
+
+    func dropSelection(_ providers: [NSItemProvider], on collection: String) -> Bool {
+        guard let p = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.asssetsSelection.identifier) }) else { return false }
+        _ = p.loadDataRepresentation(forTypeIdentifier: UTType.asssetsSelection.identifier) { data, _ in
+            guard let data, let text = String(data: data, encoding: .utf8) else { return }
+            DispatchQueue.main.async { self.drop([text], on: collection) }
+        }
+        return true
+    }
     @discardableResult
     func drop(_ items: [String], on collection: String) -> Bool {
         let ids = Set(items.filter { $0.hasPrefix(Self.dragPrefix) }.flatMap { $0.dropFirst(Self.dragPrefix.count).split(separator: ",") }.compactMap { UUID(uuidString: String($0)) })
@@ -674,7 +721,7 @@ struct SidebarRow: View {
         .onHover { hovering = $0 }
         .help(title)
         if let dropTarget {
-            row.dropDestination(for: String.self) { items, _ in model.drop(items, on: dropTarget) } isTargeted: { targeted = $0 }
+            row.onDrop(of: [UTType.asssetsSelection], isTargeted: $targeted) { providers in model.dropSelection(providers, on: dropTarget) }
         } else { row }
     }
 }
@@ -731,7 +778,7 @@ struct AssetBrowser: View {
                         ForEach(items) { asset in
                             AssetCard(asset: asset, selected: model.selection.contains(asset.id))
                                 .onTapGesture { model.click(asset.id) }
-                                .draggable(model.dragPayload(for: asset.id)) { DragBadge(asset: asset, count: model.targets(for: asset.id).count) }
+                                .onDrag { model.dragProvider(for: asset) }
                                 .contextMenu { AssetMenu(ids: model.targets(for: asset.id), primary: asset) }
                         }
                     }
@@ -1052,7 +1099,10 @@ struct Inspector: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(asset.title).font(.system(size: 17, weight: .bold)).lineLimit(1)
                         Text("\(asset.kind.singular) • \(asset.resolution)").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                        Label(asset.collection, systemImage: "folder").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        HStack(spacing: 8) {
+                            Label(asset.collection, systemImage: "folder").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            DragOutChip(asset: asset)
+                        }
                     }
                     Spacer()
                     Button { model.toggleFavorite([asset.id]) } label: { Image(systemName: asset.favorite ? "heart.fill" : "heart").font(.title3).foregroundStyle(asset.favorite ? Color.pink : Color.secondary) }.buttonStyle(.plain)
@@ -1130,6 +1180,21 @@ struct Inspector: View {
     }
 }
 
+/// Drag handle in the inspector: drag it to Finder or another app to get the file.
+struct DragOutChip: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    var body: some View {
+        Label("Drag out", systemImage: "arrow.up.forward.app").font(.system(size: 10.5, weight: .semibold))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Theme.accent.opacity(0.18), in: Capsule())
+            .overlay(Capsule().stroke(Theme.accent.opacity(0.45)))
+            .foregroundStyle(Theme.accent)
+            .onDrag { model.dragProvider(for: asset) }
+            .help("Drag to Finder, Keynote, Figma or any app. You get the original file, or a PNG of the preview when layers, effects or tiling are on.")
+    }
+}
+
 /// Full-window viewer: Space opens it from the grid, arrows browse the visible assets, Esc or Space closes.
 struct AssetViewer: View {
     @EnvironmentObject var model: StudioLibrary
@@ -1138,7 +1203,7 @@ struct AssetViewer: View {
         let ids = model.filtered.map(\.id)
         let pos = ViewerNav.position(ids, of: asset.id)
         ZStack {
-            Color.black.opacity(0.93).ignoresSafeArea().onTapGesture { model.closeViewer() }
+            ZStack { Rectangle().fill(.ultraThinMaterial); Color.black.opacity(0.9) }.ignoresSafeArea().onTapGesture { model.closeViewer() }
             VStack(spacing: 14) {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -1157,6 +1222,7 @@ struct AssetViewer: View {
                 HStack(spacing: 14) {
                     ViewerArrow(symbol: "chevron.left") { model.stepViewer(-1) }
                     media.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onDrag { model.dragProvider(for: asset) }
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .shadow(color: .black.opacity(0.6), radius: 30, y: 12)
                     ViewerArrow(symbol: "chevron.right") { model.stepViewer(1) }
@@ -1169,7 +1235,7 @@ struct AssetViewer: View {
                     }
                     Text(asset.tags.prefix(6).joined(separator: "  ·  ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     Spacer()
-                    Text("← → browse   ·   Space or Esc to close").font(.caption).foregroundStyle(.tertiary)
+                    Text("← → browse   ·   drag the image out   ·   Space or Esc to close").font(.caption).foregroundStyle(.tertiary)
                 }
             }
             .padding(.horizontal, 28).padding(.vertical, 22)
