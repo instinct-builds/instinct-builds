@@ -55,7 +55,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -200,6 +200,26 @@ static NSUserDefaults* MUEWDefaults() {
 - (int)fxSlotAt:(NSPoint)p {
     for (int s = 0; s < kFxUnits; ++s) if (NSPointInRect(p, NSInsetRect([self fxCard:s], -4, -3))) return s;
     return -1;
+}
+// 0.14.0 FX detail panel: covers the matrix while a unit is open.
+static const int kFxAccent[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff};
+- (NSRect)fxDetailPanel { return NSMakeRect(36, 48, 424, 200); }
+- (NSRect)fxDetailClose { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
+- (NSRect)fxDetailToggle { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 25, 46, 16); }
+- (NSRect)fxDetailRow:(int)i { NSRect r = [self fxDetailPanel]; return NSMakeRect(r.origin.x + 12, NSMaxY(r) - 58 - i * 24, r.size.width - 24, 20); }
+- (NSRect)fxDetailBar:(int)i { NSRect r = [self fxDetailRow:i]; return NSMakeRect(r.origin.x + 92, r.origin.y + 3, 196, 14); }
+// AU parameter behind a detail row (-1: panel-only control, saved with the sound).
+static int FxRowParam(int u, int i) {
+    switch (u) {
+    case FxDist: return i == 1 ? params::DistDrive : -1;
+    case FxChorus: return i == 3 ? params::ChorusMix : -1;
+    case FxDelay: return i == 5 ? params::DelayMix : -1;
+    case FxComp: return params::CompAmount;
+    case FxReverb: return i == 2 ? params::ReverbMix : -1;
+    case FxPhaser: return i == 3 ? params::PhaserMix : -1;
+    case FxFlanger: return i == 3 ? params::FlangerMix : -1;
+    default: return -1;
+    }
 }
 // AU parameter behind each unit's ring (-1: the EQ has no ring).
 static int FxParam(int u) {
@@ -772,10 +792,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     snprintf(det[7], 40, "%.2f Hz  FB %.0f", f.flanger.rateHz, f.flanger.feedback * 100);
     static const char* names[kFxUnits] = {"DIST", "CHORUS", "DELAY", "COMP", "REVERB", "EQ", "PHASER", "FLANGER"};
     static const char* ringLabel[kFxUnits] = {"DRIVE", "MIX", "MIX", "AMOUNT", "MIX", "", "MIX", "MIX"};
-    static const int accHex[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff};
+    const int* accHex = kFxAccent;
     {
         NSRect c0 = [self fxCard:0];
-        TextA(fxMove >= 0 ? @"DROP TO MOVE IN THE CHAIN" : @"FX CHAIN  \u2022  DRAG CARDS TO REORDER",
+        TextA(fxMove >= 0 ? @"DROP TO MOVE IN THE CHAIN" : @"FX CHAIN  \u2022  CLICK TO EDIT, DRAG TO REORDER",
               NSMakeRect(c0.origin.x, NSMaxY(c0) + 12, 304, 12), 8, fxMove >= 0 ? C(0x75ead8) : C(0x4f5a69),
               NSFontWeightSemibold, NSTextAlignmentRight);
     }
@@ -804,6 +824,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:8 yRadius:8];
             CGFloat dash[2] = {3, 3}; [o setLineDash:dash count:2 phase:0];
             [C(0x3b4552) setStroke]; o.lineWidth = 1; [o stroke];
+        }
+        if (fxDetail == i && !moving) { // the unit open in the detail panel
+            NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:8 yRadius:8];
+            [C(accHex[i], 0.85) setStroke]; o.lineWidth = 1.2; [o stroke];
         }
         CGFloat alpha = moving ? 0.35 : 1.0;
         Text(S(names[i]), NSMakeRect(r.origin.x + 8, NSMaxY(r) - 19, 46, 13), 8.5,
@@ -854,6 +878,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [C(accHex[u]) setStroke]; o.lineWidth = 1; [o stroke];
         TextA(S(names[u]), NSMakeRect(g.origin.x, g.origin.y + 6, g.size.width, 12), 9, C(accHex[u]), NSFontWeightBold, NSTextAlignmentCenter);
     }
+    if (fxDetail >= 0) [self drawFxDetail];
     [self drawTableEditor];
     [self drawDragBadge];
     if (browserOpen) [self drawBrowser];
@@ -965,6 +990,180 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 }
 
 // ---- interaction ----
+- (void)drawFxDetail {
+    const int u = fxDetail;
+    const FXParams& f = current.fx;
+    NSColor* acc = C(kFxAccent[u]);
+    bool on = FxEnabled(const_cast<Preset&>(current), u);
+    NSRect P = [self fxDetailPanel];
+    FillRound(P, 10, C(0x19202a));
+    NSBezierPath* edge = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(P, 0.5, 0.5) xRadius:10 yRadius:10];
+    [C(kFxAccent[u], 0.45) setStroke]; edge.lineWidth = 1; [edge stroke];
+    FillRound(NSMakeRect(P.origin.x + 12, NSMaxY(P) - 22, 3, 12), 1.5, acc);
+    Text(S(ui::fxUnitTitle(u)), NSMakeRect(P.origin.x + 21, NSMaxY(P) - 24, 120, 15), 11, acc, NSFontWeightBold);
+    Text([NSString stringWithFormat:@"SLOT %d OF %d", f.order.slotOf(u) + 1, kFxUnits], NSMakeRect(P.origin.x + 128, NSMaxY(P) - 22.5, 90, 12), 8,
+         C(0x5f6b7b), NSFontWeightSemibold);
+    NSRect tg = [self fxDetailToggle];
+    FillRound(tg, 8, on ? C(kFxAccent[u], 0.22) : C(0x232b36));
+    FillRound(NSMakeRect(tg.origin.x + 7, NSMidY(tg) - 3, 6, 6), 3, on ? acc : C(0x4a5462));
+    TextA(on ? @"ON" : @"OFF", NSMakeRect(tg.origin.x + 14, tg.origin.y + 2.5, tg.size.width - 18, 11), 8, on ? acc : C(0x8793a3),
+          NSFontWeightBold, NSTextAlignmentCenter);
+    NSRect cl = [self fxDetailClose];
+    NSBezierPath* x = [NSBezierPath bezierPath];
+    [x moveToPoint:NSMakePoint(NSMidX(cl) - 4, NSMidY(cl) - 4)]; [x lineToPoint:NSMakePoint(NSMidX(cl) + 4, NSMidY(cl) + 4)];
+    [x moveToPoint:NSMakePoint(NSMidX(cl) - 4, NSMidY(cl) + 4)]; [x lineToPoint:NSMakePoint(NSMidX(cl) + 4, NSMidY(cl) - 4)];
+    [C(0x8793a3) setStroke]; x.lineWidth = 1.4; [x stroke];
+    [C(0x29313d) setFill]; NSRectFill(NSMakeRect(P.origin.x + 12, NSMaxY(P) - 34, P.size.width - 24, 1));
+
+    const auto& cs = ui::fxControls(u);
+    for (int i = 0; i < (int)cs.size(); ++i) {
+        const ui::FxControl& c = cs[i];
+        NSRect row = [self fxDetailRow:i], bar = [self fxDetailBar:i];
+        bool inactive = ui::fxRowInactive(f, u, i);
+        bool live = on && !inactive;
+        Text(S(c.label), NSMakeRect(row.origin.x + 2, row.origin.y + 4, 88, 12), 8.5, inactive ? C(0x4a5462) : C(0xa8b2c1), NSFontWeightSemibold);
+        const double v = ui::fxGet(f, u, i);
+        if (c.fmt == ui::FmtChoice && c.hi - c.lo < 3) { // segmented choice
+            int n = (int)(c.hi - c.lo) + 1;
+            CGFloat w = bar.size.width / n;
+            for (int k = 0; k < n; ++k) {
+                NSRect seg = NSMakeRect(bar.origin.x + k * w + 1, bar.origin.y - 1, w - 2, 16);
+                bool sel = (int)v == k;
+                FillRound(seg, 4, sel ? C(kFxAccent[u], live ? 0.28 : 0.12) : C(0x10151c));
+                TextA(S(ui::distModeName(k)), NSMakeRect(seg.origin.x, seg.origin.y + 3, seg.size.width, 11), 7.5,
+                      sel ? (live ? acc : C(0x8793a3)) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+            }
+        } else if (c.fmt == ui::FmtChoice) { // stepper: left half steps down, right half up
+            NSRect box = NSMakeRect(bar.origin.x + 1, bar.origin.y - 1, bar.size.width - 2, 16);
+            FillRound(box, 4, C(0x10151c));
+            TextA(@"\u25C0", NSMakeRect(box.origin.x + 4, box.origin.y + 3, 14, 11), 7, (int)v > c.lo ? C(0x8793a3) : C(0x303947), NSFontWeightBold, NSTextAlignmentCenter);
+            TextA(@"\u25B6", NSMakeRect(NSMaxX(box) - 18, box.origin.y + 3, 14, 11), 7, (int)v < c.hi ? C(0x8793a3) : C(0x303947), NSFontWeightBold, NSTextAlignmentCenter);
+            TextA((int)v == 0 ? @"FREE TIME" : @"TEMPO SYNC", NSMakeRect(box.origin.x + 20, box.origin.y + 3.5, box.size.width - 40, 10), 7,
+                  (int)v == 0 ? C(0x5f6b7b) : (live || on ? acc : C(0x8793a3)), NSFontWeightSemibold, NSTextAlignmentCenter);
+        } else { // slider
+            double n = ui::fxNorm(c, v);
+            NSRect track = NSMakeRect(bar.origin.x, NSMidY(bar) - 2, bar.size.width, 4);
+            FillRound(track, 2, C(0x10151c));
+            bool bip = c.lo < 0 && c.hi > 0; // dB rows fill from the centre
+            double z = bip ? ui::fxNorm(c, 0.0) : 0.0;
+            CGFloat a0 = track.origin.x + track.size.width * std::min(z, n), a1 = track.origin.x + track.size.width * std::max(z, n);
+            FillRound(NSMakeRect(a0, track.origin.y, std::max<CGFloat>(a1 - a0, 0), 4), 2, inactive ? C(0x303947) : live ? acc : C(0x4a5462));
+            if (c.dest >= 0) { // macro modulation range from routes into this row
+                double amt = ui::fxRouteSum(current.routes, c.dest);
+                if (amt != 0) {
+                    double span = amt * (c.fmt == ui::FmtMs ? 10.0 : 1.0) / (c.hi - c.lo);
+                    double m0 = std::clamp(n + std::min(0.0, span), 0.0, 1.0), m1 = std::clamp(n + std::max(0.0, span), 0.0, 1.0);
+                    FillRound(NSMakeRect(track.origin.x + track.size.width * m0, track.origin.y - 3, track.size.width * (m1 - m0), 2), 1,
+                              C(0xf27a55, 0.9));
+                }
+            }
+            NSPoint k = NSMakePoint(track.origin.x + track.size.width * n, NSMidY(track));
+            FillRound(NSMakeRect(k.x - 5, k.y - 5, 10, 10), 5, inactive ? C(0x303947) : (fxRowDrag == i ? C(0xffffff) : C(0xd5dce5)));
+            FillRound(NSMakeRect(k.x - 2, k.y - 2, 4, 4), 2, inactive ? C(0x19202a) : acc);
+        }
+        TextA(S(ui::fxValueText(f, u, i)), NSMakeRect(NSMaxX(bar) + 6, row.origin.y + 3.5, 64, 13), 9.5,
+              inactive ? C(0x5f6b7b) : fxRowDrag == i ? acc : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentRight);
+        if (c.dest >= 0) { // modulation tag: route amount when a macro drives this row
+            int nr = 0; double amt = ui::fxRouteSum(current.routes, c.dest, &nr);
+            NSRect tag = NSMakeRect(NSMaxX(row) - 36, row.origin.y + 3, 36, 14);
+            FillRound(tag, 4, nr ? C(0xf27a55, 0.18) : C(0x10151c));
+            NSString* t = !nr ? @"MOD" : c.fmt == ui::FmtMs ? [NSString stringWithFormat:@"%+.0fms", amt * 10.0]
+                                                   : [NSString stringWithFormat:@"%+.0f%%", amt * 100.0];
+            TextA(t, NSMakeRect(tag.origin.x, tag.origin.y + 2.5, tag.size.width, 10), 7, nr ? C(0xf27a55) : C(0x4a5462), NSFontWeightBold,
+                  NSTextAlignmentCenter);
+        }
+    }
+    // Footer: what the unit is doing right now.
+    char foot[96] = "";
+    switch (u) {
+    case FxDelay: {
+        auto side = [&](int sync, double sec) {
+            char t[16];
+            if (sync > 0) snprintf(t, sizeof t, "%s", ui::syncName(sync)); else snprintf(t, sizeof t, "%.0f ms", sec * 1000);
+            return std::string(t);
+        };
+        snprintf(foot, sizeof foot, "L %s  \u2022  R %s  \u2022  SYNCED SIDES FOLLOW THE HOST TEMPO",
+                 side(f.delay.syncL, f.delay.timeLSec).c_str(), side(f.delay.syncR, f.delay.timeRSec).c_str());
+        break;
+    }
+    case FxComp: {
+        const double a = std::clamp(f.comp.amount, 0.0, 1.0);
+        snprintf(foot, sizeof foot, "THRESHOLD %.0f dB  \u2022  RATIO %.1f:1  \u2022  ONE-KNOB MAKEUP", -6.0 - 30.0 * a, 1.5 + 6.5 * a);
+        break;
+    }
+    case FxReverb: snprintf(foot, sizeof foot, "FOUR DAMPED COMBS INTO TWO ALLPASSES PER SIDE"); break;
+    case FxPhaser: snprintf(foot, sizeof foot, "SIX ALLPASS STAGES  \u2022  SWEEP 180 Hz TO %.1f kHz", 0.18 * std::pow(25.0, std::clamp(f.phaser.depth, 0.0, 1.0))); break;
+    case FxFlanger: snprintf(foot, sizeof foot, "SWEEP 0.3 TO %.1f ms  \u2022  QUADRATURE STEREO", 0.3 + 4.0 * std::clamp(f.flanger.depth, 0.0, 1.0)); break;
+    case FxChorus: snprintf(foot, sizeof foot, "TWO MODULATED TAPS  \u2022  %.1f TO %.1f ms", f.chorus.baseMs, f.chorus.baseMs + f.chorus.depthMs); break;
+    case FxDist: snprintf(foot, sizeof foot, "OUTPUT TRIMS AS DRIVE RISES"); break;
+    default: break;
+    }
+    if (u == FxEQ) { // response curve under the three bands
+        NSRect plot = NSMakeRect(P.origin.x + 104, P.origin.y + 14, 196, 66);
+        FillRound(plot, 6, C(0x10151c));
+        [C(0x232b36) setStroke];
+        for (int g = -1; g <= 1; ++g) {
+            NSBezierPath* l = [NSBezierPath bezierPath];
+            CGFloat y = NSMidY(plot) + g * (plot.size.height / 2 - 8) * 0.5;
+            [l moveToPoint:NSMakePoint(plot.origin.x + 6, y)]; [l lineToPoint:NSMakePoint(NSMaxX(plot) - 6, y)]; [l stroke];
+        }
+        NSBezierPath* curve = [NSBezierPath bezierPath];
+        for (int k = 0; k <= 96; ++k) {
+            double hz = 20.0 * std::pow(1000.0, k / 96.0), lo = hz / 180.0, hi = hz / 6000.0, oct = std::log2(hz / 1200.0);
+            double db = f.eq.lowDb / (1 + lo * lo) + f.eq.highDb * hi * hi / (1 + hi * hi) + f.eq.midDb * std::exp(-oct * oct * 1.5);
+            NSPoint q = NSMakePoint(plot.origin.x + 6 + (plot.size.width - 12) * k / 96.0,
+                                    NSMidY(plot) + std::clamp(db, -12.0, 12.0) / 12.0 * (plot.size.height / 2 - 8));
+            k ? [curve lineToPoint:q] : [curve moveToPoint:q];
+        }
+        [(on ? acc : C(0x4a5462)) setStroke]; curve.lineWidth = 1.8; [curve stroke];
+        Text(@"20 Hz", NSMakeRect(plot.origin.x + 6, plot.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
+        TextA(@"20 kHz", NSMakeRect(NSMaxX(plot) - 46, plot.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
+    } else if (*foot) {
+        Text(S(foot), NSMakeRect(P.origin.x + 14, P.origin.y + 10, P.size.width - 28, 11), 7.5, C(0x4f5a69), NSFontWeightSemibold);
+    }
+}
+
+// Detail panel clicks. Returns YES when the panel took the click.
+- (BOOL)fxDetailMouseDown:(NSPoint)p event:(NSEvent*)e {
+    if (fxDetail < 0 || !NSPointInRect(p, [self fxDetailPanel])) return NO;
+    const int u = fxDetail;
+    if (NSPointInRect(p, NSInsetRect([self fxDetailClose], -4, -4))) { fxDetail = -1; [self setNeedsDisplay:YES]; return YES; }
+    if (NSPointInRect(p, [self fxDetailToggle])) {
+        bool& en = FxEnabled(current, u); en = !en;
+        edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
+    }
+    const auto& cs = ui::fxControls(u);
+    for (int i = 0; i < (int)cs.size(); ++i) {
+        NSRect bar = NSInsetRect([self fxDetailBar:i], -6, -4);
+        if (!NSPointInRect(p, bar)) continue;
+        const ui::FxControl& c = cs[i];
+        bar = [self fxDetailBar:i];
+        if (c.fmt == ui::FmtChoice) {
+            int v = (int)ui::fxGet(current.fx, u, i);
+            if (c.hi - c.lo < 3) v = (int)std::clamp((p.x - bar.origin.x) / (bar.size.width / (c.hi - c.lo + 1)), c.lo, c.hi);
+            else v += p.x < NSMidX(bar) ? -1 : 1;
+            ui::fxSet(current.fx, u, i, v);
+            edited = true; [self applySound]; [self setNeedsDisplay:YES];
+            return YES;
+        }
+        fxRowDrag = i;
+        int id = FxRowParam(u, i);
+        if (id >= 0 && host) host->parameterGesture(id, true);
+        double v = e.clickCount == 2 ? ui::fxDefault(u, i) : ui::fxFromNorm(c, (p.x - bar.origin.x) / bar.size.width);
+        [self setFxRow:i value:v];
+        return YES;
+    }
+    return YES; // the panel is modal over the matrix
+}
+
+- (void)setFxRow:(int)i value:(double)v {
+    ui::fxSet(current.fx, fxDetail, i, v);
+    edited = true;
+    int id = FxRowParam(fxDetail, i);
+    if (id < 0 || !host || !host->editParameter(id, current)) [self applySound];
+    [self setNeedsDisplay:YES];
+}
+
 - (NSInteger)hitKnob:(NSPoint)p {
     for (int k = 0; k < ui::KnobCount; ++k) {
         if (ui::knobPage(k) >= 0 && ui::knobPage(k) != filterPage) continue; // other FILTER page
@@ -1571,6 +1770,7 @@ static int SortForColumn(int c) {
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
     if ([self oscMouseDown:p]) return;
     if ([self filterPanelMouseDown:p]) return;
+    if ([self fxDetailMouseDown:p event:e]) return;
     dragKnob = [self hitKnob:p];
     if (dragKnob >= kFxDrag) { // FX ring: drive / mix / amount, published as AU parameters
         int id = [self paramForDrag:dragKnob];
@@ -1664,6 +1864,11 @@ static int SortForColumn(int c) {
         [self setNeedsDisplay:YES];
         return;
     }
+    if (fxRowDrag >= 0 && fxDetail >= 0) {
+        NSRect bar = [self fxDetailBar:fxRowDrag];
+        [self setFxRow:fxRowDrag value:ui::fxFromNorm(ui::fxControls(fxDetail)[fxRowDrag], (p.x - bar.origin.x) / bar.size.width)];
+        return;
+    }
     if (fxMove >= 0) {
         dragPoint = p;
         int s = [self fxSlotAt:p];
@@ -1716,9 +1921,18 @@ static int SortForColumn(int c) {
         NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
         int s = [self fxSlotAt:p];
         if (s >= 0) fxDrop = s;
-        if (fxDrop >= 0 && current.fx.order.move(fxMove, fxDrop)) { edited = true; [self applySound]; }
+        bool click = hypot(p.x - dragStart.x, p.y - dragStart.y) < 4;
+        if (click) { // a click (no drag) opens the unit's detail panel, or closes it
+            int u = current.fx.order.slot[fxMove];
+            fxDetail = fxDetail == u ? -1 : u;
+        } else if (fxDrop >= 0 && current.fx.order.move(fxMove, fxDrop)) { edited = true; [self applySound]; }
     }
     fxMove = -1; fxDrop = -1;
+    if (fxRowDrag >= 0) {
+        int id = fxDetail >= 0 ? FxRowParam(fxDetail, fxRowDrag) : -1;
+        if (id >= 0 && host) host->parameterGesture(id, false);
+        fxRowDrag = -1;
+    }
     dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;

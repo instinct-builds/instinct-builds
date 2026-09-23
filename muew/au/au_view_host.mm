@@ -32,6 +32,7 @@
 #include "MUEWProperties.h"
 #include "preset.h"
 #include "au_params.h"
+#include "ui_model.h"
 #include <cstdio>
 #include <cmath>
 #include <string>
@@ -413,6 +414,40 @@ int main() {
                   "PHASER LED and MIX ring reached the AU (parameter 28)");
             fflush(stdout);
         });
+        After(6.95, ^{ // 0.14.0 FX detail editor: open PHASER, set DEPTH; open DELAY, sync L to 1/8, set FEEDBACK
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 92 + 196 * n, 48 + 200 - 58 - 24 * row + 10); };
+            Click(view, w, card(1));                      // PHASER (moved to slot 2 above)
+            Click(view, w, bar(1, 0.9));                  // DEPTH -> 90%
+            Click(view, w, card(3));                      // DELAY
+            for (int i = 0; i < 4; ++i) Click(view, w, bar(1, 0.75)); // SYNC L: FREE -> 1/1 -> 1/2 -> 1/4 -> 1/8
+            NSPoint fb = bar(4, 0.3);                     // FEEDBACK: press at 28%, drag to 63%
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, fb, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, bar(4, 0.5), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, bar(4, 0.6 / 0.95), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, bar(4, 0.6 / 0.95), w)];
+            muew::Preset st;
+            bool ok = State(st);
+            printf("fx detail: phaser depth %.2f, delay sync L %d (%s), feedback %.2f\n", st.fx.phaser.depth, st.fx.delay.syncL,
+                   muew::ui::syncName(st.fx.delay.syncL), st.fx.delay.feedback);
+            Check(ok && std::fabs(st.fx.phaser.depth - 0.9) < 0.01, "PHASER detail DEPTH slider reached the AU's sound");
+            Check(ok && st.fx.delay.syncL == 4 && std::fabs(st.fx.delay.feedback - 0.6) < 0.01,
+                  "DELAY detail: SYNC L stepped to 1/8 and the FEEDBACK drag reached the AU's sound");
+            // One snapshot per unit panel, in chain order, then leave DELAY open.
+            const char* pre = getenv("MUEW_FXDETAIL_PREFIX");
+            if (pre && *pre) {
+                for (int s = 0; s < muew::kFxUnits; ++s) {
+                    Click(view, w, card(s));
+                    std::string f = std::string(pre) + muew::fxUnitName(st.fx.order.slot[s]) + ".png";
+                    setenv("MUEW_FXDETAIL_ONE", f.c_str(), 1);
+                    Snapshot(view, "MUEW_FXDETAIL_ONE", ("detail panel snapshot: " + std::string(muew::fxUnitName(st.fx.order.slot[s]))).c_str());
+                }
+                Click(view, w, card(3));
+            }
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });
@@ -452,7 +487,7 @@ int main() {
             Snapshot(view, "MUEW_BROWSER_PNG", "full browser snapshot written");
         });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack + chain reorder, mod matrix, wavetable editor, filter 2 + sub page and full browser\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack + chain reorder + detail editor, mod matrix, wavetable editor, filter 2 + sub page and full browser\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

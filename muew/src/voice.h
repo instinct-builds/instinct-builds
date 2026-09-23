@@ -5,6 +5,7 @@
 #include "lfo.h"
 #include "mseg.h"
 #include "layers.h"
+#include "tempo_sync.h"
 #include <cmath>
 
 namespace muew {
@@ -23,7 +24,9 @@ struct ModRoute {
                       Osc1Unison = 7, Osc2Unison = 8, UnisonWidth = 9, // 0.7.0: unison detune A/B, stereo width (0..1 units)
                       DistDrive = 10,                                   // 0.7.0: FX-rack drive, macro sources only (global FX)
                       Osc1WtPos = 11, Osc2WtPos = 12,                   // 0.9.0: user-table frame position (0..1 units)
-                      SubLevel = 13, NoiseLevel = 14, Filter2Cutoff = 15 } dest; // 0.10.0 (0..1 levels, octaves)
+                      SubLevel = 13, NoiseLevel = 14, Filter2Cutoff = 15, // 0.10.0 (0..1 levels, octaves)
+                      // 0.14.0: FX detail controls, macro sources only (global FX)
+                      FxDelayFeedback = 16, FxReverbDecay = 17, FxPhaserDepth = 18, FxFlangerDepth = 19, FxChorusDepth = 20 } dest;
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
 };
 
@@ -79,13 +82,7 @@ struct VoiceParams {
 constexpr int kMaxUnison = 8;
 constexpr int kMaxRoutes = 16; // mod matrix slots
 
-// Tempo-sync divisions: beats per LFO cycle. Index 0 is free-running.
-// Append only (stored in presets).
-constexpr int kSyncCount = 10;
-inline double syncBeats(int i) {
-    static const double b[kSyncCount] = {0, 4, 2, 1, 0.5, 0.25, 2.0 / 3.0, 1.0 / 3.0, 1.5, 8};
-    return (i > 0 && i < kSyncCount) ? b[i] : 0.0;
-}
+// Tempo-sync divisions (kSyncCount, syncBeats) live in tempo_sync.h.
 // LFO rate in Hz for a free rate or a synced division at `bpm`.
 inline double lfoHz(double freeHz, int sync, double bpm) {
     double beats = syncBeats(sync);

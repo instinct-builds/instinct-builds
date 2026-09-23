@@ -64,6 +64,10 @@ struct MUEWEditorHost {
     // and the slot it would land in.
     int fxMove;
     int fxDrop;
+    // 0.14.0 FX detail editor: open unit (FxUnit id, -1 = closed) and the
+    // slider row being dragged (-1 = none).
+    int fxDetail;
+    int fxRowDrag;
     // 0.9.0 wavetable editor: oscillator being edited (-1 = closed), the
     // selected frame, draw (0) or harmonic (1) mode, the last stroke point,
     // and the oscillator whose WT POS bar is being dragged (-1 = none).

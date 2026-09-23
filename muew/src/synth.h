@@ -31,12 +31,22 @@ public:
         for (auto& v : voices_) v.setParams(p, routes);
         // The FX rack is shared by all voices, so only the macro knobs (global
         // sources) can modulate it.
-        double drive = 0.0;
+        FXChain::Mod m;
         for (const auto& r : routes) {
             int s = (int)r.source - (int)ModRoute::Source::Macro1;
-            if (r.dest == ModRoute::Dest::DistDrive && s >= 0 && s < 4) drive += p.macros[s] * r.amount;
+            if (s < 0 || s >= 4) continue;
+            const double v = p.macros[s] * r.amount;
+            switch (r.dest) {
+            case ModRoute::Dest::DistDrive: m.drive += v; break;
+            case ModRoute::Dest::FxDelayFeedback: m.delayFeedback += v; break;
+            case ModRoute::Dest::FxReverbDecay: m.reverbDecay += v; break;
+            case ModRoute::Dest::FxPhaserDepth: m.phaserDepth += v; break;
+            case ModRoute::Dest::FxFlangerDepth: m.flangerDepth += v; break;
+            case ModRoute::Dest::FxChorusDepth: m.chorusDepth += v; break;
+            default: break;
+            }
         }
-        fx_.setDriveOffset(drive);
+        fx_.setMod(m);
     }
 
     // User tables for oscillators A/B (0.9.0). Rebuilt only when the frames
@@ -52,7 +62,7 @@ public:
     }
 
     // Host tempo (BPM) for tempo-synced LFOs; 120 until a host reports one.
-    void setTempo(double bpm) { for (auto& v : voices_) v.setTempo(bpm); }
+    void setTempo(double bpm) { for (auto& v : voices_) v.setTempo(bpm); fx_.setTempo(bpm); }
 
     void noteOn(int note, float velocity) {
         // Reuse a voice already playing this note, else a free one, else steal oldest.

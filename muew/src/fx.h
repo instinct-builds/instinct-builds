@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include "tempo_sync.h"
 
 namespace muew {
 
@@ -48,13 +49,16 @@ public:
         dl_.resize(maxD); dr_.resize(maxD);
     }
     void set(const ChorusParams& p) { p_ = p; }
+    // Macro routes into the depth (Dest::FxChorusDepth), 1.0 = +10 ms.
+    void setDepthOffset(double d) { depthOff_ = d; }
     inline void process(float& l, float& r) {
+        const double depthMs = depthOff_ != 0.0 ? std::clamp(p_.depthMs + 10.0 * depthOff_, 0.0, 20.0) : p_.depthMs;
         double lfoL = std::sin(2.0 * M_PI * phase_);
         double lfoR = std::sin(2.0 * M_PI * phase_ + M_PI * 0.5);
         phase_ += p_.rateHz / sr_;
         phase_ -= std::floor(phase_);
-        double dL = (p_.baseMs + p_.depthMs * (0.5 + 0.5 * lfoL)) * 0.001 * sr_;
-        double dR = (p_.baseMs + p_.depthMs * (0.5 + 0.5 * lfoR)) * 0.001 * sr_;
+        double dL = (p_.baseMs + depthMs * (0.5 + 0.5 * lfoL)) * 0.001 * sr_;
+        double dR = (p_.baseMs + depthMs * (0.5 + 0.5 * lfoR)) * 0.001 * sr_;
         dl_.push(l); dr_.push(r);
         float wetL = dl_.read(dL), wetR = dr_.read(dR);
         l = (float)((1.0 - p_.mix) * l + p_.mix * wetL);
@@ -62,7 +66,7 @@ public:
     }
     const ChorusParams& params() const { return p_; }
 private:
-    double sr_ = 44100.0, phase_ = 0.0;
+    double sr_ = 44100.0, phase_ = 0.0, depthOff_ = 0.0;
     ChorusParams p_;
     DelayLine dl_, dr_;
 };
@@ -73,6 +77,8 @@ struct DelayParams {
     double timeRSec = 0.42;
     double feedback = 0.35;
     double mix = 0.25;
+    // 0.14.0: tempo sync per side (index into syncBeats, 0 = free time).
+    int syncL = 0, syncR = 0;
 };
 
 // Stereo delay with independent L/R times and feedback.
@@ -83,18 +89,30 @@ public:
         dl_.resize((int)(sr * 2.0) + 4);
         dr_.resize((int)(sr * 2.0) + 4);
     }
-    void set(const DelayParams& p) { p_ = p; }
+    void set(const DelayParams& p) { p_ = p; retime(); }
+    void setTempo(double bpm) { if (bpm > 20.0 && bpm < 999.0 && bpm != bpm_) { bpm_ = bpm; retime(); } }
+    // Macro routes into the feedback (Dest::FxDelayFeedback). 0 = untouched.
+    void setFeedbackOffset(double d) { fbOff_ = d; }
+    double feedback() const { return fbOff_ != 0.0 ? std::clamp(p_.feedback + fbOff_, 0.0, 0.95) : p_.feedback; }
+    double timeL() const { return tL_; }
+    double timeR() const { return tR_; }
     inline void process(float& l, float& r) {
-        float fbL = dl_.read(p_.timeLSec * sr_);
-        float fbR = dr_.read(p_.timeRSec * sr_);
-        dl_.push(l + fbR * (float)p_.feedback);   // cross-feedback for a wider tail
-        dr_.push(r + fbL * (float)p_.feedback);
+        float fbL = dl_.read(tL_ * sr_);
+        float fbR = dr_.read(tR_ * sr_);
+        const float fb = (float)feedback();
+        dl_.push(l + fbR * fb);   // cross-feedback for a wider tail
+        dr_.push(r + fbL * fb);
         l = (float)((1.0 - p_.mix) * l + p_.mix * fbL);
         r = (float)((1.0 - p_.mix) * r + p_.mix * fbR);
     }
     const DelayParams& params() const { return p_; }
 private:
-    double sr_ = 44100.0;
+    // Synced sides take their time from the host tempo (capped at the 2 s line).
+    void retime() {
+        auto t = [&](int sync, double sec) { double b = syncBeats(sync); return b > 0.0 ? std::min(1.99, b * 60.0 / bpm_) : sec; };
+        tL_ = t(p_.syncL, p_.timeLSec); tR_ = t(p_.syncR, p_.timeRSec);
+    }
+    double sr_ = 44100.0, bpm_ = 120.0, fbOff_ = 0.0, tL_ = 0.28, tR_ = 0.42;
     DelayParams p_;
     DelayLine dl_, dr_;
 };
@@ -128,14 +146,17 @@ public:
             }
         }
     }
-    void set(const ReverbParams& p) { p_ = p; }
+    void set(const ReverbParams& p) { p_ = p; redecay(); }
+    // Macro routes into the decay (Dest::FxReverbDecay). 0 = untouched.
+    void setDecayOffset(double d) { decOff_ = d; redecay(); }
+    float decay() const { return decay_; }
 
     inline float processOne(int ch, float in) {
         float acc = 0.0f;
         for (auto& c : combs_[ch]) {
             float out = c.line.read(c.length);
             c.store += (out - c.store) * (float)p_.damping; // one-pole lowpass in the feedback path
-            c.line.push(in + c.store * (float)p_.decay);
+            c.line.push(in + c.store * decay_);
             acc += out;
         }
         for (auto& a : aps_[ch]) {
@@ -158,6 +179,9 @@ private:
     struct AP { DelayLine line; int length = 0; };
     double sr_ = 44100.0;
     ReverbParams p_;
+    float decay_ = 0.6f;
+    double decOff_ = 0.0;
+    void redecay() { decay_ = (float)(decOff_ != 0.0 ? std::clamp(p_.decay + decOff_, 0.0, 0.97) : p_.decay); }
     Comb combs_[2][4];
     AP aps_[2][2];
 };
@@ -338,9 +362,11 @@ class Phaser {
 public:
     void init(double sr) { sr_ = sr; }
     void set(const PhaserParams& p) { p_ = p; }
+    // Macro routes into the depth (Dest::FxPhaserDepth). 0 = untouched.
+    void setDepthOffset(double d) { depthOff_ = d; }
     inline void process(float& l, float& r) {
         const double fb = std::clamp(p_.feedback, 0.0, 0.9), mix = std::clamp(p_.mix, 0.0, 1.0);
-        const double depth = std::clamp(p_.depth, 0.0, 1.0);
+        const double depth = std::clamp(p_.depth + depthOff_, 0.0, 1.0);
         // Dry + swept copy cancels about half the power at mid mix; this
         // keeps switching the unit on at roughly the same loudness.
         const double comp = 1.0 / std::sqrt((1.0 - mix) * (1.0 - mix) + mix * mix);
@@ -369,7 +395,7 @@ public:
     const PhaserParams& params() const { return p_; }
 private:
     static const int kStages = 6;
-    double sr_ = 44100.0, phase_ = 0.0;
+    double sr_ = 44100.0, phase_ = 0.0, depthOff_ = 0.0;
     double s_[2][kStages] = {}, last_[2] = {};
     PhaserParams p_;
 };
@@ -392,9 +418,11 @@ public:
         dl_.resize(maxD); dr_.resize(maxD);
     }
     void set(const FlangerParams& p) { p_ = p; }
+    // Macro routes into the depth (Dest::FxFlangerDepth). 0 = untouched.
+    void setDepthOffset(double d) { depthOff_ = d; }
     inline void process(float& l, float& r) {
         const double fb = std::clamp(p_.feedback, 0.0, 0.9), mix = std::clamp(p_.mix, 0.0, 1.0);
-        const double depth = std::clamp(p_.depth, 0.0, 1.0);
+        const double depth = std::clamp(p_.depth + depthOff_, 0.0, 1.0);
         double lfoL = 0.5 + 0.5 * std::sin(2.0 * M_PI * phase_);
         double lfoR = 0.5 + 0.5 * std::sin(2.0 * M_PI * (phase_ + 0.25));
         double dL = (0.3 + 4.0 * depth * lfoL) * 0.001 * sr_;
@@ -411,7 +439,7 @@ public:
     }
     const FlangerParams& params() const { return p_; }
 private:
-    double sr_ = 44100.0, phase_ = 0.0;
+    double sr_ = 44100.0, phase_ = 0.0, depthOff_ = 0.0;
     FlangerParams p_;
     DelayLine dl_, dr_;
 };
@@ -481,6 +509,15 @@ public:
     }
     // Macro routes into the distortion drive (Dest::DistDrive).
     void setDriveOffset(double d) { dist_.setDriveOffset(d); }
+    // 0.14.0: macro routes into the detail controls (global FX, macro sources).
+    struct Mod { double drive = 0, delayFeedback = 0, reverbDecay = 0, phaserDepth = 0, flangerDepth = 0, chorusDepth = 0; };
+    void setMod(const Mod& m) {
+        dist_.setDriveOffset(m.drive); delay_.setFeedbackOffset(m.delayFeedback); reverb_.setDecayOffset(m.reverbDecay);
+        phaser_.setDepthOffset(m.phaserDepth); flanger_.setDepthOffset(m.flangerDepth); chorus_.setDepthOffset(m.chorusDepth);
+    }
+    void setTempo(double bpm) { delay_.setTempo(bpm); }
+    const StereoDelay& delay() const { return delay_; }
+    const Reverb& reverb() const { return reverb_; }
     inline void process(float& l, float& r) {
         for (int i = 0; i < kFxUnits; ++i) {
             switch (p_.order.slot[i]) {

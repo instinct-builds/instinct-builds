@@ -7,8 +7,8 @@
   <key>CFBundleIdentifier</key><string>co.instinct.muew.au</string>
   <key>CFBundleExecutable</key><string>MUEW</string>
   <key>CFBundlePackageType</key><string>BNDL</string>
-  <key>CFBundleShortVersionString</key><string>0.13.0</string>
-  <key>CFBundleVersion</key><string>13</string>
+  <key>CFBundleShortVersionString</key><string>0.14.0</string>
+  <key>CFBundleVersion</key><string>14</string>
   <key>AudioComponents</key>
   <array>
     <dict>

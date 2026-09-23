@@ -59,6 +59,11 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::SubLevel: return "SUB";
     case ModRoute::Dest::NoiseLevel: return "NOISE";
     case ModRoute::Dest::Filter2Cutoff: return "F2 CUTOFF";
+    case ModRoute::Dest::FxDelayFeedback: return "DELAY FB";
+    case ModRoute::Dest::FxReverbDecay: return "REV DECAY";
+    case ModRoute::Dest::FxPhaserDepth: return "PH DEPTH";
+    case ModRoute::Dest::FxFlangerDepth: return "FL DEPTH";
+    case ModRoute::Dest::FxChorusDepth: return "CH DEPTH";
     }
     return "?";
 }
@@ -87,8 +92,13 @@ inline double routeScale(ModRoute::Dest d) {
 }
 inline double routeDisplayAmount(const ModRoute& r) { return std::clamp(r.amount / routeScale(r.dest), -1.0, 1.0); }
 inline void setRouteDisplayAmount(ModRoute& r, double n) { r.amount = std::clamp(n, -1.0, 1.0) * routeScale(r.dest); }
+// The FX rack is shared by every voice, so FX destinations follow only the
+// macro knobs (global sources); other sources show that instead of an amount.
+inline bool isFxDest(ModRoute::Dest d) { return d == ModRoute::Dest::DistDrive || (int)d >= (int)ModRoute::Dest::FxDelayFeedback; }
+inline bool isMacroSource(ModRoute::Source s) { return (int)s >= (int)ModRoute::Source::Macro1 && (int)s <= (int)ModRoute::Source::Macro4; }
 inline std::string routeAmountReadout(const ModRoute& r) {
     char b[32];
+    if (isFxDest(r.dest) && !isMacroSource(r.source)) return "MACROS ONLY";
     switch (r.dest) {
     case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: snprintf(b, sizeof b, "%+.2f st", r.amount); break;
     case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
@@ -127,7 +137,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
     using D = ModRoute::Dest;
     static const std::vector<D> v{D::Osc1Pitch, D::Osc1Warp, D::Osc1Unison, D::Osc2Pitch, D::Osc2Warp, D::Osc2Unison,
                                   D::Osc2Level, D::UnisonWidth, D::FilterCutoff, D::FilterResonance, D::DistDrive,
-                                  D::Osc1WtPos, D::Osc2WtPos, D::SubLevel, D::NoiseLevel, D::Filter2Cutoff};
+                                  D::Osc1WtPos, D::Osc2WtPos, D::SubLevel, D::NoiseLevel, D::Filter2Cutoff,
+                                  D::FxDelayFeedback, D::FxReverbDecay, D::FxPhaserDepth, D::FxFlangerDepth, D::FxChorusDepth};
     return v;
 }
 // A new route starts at a musical quarter of full scale.
@@ -317,6 +328,123 @@ inline std::vector<double> unisonOffsets(const VoiceParams& p, int osc) {
 inline const char* distModeName(int m) {
     static const char* n[] = {"SOFT CLIP", "FOLD", "BITCRUSH"};
     return (m >= 0 && m < 3) ? n[m] : "?";
+}
+
+// ---- 0.14.0 FX detail editor ----
+// Every control of one rack unit (FxUnit id), in panel row order. Choice
+// rows step through a list; the rest are sliders over lo..hi.
+enum FxFmt { FmtPercent, FmtHz, FmtMs, FmtSec, FmtDb, FmtRatio, FmtChoice };
+struct FxControl {
+    const char* label;
+    FxFmt fmt;
+    double lo, hi;
+    bool log;
+    int dest; // ModRoute::Dest this row can be modulated through, or -1
+};
+inline const std::vector<FxControl>& fxControls(int unit) {
+    using D = ModRoute::Dest;
+    static const std::vector<FxControl> c[kFxUnits] = {
+        {{"MODE", FmtChoice, 0, 2, false, -1}, {"DRIVE", FmtPercent, 0, 1, false, (int)D::DistDrive}, {"MIX", FmtPercent, 0, 1, false, -1}},
+        {{"RATE", FmtHz, 0.05, 5, true, -1}, {"DEPTH", FmtMs, 0, 20, false, (int)D::FxChorusDepth}, {"DELAY", FmtMs, 5, 30, false, -1},
+         {"MIX", FmtPercent, 0, 1, false, -1}},
+        {{"TIME L", FmtSec, 0.01, 1.99, true, -1}, {"SYNC L", FmtChoice, 0, kSyncCount - 1, false, -1},
+         {"TIME R", FmtSec, 0.01, 1.99, true, -1}, {"SYNC R", FmtChoice, 0, kSyncCount - 1, false, -1},
+         {"FEEDBACK", FmtPercent, 0, 0.95, false, (int)D::FxDelayFeedback}, {"MIX", FmtPercent, 0, 1, false, -1}},
+        {{"AMOUNT", FmtPercent, 0, 1, false, -1}},
+        {{"DECAY", FmtPercent, 0, 0.97, false, (int)D::FxReverbDecay}, {"DAMPING", FmtPercent, 0, 1, false, -1},
+         {"MIX", FmtPercent, 0, 1, false, -1}},
+        {{"LOW 180 Hz", FmtDb, -12, 12, false, -1}, {"MID 1.2 kHz", FmtDb, -12, 12, false, -1}, {"HIGH 6 kHz", FmtDb, -12, 12, false, -1}},
+        {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxPhaserDepth},
+         {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
+        {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxFlangerDepth},
+         {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
+    };
+    static const std::vector<FxControl> none;
+    return (unit >= 0 && unit < kFxUnits) ? c[unit] : none;
+}
+inline int fxControlCount(int unit) { return (int)fxControls(unit).size(); }
+inline const char* fxUnitTitle(int unit) {
+    static const char* n[kFxUnits] = {"DISTORTION", "CHORUS", "DELAY", "COMPRESSOR", "REVERB", "EQ", "PHASER", "FLANGER"};
+    return (unit >= 0 && unit < kFxUnits) ? n[unit] : "";
+}
+// Raw value of a control (choice rows: the index as a double).
+inline double fxGet(const FXParams& f, int unit, int i) {
+    switch (unit) {
+    case FxDist: return i == 0 ? f.dist.mode : i == 1 ? f.dist.drive : f.dist.mix;
+    case FxChorus: return i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix;
+    case FxDelay: return i == 0 ? f.delay.timeLSec : i == 1 ? f.delay.syncL : i == 2 ? f.delay.timeRSec : i == 3 ? f.delay.syncR
+                       : i == 4 ? f.delay.feedback : f.delay.mix;
+    case FxComp: return f.comp.amount;
+    case FxReverb: return i == 0 ? f.reverb.decay : i == 1 ? f.reverb.damping : f.reverb.mix;
+    case FxEQ: return i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb;
+    case FxPhaser: return i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix;
+    case FxFlanger: return i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix;
+    }
+    return 0.0;
+}
+// Writes a control, clamped to its range (choice rows round to an index).
+inline void fxSet(FXParams& f, int unit, int i, double v) {
+    const auto& cs = fxControls(unit);
+    if (i < 0 || i >= (int)cs.size() || !std::isfinite(v)) return;
+    const FxControl& c = cs[i];
+    v = std::clamp(v, c.lo, c.hi);
+    const int k = (int)std::lround(v);
+    switch (unit) {
+    case FxDist: if (i == 0) f.dist.mode = k; else if (i == 1) f.dist.drive = v; else f.dist.mix = v; break;
+    case FxChorus: (i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix) = v; break;
+    case FxDelay:
+        if (i == 1) f.delay.syncL = k; else if (i == 3) f.delay.syncR = k;
+        else (i == 0 ? f.delay.timeLSec : i == 2 ? f.delay.timeRSec : i == 4 ? f.delay.feedback : f.delay.mix) = v;
+        break;
+    case FxComp: f.comp.amount = v; break;
+    case FxReverb: (i == 0 ? f.reverb.decay : i == 1 ? f.reverb.damping : f.reverb.mix) = v; break;
+    case FxEQ: (i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb) = v; break;
+    case FxPhaser: (i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix) = v; break;
+    case FxFlanger: (i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix) = v; break;
+    }
+}
+// Slider position 0..1 <-> value (log rows sweep geometrically).
+inline double fxNorm(const FxControl& c, double v) {
+    v = std::clamp(v, c.lo, c.hi);
+    if (c.hi <= c.lo) return 0.0;
+    return c.log ? std::log(v / c.lo) / std::log(c.hi / c.lo) : (v - c.lo) / (c.hi - c.lo);
+}
+inline double fxFromNorm(const FxControl& c, double n) {
+    n = std::clamp(n, 0.0, 1.0);
+    return c.log ? c.lo * std::pow(c.hi / c.lo, n) : c.lo + n * (c.hi - c.lo);
+}
+// A delay side follows the host tempo while its SYNC row is not FREE.
+inline bool fxRowInactive(const FXParams& f, int unit, int i) {
+    return unit == FxDelay && ((i == 0 && f.delay.syncL > 0) || (i == 2 && f.delay.syncR > 0));
+}
+inline std::string fxValueText(const FXParams& f, int unit, int i) {
+    const auto& cs = fxControls(unit);
+    if (i < 0 || i >= (int)cs.size()) return "";
+    const double v = fxGet(f, unit, i);
+    char b[40];
+    switch (cs[i].fmt) {
+    case FmtChoice:
+        if (unit == FxDist) return distModeName((int)v);
+        return syncName((int)v);
+    case FmtPercent: snprintf(b, sizeof b, "%.0f%%", v * 100); break;
+    case FmtHz: snprintf(b, sizeof b, v < 1 ? "%.2f Hz" : "%.1f Hz", v); break;
+    case FmtMs: snprintf(b, sizeof b, "%.1f ms", v); break;
+    case FmtSec:
+        if (fxRowInactive(f, unit, i)) return "TEMPO";
+        snprintf(b, sizeof b, "%.0f ms", v * 1000); break;
+    case FmtDb: snprintf(b, sizeof b, "%+.1f dB", v); break;
+    case FmtRatio: snprintf(b, sizeof b, "%.1f:1", v); break;
+    }
+    return b;
+}
+// Default of a control, for double-click reset (a fresh unit's value).
+inline double fxDefault(int unit, int i) { return fxGet(FXParams{}, unit, i); }
+// Sum of macro route amounts into a destination (what the detail row shows).
+inline double fxRouteSum(const std::vector<ModRoute>& routes, int dest, int* count = nullptr) {
+    double s = 0; int n = 0;
+    for (const auto& r : routes) if ((int)r.dest == dest) { s += r.amount; ++n; }
+    if (count) *count = n;
+    return s;
 }
 
 // One cycle of the engine's own oscillator output (band-limited table,
