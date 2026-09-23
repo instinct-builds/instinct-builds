@@ -144,15 +144,16 @@ extension DiceRollerView {
 }
 
 /// One macro row: name, expression, roll (labeled with the macro name so
-/// history reads clearly), edit-in-place, and delete.
-struct MacroRowView: View {
+/// history reads clearly), edit-in-place, and delete. Public so the render
+/// harness (ARCHITERRender target) can snapshot the editing state.
+public struct MacroRowView: View {
     @EnvironmentObject var model: AppModel
     let macro: DiceMacro
     @State private var editing: Bool
     @State private var nameDraft: String
     @State private var expressionDraft: String
 
-    init(macro: DiceMacro, startEditing: Bool = false) {
+    public init(macro: DiceMacro, startEditing: Bool = false) {
         self.macro = macro
         _editing = State(initialValue: startEditing)
         _nameDraft = State(initialValue: macro.name)
@@ -164,7 +165,7 @@ struct MacroRowView: View {
             && (try? DiceExpression.parse(expressionDraft)) != nil
     }
 
-    var body: some View {
+    public var body: some View {
         HStack {
             if editing {
                 TextField("Name", text: $nameDraft)
