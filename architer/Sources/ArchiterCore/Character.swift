@@ -76,6 +76,26 @@ public struct Skill: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// A tool the character is trained with. Tools borrow their ability from the
+/// check at the table, so only the training tier is stored here.
+public struct ToolProficiency: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID = UUID()
+    public var name: String
+    public var tier: ProficiencyTier
+
+    public init(name: String, tier: ProficiencyTier = .proficient) {
+        self.name = name
+        self.tier = tier
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        tier = try c.decodeIfPresent(ProficiencyTier.self, forKey: .tier) ?? .proficient
+    }
+}
+
 public struct AbilityScores: Codable, Equatable, Sendable {
     private var values: [Ability: Int]
 
@@ -428,6 +448,9 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var overAttuned: Bool { attunedCount > Character.attunementLimit }
     public var currency: Currency
     public var proficienciesText: String
+    /// Structured tool training (name + tier); armor/weapon/language
+    /// proficiencies stay in the free-text field above.
+    public var toolProficiencies: [ToolProficiency]
     /// Dated session-log entries shown in the journal block.
     public var journal: [JournalEntry]
     public var features: [Feature]
@@ -478,6 +501,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         extraSpeeds: [MovementSpeed] = [],
         currency: Currency = Currency(),
         proficienciesText: String = "",
+        toolProficiencies: [ToolProficiency] = [],
         features: [Feature] = [],
         personality: Personality = Personality(),
         notes: String = "",
@@ -531,6 +555,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.currency = currency
         self.journal = journal
         self.proficienciesText = proficienciesText
+        self.toolProficiencies = toolProficiencies
         self.features = features
         self.personality = personality
         self.notes = notes
@@ -586,6 +611,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         currency = try c.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
         journal = try c.decodeIfPresent([JournalEntry].self, forKey: .journal) ?? []
         proficienciesText = try c.decodeIfPresent(String.self, forKey: .proficienciesText) ?? ""
+        toolProficiencies = try c.decodeIfPresent([ToolProficiency].self, forKey: .toolProficiencies) ?? []
         features = try c.decodeIfPresent([Feature].self, forKey: .features) ?? []
         personality = try c.decodeIfPresent(Personality.self, forKey: .personality) ?? Personality()
         notes = try c.decode(String.self, forKey: .notes)
@@ -606,6 +632,17 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// "30 ft, fly 60 ft (hover)".
     public var movementSummary: String {
         (["\(speed) ft"] + extraSpeeds.map(\.displayString)).joined(separator: ", ")
+    }
+    /// Total bonus for a tool check with the given ability: ability modifier
+    /// plus proficiency/expertise when trained.
+    public func toolBonus(_ tool: ToolProficiency, ability: Ability) -> Int {
+        scores.modifier(ability) + tool.tier.multiplier * RulesMath.proficiencyBonus(level: level)
+    }
+    /// Export readout: "Thieves' tools, calligrapher's supplies (expertise)".
+    public var toolSummary: String {
+        toolProficiencies.map {
+            $0.tier == .expert ? "\($0.name) (expertise)" : $0.name
+        }.joined(separator: ", ")
     }
     /// Passive value for a skill: 10 + its bonus (raw ability modifier when the
     /// sheet has no such skill). The table standard for noticing without rolling.

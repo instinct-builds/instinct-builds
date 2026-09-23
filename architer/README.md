@@ -4,6 +4,17 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.15.0
+
+- Tool proficiencies as a structured list: each tool carries a training
+  tier (proficient or expertise) and the sheet computes the bonus over
+  the raw ability modifier (tier multiplier x proficiency bonus) for
+  tool checks. Edited in the identity block, exported in the identity
+  head of Markdown and HTML. Old saves decode with an empty list;
+  armor/weapon/language proficiencies stay in the free-text field.
+- Sample sheet: Wren is expert with calligrapher's supplies and trained
+  with a forgery kit.
+
 ## What's in 2.14.0
 
 - Custom conditions: name your own states (homebrew, module-specific)

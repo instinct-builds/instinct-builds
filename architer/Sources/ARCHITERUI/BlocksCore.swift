@@ -157,6 +157,28 @@ struct IdentityBlock: View {
             TextField("Proficiencies & languages", text: $character.proficienciesText)
                 .textFieldStyle(InsetFieldStyle())
                 .font(Theme.Typeface.caption)
+            ForEach($character.toolProficiencies) { $tool in
+                HStack(spacing: Theme.Gap.sm) {
+                    TextField("Tool", text: $tool.name)
+                        .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 180)
+                    Picker("", selection: $tool.tier) {
+                        ForEach([ProficiencyTier.proficient, .expert], id: \.self) {
+                            Text($0 == .expert ? "Expertise" : "Proficient").tag($0)
+                        }
+                    }
+                    .labelsHidden().frame(width: 110)
+                    Text("+\(tool.tier.multiplier * character.proficiencyBonus) over ability")
+                        .font(Theme.Typeface.caption).foregroundStyle(Theme.inkFaint)
+                    Button(role: .destructive) {
+                        character.toolProficiencies.removeAll { $0.id == tool.id }
+                    } label: { Image(systemName: "minus.circle") }
+                }
+                .font(.caption)
+            }
+            Button("Add tool proficiency") {
+                character.toolProficiencies.append(ToolProficiency(name: ""))
+            }
+            .controlSize(.small)
         }
         .padding(Theme.Gap.lg)
         .frame(maxWidth: .infinity, alignment: .leading)

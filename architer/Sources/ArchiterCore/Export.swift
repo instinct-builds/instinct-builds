@@ -24,6 +24,7 @@ public enum SheetExporter {
                 XP: \(c.experience)\(c.xpToNextLevel.map { " (\($0) to level \(c.level + 1))" } ?? "") · Proficiency bonus: +\(c.proficiencyBonus)\(c.inspiration ? " · Inspired" : "")
                 """
                 if !c.proficienciesText.isEmpty { head += "\nProficiencies: \(c.proficienciesText)" }
+                if !c.toolProficiencies.isEmpty { head += "\nTools: \(c.toolSummary)" }
                 out.append(head)
             case .abilities:
                 var lines = ["## Abilities", "| Ability | Score | Mod | Save |", "|---|---|---|---|"]
@@ -188,6 +189,7 @@ public enum SheetExporter {
                   <p class="sub">Level \(c.level) \(esc(c.lineage)) \(esc(c.calling))\(c.alignment.isEmpty ? "" : " (\(esc(c.alignment)))")</p>
                   <p class="meta">XP \(c.experience) · Proficiency +\(c.proficiencyBonus)\(c.background.isEmpty ? "" : " · " + esc(c.background))\(c.inspiration ? " · Inspired" : "")</p>
                   \(c.proficienciesText.isEmpty ? "" : "<p class=\"meta\">" + esc(c.proficienciesText) + "</p>")
+                  \(c.toolProficiencies.isEmpty ? "" : "<p class=\"meta\">Tools: " + esc(c.toolSummary) + "</p>")
                 </section>
                 """)
             case .abilities:

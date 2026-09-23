@@ -169,6 +169,31 @@ struct CharacterTests {
         #expect(old.activeConditionNames.isEmpty)
     }
 
+    @Test func toolProficienciesDecodeAndBonus() throws {
+        var c = Character(name: "T", level: 5) // proficiency bonus +3
+        #expect(c.toolProficiencies.isEmpty)
+        #expect(c.toolSummary == "")
+        let tools = ToolProficiency(name: "Thieves' tools")
+        let expert = ToolProficiency(name: "Calligrapher's supplies", tier: .expert)
+        c.toolProficiencies = [tools, expert]
+        #expect(c.toolSummary == "Thieves' tools, Calligrapher's supplies (expertise)")
+        // Bonus = ability modifier + tier multiplier x proficiency bonus.
+        c.scores = AbilityScores([.dexterity: 16]) // +3 modifier
+        #expect(c.toolBonus(tools, ability: .dexterity) == 6)
+        #expect(c.toolBonus(expert, ability: .dexterity) == 9)
+        // Old saves without the toolProficiencies key decode empty.
+        let json = """
+        {"id":"00000000-0000-0000-0000-000000000004",
+        "name":"Old","lineage":"","calling":"","background":"",
+        "level":1,"experience":0,"scores":{},"skills":[],
+        "savingThrowProficiencies":[],"maxHP":8,"currentHP":8,"armorClass":10,"speed":30,
+        "attacks":[],"inventory":[],"notes":"",
+        "layout":{"blocks":[{"kind":"identity","visible":true,"size":"regular"}]}}
+        """.data(using: .utf8)!
+        let old = try JSONDecoder().decode(Character.self, from: json)
+        #expect(old.toolProficiencies.isEmpty)
+    }
+
     @Test func defensesAdjustIncomingDamage() {
         var c = Character(name: "T", level: 1, maxHP: 30)
         c.resistances = [.fire]

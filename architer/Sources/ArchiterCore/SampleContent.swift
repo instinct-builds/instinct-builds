@@ -97,7 +97,12 @@ public enum SampleContent {
                 InventoryItem(name: "Waterskin", quantity: 1, weight: 5, category: "Gear"),
             ],
             currency: Currency(copper: 7, silver: 23, electrum: 0, gold: 112, platinum: 2),
-            proficienciesText: "Armor: none · Weapons: daggers, darts, slings, quarterstaffs, light crossbows · Tools: none · Languages: Common, Elvish, Draconic, Dwarvish",
+            proficienciesText: "Armor: none · Weapons: daggers, darts, slings, quarterstaffs, light crossbows · Languages: Common, Elvish, Draconic, Dwarvish",
+            toolProficiencies: [
+                // A decade copying marginalia leaves a mark.
+                ToolProficiency(name: "Calligrapher's supplies", tier: .expert),
+                ToolProficiency(name: "Forgery kit"),
+            ],
             features: [
                 Feature(name: "Arcane Recovery", source: "Wizard 1",
                         detail: "Once per day after a short rest, recover spell slots totaling half your wizard level (rounded up).",
