@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import UniformTypeIdentifiers
 import ArchiterCore
 
 @MainActor
@@ -292,6 +293,23 @@ public final class AppModel: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             try? SheetPDFExporter.export(sel).write(to: url)
         }
+    }
+
+    public func exportCharacterJSON() {
+        guard let sel = selected?.wrappedValue,
+              let data = try? CharacterIO.exportJSON(sel),
+              let text = String(data: data, encoding: .utf8) else { return }
+        savePanel(text: text, name: "\(sel.name).architer.json")
+    }
+
+    public func importCharacterJSON() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url),
+              let c = try? CharacterIO.importJSON(data) else { return }
+        addCharacter(c)
     }
 
     // MARK: Undo

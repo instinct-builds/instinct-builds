@@ -29,6 +29,9 @@ struct ARCHITERApp: App {
                 Button("Export PDF…") { model.exportPDF() }
                     .keyboardShortcut("p", modifiers: [.command])
                 Divider()
+                Button("Export Character File…") { model.exportCharacterJSON() }
+                Button("Import Character File…") { model.importCharacterJSON() }
+                Divider()
                 Button("Load Sample Character") { model.loadSample() }
             }
         }

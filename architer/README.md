@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 1.7.0
+
+- **Character files**: export the selected character as a portable
+  `.architer.json` file and import character files back - imports always
+  get a fresh id, so a file can never overwrite the original. Lives in
+  the File menu next to the sheet exports.
+
 ## What's in 1.6.0
 
 - **Ruleset editor**: edit any ruleset in your library in place - rename

@@ -385,6 +385,19 @@ struct CharacterTests {
         #expect(clean.skills[1].abilityName == "Brawn")
     }
 
+    @Test func characterIORoundTripsWithFreshID() throws {
+        let original = SampleContent.demoCharacter()
+        let data = try CharacterIO.exportJSON(original)
+        let imported = try CharacterIO.importJSON(data)
+        #expect(imported.id != original.id)
+        #expect(imported.name == original.name)
+        #expect(imported.level == original.level)
+        #expect(imported.scores == original.scores)
+        #expect(imported.attacks == original.attacks)
+        let again = try CharacterIO.importJSON(data)
+        #expect(again.id != imported.id)
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

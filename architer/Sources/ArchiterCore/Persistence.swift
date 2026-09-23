@@ -6,6 +6,26 @@ public enum CharacterStoreError: Error {
     case corruptData
 }
 
+/// Character file interchange: export one character as portable JSON and
+/// import it back. Imports always get a fresh id so a re-imported file can
+/// never collide with (or silently overwrite) the original.
+public enum CharacterIO {
+    public static func exportJSON(_ character: Character) throws -> Data {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        enc.dateEncodingStrategy = .iso8601
+        return try enc.encode(character)
+    }
+
+    public static func importJSON(_ data: Data) throws -> Character {
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        var c = try dec.decode(Character.self, from: data)
+        c.id = UUID()
+        return c
+    }
+}
+
 /// JSON persistence in the app's Application Support folder (or anywhere the
 /// caller points it, which is how tests exercise it on any platform).
 public struct CharacterStore: Sendable {
