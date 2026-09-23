@@ -734,7 +734,16 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [C(0x3a6b64) setStroke];
         NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:8 yRadius:8];
         o.lineWidth = 1; [o stroke];
-        TextA(@"\u2922 FULL", NSMakeRect(r.origin.x, r.origin.y + 2.5, r.size.width, 11), 8, C(0x75ead8), NSFontWeightBold, NSTextAlignmentCenter);
+        // Drawn expand icon (two corner arrows) instead of a font glyph, which
+        // rendered too small at this size (0.12.0).
+        NSBezierPath* ic = [NSBezierPath bezierPath];
+        CGFloat gx = r.origin.x + 8, gy = r.origin.y + 4, gs = 8;
+        [ic moveToPoint:NSMakePoint(gx, gy + gs)]; [ic lineToPoint:NSMakePoint(gx + gs, gy)];
+        [ic moveToPoint:NSMakePoint(gx, gy + gs - 3.5)]; [ic lineToPoint:NSMakePoint(gx, gy + gs)]; [ic lineToPoint:NSMakePoint(gx + 3.5, gy + gs)];
+        [ic moveToPoint:NSMakePoint(gx + gs - 3.5, gy)]; [ic lineToPoint:NSMakePoint(gx + gs, gy)]; [ic lineToPoint:NSMakePoint(gx + gs, gy + 3.5)];
+        ic.lineWidth = 1.4; ic.lineCapStyle = NSLineCapStyleRound; ic.lineJoinStyle = NSLineJoinStyleRound;
+        [C(0x75ead8) setStroke]; [ic stroke];
+        TextA(@"FULL", NSMakeRect(r.origin.x + 18, r.origin.y + 2.5, r.size.width - 22, 11), 8, C(0x75ead8), NSFontWeightBold, NSTextAlignmentCenter);
     }
 
     // Modulation + effects

@@ -92,6 +92,20 @@ inline double lfoHz(double freeHz, int sync, double bpm) {
     return beats > 0 ? (bpm / 60.0) / beats : freeHz;
 }
 
+// 0.12.0: one-pole DC blocker (high pass near 12 Hz): y = x - x1 + R * y1.
+class DCBlocker {
+public:
+    void setSampleRate(double sr) { R_ = std::exp(-2.0 * 3.14159265358979323846 * 12.0 / sr); }
+    void reset() { x1_ = y1_ = 0.0; }
+    inline float process(float x) {
+        const double y = x - x1_ + R_ * y1_;
+        x1_ = x; y1_ = y;
+        return static_cast<float>(y);
+    }
+private:
+    double R_ = 0.9983, x1_ = 0.0, y1_ = 0.0;
+};
+
 class Voice {
 public:
     void init(double sr, const Wavetable* table) {
@@ -108,6 +122,7 @@ public:
         mseg1_.setSampleRate(sr);
         sub_.setSampleRate(sr); sub_.setTable(table);
         noise_.setSampleRate(sr);
+        dcL_.setSampleRate(sr); dcR_.setSampleRate(sr);
         f2L_.setSampleRate(sr); f2R_.setSampleRate(sr);
     }
 
@@ -132,6 +147,7 @@ public:
         }
         mseg1_.setRate(p.mseg1Seconds); mseg1_.setPoints(p.mseg1Points);
         mseg1_.setLoop(1, (int)mseg1_.pointCount() - 1, p.mseg1Loop);
+        
         usesSub_ = p.subLevel > 0; usesNoise_ = p.noiseLevel > 0;
         for (const auto& r : routes) {
             if (r.dest == ModRoute::Dest::SubLevel) usesSub_ = true;
@@ -170,12 +186,14 @@ public:
         }
         age_ = 0;
         sub_.setPhase(0.0);
+        dcL_.reset(); dcR_.reset(); dcOn_ = false;
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
     }
 
     void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); }
 
     bool isActive() const { return ampEnv_.isActive(); }
+    bool dcBlockerOn() const { return dcOn_; } // 0.12.0 (tests)
     int note() const { return note_; }
     uint64_t age() const { return age_; }
 
@@ -225,6 +243,12 @@ public:
         float osc2Level = static_cast<float>(
             std::clamp(params_.osc2Level + modSum(ModRoute::Dest::Osc2Level), 0.0, 1.0));
         const float g1 = 1.0f - osc2Level * 0.5f, g2 = osc2Level;
+        // 0.12.0: engage the DC blocker for the rest of the note the first time
+        // an oscillator that can carry DC is heard. Sounds that never do so
+        // never run it, and stay sample-identical to 0.11.0.
+        if (!dcOn_ && ((shapeProne(params_.osc1Shape) || (warpProne(params_.osc1WarpMode) && warp1 > 0))
+                       || (g2 > 0 && (shapeProne(params_.osc2Shape) || (warpProne(params_.osc2WarpMode) && warp2 > 0)))))
+            dcOn_ = true;
 
         const int n1 = std::clamp(params_.osc1Unison, 1, kMaxUnison);
         const int n2 = std::clamp(params_.osc2Unison, 1, kMaxUnison);
@@ -252,6 +276,9 @@ public:
             r = r1 * g1 + r2 * g2;
             stereo = width > 0.0;
         }
+
+        // 0.12.0 DC blocker on the oscillator mix (see dcOn_ above).
+        if (dcOn_) { l = dcL_.process(l); r = dcR_.process(r); }
 
         // 0.10.0 sub oscillator (follows oscillator A's pitch) and noise, mono, pre-filter.
         if (usesSub_) {
@@ -360,6 +387,14 @@ private:
 
     // Shape kCustomShape plays the oscillator's table; without one it falls
     // back to the saw so an incomplete preset still sounds.
+public:
+    // Oscillator settings that can leave a DC offset: bending or splitting the
+    // phase of an asymmetric table, the PULSE shape, and user-drawn tables.
+    // Per oscillator: the PULSE shape and user tables can always carry DC;
+    // BEND+/BEND-/PWM only once their warp amount is above 0.
+    static bool shapeProne(int shape) { return shape == 4 || shape == kCustomShape; }
+    static bool warpProne(int mode) { return mode == 2 || mode == 3 || mode == 4; }
+private:
     void applyCustom() {
         active1_ = params_.osc1Shape == kCustomShape; active2_ = params_.osc2Shape == kCustomShape;
         for (int i = 0; i < kMaxUnison; ++i) {
@@ -378,6 +413,8 @@ private:
 
     Oscillator sub_;
     NoiseSource noise_;
+    DCBlocker dcL_, dcR_;
+    bool dcOn_ = false;
     Filter2 f2L_, f2R_;
     int f2Type_ = 0;
     bool usesSub_ = false, usesNoise_ = false;
