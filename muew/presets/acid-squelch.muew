@@ -1,27 +1,26 @@
 muew-preset 2
-name Init Saw
+name Acid Squelch
 category Lead
 author MUEW Factory
-tags init basic
+tags acid resonant squelch
 osc1Shape 2
 osc2Shape 3
-osc2Detune 7
-osc2Level 0.5
-filterCutoff 8000
-filterReso 0.7
+osc2Detune 0
+osc2Level 0.2
+filterCutoff 500
+filterReso 6
 filterMode 0
-amp 0.005 0.15 0.8 0.3
-mod 0.01 0.3 0 0.2
+amp 0.002 0.2 0.6 0.08
+mod 0.001 0.25 0 0.1
 lfo1Rate 5
 lfo1Shape 0
 lfo2 0.35 1
 warp1 0 0
 warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
-routes 3
-route 1 2 2
-route 0 1 0.05
-route 2 2 1
+routes 2
+route 1 2 3.5
+route 2 2 0.8
 chorus 0 0.6 6 15 0.35
-delay 0 0.28 0.42 0.35 0.22
+delay 1 0.24 0.36 0.3 0.15
 reverb 0 0.55 0.45 0.28

@@ -1,4 +1,8 @@
-muew-preset 1
+muew-preset 2
+name Airy Strings
+category Pad
+author MUEW Factory
+tags strings wide slow
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.12
@@ -10,6 +14,10 @@ amp 1.8 1 0.8 2.2
 mod 1.5 1 0.4 1.5
 lfo1Rate 0.15
 lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 routes 2
 route 1 2 1
 route 0 3 0.15

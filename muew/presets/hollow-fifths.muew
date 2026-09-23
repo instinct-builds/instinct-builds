@@ -1,0 +1,26 @@
+muew-preset 2
+name Hollow Fifths
+category Lead
+author MUEW Factory
+tags fifths hollow bandpass
+osc1Shape 3
+osc2Shape 3
+osc2Detune 7
+osc2Level 0.6
+filterCutoff 1500
+filterReso 1.8
+filterMode 1
+amp 0.02 0.3 0.8 0.3
+mod 0.02 0.5 0.2 0.3
+lfo1Rate 4.5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 2
+route 1 2 1.5
+route 0 0 0.1
+chorus 0 0.6 6 15 0.35
+delay 1 0.36 0.48 0.4 0.25
+reverb 1 0.5 0.4 0.2

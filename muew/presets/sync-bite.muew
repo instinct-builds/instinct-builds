@@ -1,0 +1,27 @@
+muew-preset 2
+name Sync Bite
+category Bass
+author MUEW Factory
+tags sync plucky mid
+osc1Shape 2
+osc2Shape 4
+osc2Detune -12
+osc2Level 0.35
+filterCutoff 1800
+filterReso 1.1
+filterMode 0
+amp 0.001 0.28 0.5 0.1
+mod 0.001 0.22 0 0.1
+lfo1Rate 4
+lfo1Shape 0
+lfo2 0.35 1
+warp1 1 0.1
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 3
+route 1 5 0.8
+route 1 2 1.8
+route 2 2 0.5
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28

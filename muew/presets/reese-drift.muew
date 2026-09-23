@@ -1,0 +1,26 @@
+muew-preset 2
+name Reese Drift
+category Bass
+author MUEW Factory
+tags reese detuned dark
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.15
+osc2Level 0.9
+filterCutoff 700
+filterReso 1.2
+filterMode 0
+amp 0.01 0.2 0.9 0.2
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.3
+lfo1Shape 1
+lfo2 0.12 0
+warp1 0 0
+warp2 3 0.3
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 2
+route 3 2 1.2
+route 0 6 0.2
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28

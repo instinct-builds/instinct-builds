@@ -3,6 +3,7 @@
 #include "MUEWPluginInterface.h"
 #include "synth.h"
 #include "preset.h"
+#include "factory_bank.h"
 
 #include <AudioToolbox/AudioUnitProperties.h>
 #include <AudioToolbox/MusicDevice.h>
@@ -31,180 +32,18 @@ struct ScheduledEvent {
     float velocity;
 };
 
-static const char* const kPresetNames[] = {
-    "Airy Strings", "Bright Lead", "Init Saw", "Pluck",
-    "Punchy Bass", "Soft Keys", "Sub Bass", "Warm Pad"
-};
-static constexpr SInt32 kPresetCount = 8;
+// Factory bank: the same authored presets the standalone app embeds
+// (generated from presets/bank.txt; index = AU preset number).
+static constexpr SInt32 kPresetCount = (SInt32)muew::kFactoryPresetCount;
 
 static CFStringRef PresetName(SInt32 n) {
-    switch (n) {
-        case 0: return CFSTR("Airy Strings");
-        case 1: return CFSTR("Bright Lead");
-        case 2: return CFSTR("Init Saw");
-        case 3: return CFSTR("Pluck");
-        case 4: return CFSTR("Punchy Bass");
-        case 5: return CFSTR("Soft Keys");
-        case 6: return CFSTR("Sub Bass");
-        case 7: return CFSTR("Warm Pad");
-        default: return CFSTR("Custom");
-    }
-}
-
-static const char* PresetText(SInt32 n) {
-    static const char* const texts[] = {
-R"MUEW(muew-preset 1
-osc1Shape 2
-osc2Shape 2
-osc2Detune 0.12
-osc2Level 0.55
-filterCutoff 4200
-filterReso 0.35
-filterMode 0
-amp 1.8 1 0.8 2.2
-mod 1.5 1 0.4 1.5
-lfo1Rate 0.15
-lfo1Shape 1
-routes 2
-route 1 2 1
-route 0 3 0.15
-chorus 1 0.35 7 14 0.32
-delay 0 0.28 0.42 0.35 0.22
-reverb 1 0.85 0.35 0.4
-)MUEW",
-R"MUEW(muew-preset 1
-osc1Shape 2
-osc2Shape 3
-osc2Detune 7
-osc2Level 0.45
-filterCutoff 6000
-filterReso 0.8
-filterMode 0
-amp 0.01 0.1 0.9 0.15
-mod 0.01 0.25 0 0.1
-lfo1Rate 5.5
-lfo1Shape 0
-routes 3
-route 1 2 2
-route 0 0 0.15
-route 2 2 1
-chorus 0 0.6 6 15 0.35
-delay 1 0.28 0.34 0.35 0.25
-reverb 1 0.4 0.5 0.2
-)MUEW",
-R"MUEW(muew-preset 1
-osc1Shape 2
-osc2Shape 3
-osc2Detune 7
-osc2Level 0.5
-filterCutoff 8000
-filterReso 0.7
-filterMode 0
-amp 0.005 0.15 0.8 0.3
-mod 0.01 0.3 0 0.2
-lfo1Rate 5
-lfo1Shape 0
-routes 3
-route 1 2 2
-route 0 1 0.05
-route 2 2 1
-chorus 0 0.6 6 15 0.35
-delay 0 0.28 0.42 0.35 0.22
-reverb 0 0.55 0.45 0.28
-)MUEW",
-R"MUEW(muew-preset 1
-osc1Shape 2
-osc2Shape 4
-osc2Detune 0
-osc2Level 0.4
-filterCutoff 5200
-filterReso 0.6
-filterMode 0
-amp 0.001 0.35 0 0.12
-mod 0.001 0.2 0 0.1
-lfo1Rate 5
-lfo1Shape 0
-routes 2
-route 1 2 2.5
-route 2 2 0.6
-chorus 0 0.6 6 15 0.35
-delay 1 0.22 0.28 0.3 0.18
-reverb 1 0.35 0.5 0.15
-)MUEW",
-R"MUEW(muew-preset 1
-osc1Shape 3
-osc2Shape 2
-osc2Detune -12
-osc2Level 0.6
-filterCutoff 900
-filterReso 0.9
-filterMode 0
-amp 0.002 0.25 0.4 0.08
-mod 0.005 0.15 0 0.05
-lfo1Rate 2
-lfo1Shape 0
-routes 2
-route 1 2 1.2
-route 2 2 0.8
-chorus 0 0.6 6 15 0.35
-delay 0 0.28 0.42 0.35 0.22
-reverb 0 0.55 0.45 0.28
-)MUEW",
-R"MUEW(muew-preset 1
-osc1Shape 1
-osc2Shape 0
-osc2Detune 0.02
-osc2Level 0.5
-filterCutoff 3500
-filterReso 0.3
-filterMode 0
-amp 0.01 0.6 0.5 0.4
-mod 0.01 0.3 0 0.2
-lfo1Rate 4
-lfo1Shape 0
-routes 1
-route 2 2 0.8
-chorus 1 0.4 3 10 0.18
-delay 0 0.28 0.42 0.35 0.22
-reverb 1 0.5 0.5 0.22
-)MUEW",
-R"MUEW(muew-preset 1
-osc1Shape 0
-osc2Shape 0
-osc2Detune -12
-osc2Level 0.4
-filterCutoff 400
-filterReso 0.2
-filterMode 0
-amp 0.005 0.1 1 0.1
-mod 0.01 0.3 0 0.2
-lfo1Rate 5
-lfo1Shape 0
-routes 0
-chorus 0 0.6 6 15 0.35
-delay 0 0.28 0.42 0.35 0.22
-reverb 0 0.55 0.45 0.28
-)MUEW",
-R"MUEW(muew-preset 1
-osc1Shape 2
-osc2Shape 2
-osc2Detune 0.08
-osc2Level 0.5
-filterCutoff 2400
-filterReso 0.4
-filterMode 0
-amp 1.2 1.5 0.7 1.6
-mod 0.8 1.2 0.3 1
-lfo1Rate 0.2
-lfo1Shape 0
-routes 2
-route 1 2 1.5
-route 0 3 0.1
-chorus 1 0.5 5 12 0.3
-delay 0 0.28 0.42 0.35 0.22
-reverb 1 0.75 0.4 0.35
-)MUEW"};
-    return (n >= 0 && n < kPresetCount) ? texts[n] : nullptr;
+    static const std::vector<CFStringRef> names = [] {
+        std::vector<CFStringRef> v;
+        for (const auto& p : muew::factoryPresets())
+            v.push_back(CFStringCreateWithCString(nullptr, p.info.name.c_str(), kCFStringEncodingUTF8));
+        return v;
+    }();
+    return (n >= 0 && n < (SInt32)names.size() && names[n]) ? names[n] : CFSTR("Custom");
 }
 
 struct MUEWInstance {
@@ -234,10 +73,9 @@ struct MUEWInstance {
     }
 
     bool loadFactoryPreset(SInt32 number) {
-        const char* text = PresetText(number);
-        if (!text) return false;
-        muew::Preset preset;
-        if (!preset.parse(text)) return false;
+        const auto& bank = muew::factoryPresets();
+        if (number < 0 || number >= (SInt32)bank.size()) return false;
+        const muew::Preset& preset = bank[number];
         synth.setParams(preset.voice, preset.routes);
         synth.setFX(preset.fx);
         presentPreset = number;

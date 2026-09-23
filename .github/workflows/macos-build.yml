@@ -42,7 +42,7 @@ jobs:
             architer/ARCHITER-${{ steps.architer-ver.outputs.value }}.dmg
             architer/out/
       - name: MUEW demo renders
-        run: cd muew && make all && ./build/muew-demo && ./build/muew-demo-wt && ./build/muew-demo-mod-depth && ls -la out
+        run: cd muew && make all && make test && ./build/muew-demo && ./build/muew-demo-wt && ./build/muew-demo-mod-depth && ls -la out
 
   asssets:
     runs-on: macos-latest
@@ -100,23 +100,23 @@ jobs:
           cd muew
           lipo out/MUEW.app/Contents/MacOS/MUEW -verify_arch arm64 x86_64
           codesign --verify --deep --strict out/MUEW.app
-          hdiutil verify out/MUEW-0.2.0.dmg
+          hdiutil verify out/MUEW-0.3.0.dmg
       - name: Capture MUEW designed UI proof
         run: |
           cd muew
           open out/MUEW.app
           sleep 8
-          screencapture -x out/MUEW-0.2.0-instrument.png
-          test -s out/MUEW-0.2.0-instrument.png
-          sips -g pixelWidth -g pixelHeight out/MUEW-0.2.0-instrument.png
-          test "$(sips -g pixelWidth out/MUEW-0.2.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
+          screencapture -x out/MUEW-0.3.0-instrument.png
+          test -s out/MUEW-0.3.0-instrument.png
+          sips -g pixelWidth -g pixelHeight out/MUEW-0.3.0-instrument.png
+          test "$(sips -g pixelWidth out/MUEW-0.3.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
       - name: Upload MUEW release + visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.2.0-designed-instrument
+          name: muew-0.3.0-preset-browser
           path: |
-            muew/out/MUEW-0.2.0.dmg
-            muew/out/MUEW-0.2.0-instrument.png
+            muew/out/MUEW-0.3.0.dmg
+            muew/out/MUEW-0.3.0-instrument.png
             muew/out/MUEW-AU-unsigned.zip
       - name: Upload AU artifact
         uses: actions/upload-artifact@v4

@@ -1,0 +1,32 @@
+# MUEW factory bank order. Index = AU factory preset number.
+# Append only: reordering changes preset numbers saved in host projects.
+airy-strings
+bright-lead
+init-saw
+pluck
+punchy-bass
+soft-keys
+sub-bass
+warm-pad
+fold-growl
+reese-drift
+sync-bite
+rubber-sub
+glass-sync-lead
+hollow-fifths
+acid-squelch
+pwm-solo
+night-bloom
+vector-choir
+frozen-lake
+tidal-wash
+prism-keys
+velvet-ep
+bell-tines
+fold-pluck
+marimba-wood
+echo-pluck
+bent-circuit
+chrome-motion
+rising-tide
+laser-drop

@@ -1,4 +1,8 @@
-muew-preset 1
+muew-preset 2
+name Pluck
+category Pluck
+author MUEW Factory
+tags short bright
 osc1Shape 2
 osc2Shape 4
 osc2Detune 0
@@ -10,6 +14,10 @@ amp 0.001 0.35 0 0.12
 mod 0.001 0.2 0 0.1
 lfo1Rate 5
 lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 routes 2
 route 1 2 2.5
 route 2 2 0.6

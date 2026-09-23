@@ -1,0 +1,26 @@
+muew-preset 2
+name Echo Pluck
+category Pluck
+author MUEW Factory
+tags delay rhythmic bright
+osc1Shape 2
+osc2Shape 3
+osc2Detune 0.05
+osc2Level 0.4
+filterCutoff 3800
+filterReso 0.7
+filterMode 0
+amp 0.001 0.25 0 0.2
+mod 0.001 0.2 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 2
+route 1 2 2.2
+route 2 2 0.7
+chorus 1 0.5 4 12 0.2
+delay 1 0.375 0.25 0.5 0.35
+reverb 1 0.55 0.45 0.2

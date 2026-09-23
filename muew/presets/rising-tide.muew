@@ -1,0 +1,28 @@
+muew-preset 2
+name Rising Tide
+category FX
+author MUEW Factory
+tags riser sweep long
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.2
+osc2Level 0.6
+filterCutoff 300
+filterReso 2
+filterMode 0
+amp 0.5 1 1 2
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 6 0 3 0 0 0.9 1 1 1
+routes 4
+route 4 2 4.5
+route 4 0 12
+route 4 1 12
+route 0 3 0.2
+chorus 1 0.8 6 14 0.35
+delay 1 0.4 0.55 0.4 0.25
+reverb 1 0.85 0.35 0.4

@@ -1,0 +1,26 @@
+muew-preset 2
+name Velvet EP
+category Keys
+author MUEW Factory
+tags electric-piano soft velocity
+osc1Shape 0
+osc2Shape 1
+osc2Detune 0
+osc2Level 0.35
+filterCutoff 2800
+filterReso 0.4
+filterMode 0
+amp 0.003 1.2 0.3 0.6
+mod 0.003 0.8 0 0.4
+lfo1Rate 4.5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 6 0.1
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 2
+route 2 2 1.5
+route 1 6 0.4
+chorus 1 0.8 2.5 8 0.25
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.45 0.55 0.18

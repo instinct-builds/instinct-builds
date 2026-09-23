@@ -1,0 +1,27 @@
+muew-preset 2
+name Laser Drop
+category FX
+author MUEW Factory
+tags drop zap pitch
+osc1Shape 2
+osc2Shape 3
+osc2Detune 0
+osc2Level 0.4
+filterCutoff 5000
+filterReso 2.5
+filterMode 0
+amp 0.001 0.6 0 0.3
+mod 0.001 0.4 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 0.4 0 3 0 1 0.3 0.1 1 -1
+routes 3
+route 4 0 24
+route 4 1 24
+route 4 2 1.5
+chorus 0 0.6 6 15 0.35
+delay 1 0.2 0.3 0.4 0.25
+reverb 1 0.5 0.5 0.2

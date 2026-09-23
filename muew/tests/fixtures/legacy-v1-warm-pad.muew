@@ -1,8 +1,4 @@
-muew-preset 2
-name Warm Pad
-category Pad
-author MUEW Factory
-tags warm wide slow
+muew-preset 1
 osc1Shape 2
 osc2Shape 2
 osc2Detune 0.08
@@ -14,10 +10,6 @@ amp 1.2 1.5 0.7 1.6
 mod 0.8 1.2 0.3 1
 lfo1Rate 0.2
 lfo1Shape 0
-lfo2 0.35 1
-warp1 0 0
-warp2 0 0
-mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 routes 2
 route 1 2 1.5
 route 0 3 0.1

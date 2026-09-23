@@ -1,0 +1,26 @@
+muew-preset 2
+name Vector Choir
+category Pad
+author MUEW Factory
+tags choir vocal wide
+osc1Shape 1
+osc2Shape 2
+osc2Detune 0.05
+osc2Level 0.4
+filterCutoff 1100
+filterReso 0.9
+filterMode 1
+amp 0.9 1 0.85 1.8
+mod 0.8 1 0.5 1
+lfo1Rate 0.25
+lfo1Shape 1
+lfo2 0.18 0
+warp1 3 0.45
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 2
+route 3 5 0.3
+route 0 2 0.4
+chorus 1 0.4 8 16 0.4
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.38

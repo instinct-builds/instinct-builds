@@ -1,0 +1,26 @@
+muew-preset 2
+name Bell Tines
+category Keys
+author MUEW Factory
+tags bell metallic bright
+osc1Shape 0
+osc2Shape 0
+osc2Detune 19.02
+osc2Level 0.45
+filterCutoff 8000
+filterReso 0.4
+filterMode 0
+amp 0.001 1.8 0 1.4
+mod 0.001 1.2 0 1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 6 0.15
+warp2 1 0.2
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 2
+route 1 5 0.6
+route 1 6 0.3
+chorus 0 0.6 6 15 0.35
+delay 1 0.37 0.5 0.3 0.2
+reverb 1 0.7 0.35 0.3

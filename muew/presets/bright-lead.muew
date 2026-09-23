@@ -1,4 +1,8 @@
-muew-preset 1
+muew-preset 2
+name Bright Lead
+category Lead
+author MUEW Factory
+tags bright mono-style vibrato
 osc1Shape 2
 osc2Shape 3
 osc2Detune 7
@@ -10,6 +14,10 @@ amp 0.01 0.1 0.9 0.15
 mod 0.01 0.25 0 0.1
 lfo1Rate 5.5
 lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 routes 3
 route 1 2 2
 route 0 0 0.15

@@ -110,3 +110,12 @@ simple 3-device license key scheme follow there.
   and filter resonance.
 - `render_demo_mod_depth.cpp` demonstrates dual oscillator Sync/Fold motion,
   looping MSEG timbre animation, and the existing stereo FX rack.
+
+## 0.3.0 preset/content milestone
+
+- **Preset format v2** (`muew-preset 2`): adds name, category, author and tags, LFO2, both oscillator warp modes/amounts, and MSEG time, loop and breakpoints. Version-1 files still load; fields they lack keep the defaults 0.2.0 used, so old presets sound the same. Unknown future versions are refused instead of guessed.
+- **Factory bank**: 30 original presets across Bass, Lead, Pad, Keys, Pluck, Texture and FX. `presets/bank.txt` sets the order. The index is the AU factory preset number, and numbers 0-7 keep their 0.2.0 sounds so saved host projects don't shift.
+- **One bank, two front ends**: `scripts/embed_factory_bank.py` generates `src/factory_bank.h` from the `.muew` files. The AU and the standalone app both compile that header. A test fails if the header drifts from the files.
+- **Standalone browser**: category chips, search over name, category and tags, favorites saved between launches, prev/next buttons, arrow keys, and a scrolling list. Loading a preset changes the real engine state. The knobs edit real fields, so the oscillator previews, MSEG curve, modulation slots and FX cards all show the loaded sound. Double-click a knob to return it to the preset value, or hold Shift while dragging for fine control. Z and X shift the keyboard octave.
+- **Tests**: `muew-tests-bank` checks exact round-trips, v1 compatibility, manifest/embedding parity, metadata, browser filtering, bounded non-silent output for every preset at three pitches, and that the modulation is audible. `muew-tests-ui` checks the UI model. The AU host test now selects and renders all 30 presets through the host API.
+- Edit sounds in `scripts/author_factory_presets.py`, then run `python3 scripts/author_factory_presets.py && python3 scripts/embed_factory_bank.py` from `muew/`.

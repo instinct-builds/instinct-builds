@@ -24,6 +24,7 @@ public:
     void setLoop(int startPoint, int endPoint, bool enabled) {
         loopStart_ = startPoint; loopEnd_ = endPoint; loop_ = enabled;
     }
+    size_t pointCount() const { return points_.size(); }
     void reset() { phase_ = 0.0; released_ = false; }
     void release() { released_ = true; }
 

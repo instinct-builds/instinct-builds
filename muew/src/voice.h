@@ -35,6 +35,9 @@ struct VoiceParams {
     double osc1Warp = 0.0, osc2Warp = 0.0;
     double mseg1Seconds = 1.0;
     bool mseg1Loop = false;
+    // Breakpoints (time 0..1, value -1..1). Defaults match MSEG's built-in
+    // shape so presets written before points were stored sound identical.
+    std::vector<MSEG::Point> mseg1Points{{0.0, 0.0}, {0.15, 1.0}, {0.55, -0.3}, {1.0, 0.0}};
 };
 
 class Voice {
@@ -60,7 +63,8 @@ public:
         lfo1_.setRate(p.lfo1Rate);
         lfo1_.setShape(static_cast<LFO::Shape>(p.lfo1Shape));
         lfo2_.setRate(p.lfo2Rate); lfo2_.setShape(static_cast<LFO::Shape>(p.lfo2Shape));
-        mseg1_.setRate(p.mseg1Seconds); mseg1_.setLoop(1, 3, p.mseg1Loop);
+        mseg1_.setRate(p.mseg1Seconds); mseg1_.setPoints(p.mseg1Points);
+        mseg1_.setLoop(1, (int)mseg1_.pointCount() - 1, p.mseg1Loop);
     }
 
     void noteOn(int note, float velocity) {

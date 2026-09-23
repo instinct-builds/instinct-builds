@@ -1,0 +1,26 @@
+muew-preset 2
+name Prism Keys
+category Keys
+author MUEW Factory
+tags digital quantized bright
+osc1Shape 2
+osc2Shape 1
+osc2Detune 12
+osc2Level 0.35
+filterCutoff 4500
+filterReso 0.6
+filterMode 0
+amp 0.005 0.7 0.35 0.5
+mod 0.005 0.6 0 0.3
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 5 0.55
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+routes 2
+route 1 5 -0.4
+route 2 2 1
+chorus 1 0.35 3 10 0.2
+delay 1 0.3 0.45 0.25 0.15
+reverb 1 0.5 0.5 0.22

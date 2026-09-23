@@ -1,4 +1,8 @@
-muew-preset 1
+muew-preset 2
+name Soft Keys
+category Keys
+author MUEW Factory
+tags soft mellow
 osc1Shape 1
 osc2Shape 0
 osc2Detune 0.02
@@ -10,6 +14,10 @@ amp 0.01 0.6 0.5 0.4
 mod 0.01 0.3 0 0.2
 lfo1Rate 4
 lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 routes 1
 route 2 2 0.8
 chorus 1 0.4 3 10 0.18
