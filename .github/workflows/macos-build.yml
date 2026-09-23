@@ -131,6 +131,8 @@ jobs:
           shoot similar 1920x1200 find-similar
           shoot autotags 1920x1200 autotags
           shoot autotags-audio 1920x1200 autotags-audio
+          shoot compare 1920x1200 compare
+          shoot compare-swipe 1920x1200 compare-swipe
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"

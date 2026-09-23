@@ -27,6 +27,7 @@ struct ASSSETSApp: App {
                 Button("Import Files…") { library.importFiles() }.keyboardShortcut("i")
                 Button("Watch Folder…") { library.addWatchFolder() }.keyboardShortcut("i", modifiers: [.command, .shift])
                 Button("Find Duplicates…") { library.findDuplicates() }.keyboardShortcut("d", modifiers: [.command, .option])
+                Button("Compare Selection") { library.openCompare() }.keyboardShortcut("c", modifiers: [.command, .option]).disabled(!library.canCompare)
                 Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
@@ -96,6 +97,11 @@ final class StudioLibrary: ObservableObject {
     /// Asset shown in the full-window viewer (space bar), nil when closed.
     @Published var viewerID: UUID?
     var scrollInspectorToTags = false
+    /// Full-window compare of 2-4 assets, nil when closed.
+    @Published var compare: CompareSession?
+    @Published var compareZoom = ZoomPan()
+    @Published var compareSwipe = false
+    @Published var swipeSplit = 0.5
     private var keyMonitor: Any?
 
     func openViewer() {
@@ -103,6 +109,25 @@ final class StudioLibrary: ObservableObject {
         viewerID = focusID ?? selection.first ?? filtered.first?.id
     }
     func closeViewer() { viewerID = nil }
+
+    var canCompare: Bool { (2...CompareSession.maxAssets).contains(selection.count) }
+    func openCompare(_ ids: [UUID]? = nil) {
+        guard smartEditor == nil, duplicates == nil, sheetPreview == nil else { return }
+        let order = filtered.map(\.id)
+        let picked = ids ?? order.filter(selection.contains)
+        guard let s = CompareSession(ids: picked) else { flash("Select 2 to 4 assets to compare"); return }
+        viewerID = nil; compare = s; compareZoom = ZoomPan(); compareSwipe = false; swipeSplit = 0.5
+    }
+    /// Done writes the pass (keeps tagged "pick", rejects "rejected"); Esc closes without writing.
+    func closeCompare(apply: Bool) {
+        guard let s = compare else { return }
+        compare = nil
+        guard apply, !(s.keeps.isEmpty && s.rejects.isEmpty) else { return }
+        mutate { $0.applyPicks(s) }
+        flash(s.keeps.isEmpty ? "\(s.rejects.count) marked rejected" : "\(s.summary) · kept assets are in Picks")
+        if !s.keeps.isEmpty { selection = Set(s.keeps); focusID = s.keeps.first }
+    }
+    func markCompare(_ v: CompareVerdict) { compare?.mark(v) }
     func stepViewer(_ delta: Int) {
         guard let next = ViewerNav.step(filtered.map(\.id), from: viewerID, by: delta) else { return }
         viewerID = next
@@ -120,6 +145,21 @@ final class StudioLibrary: ObservableObject {
 
     private func handleKey(_ e: NSEvent) -> Bool {
         guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil, duplicates == nil, sheetPreview == nil else { return false }
+        if compare != nil {
+            switch e.keyCode {
+            case 40: markCompare(.keep); return true                                   // K
+            case 7, 51: markCompare(.reject); return true                             // X, Delete
+            case 48, 124, 125: compare?.moveFocus(by: e.modifierFlags.contains(.shift) ? -1 : 1); return true   // Tab, → ↓
+            case 123, 126: compare?.moveFocus(by: -1); return true                    // ← ↑
+            case 1: if compare?.ids.count == 2 { compareSwipe.toggle() }; return true // S
+            case 24, 69: compareZoom.zoom(by: 1.5); return true                       // = / keypad +
+            case 27, 78: compareZoom.zoom(by: 1 / 1.5); return true                   // - / keypad -
+            case 29, 82: compareZoom.reset(); return true                             // 0
+            case 36, 76: closeCompare(apply: true); return true                       // Return
+            case 53: closeCompare(apply: false); return true                          // Esc
+            default: return true
+            }
+        }
         if viewerID == nil, NSApp.keyWindow?.firstResponder is NSText { return false }
         switch e.keyCode {
         case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
@@ -974,6 +1014,16 @@ final class StudioLibrary: ObservableObject {
                 show(collection: "Sound Beds")
                 if let a = filtered.first(where: { $0.importedPath?.hasSuffix(".wav") == true }) ?? filtered.first { selection = [a.id]; focusID = a.id }
             }
+        case "compare", "compare-swipe":
+            show(collection: "Material Textures")
+            let files = demo == "compare" ? ["terrazzo-texture.png", "marble-veins-texture.png", "cork-board-texture.png"] : ["terrazzo-texture.png", "marble-veins-texture.png"]
+            let ids = files.compactMap { f in filtered.first(where: { $0.importedPath?.hasSuffix(f) == true })?.id }
+            selection = Set(ids); focusID = ids.first
+            openCompare(ids)
+            if demo == "compare" {
+                markCompare(.keep); markCompare(.reject)
+                compareZoom.zoom(by: 2.5, anchorX: 0.3, anchorY: 0.35)
+            } else { swipeSplit = 0.46; compareSwipe = true }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -1040,6 +1090,10 @@ struct StudioView: View {
             }
         }
         .animation(.easeOut(duration: 0.16), value: model.viewerID)
+        .overlay {
+            if model.compare != nil { CompareView().transition(.opacity) }
+        }
+        .animation(.easeOut(duration: 0.16), value: model.compare != nil)
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
                 Text(toast).font(.callout.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 9)
@@ -1339,6 +1393,11 @@ struct SelectionBar: View {
             }.help("Favorite selection")
             TextField("Add tags…", text: $tagText).textFieldStyle(.roundedBorder).frame(minWidth: 90, maxWidth: 150)
                 .onSubmit { model.addTags(tagText, to: model.selection); tagText = "" }
+            if model.canCompare {
+                Button { model.openCompare() } label: {
+                    if compact { Image(systemName: "rectangle.split.2x1") } else { Label("Compare", systemImage: "rectangle.split.2x1").fixedSize() }
+                }.help("Compare side by side (⌥⌘C)")
+            }
             MoveMenu(ids: model.selection, compact: compact)
             Menu {
                 Button("As Shown…") { model.exportToFolder(model.selection, mode: .asShown) }
@@ -2246,6 +2305,195 @@ struct AssetViewer: View {
                 if asset.kind == .audio, let p = asset.importedPath { AudioButton(url: URL(fileURLWithPath: p)).id(p) }
             }
         }
+    }
+}
+
+/// Full-window compare: 2-4 panes (or a swipe between 2) sharing one zoom and pan, with a keep/reject pass.
+struct CompareView: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State private var lastDrag: CGSize = .zero
+    @State private var lastMag: CGFloat = 1
+
+    var body: some View {
+        if let s = model.compare {
+            let byID = Dictionary(uniqueKeysWithValues: model.catalog.assets.map { ($0.id, $0) })
+            let assets = s.ids.compactMap { byID[$0] }
+            let rows = Dictionary(uniqueKeysWithValues: CompareDiff.rows(assets).map { ($0.id, $0) })
+            let shared = CompareDiff.sharedTags(assets)
+            ZStack {
+                ZStack { Rectangle().fill(.ultraThinMaterial); Color.black.opacity(0.92) }.ignoresSafeArea()
+                VStack(spacing: 14) {
+                    header(s)
+                    Group {
+                        if model.compareSwipe && assets.count == 2 { swipe(assets[0], assets[1], s) }
+                        else {
+                            HStack(spacing: 12) {
+                                ForEach(Array(assets.enumerated()), id: \.element.id) { i, a in pane(a, index: i, s: s) }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(Array(assets.enumerated()), id: \.element.id) { i, a in card(a, row: rows[a.id], index: i, s: s) }
+                    }
+                    HStack(spacing: 8) {
+                        if !shared.isEmpty {
+                            Text("SHARED").font(.system(size: 9.5, weight: .bold)).kerning(1.2).foregroundStyle(.tertiary)
+                            Text(shared.prefix(8).joined(separator: "  ·  ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Text("K keep  ·  X reject  ·  Tab next  ·  drag to pan, pinch or +/- to zoom  ·  S swipe  ·  Return done  ·  Esc cancel")
+                            .font(.caption).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                }
+                .padding(.horizontal, 24).padding(.vertical, 20)
+            }
+        }
+    }
+
+    private func header(_ s: CompareSession) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Compare \(s.ids.count)").font(.system(size: 20, weight: .bold))
+                Text(s.summary).font(.caption.monospaced()).foregroundStyle(.secondary)
+            }
+            Spacer()
+            HStack(spacing: 2) {
+                modeButton("Side by side", "rectangle.split.3x1", on: !model.compareSwipe) { model.compareSwipe = false }
+                modeButton("Swipe", "rectangle.lefthalf.inset.filled", on: model.compareSwipe) { model.compareSwipe = true }.disabled(s.ids.count != 2)
+                    .help(s.ids.count == 2 ? "Swipe between the two (S)" : "Swipe works with exactly 2 assets")
+            }
+            .padding(2).background(Color.white.opacity(0.06), in: Capsule()).overlay(Capsule().stroke(Theme.hairline))
+            HStack(spacing: 6) {
+                roundButton("minus") { model.compareZoom.zoom(by: 1 / 1.5) }
+                Text("\(Int((model.compareZoom.zoom * 100).rounded()))%").font(.callout.monospacedDigit()).frame(width: 48)
+                roundButton("plus") { model.compareZoom.zoom(by: 1.5) }
+                Button("Fit") { model.compareZoom.reset() }.buttonStyle(.bordered).disabled(model.compareZoom.isFit)
+            }
+            Button { model.closeCompare(apply: true) } label: { Label("Done", systemImage: "checkmark") }
+                .buttonStyle(.borderedProminent).help("Save keeps to Picks (Return)")
+            Button { model.closeCompare(apply: false) } label: {
+                Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).padding(9).background(Color.white.opacity(0.1), in: Circle())
+            }.buttonStyle(.plain).help("Close without saving (Esc)")
+        }
+    }
+
+    private func modeButton(_ title: String, _ symbol: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol).font(.system(size: 11.5, weight: .semibold))
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(on ? Theme.accent : Color.clear, in: Capsule())
+                .foregroundStyle(on ? Color.white : Color.white.opacity(0.75))
+        }.buttonStyle(.plain)
+    }
+
+    private func roundButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .bold)).frame(width: 26, height: 26).background(Color.white.opacity(0.1), in: Circle())
+        }.buttonStyle(.plain)
+    }
+
+    /// The asset drawn at the shared zoom and pan inside a clipped frame.
+    private func zoomed(_ a: StudioAsset, size: CGSize) -> some View {
+        let z = model.compareZoom
+        return ProcessedPreview(asset: a, effect: .original, amount: 0, pixels: 2400, psdToggled: model.psdToggled[a.id] ?? [], fit: true)
+            .frame(width: size.width, height: size.height)
+            .scaleEffect(z.zoom)
+            .offset(x: z.panX * size.width, y: z.panY * size.height)
+            .frame(width: size.width, height: size.height).clipped()
+    }
+
+    private func gestures(size: CGSize) -> some Gesture {
+        let drag = DragGesture(minimumDistance: 2)
+            .onChanged { v in
+                let d = CGSize(width: v.translation.width - lastDrag.width, height: v.translation.height - lastDrag.height)
+                lastDrag = v.translation
+                model.compareZoom.pan(dx: d.width / max(1, size.width), dy: d.height / max(1, size.height))
+            }
+            .onEnded { _ in lastDrag = .zero }
+        let mag = MagnifyGesture()
+            .onChanged { v in
+                model.compareZoom.zoom(by: v.magnification / lastMag, anchorX: v.startAnchor.x, anchorY: v.startAnchor.y)
+                lastMag = v.magnification
+            }
+            .onEnded { _ in lastMag = 1 }
+        return drag.simultaneously(with: mag)
+    }
+
+    private func pane(_ a: StudioAsset, index: Int, s: CompareSession) -> some View {
+        GeometryReader { geo in
+            zoomed(a, size: geo.size)
+                .background(Color(white: 0.06))
+                .overlay(alignment: .topLeading) { verdictBadge(s.verdicts[a.id]).padding(10) }
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(index == s.focus ? Theme.accent : Theme.hairline, lineWidth: index == s.focus ? 2.5 : 1))
+                .contentShape(Rectangle())
+                .gesture(gestures(size: geo.size))
+                .simultaneousGesture(TapGesture().onEnded { model.compare?.focus = index })
+        }
+    }
+
+    private func swipe(_ a: StudioAsset, _ b: StudioAsset, _ s: CompareSession) -> some View {
+        GeometryReader { geo in
+            let x = geo.size.width * model.swipeSplit
+            ZStack(alignment: .leading) {
+                zoomed(b, size: geo.size)
+                zoomed(a, size: geo.size).mask(alignment: .leading) { Rectangle().frame(width: x) }
+                Rectangle().fill(Color.white).frame(width: 2).offset(x: x - 1).shadow(color: .black.opacity(0.6), radius: 4)
+                Circle().fill(Color.white).frame(width: 30, height: 30)
+                    .overlay(Image(systemName: "arrow.left.and.right").font(.system(size: 11, weight: .bold)).foregroundStyle(.black))
+                    .offset(x: x - 15)
+                    .gesture(DragGesture(coordinateSpace: .named("swipe")).onChanged { v in model.swipeSplit = min(0.98, max(0.02, v.location.x / max(1, geo.size.width))) })
+            }
+            .coordinateSpace(name: "swipe")
+            .background(Color(white: 0.06))
+            .overlay(alignment: .topLeading) { HStack(spacing: 6) { Text(a.title).fontWeight(.semibold); verdictBadge(s.verdicts[a.id]) }.font(.caption).padding(8).background(.black.opacity(0.55), in: Capsule()).padding(10) }
+            .overlay(alignment: .topTrailing) { HStack(spacing: 6) { verdictBadge(s.verdicts[b.id]); Text(b.title).fontWeight(.semibold) }.font(.caption).padding(8).background(.black.opacity(0.55), in: Capsule()).padding(10) }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.hairline))
+            .contentShape(Rectangle())
+            .gesture(gestures(size: geo.size))
+        }
+    }
+
+    @ViewBuilder private func verdictBadge(_ v: CompareVerdict?) -> some View {
+        switch v {
+        case .keep?: Label("Keep", systemImage: "checkmark.circle.fill").font(.system(size: 11, weight: .bold)).padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Color(red: 0.16, green: 0.55, blue: 0.3), in: Capsule()).foregroundStyle(.white)
+        case .reject?: Label("Reject", systemImage: "xmark.circle.fill").font(.system(size: 11, weight: .bold)).padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Color(red: 0.62, green: 0.18, blue: 0.22), in: Capsule()).foregroundStyle(.white)
+        case nil: EmptyView()
+        }
+    }
+
+    private func card(_ a: StudioAsset, row: CompareDiff.Row?, index: Int, s: CompareSession) -> some View {
+        let focused = index == s.focus
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Text(a.title).font(.callout.weight(.semibold)).lineLimit(1)
+                Spacer(minLength: 4)
+                Button { model.compare?.focus = index; model.markCompare(.keep) } label: { Image(systemName: s.verdicts[a.id] == .keep ? "checkmark.circle.fill" : "checkmark.circle") }
+                    .buttonStyle(.plain).foregroundStyle(s.verdicts[a.id] == .keep ? Color.green : Color.secondary).help("Keep (K)")
+                Button { model.compare?.focus = index; model.markCompare(.reject) } label: { Image(systemName: s.verdicts[a.id] == .reject ? "xmark.circle.fill" : "xmark.circle") }
+                    .buttonStyle(.plain).foregroundStyle(s.verdicts[a.id] == .reject ? Color.red : Color.secondary).help("Reject (X)")
+            }
+            Text(a.resolution).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 4) {
+                ForEach(Array(a.palette.prefix(5).enumerated()), id: \.offset) { _, hex in
+                    let unique = row?.uniqueColors.contains(hex) == true
+                    Circle().fill(Color(hex: hex)).frame(width: 14, height: 14)
+                        .overlay(Circle().stroke(unique ? Color.white : Color.white.opacity(0.2), lineWidth: unique ? 1.5 : 1))
+                        .help(unique ? "\(hex): only in this asset" : hex)
+                }
+            }
+            let only = row?.uniqueTags.prefix(4) ?? []
+            Text(only.isEmpty ? "No tags the others lack" : "Only here: " + only.joined(separator: ", "))
+                .font(.caption2).foregroundStyle(only.isEmpty ? .tertiary : .secondary).lineLimit(1)
+        }
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(focused ? Theme.accent.opacity(0.14) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(focused ? Theme.accent.opacity(0.6) : Theme.hairline))
+        .contentShape(Rectangle()).onTapGesture { model.compare?.focus = index }
     }
 }
 

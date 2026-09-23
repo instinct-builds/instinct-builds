@@ -319,3 +319,24 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Logic and tests: `AutoTags.swift` and `AutoTagTests.swift`. CI adds two
   screenshots (search by a suggested tag, audio suggestions) and checks the
   size of a whole-library contact sheet.
+
+## 1.7.0: compare and picks
+
+- Select 2 to 4 assets and press Compare in the selection bar (or ⌥⌘C).
+  They open full-window side by side. With exactly 2 you can switch to
+  Swipe (S) and drag the divider between them.
+- Zoom and pan are shared: drag to pan, pinch or +/- to zoom (up to 800%),
+  0 or Fit to reset. Every pane shows the same region, so detail, grain
+  and edges line up.
+- Under each pane: resolution, palette with the colors only that asset has
+  ringed in white, and the tags the others lack. Tags every asset shares
+  are listed along the bottom.
+- Keep/reject pass: K keeps, X rejects, Tab moves on (the next undecided
+  asset gets focus after each call). Return saves, Esc closes without
+  writing anything.
+- Saving tags keeps "pick" and rejects "rejected" and adds a Picks smart
+  collection the first time. Assets stay in their own collections, so a
+  compare never moves files around; re-deciding later swaps the tag.
+- Logic and tests: `Compare.swift` (session, shared zoom/pan math, diff,
+  picks) and `CompareTests.swift`. CI adds compare and compare-swipe
+  screenshots.
