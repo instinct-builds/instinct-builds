@@ -457,6 +457,7 @@ struct CharacterTests {
         #expect(c.hitDiceType == 8)
         #expect(c.layout.blocks.count > 1)
         #expect(c.layout.blocks.contains { $0.kind == .spells })
+        #expect(c.portrait == nil)
     }
 }
 
@@ -553,6 +554,29 @@ struct EquipmentTests {
         for w in EquipmentLibrary.weapons {
             #expect((try? DiceExpression.parse(w.damageExpression)) != nil)
         }
+    }
+}
+
+@Suite("Character portrait")
+struct PortraitTests {
+
+    @Test func portraitRoundTripsAndDefaults() throws {
+        var c = Character(name: "Test")
+        #expect(c.portrait == nil)
+        c.portrait = Data([0x89, 0x50, 0x4E, 0x47]) // PNG magic bytes
+        let data = try JSONEncoder().encode(c)
+        let decoded = try JSONDecoder().decode(Character.self, from: data)
+        #expect(decoded.portrait == c.portrait)
+    }
+
+    @Test func htmlExportEmbedsPortraitOnlyWhenSet() {
+        var c = Character(name: "Test")
+        let without = SheetExporter.exportHTML(c)
+        #expect(!without.contains("img class=\"portrait\""))
+        c.portrait = Data([1, 2, 3, 4])
+        let with = SheetExporter.exportHTML(c)
+        #expect(with.contains("img class=\"portrait\""))
+        #expect(with.contains("data:image/png;base64,"))
     }
 }
 

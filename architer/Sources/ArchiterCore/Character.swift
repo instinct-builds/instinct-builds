@@ -266,6 +266,9 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var level: Int
     public var experience: Int
     public var inspiration: Bool
+    /// Optional character portrait (PNG data, downscaled on import). The
+    /// user's own image; ARCHITER ships no artwork.
+    public var portrait: Data?
     public var scores: AbilityScores
     public var skills: [Skill]
     public var savingThrowProficiencies: Set<Ability>
@@ -321,6 +324,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         level: Int = 1,
         experience: Int = 0,
         inspiration: Bool = false,
+        portrait: Data? = nil,
         scores: AbilityScores = AbilityScores(),
         skills: [Skill] = Skill.defaultList,
         savingThrowProficiencies: Set<Ability> = [],
@@ -362,6 +366,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.level = max(1, min(20, level))
         self.experience = max(0, experience)
         self.inspiration = inspiration
+        self.portrait = portrait
         self.scores = scores
         self.skills = skills
         self.savingThrowProficiencies = savingThrowProficiencies
@@ -408,6 +413,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         level = try c.decode(Int.self, forKey: .level)
         experience = try c.decode(Int.self, forKey: .experience)
         inspiration = try c.decodeIfPresent(Bool.self, forKey: .inspiration) ?? false
+        portrait = try c.decodeIfPresent(Data.self, forKey: .portrait)
         scores = try c.decode(AbilityScores.self, forKey: .scores)
         skills = try c.decode([Skill].self, forKey: .skills)
         savingThrowProficiencies = try c.decode(Set<Ability>.self, forKey: .savingThrowProficiencies)

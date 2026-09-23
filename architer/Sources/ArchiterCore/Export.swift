@@ -146,8 +146,12 @@ public enum SheetExporter {
         for block in c.layout.visibleBlocks {
             switch block.kind {
             case .identity:
+                let portraitTag = c.portrait.map {
+                    "<img class=\"portrait\" alt=\"\" src=\"data:image/png;base64,\($0.base64EncodedString())\">"
+                } ?? ""
                 body.append("""
                 <section class="block identity">
+                  \(portraitTag)
                   <h1>\(esc(c.name))</h1>
                   <p class="sub">Level \(c.level) \(esc(c.lineage)) \(esc(c.calling))\(c.alignment.isEmpty ? "" : " (\(esc(c.alignment)))")</p>
                   <p class="meta">XP \(c.experience) · Proficiency +\(c.proficiencyBonus)\(c.background.isEmpty ? "" : " · " + esc(c.background))\(c.inspiration ? " · Inspired" : "")</p>
@@ -280,6 +284,8 @@ public enum SheetExporter {
           .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
           .chip { border: 1px solid #9995; border-radius: 999px; padding: 0.25rem 0.8rem; }
           .dim { opacity: 0.55; }
+          img.portrait { max-width: 128px; max-height: 128px; border-radius: 8px;
+                         float: right; margin: 0 0 0.5rem 1rem; }
           ul { padding-left: 1.2rem; }
         </style></head>
         <body>

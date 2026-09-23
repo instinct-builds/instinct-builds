@@ -80,6 +80,30 @@ func run(model: AppModel, character: Character, outDir: String) {
     print("RENDER DONE")
 }
 
+/// A synthesized demo portrait (initials on a warm disc) so renders exercise
+/// the portrait UI without bundling any artwork.
+func demoPortraitPNG(initials: String) -> Data? {
+    let side = 256
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                     isPlanar: false, colorSpaceName: .deviceRGB,
+                                     bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSColor(calibratedRed: 0.54, green: 0.35, blue: 0.17, alpha: 1).setFill()
+    NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: side, height: side)).fill()
+    let attrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.boldSystemFont(ofSize: 120),
+        .foregroundColor: NSColor(calibratedRed: 0.95, green: 0.9, blue: 0.8, alpha: 1),
+    ]
+    let text = NSAttributedString(string: initials, attributes: attrs)
+    let bounds = text.boundingRect(with: NSSize(width: side, height: side))
+    text.draw(at: NSPoint(x: (CGFloat(side) - bounds.width) / 2,
+                          y: (CGFloat(side) - bounds.height) / 2))
+    NSGraphicsContext.restoreGraphicsState()
+    return rep.representation(using: .png, properties: [:])
+}
+
 @main
 struct RenderMain {
     @MainActor
@@ -90,7 +114,8 @@ struct RenderMain {
         app.setActivationPolicy(.accessory)
         app.appearance = NSAppearance(named: .darkAqua)
         let model = AppModel()
-        let character = SampleContent.demoCharacter()
+        var character = SampleContent.demoCharacter()
+        character.portrait = demoPortraitPNG(initials: "WH")
         // Select the demo character so character-scoped UI (per-character
         // roll history filter) exercises its populated state in renders.
         model.characters = [character]

@@ -1,6 +1,71 @@
 #if os(macOS)
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import ArchiterCore
+
+/// Downscale an imported image to a bounded PNG so sheets stay portable.
+func portraitPNG(from data: Data, maxSide: CGFloat = 256) -> Data? {
+    guard let image = NSImage(data: data) else { return nil }
+    let size = image.size
+    guard size.width > 0, size.height > 0 else { return nil }
+    let scale = min(1, maxSide / max(size.width, size.height))
+    let target = NSSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(target.width),
+                                     pixelsHigh: Int(target.height), bitsPerSample: 8,
+                                     samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    image.draw(in: NSRect(origin: .zero, size: target))
+    NSGraphicsContext.restoreGraphicsState()
+    return rep.representation(using: .png, properties: [:])
+}
+
+struct PortraitView: View {
+    @Binding var character: Character
+
+    var body: some View {
+        VStack(spacing: 4) {
+            if let data = character.portrait, let nsImage = NSImage(data: data) {
+                Image(nsImage: nsImage)
+                    .resizable().scaledToFill()
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Theme.surfaceRaised)
+                    .frame(width: 64, height: 64)
+                    .overlay(
+                        Text(String(character.name.prefix(1)).uppercased())
+                            .font(Theme.Typeface.display)
+                            .foregroundStyle(Theme.inkFaint)
+                    )
+            }
+            HStack(spacing: 6) {
+                Button("Portrait") { choosePortrait() }
+                    .controlSize(.small)
+                if character.portrait != nil {
+                    Button(role: .destructive) { character.portrait = nil } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func choosePortrait() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url),
+              let png = portraitPNG(from: data) else { return }
+        character.portrait = png
+    }
+}
 
 struct IdentityBlock: View {
     @Binding var character: Character
@@ -10,6 +75,7 @@ struct IdentityBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Gap.md) {
             HStack(alignment: .firstTextBaseline) {
+                PortraitView(character: $character)
                 TextField("Name", text: $character.name)
                     .textFieldStyle(.plain)
                     .font(Theme.Typeface.display)

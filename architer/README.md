@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.4.0
+
+- Character portraits: pick any image for the identity block (downscaled
+  to a bounded PNG inside the sheet file), initials placeholder when
+  unset, and the HTML export embeds the portrait. ARCHITER ships no
+  artwork - the portrait is always the user's own image.
+
 ## What's in 2.3.0
 
 - Attunement tracker: the inventory header shows attuned items against
