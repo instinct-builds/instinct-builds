@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.26.0
+
+- Macro duplicate button: every saved dice macro row (character and
+  table-wide) now has a duplicate control. The copy keeps the expression
+  and owner binding, lands in the same macro group, and is named
+  "<name> copy" - bumped to "copy 2", "copy 3", ... when that name is
+  taken. Scoped ids mean another character's same-named macro never
+  forces a bump.
+
 ## What's in 2.25.0
 
 - Compact-PDF widow guard: a section header now travels with its first

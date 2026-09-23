@@ -198,6 +198,10 @@ public struct MacroRowView: View {
                     editing = true
                 } label: { Image(systemName: "pencil") }
                     .help("Edit macro")
+                Button {
+                    model.duplicateMacro(macro)
+                } label: { Image(systemName: "doc.on.doc") }
+                    .help("Duplicate macro")
                 Button(role: .destructive) {
                     model.deleteMacro(macro)
                 } label: { Image(systemName: "minus.circle") }

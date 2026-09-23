@@ -64,3 +64,22 @@ public func visibleMacros(_ macros: [DiceMacro], for characterName: String?) -> 
         return owner.caseInsensitiveCompare(characterName) == .orderedSame
     }
 }
+
+/// A clone of `macro` named "<name> copy", bumped to "copy 2", "copy 3",
+/// ... while that scoped id is taken. The owner binding (table-wide vs
+/// character) is preserved, so a copy never collides with a same-named
+/// macro owned by someone else.
+public func duplicatedMacro(_ macro: DiceMacro, existing: [DiceMacro]) -> DiceMacro {
+    func scopedId(_ name: String) -> String {
+        guard let owner = macro.characterName else { return name.lowercased() }
+        return "\(owner.lowercased()):\(name.lowercased())"
+    }
+    let taken = Set(existing.map { $0.id })
+    var candidate = "\(macro.name) copy"
+    var n = 2
+    while taken.contains(scopedId(candidate)) {
+        candidate = "\(macro.name) copy \(n)"
+        n += 1
+    }
+    return DiceMacro(name: candidate, expression: macro.expression, characterName: macro.characterName)
+}

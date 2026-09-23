@@ -129,6 +129,13 @@ public final class AppModel: ObservableObject {
         saveMacro(name: updated.name, expression: updated.expression, forCharacter: updated.characterName)
     }
 
+    /// Clones a macro in place as "<name> copy" (bumped when taken); the
+    /// owner binding rides along, so the copy lands in the same group.
+    public func duplicateMacro(_ macro: DiceMacro) {
+        let copy = ArchiterCore.duplicatedMacro(macro, existing: macros)
+        saveMacro(name: copy.name, expression: copy.expression, forCharacter: copy.characterName)
+    }
+
     public func deleteMacro(_ macro: DiceMacro) {
         macros.removeAll { $0.id == macro.id }
         macroStore.save(macros)

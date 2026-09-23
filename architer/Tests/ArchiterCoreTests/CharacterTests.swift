@@ -787,6 +787,25 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func macroDuplicateCopiesAndBumpsNames() throws {
+        let fireball = DiceMacro(name: "Fireball", expression: "8d6")
+
+        // Plain copy: name, expression and owner binding all carry over.
+        let copy = duplicatedMacro(fireball, existing: [fireball])
+        #expect(copy == DiceMacro(name: "Fireball copy", expression: "8d6"))
+
+        // Taken copy names bump: copy 2, copy 3, ...
+        let taken = [fireball, copy, DiceMacro(name: "Fireball copy 2", expression: "8d6")]
+        #expect(duplicatedMacro(fireball, existing: taken).name == "Fireball copy 3")
+
+        // Owner binding is preserved and scoped: another character's
+        // same-named macro does not force a bump.
+        let wren = DiceMacro(name: "Fireball", expression: "9d6", characterName: "Wren Halloway")
+        let wrenCopy = duplicatedMacro(wren, existing: [fireball, wren])
+        #expect(wrenCopy == DiceMacro(name: "Fireball copy", expression: "9d6", characterName: "Wren Halloway"))
+        #expect(wrenCopy.id != fireball.id)
+    }
+
     @Test func currencyConsolidationKeepsValue() {
         let purse = Currency(copper: 1234, silver: 7, electrum: 3, gold: 5, platinum: 0)
         let tidy = purse.normalized()
