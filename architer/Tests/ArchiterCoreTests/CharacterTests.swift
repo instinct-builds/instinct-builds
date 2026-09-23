@@ -432,6 +432,16 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func currencyConsolidationKeepsValue() {
+        let purse = Currency(copper: 1234, silver: 7, electrum: 3, gold: 5, platinum: 0)
+        let tidy = purse.normalized()
+        #expect(tidy.totalCopper == purse.totalCopper)
+        #expect(tidy.electrum == 0)
+        #expect(tidy.silver < 10 && tidy.copper < 10)
+        #expect(Currency(copper: 1234).normalized() == Currency(copper: 4, silver: 3, gold: 2, platinum: 1))
+        #expect(Currency().normalized() == Currency())
+    }
+
     @Test func oldSaveFormatDecodes() throws {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Legacy","lineage":"","calling":"","background":"",

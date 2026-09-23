@@ -48,6 +48,17 @@ public struct Currency: Codable, Equatable, Sendable {
         copper + silver * 10 + electrum * 50 + gold * 100 + platinum * 1000
     }
 
+    /// Consolidates loose change into the fewest coins, keeping the total
+    /// value: platinum and gold first, silver and copper for the remainder.
+    /// Electrum is folded away (tables rarely trade in it).
+    public func normalized() -> Currency {
+        var rest = totalCopper
+        let pp = rest / 1000; rest -= pp * 1000
+        let gp = rest / 100;  rest -= gp * 100
+        let sp = rest / 10;   rest -= sp * 10
+        return Currency(copper: rest, silver: sp, gold: gp, platinum: pp)
+    }
+
     /// A compact readout of nonzero denominations, e.g. "12 gp, 4 sp".
     public var displayString: String {
         var parts: [String] = []

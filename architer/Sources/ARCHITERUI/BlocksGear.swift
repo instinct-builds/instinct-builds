@@ -15,6 +15,9 @@ struct InventoryBlock: View {
                 Stepper("EP \(character.currency.electrum)", value: $character.currency.electrum, in: 0...99999)
                 Stepper("SP \(character.currency.silver)", value: $character.currency.silver, in: 0...99999)
                 Stepper("CP \(character.currency.copper)", value: $character.currency.copper, in: 0...99999)
+                Button("Consolidate") { character.currency = character.currency.normalized() }
+                    .buttonStyle(RollButtonStyle())
+                    .help("Convert loose change into the fewest coins (same total value)")
             }
             .font(.caption)
             // Weight

@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.0.0
+
+- **Currency consolidation**: one tap converts loose change into the
+  fewest coins at the same total value (electrum folds into gold), so a
+  loot haul stops sprawling across five denominations.
+
 ## What's in 1.9.0
 
 - **Dice macros**: save the current dice notation as a named shortcut on
