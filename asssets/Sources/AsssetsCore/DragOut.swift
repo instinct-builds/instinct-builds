@@ -30,6 +30,27 @@ public enum DragOut {
         return .render((suffix.isEmpty ? base : base + " (" + suffix.joined(separator: ", ") + ")") + ".png")
     }
 
+    public enum ExportMode: String, CaseIterable, Sendable { case originals, asShown }
+
+    /// Export plan for one asset. Originals mode copies the file whenever it exists; generated studies render.
+    public static func exportPlan(mode: ExportMode, title: String, importedPath: String?, fileExists: Bool, look: Look) -> Plan {
+        switch mode {
+        case .asShown: return plan(title: title, importedPath: importedPath, fileExists: fileExists, look: look)
+        case .originals: return plan(title: title, importedPath: importedPath, fileExists: fileExists, look: Look())
+        }
+    }
+
+    /// Finder-style collision handling: "Name.png", "Name 2.png", "Name 3.png". Case-insensitive, like APFS defaults.
+    public static func uniqueName(_ name: String, taken: Set<String>) -> String {
+        let lower = Set(taken.map { $0.lowercased() })
+        if !lower.contains(name.lowercased()) { return name }
+        let dot = name.lastIndex(of: ".")
+        let (stem, ext) = dot.map { (String(name[..<$0]), String(name[$0...])) } ?? (name, "")
+        var n = 2
+        while lower.contains("\(stem) \(n)\(ext)".lowercased()) { n += 1 }
+        return "\(stem) \(n)\(ext)"
+    }
+
     /// A file name Finder accepts: no slashes, colons or control characters, not hidden, not empty, at most 120 characters.
     public static func safeName(_ title: String) -> String {
         let bad = CharacterSet(charactersIn: "/:\\\\").union(.controlCharacters)

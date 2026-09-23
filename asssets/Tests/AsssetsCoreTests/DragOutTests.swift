@@ -23,4 +23,18 @@ struct DragOutTests {
         #expect(DragOut.safeName("\n") == "Asset")
         #expect(DragOut.safeName(String(repeating: "x", count: 300)).count == 120)
     }
+
+    @Test func exportModes() {
+        let look = DragOut.Look(effectApplied: true, tiled: true)
+        #expect(DragOut.exportPlan(mode: .originals, title: "Night Grid", importedPath: "/l/n.png", fileExists: true, look: look) == .file("/l/n.png"))
+        #expect(DragOut.exportPlan(mode: .asShown, title: "Night Grid", importedPath: "/l/n.png", fileExists: true, look: look) == .render("Night Grid (tiled, edit).png"))
+        #expect(DragOut.exportPlan(mode: .originals, title: "Aurora", importedPath: nil, fileExists: false, look: look) == .render("Aurora.png"))
+    }
+
+    @Test func collisions() {
+        #expect(DragOut.uniqueName("A.png", taken: []) == "A.png")
+        #expect(DragOut.uniqueName("A.png", taken: ["a.PNG"]) == "A 2.png")
+        #expect(DragOut.uniqueName("A.png", taken: ["A.png", "A 2.png", "A 3.png"]) == "A 4.png")
+        #expect(DragOut.uniqueName("Readme", taken: ["Readme"]) == "Readme 2")
+    }
 }

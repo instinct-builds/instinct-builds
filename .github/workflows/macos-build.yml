@@ -110,6 +110,7 @@ jobs:
           shoot() { open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep 9; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"; pkill -x ASSSETS || true; sleep 2; }
           shoot media 1920x1200 library
           shoot batch 960x640 batch-compact
+          shoot batch 1920x1200 batch-export
           shoot vectors 1920x1200 vectors
           shoot smart 1920x1200 smart-collection
           shoot smart-editor 1920x1200 smart-editor

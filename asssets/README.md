@@ -196,3 +196,18 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   that only ASSSETS can see, so Finder never gets text clippings.
 - 0.9.1: the viewer backdrop is now a blur material under 90% black, so the
   window behind it no longer shows through.
+
+## 1.1.0: batch export
+
+- Export a selection to a folder with Edit > Export Selection As Shown (⌘E),
+  Export Original Files (⇧⌘E), the Export menu in the selection bar, or the
+  right-click menu. "As shown" follows the drag-out rules. "Originals"
+  copies every file that exists and renders PNGs only for generated
+  studies. Nothing is overwritten: name clashes become "Name 2.png", like
+  Finder. When the export finishes, Finder opens with the new files
+  selected.
+- Multi-file drag-out: with several assets selected, drag the "Drag N files"
+  handle in the selection bar to drop all of them at once. Dragging a
+  single card still gives you just that asset.
+- Reveal in Finder (⇧⌘R, plus the selection bar and right-click menu) works
+  on the whole selection.

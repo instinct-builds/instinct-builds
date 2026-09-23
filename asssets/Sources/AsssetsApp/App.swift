@@ -29,6 +29,13 @@ struct ASSSETSApp: App {
                 Button("Select All Assets") { library.selectAllVisible() }.keyboardShortcut("a", modifiers: [.command, .option])
                 Button("Deselect All") { library.clearSelection() }.keyboardShortcut("d", modifiers: [.command])
                 Button("Toggle Favorite") { library.toggleFavorite(library.selection) }.keyboardShortcut("l", modifiers: [.command])
+                Divider()
+                Button("Export Selection As Shown…") { library.exportToFolder(library.selection, mode: .asShown) }
+                    .keyboardShortcut("e", modifiers: [.command]).disabled(library.selection.isEmpty)
+                Button("Export Original Files…") { library.exportToFolder(library.selection, mode: .originals) }
+                    .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(library.selection.isEmpty)
+                Button("Reveal in Finder") { library.reveal(library.selection) }
+                    .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
             }
         }
     }
@@ -375,21 +382,66 @@ final class StudioLibrary: ObservableObject {
         return provider
     }
 
+    func look(for a: StudioAsset) -> DragOut.Look {
+        DragOut.Look(effectApplied: effect != .original, psdLayersChanged: !(psdToggled[a.id] ?? []).isEmpty,
+                     tiled: tiles(for: a) > 1, seamsFixed: fixSeams.contains(a.id))
+    }
+
     func dragFile(for a: StudioAsset) -> URL? {
-        let look = DragOut.Look(effectApplied: effect != .original, psdLayersChanged: !(psdToggled[a.id] ?? []).isEmpty,
-                                tiled: tiles(for: a) > 1, seamsFixed: fixSeams.contains(a.id))
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-drag/\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return write(a, mode: .asShown, into: dir, taken: [], copy: false)
+    }
+
+    /// Files for a multi-asset drag, all in one fresh temp folder so names never collide.
+    func dragFiles(for ids: Set<UUID>) -> [URL] {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-drag/\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var taken = Set<String>(); var out: [URL] = []
+        for a in catalog.assets where ids.contains(a.id) {
+            if let u = write(a, mode: .asShown, into: dir, taken: taken, copy: false) { taken.insert(u.lastPathComponent); out.append(u) }
+        }
+        return out
+    }
+
+    /// Produces one asset's file: the original (returned in place, or copied into `dir` when `copy`), or a rendered PNG in `dir`.
+    func write(_ a: StudioAsset, mode: DragOut.ExportMode, into dir: URL, taken: Set<String>, copy: Bool) -> URL? {
         let exists = a.importedPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
-        switch DragOut.plan(title: a.title, importedPath: a.importedPath, fileExists: exists, look: look) {
-        case .file(let path): return URL(fileURLWithPath: path)
+        switch DragOut.exportPlan(mode: mode, title: a.title, importedPath: a.importedPath, fileExists: exists, look: look(for: a)) {
+        case .file(let path):
+            let src = URL(fileURLWithPath: path)
+            let original = copy || taken.contains(src.lastPathComponent)
+            if !original { return src }
+            let name = DragOut.uniqueName(DragOut.safeName(a.title) + (src.pathExtension.isEmpty ? "" : "." + src.pathExtension), taken: taken)
+            let dst = dir.appendingPathComponent(name)
+            return (try? FileManager.default.copyItem(at: src, to: dst)) != nil ? dst : nil
         case .render(let name):
-            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-drag/\(UUID().uuidString)", isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let url = dir.appendingPathComponent(name)
-            let ok = MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [],
-                                             tiles: tiles(for: a), fixSeams: fixSeams.contains(a.id), to: url)
-            return ok ? url : nil
+            guard a.kind != .audio else { return nil }
+            let url = dir.appendingPathComponent(DragOut.uniqueName(name, taken: taken))
+            return MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [],
+                                           tiles: tiles(for: a), fixSeams: fixSeams.contains(a.id), to: url) ? url : nil
         }
     }
+
+    /// Export to a folder the user picks. Never overwrites: clashes get "Name 2.png" like Finder.
+    func exportToFolder(_ ids: Set<UUID>, mode: DragOut.ExportMode) {
+        let picked = catalog.assets.filter { ids.contains($0.id) }
+        guard !picked.isEmpty else { return }
+        let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
+        p.prompt = "Export Here"
+        p.message = mode == .originals ? "Export \(picked.count) original files (generated studies export as PNG)"
+                                       : "Export \(picked.count) assets as shown (original file when unchanged, PNG otherwise)"
+        guard p.runModal() == .OK, let dir = p.url else { return }
+        var taken = Set((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+        var written: [URL] = []
+        for a in picked {
+            if let u = write(a, mode: mode, into: dir, taken: taken, copy: true) { taken.insert(u.lastPathComponent); written.append(u) }
+        }
+        flash(written.count == picked.count ? "Exported \(written.count) files" : "Exported \(written.count) of \(picked.count) files")
+        if !written.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(written) }
+    }
+
+    var canReveal: Bool { selectedAssets.contains { $0.importedPath != nil } }
 
     func dropSelection(_ providers: [NSItemProvider], on collection: String) -> Bool {
         guard let p = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.asssetsSelection.identifier) }) else { return false }
@@ -830,10 +882,68 @@ struct SelectionBar: View {
             TextField("Add tags…", text: $tagText).textFieldStyle(.roundedBorder).frame(minWidth: 90, maxWidth: 150)
                 .onSubmit { model.addTags(tagText, to: model.selection); tagText = "" }
             MoveMenu(ids: model.selection, compact: compact)
+            Menu {
+                Button("As Shown…") { model.exportToFolder(model.selection, mode: .asShown) }
+                Button("Original Files…") { model.exportToFolder(model.selection, mode: .originals) }
+                if model.canReveal { Divider(); Button("Reveal in Finder") { model.reveal(model.selection) } }
+            } label: {
+                if compact { Image(systemName: "square.and.arrow.up") } else { Label("Export", systemImage: "square.and.arrow.up") }
+            }.menuStyle(.borderlessButton).fixedSize().help("Export the selection to a folder")
+            MultiDragHandle(count: model.selection.count, compact: compact) { model.dragFiles(for: model.selection) }
+                .fixedSize()
             Spacer(minLength: 0)
             Button { model.clearSelection() } label: {
                 if compact { Image(systemName: "xmark.circle") } else { Text("Clear").fixedSize() }
             }.help("Clear selection")
+        }
+    }
+}
+
+/// Drag every selected asset out at once (SwiftUI's onDrag carries one item, so this is an AppKit drag source).
+struct MultiDragHandle: View {
+    let count: Int
+    var compact = false
+    let files: () -> [URL]
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.up.forward.app")
+            if !compact { Text("Drag \(count) files") }
+        }
+        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Theme.accent)
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(Theme.accent.opacity(0.18), in: Capsule())
+        .overlay(Capsule().stroke(Theme.accent.opacity(0.45)))
+        .overlay(DragSourceView(files: files))
+        .help("Drag all \(count) selected assets to Finder or another app")
+    }
+}
+
+struct DragSourceView: NSViewRepresentable {
+    let files: () -> [URL]
+    func makeNSView(context: Context) -> Source { let v = Source(); v.files = files; return v }
+    func updateNSView(_ v: Source, context: Context) { v.files = files }
+
+    final class Source: NSView, NSDraggingSource {
+        var files: () -> [URL] = { [] }
+        private var down: NSPoint?
+        override func mouseDown(with e: NSEvent) { down = e.locationInWindow }
+        override func mouseDragged(with e: NSEvent) {
+            guard let d = down, hypot(e.locationInWindow.x - d.x, e.locationInWindow.y - d.y) > 3 else { return }
+            down = nil
+            let urls = files()
+            guard !urls.isEmpty else { NSSound.beep(); return }
+            let items: [NSDraggingItem] = urls.enumerated().map { i, url in
+                let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+                let icon = NSWorkspace.shared.icon(forFile: url.path); icon.size = NSSize(width: 48, height: 48)
+                let at = convert(e.locationInWindow, from: nil)
+                item.setDraggingFrame(NSRect(x: at.x - 24 + CGFloat(min(i, 4) * 6), y: at.y - 24 - CGFloat(min(i, 4) * 6), width: 48, height: 48), contents: icon)
+                return item
+            }
+            let session = beginDraggingSession(with: items, event: e, source: self)
+            session.draggingFormation = .pile
+        }
+        func draggingSession(_ s: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+            context == .outsideApplication ? .copy : []
         }
     }
 }
@@ -878,7 +988,10 @@ struct AssetMenu: View {
             Button("Reveal in Finder") { model.reveal(ids) }
         }
         Button("Copy Keywords") { model.copyKeywords(ids) }
-        Button(many ? "Export \(ids.count) Processed Previews…" : "Export Processed Preview…") { model.exportProcessed(ids) }
+        Menu(many ? "Export \(ids.count) Assets" : "Export") {
+            Button("As Shown…") { model.exportToFolder(ids, mode: .asShown) }
+            Button("Original Files…") { model.exportToFolder(ids, mode: .originals) }
+        }
         Divider()
         Button(many ? "Remove \(ids.count) from Library…" : "Remove from Library…", role: .destructive) { model.pendingRemoval = ids }
     }
