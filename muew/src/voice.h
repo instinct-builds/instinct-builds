@@ -6,6 +6,7 @@
 #include "mseg.h"
 #include "layers.h"
 #include "tempo_sync.h"
+#include "mod_curve.h"
 #include <cmath>
 
 namespace muew {
@@ -29,7 +30,26 @@ struct ModRoute {
                       // 0.14.0: FX detail controls, macro sources only (global FX)
                       FxDelayFeedback = 16, FxReverbDecay = 17, FxPhaserDepth = 18, FxFlangerDepth = 19, FxChorusDepth = 20 } dest;
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
+    // 0.16.0: response curve and aux source. curve bends the source value
+    // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
+    // another source (Source value, -1 = none) that scales the route by its
+    // 0..1 level. Defaults leave the route exactly as before.
+    double curve = 0.0;
+    int aux = -1;
 };
+
+constexpr int kModSources = 14; // Source values 0..13
+// Bipolar sources run -1..1; the rest 0..1.
+inline bool sourceBipolar(int s) {
+    using S = ModRoute::Source;
+    switch ((S)s) {
+    case S::LFO1: case S::LFO2: case S::LFO3: case S::LFO4: case S::MSEG1: case S::FxLfo1: case S::FxLfo2: return true;
+    default: return false;
+    }
+}
+inline bool sourceIsRack(int s) { return s == (int)ModRoute::Source::FxLfo1 || s == (int)ModRoute::Source::FxLfo2; }
+// Aux level 0..1 from a source value.
+inline double auxLevel(int s, double v) { return sourceBipolar(s) ? std::clamp(0.5 * (v + 1.0), 0.0, 1.0) : std::clamp(v, 0.0, 1.0); }
 
 struct VoiceParams {
     int osc1Shape = 2;       // Saw
@@ -208,26 +228,18 @@ public:
         float lfo4 = usesLfo4_ ? lfo4_.process() : 0.0f;
         float env3 = env3_.process();
 
+        // Source values in Source order; the rack LFOs (12, 13) live in the FX rack.
+        const double sv[kModSources] = {lfo, modEnv, velocity_, lfo2, mseg1,
+                                        params_.macros[0], params_.macros[1], params_.macros[2], params_.macros[3],
+                                        lfo3, lfo4, env3, 0.0, 0.0};
         auto modSum = [&](ModRoute::Dest d) {
             double sum = 0.0;
             for (const auto& r : routes_) {
                 if (r.dest != d) continue;
-                double src = 0.0;
-                switch (r.source) {
-                case ModRoute::Source::LFO1: src = lfo; break;
-                case ModRoute::Source::LFO2: src = lfo2; break;
-                case ModRoute::Source::ModEnv: src = modEnv; break;
-                case ModRoute::Source::MSEG1: src = mseg1; break;
-                case ModRoute::Source::Velocity: src = velocity_; break;
-                case ModRoute::Source::Macro1: src = params_.macros[0]; break;
-                case ModRoute::Source::Macro2: src = params_.macros[1]; break;
-                case ModRoute::Source::Macro3: src = params_.macros[2]; break;
-                case ModRoute::Source::Macro4: src = params_.macros[3]; break;
-                case ModRoute::Source::LFO3: src = lfo3; break;
-                case ModRoute::Source::LFO4: src = lfo4; break;
-                case ModRoute::Source::Env3: src = env3; break;
-                case ModRoute::Source::FxLfo1: case ModRoute::Source::FxLfo2: break; // rack only
-                }
+                const int si = (int)r.source;
+                double src = (si >= 0 && si < kModSources) ? sv[si] : 0.0;
+                if (r.curve != 0.0) src = routeCurve(src, r.curve);
+                if (r.aux >= 0 && r.aux < kModSources && !sourceIsRack(r.aux)) src *= auxLevel(r.aux, sv[r.aux]); // 0.16.0
                 sum += src * r.amount;
             }
             return sum;

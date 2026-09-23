@@ -18,6 +18,12 @@ static void TextA(NSString* s, NSRect r, CGFloat size, NSColor* color, NSFontWei
                                      NSForegroundColorAttributeName: color,
                                      NSParagraphStyleAttributeName: ps}];
 }
+// Single line that shrinks (down to minSize) instead of truncating.
+static void TextFit(NSString* s, NSRect r, CGFloat size, CGFloat minSize, NSColor* color, NSFontWeight weight, NSTextAlignment align) {
+    CGFloat sz = size;
+    while (sz > minSize && [s sizeWithAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:sz weight:weight]}].width > r.size.width) sz -= 0.25;
+    TextA(s, r, sz, color, weight, align);
+}
 static void Text(NSString* s, NSRect r, CGFloat size, NSColor* color, NSFontWeight weight = NSFontWeightRegular) {
     TextA(s, r, size, color, weight, NSTextAlignmentLeft);
 }
@@ -55,7 +61,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -257,7 +263,10 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)routeSourcePill:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 28, r.origin.y + 20, 62, 14); }
 - (NSRect)routeDestPill:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 108, r.origin.y + 20, 110, 14); }
 - (NSRect)routeClear:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 226, r.origin.y + 20, 16, 14); }
-- (NSRect)routeBar:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 28, r.origin.y + 4, 150, 14); }
+- (NSRect)routeBar:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 28, r.origin.y + 4, 118, 14); }
+// 0.16.0: response-curve glyph and AUX chip between the amount bar and its readout.
+- (NSRect)routeCurve:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 151, r.origin.y + 4, 20, 14); }
+- (NSRect)routeAux:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 174, r.origin.y + 4, 26, 14); }
 - (NSRect)pageTab:(int)i { return NSMakeRect(172 + i * 30, 234, 28, 14); }
 // Right: 14 source badges (2 x 7), preview, and the selected modulator's controls.
 - (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 7) * 22, i < 7 ? 216 : 198, 20.5, 15); }
@@ -945,8 +954,44 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         CGFloat mid = NSMidX(track), w = amt * track.size.width / 2;
         FillRound(NSMakeRect(w >= 0 ? mid : mid + w, track.origin.y, std::fabs(w), 5), 2.5, col);
         FillRound(NSMakeRect(mid + w - 3, track.origin.y - 2, 6, 9), 2, C(0xeaf1f8));
-        Text(S(ui::routeAmountReadout(rt)), NSMakeRect(bar.origin.x + bar.size.width + 8, r.origin.y + 4, 62, 12), 9,
-             routeDrag == slot ? col : C(0x8793a3), NSFontWeightMedium);
+        // Curve glyph: the route's response, 0..1 in and out.
+        NSRect cg = [self routeCurve:i];
+        bool bent = rt.curve != 0.0;
+        FillRound(cg, 3, curveDrag == slot ? C(0x26303c) : C(0x111820));
+        {
+            NSRect in = NSInsetRect(cg, 3.5, 2.5);
+            NSBezierPath* cp = [NSBezierPath bezierPath];
+            auto pts = ui::curvePoints(rt.curve, 12);
+            for (size_t k = 0; k < pts.size(); ++k) {
+                NSPoint q = NSMakePoint(in.origin.x + in.size.width * pts[k].first, in.origin.y + in.size.height * pts[k].second);
+                k ? [cp lineToPoint:q] : [cp moveToPoint:q];
+            }
+            [(bent || curveDrag == slot ? col : C(0x5f6b7b)) setStroke]; cp.lineWidth = 1.2; cp.lineJoinStyle = NSLineJoinStyleRound; [cp stroke];
+        }
+        // AUX chip: empty outline, or the aux source's badge (dim when it can't reach this destination).
+        NSRect ax = [self routeAux:i];
+        bool auxDrop = dropAux == slot && dragSource >= 0;
+        if (rt.aux >= 0) {
+            auto as = (ModRoute::Source)rt.aux;
+            bool live = ui::auxActive(rt);
+            NSColor* acol = live ? SourceColor(as) : C(0x5f6b7b);
+            FillRound(ax, 3, [acol colorWithAlphaComponent:live ? .2 : .12]);
+            TextFit(S(std::string("\u00D7") + ui::sourceBadge(as)), NSMakeRect(ax.origin.x, ax.origin.y + 2, ax.size.width, 10), 7, 5.5, acol,
+                    NSFontWeightBold, NSTextAlignmentCenter);
+            if (!live) FillRound(NSMakeRect(ax.origin.x + 3, NSMidY(ax) - 0.5, ax.size.width - 6, 1), .5, C(0x8793a3));
+        } else {
+            NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(ax, .5, .5) xRadius:3 yRadius:3];
+            CGFloat dash[2] = {2, 2}; if (!auxDrop) [o setLineDash:dash count:2 phase:0];
+            [(auxDrop ? SourceColor(ui::matrixSources()[dragSource]) : C(0x3b4552)) setStroke]; o.lineWidth = auxDrop ? 1.5 : 1; [o stroke];
+            TextA(@"AUX", NSMakeRect(ax.origin.x, ax.origin.y + 2.5, ax.size.width, 10), 6.5, C(0x4f5a69), NSFontWeightBold, NSTextAlignmentCenter);
+        }
+        if (auxDrop && rt.aux >= 0) {
+            NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(ax, -1, -1) xRadius:4 yRadius:4];
+            [SourceColor(ui::matrixSources()[dragSource]) setStroke]; o.lineWidth = 1.5; [o stroke];
+        }
+        std::string ro = curveDrag == slot ? ui::curveReadout(rt.curve) : ui::routeAmountReadout(rt);
+        TextFit(S(ro), NSMakeRect(NSMaxX(ax) + 4, r.origin.y + 4, NSMaxX(r) - NSMaxX(ax) - 7, 12), 9, 6.5,
+                routeDrag == slot || curveDrag == slot ? col : C(0x8793a3), NSFontWeightMedium, NSTextAlignmentRight);
     }
     // Modulators: badges double as drag handles.
     Text(@"SOURCES \u00B7 DRAG ONTO A KNOB", NSMakeRect(304, 235, 150, 12), 8, C(0x5f6b7b), NSFontWeightSemibold);
@@ -995,8 +1040,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             val = b;
         }
         TextA(lab, NSMakeRect(f.origin.x, NSMaxY(f) - 16, f.size.width, 11), 8, C(0x6f7b8b), NSFontWeightSemibold, NSTextAlignmentCenter);
-        TextA(S(val), NSMakeRect(f.origin.x, f.origin.y + 14, f.size.width, 14), nf == 4 ? 9 : 10,
-              modFieldDrag == j ? scol : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentCenter);
+        TextFit(S(val), NSMakeRect(f.origin.x + 2, f.origin.y + 14, f.size.width - 4, 14), nf == 4 ? 9 : 10, 7, // 0.16.0: shrink, never "TRIANG..."
+                modFieldDrag == j ? scol : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentCenter);
     }
     if (nf == 0) {
         NSString* note = sel == ModRoute::Source::MSEG1 ? @"Shape it in the MSEG display above."
@@ -1243,7 +1288,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         }
         if (NSPointInRect(p, [self routeSourcePill:i])) { [self popMenu:1 slot:slot at:p]; return YES; }
         if (NSPointInRect(p, [self routeDestPill:i])) { [self popMenu:2 slot:slot at:p]; return YES; }
-        if (NSPointInRect(p, NSInsetRect([self routeBar:i], -4, -4))) {
+        if (NSPointInRect(p, NSInsetRect([self routeCurve:i], -1, -3))) { // bend: drag up for EXP, down for LOG
+            if (e.clickCount == 2) { current.routes[slot].curve = 0.0; edited = true; [self applySound]; }
+            curveDrag = slot; dragValue = current.routes[slot].curve;
+            [self setNeedsDisplay:YES];
+            return YES;
+        }
+        if (NSPointInRect(p, NSInsetRect([self routeAux:i], -1, -3))) { // set: pick a source; set already: clear
+            if (current.routes[slot].aux >= 0) { current.routes[slot].aux = -1; edited = true; [self applySound]; [self setNeedsDisplay:YES]; }
+            else [self popMenu:3 slot:slot at:p];
+            return YES;
+        }
+        if (NSPointInRect(p, NSInsetRect([self routeBar:i], -4, 0))) {
             if (e.clickCount == 2) { // double-click: back to the default depth
                 current.routes[slot].amount = ui::defaultRouteAmount(current.routes[slot].dest);
                 edited = true; [self applySound];
@@ -1318,6 +1374,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             NSMenuItem* it = [m addItemWithTitle:S(ui::sourceName(s[i])) action:@selector(menuPicked:) keyEquivalent:@""];
             it.target = self; it.tag = (kind * 100 + slot) * 100 + i;
             if (kind == 1 && slot < (int)current.routes.size() && current.routes[slot].source == s[i]) it.state = NSControlStateValueOn;
+            if (kind == 3 && slot < (int)current.routes.size()) { // AUX: only sources that can reach this destination
+                ModRoute t = current.routes[slot]; t.aux = (int)s[i];
+                it.enabled = ui::auxActive(t);
+            }
+        }
+        if (kind == 3) {
+            [m insertItem:[NSMenuItem separatorItem] atIndex:0];
+            NSMenuItem* h = [m insertItemWithTitle:@"AUX SCALES THIS ROUTE BY" action:nil keyEquivalent:@"" atIndex:0];
+            h.enabled = NO;
         }
     }
     [m popUpMenuPositioningItem:nil atLocation:p inView:self];
@@ -1332,6 +1397,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         matrixPage = got / 4;
     } else if (slot < (int)current.routes.size()) {
         if (kind == 1) current.routes[slot].source = ui::matrixSources()[i];
+        else if (kind == 3) current.routes[slot].aux = (int)ui::matrixSources()[i];
         else ui::setRouteDest(current.routes[slot], ui::matrixDests()[i]);
     }
     edited = true; [self applySound]; [self setNeedsDisplay:YES];
@@ -1929,14 +1995,25 @@ static int SortForColumn(int c) {
         dragPoint = p;
         NSInteger k = [self hitKnob:p];
         dropKnob = (k >= 0 && k < kFxDrag && ui::knobDest((int)k) >= 0) ? (int)k : -1;
-        int fs = dropKnob < 0 ? [self fxSlotAt:p] : -1;
+        dropAux = -1;
+        if (dropKnob < 0)
+            for (int i = 0; i < 4; ++i) {
+                int slot = matrixPage * 4 + i;
+                if (slot < (int)current.routes.size() && NSPointInRect(p, NSInsetRect([self routeAux:i], -3, -4))) dropAux = slot;
+            }
+        int fs = dropKnob < 0 && dropAux < 0 ? [self fxSlotAt:p] : -1;
         dropFx = (fs >= 0 && ui::fxUnitDest(current.fx.order.slot[fs]) >= 0) ? fs : -1;
         [self setNeedsDisplay:YES];
         return;
     }
-    if (routeDrag >= 0 && routeDrag < (int)current.routes.size()) { // bar spans -1..1 over 150 pt
+    if (routeDrag >= 0 && routeDrag < (int)current.routes.size()) { // 75 pt of drag per full scale (the bar itself is 118 pt since 0.16.0)
         double d = ((p.x - dragStart.x) + (p.y - dragStart.y)) / (scale / 2);
         ui::setRouteDisplayAmount(current.routes[routeDrag], dragValue + d);
+        edited = true; [self applySound]; [self setNeedsDisplay:YES];
+        return;
+    }
+    if (curveDrag >= 0 && curveDrag < (int)current.routes.size()) { // 60 pt from linear to full bend
+        current.routes[curveDrag].curve = ui::clampCurve(dragValue + (p.y - dragStart.y) / 60.0);
         edited = true; [self applySound]; [self setNeedsDisplay:YES];
         return;
     }
@@ -1967,6 +2044,9 @@ static int SortForColumn(int c) {
         int slot = ui::addRoute(current.routes, ui::matrixSources()[dragSource], (ModRoute::Dest)ui::knobDest(dropKnob));
         if (slot >= 0) { matrixPage = slot / 4; edited = true; [self applySound]; }
         else NSBeep(); // matrix full
+    } else if (dragSource >= 0 && dropAux >= 0 && dropAux < (int)current.routes.size()) { // badge on an AUX chip
+        current.routes[dropAux].aux = (int)ui::matrixSources()[dragSource];
+        edited = true; [self applySound];
     } else if (dragSource >= 0 && dropFx >= 0) { // drop a source on an FX card: route to that unit's main amount
         int u = current.fx.order.slot[dropFx];
         int slot = ui::addRoute(current.routes, ui::matrixSources()[dragSource], (ModRoute::Dest)ui::fxUnitDest(u));
@@ -1989,7 +2069,7 @@ static int SortForColumn(int c) {
         if (id >= 0 && host) host->parameterGesture(id, false);
         fxRowDrag = -1;
     }
-    dragSource = -1; dropKnob = -1; dropFx = -1; routeDrag = -1; modFieldDrag = -1;
+    dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];

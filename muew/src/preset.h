@@ -42,6 +42,8 @@ struct PresetInfo {
 //                  0.13.0 adds optional `phaser`, `flanger` and `fxorder` lines.
 //                  0.14.0 adds an optional `delaysync` line.
 //                  0.15.0 adds an optional `fxlfo` line (rack LFOs).
+//                  0.16.0 adds optional `curve <c>` / `aux <source>` suffixes
+//                  on `route` lines (older builds read the first three fields).
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
 //                  wavetables: frame count, then 256 samples per frame).
 // Version 1 text still parses; fields it lacks keep their VoiceParams
@@ -323,6 +325,13 @@ struct Preset {
                 // Sources/destinations from a newer build are skipped, not guessed.
                 if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::FxLfo2 && d >= 0 && d <= (int)ModRoute::Dest::FxChorusDepth) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
+                    // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
+                    std::string k2;
+                    while (ls >> k2) {
+                        if (k2 == "curve") { double c; if (ls >> c && std::isfinite(c)) r.curve = std::clamp(c, -1.0, 1.0); }
+                        else if (k2 == "aux") { int a; if (ls >> a && a >= 0 && a < kModSources) r.aux = a; }
+                        else break;
+                    }
                     routes.push_back(r);
                 }
             }
@@ -388,7 +397,8 @@ struct Preset {
                 || a.mseg1Points[i].value != b.mseg1Points[i].value) return false;
         for (size_t i = 0; i < routes.size(); ++i)
             if (routes[i].source != o.routes[i].source || routes[i].dest != o.routes[i].dest
-                || routes[i].amount != o.routes[i].amount) return false;
+                || routes[i].amount != o.routes[i].amount || routes[i].curve != o.routes[i].curve
+                || routes[i].aux != o.routes[i].aux) return false;
         const auto& fa = fx; const auto& fb = o.fx;
         return fa.chorus.enabled == fb.chorus.enabled && fa.chorus.rateHz == fb.chorus.rateHz
             && fa.chorus.depthMs == fb.chorus.depthMs && fa.chorus.baseMs == fb.chorus.baseMs
@@ -433,8 +443,12 @@ private:
 
     void writeRoutesAndFX(std::ostringstream& o) const {
         o << "routes " << routes.size() << "\n";
-        for (const auto& r : routes)
-            o << "route " << (int)r.source << " " << (int)r.dest << " " << r.amount << "\n";
+        for (const auto& r : routes) {
+            o << "route " << (int)r.source << " " << (int)r.dest << " " << r.amount;
+            if (r.curve != 0.0) o << " curve " << r.curve; // 0.16.0, only when set
+            if (r.aux >= 0) o << " aux " << r.aux;
+            o << "\n";
+        }
         o << "chorus " << (fx.chorus.enabled ? 1 : 0) << " " << fx.chorus.rateHz << " "
           << fx.chorus.depthMs << " " << fx.chorus.baseMs << " " << fx.chorus.mix << "\n";
         o << "delay " << (fx.delay.enabled ? 1 : 0) << " " << fx.delay.timeLSec << " "

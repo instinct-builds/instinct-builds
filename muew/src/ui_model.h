@@ -117,6 +117,25 @@ inline std::string routeAmountReadout(const ModRoute& r) {
     return b;
 }
 
+// 0.16.0 route curve and aux. An aux works where its source can reach: voice
+// routes take voice sources and macros, FX routes take macros and rack LFOs.
+inline bool auxActive(const ModRoute& r) {
+    if (r.aux < 0 || r.aux >= kModSources) return false;
+    const auto a = (ModRoute::Source)r.aux;
+    return isFxDest(r.dest) ? (isMacroSource(a) || isRackLfo(a)) : !isRackLfo(a);
+}
+inline std::string curveReadout(double c) {
+    if (c == 0.0) return "LINEAR";
+    char b[16]; snprintf(b, sizeof b, "%s %.0f%%", c > 0 ? "EXP" : "LOG", std::fabs(c) * 100); return b;
+}
+inline double clampCurve(double c) { return std::fabs(c) < 0.02 ? 0.0 : std::clamp(c, -1.0, 1.0); } // snaps to linear near 0
+// Unipolar response points (0..1 in, 0..1 out) for the row's curve glyph.
+inline std::vector<std::pair<double, double>> curvePoints(double c, int n = 16) {
+    std::vector<std::pair<double, double>> p;
+    for (int i = 0; i <= n; ++i) { double x = i / (double)n; p.push_back({x, routeCurve(x, c)}); }
+    return p;
+}
+
 // Mod matrix editing (0.8.0). Sources in badge order and destinations in
 // menu order; both are lists of the append-only enum values.
 inline const std::vector<ModRoute::Source>& matrixSources() {

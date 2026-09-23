@@ -294,10 +294,10 @@ int main() {
             Check(ok1 && n == before.routes.size() + 1 && mid.routes[n - 1].source == muew::ModRoute::Source::LFO3
                   && mid.routes[n - 1].dest == muew::ModRoute::Dest::FilterCutoff,
                   "dragging the LFO 3 badge onto CUTOFF added an LFO 3 -> cutoff route in the AU");
-            // New slot n is on page (n-1)/4, row (n-1)%4. Drag its amount bar handle right 30 pt (+0.4 of full scale).
+            // New slot n is on page (n-1)/4, row (n-1)%4. Drag its amount bar handle right 30 pt (+0.4 of full scale, 75 pt per scale).
             int row = (int)((n - 1) % 4);
             double amt0 = n ? mid.routes[n - 1].amount / 5.0 : 0;
-            NSPoint h = NSMakePoint(44 + 28 + 75 + amt0 * 75, 190 - row * 44 + 4 + 7);
+            NSPoint h = NSMakePoint(44 + 28 + 59 + amt0 * 59, 190 - row * 44 + 4 + 7); // 118 pt bar since 0.16.0
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, h, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(h.x + 15, h.y), w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(h.x + 30, h.y), w)];
@@ -490,6 +490,48 @@ int main() {
             muew::Preset back;
             Check(ok && back.parse(st.serialize()) && back == st && st.serialize().find("\nfxlfo ") != std::string::npos,
                   "the AU state saves the FX LFOs with the sound");
+            fflush(stdout);
+        });
+        After(6.98, ^{ // 0.16.0 route curves + aux: bend and aux-scale routes on page 4 (FX LFOs) and page 1
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto badge = [&](int i) { return NSMakePoint(304 + (i % 7) * 22 + 10.25, (i < 7 ? 216 : 198) + 7.5); };
+            auto curve = [&](int row) { return NSMakePoint(44 + 151 + 10, 190 - row * 44 + 4 + 7); };
+            auto aux = [&](int row) { return NSMakePoint(44 + 174 + 13, 190 - row * 44 + 4 + 7); };
+            auto drag = [&](NSPoint from, NSPoint to) {
+                [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
+                [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, to, w)];
+                [view mouseUp:Mouse(NSEventTypeLeftMouseUp, to, w)];
+            };
+            Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));  // close the DELAY detail (open since the FX LFO step)
+            Click(view, w, NSMakePoint(172 + 3 * 30 + 14, 234 + 7));    // page 13-16
+            NSPoint c0 = curve(0);
+            drag(c0, NSMakePoint(c0.x, c0.y + 30));                    // slot 13 (FX LFO 1 -> FL DEPTH): EXP 50%
+            drag(badge(13), aux(0));                                   // x FX LFO 2
+            drag(badge(8), aux(1));                                    // slot 14 (FX LFO 2 -> DELAY FB) x MACRO 1
+            Snapshot(view, "MUEW_ROUTEAUX_PNG", "route curve/aux page 4 snapshot written");
+            Click(view, w, NSMakePoint(172 + 14, 234 + 7));            // page 1-4
+            drag(c0, NSMakePoint(c0.x, c0.y - 24));                    // slot 1: LOG 40%
+            drag(badge(7), aux(0));                                    // x VELOCITY
+            Snapshot(view, "MUEW_ROUTECURVE_PNG", "route curve/aux page 1 snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            using S = muew::ModRoute::Source;
+            bool sized = ok && st.routes.size() >= 14;
+            printf("route curves: slot13 curve %.2f aux %d, slot14 aux %d, slot1 curve %.2f aux %d (%s)\n",
+                   sized ? st.routes[12].curve : 0.0, sized ? st.routes[12].aux : -9, sized ? st.routes[13].aux : -9,
+                   sized ? st.routes[0].curve : 0.0, sized ? st.routes[0].aux : -9,
+                   sized ? muew::ui::curveReadout(st.routes[0].curve).c_str() : "?");
+            Check(sized && std::fabs(st.routes[12].curve - 0.5) < 0.02 && std::fabs(st.routes[0].curve + 0.4) < 0.02,
+                  "curve glyph drags bent slot 13 to EXP 50% and slot 1 to LOG 40% in the AU's sound");
+            Check(sized && st.routes[12].aux == (int)S::FxLfo2 && st.routes[13].aux == (int)S::Macro1 && st.routes[0].aux == (int)S::Velocity,
+                  "dropping badges on AUX chips set FX LFO 2, MACRO 1 and VELOCITY as aux sources");
+            muew::Preset back;
+            Check(ok && back.parse(st.serialize()) && back == st && st.serialize().find(" aux ") != std::string::npos,
+                  "the AU state saves route curves and aux sources");
+            Click(view, w, card(3));                                   // DELAY detail back open for the editor snapshot
             fflush(stdout);
         });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).

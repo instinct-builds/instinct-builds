@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include "tempo_sync.h"
+#include "mod_curve.h"
 
 namespace muew {
 
@@ -539,7 +540,10 @@ public:
     // 0.15.0: routes from the rack LFOs. The static (macro) part is `base`;
     // every kLfoBlock samples the LFO part is added on top. No LFO routes
     // leaves the rack exactly as setMod left it.
-    struct LfoRoute { int lfo; int dest; double amount; };
+    // 0.16.0: lfo -1 is a static (macro) value `value` whose route has a rack
+    // LFO aux; curve shapes the LFO; auxLfo (-1 none) scales by its 0..1 level;
+    // auxScale is a static aux factor (a macro aux), 1 = none.
+    struct LfoRoute { int lfo; int dest; double amount; double curve = 0.0; int auxLfo = -1; double auxScale = 1.0; double value = 0.0; };
     enum { kDrive, kDelayFb, kRevDecay, kPhDepth, kFlDepth, kChDepth };
     void setLfoRoutes(const Mod& base, const std::vector<LfoRoute>& routes) {
         base_ = base; lfoRoutes_ = routes;
@@ -596,7 +600,11 @@ private:
         }
         Mod m = base_;
         for (const auto& r : lfoRoutes_) {
-            const double x = v[r.lfo & 1] * r.amount;
+            double src = r.lfo >= 0 ? v[r.lfo & 1] : r.value;
+            if (r.lfo >= 0 && r.curve != 0.0) src = routeCurve(src, r.curve);
+            if (r.auxScale != 1.0) src *= r.auxScale;
+            if (r.auxLfo >= 0) src *= std::clamp(0.5 * (v[r.auxLfo & 1] + 1.0), 0.0, 1.0);
+            const double x = src * r.amount;
             switch (r.dest) {
             case kDrive: m.drive += x; break;
             case kDelayFb: m.delayFeedback += x; break;

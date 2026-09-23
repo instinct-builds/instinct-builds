@@ -58,7 +58,9 @@ struct MUEWEditorHost {
     int dragSource;
     NSPoint dragPoint;
     int dropKnob;
-    int dropFx;      // FX rack slot under a dragged source badge (0.15.0), -1 none
+    int dropFx;
+    int dropAux;     // 0.16.0: route slot whose AUX chip is under a dragged badge, -1 none
+    int curveDrag;   // 0.16.0: route slot whose curve is being bent, -1 none      // FX rack slot under a dragged source badge (0.15.0), -1 none
     int routeDrag;
     int modFieldDrag;
     // 0.13.0 FX chain: card slot being dragged to a new place (-1 = none)
