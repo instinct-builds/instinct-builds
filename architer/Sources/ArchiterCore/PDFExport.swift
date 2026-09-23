@@ -141,9 +141,19 @@ public enum SheetPDFExporter {
     /// for cheap printing (no boxes, no fills, no color, tighter spacing).
     public enum LayoutStyle { case full, compact }
 
-    public static func export(_ c: Character, style: LayoutStyle = .full) -> Data {
+    /// Page orientation: portrait is letter as-is; landscape swaps the
+    /// dimensions. The layout flows off doc.pageSize throughout, so both
+    /// styles adapt mechanically.
+    public enum PageOrientation { case portrait, landscape }
+
+    public static func export(_ c: Character, style: LayoutStyle = .full,
+                              orientation: PageOrientation = .portrait) -> Data {
         let compact = style == .compact
-        var doc = PDFDocument()
+        let pageSize: PDFDocument.PageSize = orientation == .landscape
+            ? PDFDocument.PageSize(width: PDFDocument.PageSize.letter.height,
+                                   height: PDFDocument.PageSize.letter.width)
+            : .letter
+        var doc = PDFDocument(pageSize: pageSize)
         var cursor = Cursor(doc: doc)
         cursor.compact = compact
         let margin = compact ? 40.0 : 54.0

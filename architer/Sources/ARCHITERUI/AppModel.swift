@@ -415,12 +415,13 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    public func exportCompactPDF() {
+    public func exportCompactPDF(landscape: Bool = false) {
         guard let sel = selected?.wrappedValue else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(sel.name)-compact.pdf"
+        panel.nameFieldStringValue = landscape ? "\(sel.name)-compact-landscape.pdf" : "\(sel.name)-compact.pdf"
         if panel.runModal() == .OK, let url = panel.url {
-            try? SheetPDFExporter.export(sel, style: .compact).write(to: url)
+            try? SheetPDFExporter.export(sel, style: .compact,
+                                         orientation: landscape ? .landscape : .portrait).write(to: url)
         }
     }
 

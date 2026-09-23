@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.31.0
+
+- Compact-PDF landscape export: File > Export Compact PDF (Landscape)...
+  lays the compact sheet out on a rotated letter page - wider columns for
+  long inventory/feature lines and wide tables. Portrait stays the
+  default; the styled layout and all existing exports are unchanged. The
+  whole compact layout flows off the page size, so 2.25.0's widow guard
+  and 2.28.0's running header work in both orientations.
+
 ## What's in 2.30.0
 
 - The free-roller damage-type picker now remembers its selection across

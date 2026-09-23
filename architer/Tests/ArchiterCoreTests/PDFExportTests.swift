@@ -149,6 +149,17 @@ struct PDFExportTests {
         #expect(!styled.contains("(continued"))
     }
 
+    @Test func compactLandscapeSwapsPageDimensions() throws {
+        let demo = SampleContent.demoCharacter()
+        let landscape = String(data: SheetPDFExporter.export(demo, style: .compact, orientation: .landscape), encoding: .utf8) ?? ""
+        // Landscape letter: 792 x 612; content still flows (name lands on page 1).
+        #expect(landscape.contains("/MediaBox [0 0 792 612]"))
+        #expect(landscape.contains("(Wren Halloway"))
+        // Portrait stays the default and keeps its dimensions.
+        let portrait = String(data: SheetPDFExporter.export(demo, style: .compact), encoding: .utf8) ?? ""
+        #expect(portrait.contains("/MediaBox [0 0 612 792]"))
+    }
+
     @Test func validPDFStructure() throws {
         let data = SheetPDFExporter.export(aria())
         let text = String(decoding: data, as: UTF8.self)

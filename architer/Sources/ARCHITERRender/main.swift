@@ -102,6 +102,8 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? pdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet.pdf"))
     let compactPdf = SheetPDFExporter.export(character, style: .compact)
     try? compactPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact.pdf"))
+    let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
+    try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))
     try? SheetExporter.exportHTML(character).write(toFile: "\(outDir)/sample-sheet.html", atomically: true, encoding: .utf8)
     try? SheetExporter.exportMarkdown(character).write(toFile: "\(outDir)/sample-sheet.md", atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
