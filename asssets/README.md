@@ -211,3 +211,25 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   single card still gives you just that asset.
 - Reveal in Finder (⇧⌘R, plus the selection bar and right-click menu) works
   on the whole selection.
+
+## 1.2.0: watch folders
+
+- File > Watch Folder… (⇧⌘I) or the + next to WATCH FOLDERS in the sidebar.
+  New images, PSDs, vectors, footage and audio in watched folders (up to 4
+  levels deep; hidden files and app bundles are skipped) show up in the
+  Inbox collection within a few seconds, and again whenever ASSSETS comes
+  to the front.
+- Re-scans are idempotent. A file already in the library is never added
+  twice, even if you moved it to another collection. A watched file you
+  remove from the library stays removed; importing it by hand brings it
+  back. Watching a parent folder replaces its watched subfolders.
+- Missing files: when one of your imported files is moved or deleted in
+  Finder, its card gets an orange Missing badge. A "Missing Files" row
+  appears under LIBRARY, and the inspector offers Locate… (relink, keeping
+  tags, collection and favorite) or Remove. The flag clears on its own if
+  the file comes back. Bundled library files are repaired on launch instead.
+- Export works the same everywhere: the inspector's Export button exports
+  as shown, and its arrow offers the original file. Single assets get a save
+  panel with the planned name.
+- Logic and tests: `syncWatch`, `addWatchFolder`, `missingIDs` in
+  `Studio.swift`, with tests in `WatchFolderTests.swift`.

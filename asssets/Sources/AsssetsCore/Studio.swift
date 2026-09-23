@@ -106,8 +106,10 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var smartCollections: [StudioSmartCollection] = []
     /// Whether the starter smart collections were offered already.
     public var smartSeeded = false
+    /// Folders ASSSETS watches for new files (1.2). New files land in the Inbox collection.
+    public var watchFolders: [String] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -117,6 +119,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         dismissedKeys = try c.decodeIfPresent([String].self, forKey: .dismissedKeys) ?? []
         smartCollections = try c.decodeIfPresent([StudioSmartCollection].self, forKey: .smartCollections) ?? []
         smartSeeded = try c.decodeIfPresent(Bool.self, forKey: .smartSeeded) ?? false
+        watchFolders = try c.decodeIfPresent([String].self, forKey: .watchFolders) ?? []
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {
@@ -289,7 +292,11 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     @discardableResult
     public mutating func remove(_ ids: Set<UUID>) -> Int {
         let before = assets.count
-        for a in assets where ids.contains(a.id) { if let k = a.sourceKey, !dismissedKeys.contains(k) { dismissedKeys.append(k) } }
+        for a in assets where ids.contains(a.id) {
+            if let k = a.sourceKey, !dismissedKeys.contains(k) { dismissedKeys.append(k) }
+            // Remember removed watched files so the next folder scan does not bring them back.
+            if a.sourceKey == nil, let p = a.importedPath, isWatched(p), !dismissedKeys.contains("file:" + p) { dismissedKeys.append("file:" + p) }
+        }
         assets.removeAll { ids.contains($0.id) }
         return before - assets.count
     }
@@ -302,12 +309,64 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         let url = URL(fileURLWithPath: path)
         let ext = url.pathExtension.lowercased()
         guard let kind = MediaKind.classify(extension: ext), !assets.contains(where: { $0.importedPath == path }) else { return nil }
+        dismissedKeys.removeAll { $0 == "file:" + path }   // an explicit import wins over an earlier removal
         let asset = StudioAsset(title: Self.humanize(url.deletingPathExtension().lastPathComponent), kind: kind,
                                 tags: [ext, "imported"], collection: collection,
                                 palette: ["#20242C", "#586174", "#B8C0CF"], seed: Self.stableSeed(path),
                                 importedPath: path, resolution: "Local file")
         assets.insert(asset, at: 0)
         return asset.id
+    }
+
+    // MARK: Watch folders (1.2)
+
+    public static let inboxCollection = "Inbox"
+
+    /// Adds a folder to the watch list. Returns false when it is already covered (same folder or inside a watched one).
+    @discardableResult
+    public mutating func addWatchFolder(_ path: String) -> Bool {
+        let p = Self.folderKey(path)
+        if watchFolders.contains(where: { p == $0 || p.hasPrefix($0 + "/") }) { return false }
+        watchFolders.removeAll { $0.hasPrefix(p + "/") }   // a parent replaces its subfolders
+        watchFolders.append(p)
+        return true
+    }
+
+    public mutating func removeWatchFolder(_ path: String) { let p = Self.folderKey(path); watchFolders.removeAll { $0 == p } }
+
+    public func isWatched(_ file: String) -> Bool { watchFolders.contains { file.hasPrefix($0 + "/") } }
+
+    /// Imports newly found files from watch folders into the Inbox. Idempotent: files already indexed
+    /// (anywhere in the library), removed by the user, hidden, or unsupported are skipped.
+    @discardableResult
+    public mutating func syncWatch(found: [String]) -> [UUID] {
+        var added: [UUID] = []
+        for path in found.sorted() where isWatched(path) {
+            let rel = watchFolders.first { path.hasPrefix($0 + "/") }.map { String(path.dropFirst($0.count + 1)) } ?? path
+            if rel.split(separator: "/").contains(where: { $0.hasPrefix(".") }) { continue }
+            if dismissedKeys.contains("file:" + path) { continue }
+            let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
+            guard MediaKind.classify(extension: ext) != nil, !assets.contains(where: { $0.importedPath == path }) else { continue }
+            let url = URL(fileURLWithPath: path)
+            let asset = StudioAsset(title: Self.humanize(url.deletingPathExtension().lastPathComponent), kind: MediaKind.classify(extension: ext)!,
+                                    tags: [ext, "imported", "watched"], collection: Self.inboxCollection,
+                                    palette: ["#20242C", "#586174", "#B8C0CF"], seed: Self.stableSeed(path),
+                                    importedPath: path, resolution: "Local file")
+            assets.insert(asset, at: 0)
+            added.append(asset.id)
+        }
+        return added
+    }
+
+    /// The user's own files whose path no longer exists. Bundled files are repaired on launch, so they never count.
+    public func missingIDs(exists: (String) -> Bool) -> Set<UUID> {
+        Set(assets.filter { !$0.isStarter }.compactMap { a in a.importedPath.flatMap { exists($0) ? nil : a.id } })
+    }
+
+    static func folderKey(_ path: String) -> String {
+        var p = path
+        while p.count > 1 && p.hasSuffix("/") { p.removeLast() }
+        return p
     }
 
     // MARK: Bundled starter library

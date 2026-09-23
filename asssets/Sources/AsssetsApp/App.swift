@@ -23,6 +23,7 @@ struct ASSSETSApp: App {
         .commands {
             CommandGroup(after: .newItem) {
                 Button("Import Files…") { library.importFiles() }.keyboardShortcut("i")
+                Button("Watch Folder…") { library.addWatchFolder() }.keyboardShortcut("i", modifiers: [.command, .shift])
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(after: .pasteboard) {
@@ -53,6 +54,8 @@ enum Theme {
     static let raised = Color.white.opacity(0.055)
     static let hairline = Color.white.opacity(0.085)
     static let smart = Color(red: 0.36, green: 0.82, blue: 0.95)
+    static let warning = Color(red: 1.0, green: 0.72, blue: 0.28)
+    static let watch = Color(red: 0.45, green: 0.9, blue: 0.62)
     static let backdrop = LinearGradient(colors: [Color(red: 0.045, green: 0.05, blue: 0.08), Color(red: 0.075, green: 0.05, blue: 0.115)], startPoint: .top, endPoint: .bottom)
     static let sidebar = LinearGradient(colors: [Color(red: 0.04, green: 0.043, blue: 0.07), Color(red: 0.03, green: 0.032, blue: 0.05)], startPoint: .top, endPoint: .bottom)
 }
@@ -139,6 +142,7 @@ final class StudioLibrary: ObservableObject {
         supportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ASSSETS", isDirectory: true)
         try? FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
         install()
+        startWatching()
         applyLaunchArguments()
         installKeyMonitor()
     }
@@ -259,6 +263,9 @@ final class StudioLibrary: ObservableObject {
     // MARK: Browsing and selection
 
     var filtered: [StudioAsset] {
+        if selectedSmart == nil && selectedCollection == Self.missingCollection {
+            return catalog.filtered(search: search, kind: selectedKind, collection: StudioCatalog.allAssets).filter { missing.contains($0.id) }
+        }
         if let id = selectedSmart { return catalog.filtered(search: search, kind: selectedKind, smart: id) }
         return catalog.filtered(search: search, kind: selectedKind, collection: selectedCollection)
     }
@@ -269,6 +276,89 @@ final class StudioLibrary: ObservableObject {
 
     func show(collection: String) { selectedCollection = collection; selectedSmart = nil; anchorID = nil }
     func show(smart id: UUID) { selectedSmart = id; selectedCollection = StudioCatalog.allAssets; anchorID = nil }
+
+    // MARK: Watch folders and missing files (1.2)
+
+    static let missingCollection = "Missing Files"
+    @Published var missing: Set<UUID> = []
+    private var watchTimer: Timer?
+
+    private func startWatching() {
+        scanWatchFolders()
+        watchTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async { self?.scanWatchFolders() }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.scanWatchFolders()
+        }
+    }
+
+    /// Lists supported-looking files under each watch folder (hidden files and package contents skipped,
+    /// 4 levels deep, 5,000 files per folder), imports the new ones and refreshes missing-file flags.
+    func scanWatchFolders() {
+        let fm = FileManager.default
+        var found: [String] = []
+        for folder in catalog.watchFolders {
+            guard let e = fm.enumerator(at: URL(fileURLWithPath: folder, isDirectory: true), includingPropertiesForKeys: [.isRegularFileKey],
+                                        options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
+            var n = 0
+            for case let url as URL in e {
+                if e.level > 4 { e.skipDescendants(); continue }
+                guard MediaKind.classify(extension: url.pathExtension) != nil else { continue }
+                found.append(url.standardizedFileURL.path); n += 1
+                if n >= 5000 { break }
+            }
+        }
+        var added: [UUID] = []
+        if !found.isEmpty {
+            var c = catalog
+            added = c.syncWatch(found: found)
+            if !added.isEmpty { mutate { $0 = c } }
+        }
+        let now = catalog.missingIDs { fm.fileExists(atPath: $0) }
+        if now != missing { missing = now }
+        if !added.isEmpty { flash("\(added.count) new \(added.count == 1 ? "file" : "files") in Inbox") }
+    }
+
+    func addWatchFolder() {
+        let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.allowsMultipleSelection = true
+        p.prompt = "Watch"; p.message = "New images, PSDs, vectors, footage and audio in these folders will appear in Inbox."
+        guard p.runModal() == .OK else { return }
+        watch(p.urls.map(\.standardizedFileURL.path))
+    }
+
+    func watch(_ paths: [String]) {
+        var changed = false
+        mutate { c in for path in paths { if c.addWatchFolder(path) { changed = true } } }
+        if changed { scanWatchFolders(); show(collection: StudioCatalog.inboxCollection) } else { flash("Already watching that folder") }
+    }
+
+    func stopWatching(_ folder: String) {
+        mutate { $0.removeWatchFolder(folder) }
+        flash("Stopped watching \((folder as NSString).lastPathComponent). Its assets stay in the library.")
+    }
+
+    func watchedCount(_ folder: String) -> Int { catalog.assets.filter { $0.importedPath?.hasPrefix(folder + "/") == true }.count }
+
+    /// Point a missing asset at its new location. Keeps title, tags, collection and favorite.
+    func locate(_ id: UUID) {
+        guard let a = catalog.assets.first(where: { $0.id == id }) else { return }
+        let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false; p.prompt = "Use This File"
+        p.message = "Locate \"\(a.title)\""
+        if let ext = a.importedPath.map({ URL(fileURLWithPath: $0).pathExtension }), let t = UTType(filenameExtension: ext) { p.allowedContentTypes = [t] }
+        guard p.runModal() == .OK, let url = p.url else { return }
+        let path = url.standardizedFileURL.path
+        if catalog.assets.contains(where: { $0.importedPath == path && $0.id != id }) { flash("That file is already in the library"); return }
+        mutate { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].importedPath = path } }
+        missing.remove(id)
+        flash("Relinked \(a.title)")
+    }
+
+    func removeMissing() {
+        let ids = missing
+        guard !ids.isEmpty else { return }
+        pendingRemoval = ids
+    }
 
     // MARK: Smart collections
 
@@ -427,6 +517,20 @@ final class StudioLibrary: ObservableObject {
     func exportToFolder(_ ids: Set<UUID>, mode: DragOut.ExportMode) {
         let picked = catalog.assets.filter { ids.contains($0.id) }
         guard !picked.isEmpty else { return }
+        if picked.count == 1, let a = picked.first {
+            // One asset: a save panel with the planned name, same rules as the folder export.
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-export/\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+            guard let made = write(a, mode: mode, into: tmp, taken: [], copy: true) else { flash("Nothing to export for \(a.title)"); return }
+            let s = NSSavePanel(); s.nameFieldStringValue = made.lastPathComponent; s.canCreateDirectories = true
+            if let t = UTType(filenameExtension: made.pathExtension) { s.allowedContentTypes = [t] }
+            guard s.runModal() == .OK, let dst = s.url else { return }
+            try? FileManager.default.removeItem(at: dst)
+            let ok = (try? FileManager.default.moveItem(at: made, to: dst)) != nil
+            flash(ok ? "Exported \(dst.lastPathComponent)" : "Export failed")
+            if ok { NSWorkspace.shared.activateFileViewerSelecting([dst]) }
+            return
+        }
         let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
         p.prompt = "Export Here"
         p.message = mode == .originals ? "Export \(picked.count) original files (generated studies export as PNG)"
@@ -498,23 +602,6 @@ final class StudioLibrary: ObservableObject {
         flash("Copied \(tags.count) keywords")
     }
 
-    func exportProcessed(_ ids: Set<UUID>) {
-        let picked = catalog.assets.filter { ids.contains($0.id) && $0.kind != .audio }
-        guard !picked.isEmpty else { return }
-        if picked.count == 1, let a = picked.first {
-            let p = NSSavePanel(); p.nameFieldStringValue = a.title.replacingOccurrences(of: " ", with: "-") + "-\(effect.rawValue.lowercased().replacingOccurrences(of: " ", with: "-")).png"; p.allowedContentTypes = [.png]
-            guard p.runModal() == .OK, let url = p.url else { return }
-            let ok = MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], tiles: tiles(for: a), fixSeams: fixSeams.contains(a.id), to: url)
-            flash(ok ? "Exported \(url.lastPathComponent)" : "Export failed")
-        } else {
-            let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true; p.prompt = "Export Here"
-            guard p.runModal() == .OK, let dir = p.url else { return }
-            var n = 0
-            for a in picked where MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], tiles: tiles(for: a), fixSeams: fixSeams.contains(a.id), to: dir.appendingPathComponent(a.title.replacingOccurrences(of: " ", with: "-") + ".png")) { n += 1 }
-            flash("Exported \(n) of \(picked.count) previews")
-        }
-    }
-
     // MARK: Screenshot harness (CI launches the app with these arguments)
 
     private func applyLaunchArguments() {
@@ -566,6 +653,25 @@ final class StudioLibrary: ObservableObject {
                 tileRepeat = demo == "textures" ? 3 : 2
                 if demo == "seam-fix" { fixSeams.insert(a.id) }
             }
+        case "watch":
+            // A client drop folder with real files; one gets deleted to show the missing-file flag.
+            let fm = FileManager.default
+            let drop = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Client Drops", isDirectory: true)
+            try? fm.removeItem(at: drop)
+            try? fm.createDirectory(at: drop.appendingPathComponent("Round 2"), withIntermediateDirectories: true)
+            let picks: [(String, String)] = [("terrazzo-texture.png", "Lobby Floor Reference.png"), ("phone-screen-mockup.psd", "Round 2/App Store Hero.psd"),
+                                             ("night-grid-4k.png", "Keynote Backdrop.png"), ("coffee-cup-mockup.psd", "Cafe Menu Cup.psd")]
+            for (src, dst) in picks where fm.fileExists(atPath: starterRoot.appendingPathComponent(src).path) {
+                try? fm.copyItem(at: starterRoot.appendingPathComponent(src), to: drop.appendingPathComponent(dst))
+            }
+            if let svg = ((try? fm.contentsOfDirectory(atPath: starterRoot.path)) ?? []).sorted().first(where: { $0.hasSuffix(".svg") }) {
+                try? fm.copyItem(at: starterRoot.appendingPathComponent(svg), to: drop.appendingPathComponent("Brand Mark v3.svg"))
+            }
+            watch([drop.path])
+            try? fm.removeItem(at: drop.appendingPathComponent("Keynote Backdrop.png"))
+            scanWatchFolders()
+            show(collection: StudioCatalog.inboxCollection)
+            if let a = filtered.first(where: { missing.contains($0.id) }) { selection = [a.id]; focusID = a.id }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -659,6 +765,10 @@ struct Sidebar: View {
                 SidebarSection(title: "LIBRARY") {
                     SidebarRow(title: StudioCatalog.allAssets, symbol: "square.grid.2x2", count: model.catalog.count(in: StudioCatalog.allAssets), selected: model.selectedSmart == nil && model.selectedCollection == StudioCatalog.allAssets) { model.show(collection: StudioCatalog.allAssets) }
                     SidebarRow(title: StudioCatalog.favorites, symbol: "heart.fill", count: model.catalog.count(in: StudioCatalog.favorites), selected: model.selectedSmart == nil && model.selectedCollection == StudioCatalog.favorites, dropTarget: StudioCatalog.favorites) { model.show(collection: StudioCatalog.favorites) }
+                    if !model.missing.isEmpty {
+                        SidebarRow(title: StudioLibrary.missingCollection, symbol: "exclamationmark.triangle", count: model.missing.count, selected: model.selectedSmart == nil && model.selectedCollection == StudioLibrary.missingCollection, accent: .warning) { model.show(collection: StudioLibrary.missingCollection) }
+                            .contextMenu { Button("Remove All Missing from Library…", role: .destructive) { model.removeMissing() } }
+                    }
                 }
 
                 SidebarSection(title: "COLLECTIONS", trailing: AnyView(
@@ -685,6 +795,26 @@ struct Sidebar: View {
                     }
                     if model.catalog.smartCollections.isEmpty {
                         Text("Save any search as a live collection.").font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 9)
+                    }
+                }
+
+                SidebarSection(title: "WATCH FOLDERS", trailing: AnyView(
+                    Button { model.addWatchFolder() } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("Watch a folder for new files")
+                )) {
+                    ForEach(model.catalog.watchFolders, id: \.self) { folder in
+                        SidebarRow(title: (folder as NSString).lastPathComponent, symbol: "eye", count: model.watchedCount(folder), selected: false, accent: .watch) {
+                            model.show(collection: StudioCatalog.inboxCollection)
+                        }
+                        .help((folder as NSString).abbreviatingWithTildeInPath)
+                        .contextMenu {
+                            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder)]) }
+                            Button("Scan Now") { model.scanWatchFolders() }
+                            Divider()
+                            Button("Stop Watching") { model.stopWatching(folder) }
+                        }
+                    }
+                    if model.catalog.watchFolders.isEmpty {
+                        Text("Watch a folder and new files land in Inbox automatically.").font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 9)
                     }
                 }
 
@@ -719,6 +849,7 @@ struct Sidebar: View {
         case "Motion Loops": return "film.stack"
         case "Sound Beds": return "waveform"
         case StudioCatalog.importedCollection: return "tray.and.arrow.down"
+        case StudioCatalog.inboxCollection: return "tray.full"
         default: return "folder"
         }
     }
@@ -740,7 +871,7 @@ struct SidebarSection<Content: View>: View {
     }
 }
 
-enum RowAccent { case standard, smart }
+enum RowAccent { case standard, smart, warning, watch }
 
 struct SidebarRow: View {
     @EnvironmentObject var model: StudioLibrary
@@ -757,7 +888,7 @@ struct SidebarRow: View {
     var body: some View {
         let row = HStack(spacing: 9) {
             Image(systemName: symbol).font(.system(size: 12, weight: .semibold)).frame(width: 18)
-                .foregroundStyle(accent == .smart ? Theme.smart : (selected ? Theme.accent : Color.secondary))
+                .foregroundStyle(accent == .smart ? Theme.smart : accent == .warning ? Theme.warning : accent == .watch ? Theme.watch : (selected ? Theme.accent : Color.secondary))
             Text(title).font(.system(size: 12.5, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.tail).layoutPriority(1)
             Spacer(minLength: 6)
             if let count {
@@ -1022,7 +1153,10 @@ struct AssetCard: View {
                     .aspectRatio(1.36, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 11))
                     .overlay(alignment: .bottomLeading) {
-                        if asset.importedPath?.lowercased().hasSuffix(".psd") == true {
+                        if model.missing.contains(asset.id) {
+                            Label("Missing", systemImage: "exclamationmark.triangle.fill").font(.system(size: 9.5, weight: .bold))
+                                .foregroundStyle(.black).padding(.horizontal, 7).padding(.vertical, 4).background(Theme.warning, in: Capsule()).padding(8)
+                        } else if asset.importedPath?.lowercased().hasSuffix(".psd") == true {
                             Label("PSD", systemImage: "square.3.layers.3d").font(.system(size: 9.5, weight: .bold)).labelStyle(.titleAndIcon)
                                 .padding(.horizontal, 7).padding(.vertical, 4).background(.black.opacity(0.5), in: Capsule()).padding(8)
                         } else if asset.kind == .video || asset.kind == .audio {
@@ -1176,6 +1310,44 @@ struct EmptyInspector: View {
     }
 }
 
+/// Same two choices everywhere: as shown (original when unchanged, PNG otherwise) or the original files.
+struct ExportMenuButton: View {
+    @EnvironmentObject var model: StudioLibrary
+    let ids: Set<UUID>
+    let title: String
+    var body: some View {
+        Menu {
+            Button("As Shown…") { model.exportToFolder(ids, mode: .asShown) }
+            Button(ids.count == 1 ? "Original File…" : "Original Files…") { model.exportToFolder(ids, mode: .originals) }
+        } label: {
+            Label(title, systemImage: "square.and.arrow.up")
+        } primaryAction: { model.exportToFolder(ids, mode: .asShown) }
+        .menuStyle(.button).buttonStyle(.borderedProminent).fixedSize()
+        .help("Click to export as shown. Use the arrow for original files.")
+    }
+}
+
+/// Shown in the inspector when an imported file has moved or been deleted.
+struct MissingBanner: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("File missing").font(.caption.weight(.semibold))
+                Text(asset.importedPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "").font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 4)
+            Button("Locate…") { model.locate(asset.id) }.controlSize(.small)
+            Button("Remove") { model.pendingRemoval = [asset.id] }.controlSize(.small)
+        }
+        .padding(10)
+        .background(Theme.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.warning.opacity(0.4)))
+    }
+}
+
 struct InspectorLabel: View {
     let text: String
     var body: some View { Text(text).font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.secondary) }
@@ -1221,6 +1393,7 @@ struct Inspector: View {
                     Button { model.toggleFavorite([asset.id]) } label: { Image(systemName: asset.favorite ? "heart.fill" : "heart").font(.title3).foregroundStyle(asset.favorite ? Color.pink : Color.secondary) }.buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16).padding(.top, 10)
+                if model.missing.contains(asset.id) { MissingBanner(asset: asset).padding(.horizontal, 14).padding(.top, 8) }
                 if asset.kind != .audio { EffectStrip(asset: asset).padding(.top, 10) }
                 Divider().overlay(Theme.hairline).padding(.top, 10)
                 ScrollView {
@@ -1256,9 +1429,7 @@ struct Inspector: View {
                             Button { model.addTags(newTag, to: [asset.id]); newTag = "" } label: { Image(systemName: "plus.circle.fill").font(.title3) }.buttonStyle(.plain).foregroundStyle(Theme.accent)
                         }
                         HStack(spacing: 8) {
-                            if asset.kind != .audio {
-                                Button { model.exportProcessed([asset.id]) } label: { Label("Export PNG", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent)
-                            }
+                            ExportMenuButton(ids: [asset.id], title: "Export")
                             Button { model.copyKeywords([asset.id]) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
                             if asset.importedPath != nil { Button { model.reveal([asset.id]) } label: { Image(systemName: "folder") }.buttonStyle(.bordered).help("Reveal in Finder") }
                         }
@@ -1544,7 +1715,7 @@ struct BatchInspector: View {
                 Button { model.newCollection(with: ids) } label: { Label("New Collection from Selection", systemImage: "folder.badge.plus") }.buttonStyle(.bordered)
                 InspectorLabel(text: "OUTPUT")
                 HStack(spacing: 8) {
-                    Button { model.exportProcessed(ids) } label: { Label("Export \(model.effect == .original ? "PNGs" : model.effect.rawValue)", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent)
+                    ExportMenuButton(ids: ids, title: "Export \(ids.count)")
                     Button { model.copyKeywords(ids) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
                 }
                 Button(role: .destructive) { model.pendingRemoval = ids } label: { Label("Remove from Library…", systemImage: "trash") }.buttonStyle(.borderless).padding(.top, 4)
