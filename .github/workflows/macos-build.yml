@@ -136,6 +136,7 @@ jobs:
           shoot export-presets 1920x1200 export-presets demo-exports/done.txt
           ( cd "$SUP/demo-exports" && for f in *; do [ "$f" = done.txt ] && continue; printf '%s\t%s\t' "$f" "$(stat -f%z "$f")"; sips -g pixelWidth -g pixelHeight -g dpiWidth "$f" | awk 'NR>1{printf "%s=%s ", $1, $2}'; echo; done ) | tee "ASSSETS-$ASSSETS_VERSION-export-presets.txt"
           test "$(grep -c . "ASSSETS-$ASSSETS_VERSION-export-presets.txt")" -ge 18
+          J=$(ls "$SUP/demo-exports/"*.jpg | head -1); grep -q "dc:subject" "$J" || { echo "no embedded XMP in $J"; exit 1; }; echo "embedded XMP found in $(basename "$J")"
           shoot gallery 1920x1200 gallery-app demo-gallery/gallery-done.txt
           G=$(ls -d "$SUP/demo-gallery/"*Review | head -1); test -f "$G/index.html"
           unzip -l "$G.zip" | tee "ASSSETS-$ASSSETS_VERSION-gallery-listing.txt"; grep -q 'index.html' "ASSSETS-$ASSSETS_VERSION-gallery-listing.txt"
@@ -152,6 +153,11 @@ jobs:
           shoot label-filter 1920x1200 label-filter
           shoot cull 1920x1200 cull
           shoot sort-rating 1920x1200 sort-rating
+          shoot keywords 1920x1200 keywords
+          shoot file-metadata 1920x1200 file-metadata
+          S="$HOME/Pictures/Client Drops/DSC_0192.xmp"; cp "$S" "ASSSETS-$ASSSETS_VERSION-sidecar.xmp.txt"
+          grep -q 'crs:Exposure2012="+0.35"' "$S" && grep -q '<xmp:Label>Blue</xmp:Label>' "$S" && grep -q 'round 2' "$S" && grep -q 'Marble Wall Study' "$S" || { echo "sidecar write-back lost data"; cat "$S"; exit 1; }
+          echo "sidecar keeps develop settings and has the new label and tag"
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
@@ -182,6 +188,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-export-presets.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
 
   au:
     runs-on: macos-latest

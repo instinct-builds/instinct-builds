@@ -64,6 +64,7 @@ struct ASSSETSApp: App {
                     .keyboardShortcut("g", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
                 Button("Export Current View as Review Gallery…") { library.exportGallery(library.filtered.map(\.id), title: library.browsingTitle) }
                 Button("Import Client Feedback…") { library.importFeedback() }
+                Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
                 Button("Reveal in Finder") { library.reveal(library.selection) }
                     .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
                 Button("Contact Sheet & Brand Kit…") { library.openContactSheetForCurrentView() }
@@ -144,6 +145,8 @@ final class StudioLibrary: ObservableObject {
         var presets: Set<ExportPreset> = [.web, .social]
         var crop: CropMode = .detail
         var pattern = FilenamePattern.defaultPattern
+        /// Write title, tags, rating and label into the exported JPEG and TIFF copies (1.13). Remembered.
+        var embedMetadata = UserDefaults.standard.bool(forKey: "exportEmbedMetadata")
     }
     @Published var presetExport: PresetExportState?
     @Published var presetExportRunning = false
@@ -168,9 +171,11 @@ final class StudioLibrary: ObservableObject {
         }
         guard let dir else { return }
         presetExport = nil
+        UserDefaults.standard.set(st.embedMetadata, forKey: "exportEmbedMetadata")
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = st.ids.compactMap { byID[$0] }
         let jobs = assets.map { a in (a, effect, intensity, psdToggled[a.id] ?? [], tiles(for: a), fixSeams.contains(a.id)) }
+        let metadata: [UUID: FileMetadata] = st.embedMetadata ? Dictionary(uniqueKeysWithValues: assets.compactMap { a in catalog.fileMetadata(for: a.id).map { (a.id, $0) } }) : [:]
         let presets = ExportPreset.allCases.filter(st.presets.contains)
         presetExportRunning = true
         flash("Exporting \(assets.count) assets…")
@@ -188,7 +193,7 @@ final class StudioLibrary: ObservableObject {
                     for o in p.outputs(width: img.width, height: img.height, crop: st.crop, focus: p.cropAspect.flatMap { focus[$0] }) {
                         let name = DragOut.uniqueName(FilenamePattern.render(st.pattern, title: a.title, preset: p, output: o, index: n + 1, collection: a.collection), taken: taken)
                         let url = dir.appendingPathComponent(name)
-                        if MediaRenderer.writePreset(img, output: o, to: url) { taken.insert(name); written.append(url) } else { failed += 1 }
+                        if MediaRenderer.writePreset(img, output: o, to: url, metadata: metadata[a.id]) { taken.insert(name); written.append(url) } else { failed += 1 }
                     }
                 }
             }
@@ -549,9 +554,9 @@ final class StudioLibrary: ObservableObject {
         didSet { UserDefaults.standard.set(keepRating, forKey: "compareKeepRating") }
     }
     /// Files in the current view before stacks collapse, for the header's "4 items · 7 files".
-    var filteredFileCount: Int { unstackedFiltered.filter(ratingFilter.matches).count }
+    var filteredFileCount: Int { unstackedFiltered.filter { ratingFilter.matches($0) && (keywordFilter.map($0.tags.contains) ?? true) }.count }
     var filtered: [StudioAsset] {
-        let list = unstackedFiltered.filter(ratingFilter.matches)
+        let list = unstackedFiltered.filter { ratingFilter.matches($0) && (keywordFilter.map($0.tags.contains) ?? true) }
         if similarTo != nil || (selectedSmart == nil && selectedCollection == Self.missingCollection) { return list }
         return catalog.collapsingStacks(currentSort.apply(list), expanded: expandedStacks)
     }
@@ -572,7 +577,49 @@ final class StudioLibrary: ObservableObject {
         if let t = similarTo { return "Similar to " + (catalog.assets.first { $0.id == t }?.title ?? "asset") }
         return selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection
     }
-    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive) }
+    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil) }
+
+    // MARK: File metadata and keywords (1.13)
+
+    /// Keywords, title, stars and label that new files already carry (XMP sidecar, embedded XMP, IPTC).
+    static func readFileMetadata(_ c: inout StudioCatalog, ids: [UUID]) {
+        let set = Set(ids)
+        for a in c.assets where set.contains(a.id) {
+            guard let p = a.importedPath else { continue }
+            c.applyFileMetadata(XmpMetadata.read(path: p), to: a.id)
+        }
+    }
+
+    /// Writes "<name>.xmp" next to each of the user's files. Existing sidecars keep everything but our four fields.
+    func writeMetadata(_ ids: Set<UUID>) {
+        let fm = FileManager.default
+        var written = 0, skipped = 0, failed = 0
+        for a in catalog.assets where ids.contains(a.id) {
+            guard !a.isStarter, let p = a.importedPath, fm.fileExists(atPath: p), let m = catalog.fileMetadata(for: a.id) else { skipped += 1; continue }
+            let side = XmpMetadata.sidecarPath(for: p)
+            let text = (try? String(contentsOfFile: side, encoding: .utf8)).map { XmpMetadata.update($0, with: m) } ?? XmpMetadata.packet(m)
+            if (try? text.write(toFile: side, atomically: true, encoding: .utf8)) != nil { written += 1 } else { failed += 1 }
+        }
+        var msg = written == 0 ? "No sidecars written" : "Wrote \(written) .xmp sidecar\(written == 1 ? "" : "s"). Originals untouched."
+        if skipped > 0 { msg += " \(skipped) bundled or missing skipped." }
+        if failed > 0 { msg += " \(failed) could not be written." }
+        flash(msg)
+    }
+    var canWriteMetadata: Bool { selectedAssets.contains { !$0.isStarter && $0.importedPath != nil } }
+
+    /// Keyword picked in the sidebar; narrows the grid on top of everything else.
+    @Published var keywordFilter: String?
+    @Published var renamingKeyword: String?
+    func toggleKeywordFilter(_ tag: String) { keywordFilter = keywordFilter == tag ? nil : tag }
+    func renameKeyword(_ old: String, to new: String) {
+        let target = StudioCatalog.parseTags(new).first ?? ""
+        guard !target.isEmpty, target != old else { return }
+        let merging = catalog.assets.contains { $0.tags.contains(target) }
+        var n = 0
+        mutate(merging ? "Merge Keyword" : "Rename Keyword") { n = $0.renameTag(old, to: target) }
+        if keywordFilter == old { keywordFilter = target }
+        flash(merging ? "Merged \"\(old)\" into \"\(target)\" on \(n) assets" : "Renamed \"\(old)\" to \"\(target)\" on \(n) assets")
+    }
 
     // MARK: Undo, sort and cull (1.12)
 
@@ -735,7 +782,7 @@ final class StudioLibrary: ObservableObject {
         if !found.isEmpty {
             var c = catalog
             added = c.syncWatch(found: found)
-            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
+            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
         }
         let now = catalog.missingIDs { fm.fileExists(atPath: $0) }
         if now != missing { missing = now }
@@ -986,6 +1033,7 @@ final class StudioLibrary: ObservableObject {
     func beginNewSmart() {
         var rules = SmartRules(text: search, kinds: selectedKind.map { [$0] } ?? [])
         ratingFilter.apply(to: &rules)
+        if let k = keywordFilter, !rules.requiredTags.contains(k) { rules.requiredTags.append(k) }
         if selectedCollection == StudioCatalog.favorites { rules.favoritesOnly = true }
         else if selectedCollection != StudioCatalog.allAssets { rules.collection = selectedCollection }
         let t = search.trimmingCharacters(in: .whitespaces)
@@ -1004,7 +1052,7 @@ final class StudioLibrary: ObservableObject {
         } else {
             var id = UUID()
             mutate { id = $0.createSmartCollection(named: state.name, rules: rules) }
-            search = ""; selectedKind = nil; ratingFilter = RatingFilter()
+            search = ""; selectedKind = nil; ratingFilter = RatingFilter(); keywordFilter = nil
             show(smart: id)
             flash("Saved smart collection \(catalog.smartCollection(id)?.name ?? "")")
         }
@@ -1234,7 +1282,7 @@ final class StudioLibrary: ObservableObject {
                     for case let file as URL in e { if let id = c.importFile(path: file.path) { added.append(id) } }
                 } else if let id = c.importFile(path: url.path) { added.append(id) }
             }
-            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); c.autoStack() }
+            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); c.autoStack() }
         }
         if !added.isEmpty { refreshAutoTags(); show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
         else { flash("No new supported files found") }
@@ -1258,7 +1306,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
+        if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
             show(collection: "Material Textures")
@@ -1371,6 +1419,46 @@ final class StudioLibrary: ObservableObject {
                     compareVersions(v1.id, top.id); compareSwipe = true; swipeSplit = 0.5
                 }
             }
+        case "keywords":
+            // The keyword list with one keyword picked; the grid narrows to it.
+            show(collection: StudioCatalog.allAssets)
+            let top = catalog.keywordCounts()
+            keywordFilter = top.first(where: { $0.tag == "mockup" })?.tag ?? top.dropFirst(2).first?.tag
+            if let a = filtered.first { selection = [a.id]; focusID = a.id }
+        case "file-metadata":
+            // Files that already carry keywords, a title, stars and a label: a JPEG with embedded XMP
+            // and a PNG with a Lightroom-style sidecar (develop settings included). Then one edit is written back.
+            let fm = FileManager.default
+            let drop = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Client Drops", isDirectory: true)
+            try? fm.removeItem(at: drop)
+            try? fm.createDirectory(at: drop, withIntermediateDirectories: true)
+            if let src = CGImageSourceCreateWithURL(starterRoot.appendingPathComponent("terrazzo-texture.png") as CFURL, nil),
+               let img = CGImageSourceCreateImageAtIndex(src, 0, nil) {
+                let meta = FileMetadata(title: "Lobby Floor Hero", keywords: ["terrazzo", "lobby", "client-x", "approved"], rating: 4, label: .green)
+                let out = ExportOutput(suffix: "", width: 1600, height: 1600, crop: ExportRect(x: 0, y: 0, w: img.width, h: img.height), format: .jpeg, dpi: 72)
+                _ = MediaRenderer.writePreset(img, output: out, to: drop.appendingPathComponent("IMG_4471.jpg"), metadata: meta)
+            }
+            try? fm.copyItem(at: starterRoot.appendingPathComponent("marble-veins-texture.png"), to: drop.appendingPathComponent("DSC_0192.png"))
+            let lightroom = """
+            <x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 7.0">
+             <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/"
+                xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" xmp:Rating="5" xmp:Label="Purple" crs:Exposure2012="+0.35" crs:Temperature="5200">
+               <dc:title><rdf:Alt><rdf:li xml:lang="x-default">Marble Wall Study</rdf:li></rdf:Alt></dc:title>
+               <dc:subject><rdf:Bag><rdf:li>marble</rdf:li><rdf:li>wall</rdf:li><rdf:li>client-x</rdf:li></rdf:Bag></dc:subject>
+              </rdf:Description>
+             </rdf:RDF>
+            </x:xmpmeta>
+            """
+            try? lightroom.write(to: drop.appendingPathComponent("DSC_0192.xmp"), atomically: true, encoding: .utf8)
+            watch([drop.path])
+            scanWatchFolders()
+            show(collection: StudioCatalog.inboxCollection)
+            if let png = catalog.assets.first(where: { $0.importedPath?.hasSuffix("DSC_0192.png") == true }) {
+                label([png.id], .blue); addTags("round 2", to: [png.id])
+                writeMetadata([png.id])
+            }
+            if let jpg = catalog.assets.first(where: { $0.importedPath?.hasSuffix("IMG_4471.jpg") == true }) { selection = [jpg.id]; focusID = jpg.id; scrollInspectorToTags = true }
         case "cull", "sort-rating":
             // Half the mockups already rated, then cull picks up at the first unrated one; or the same pass sorted by rating.
             show(collection: "Device Mockups")
@@ -1479,6 +1567,7 @@ final class StudioLibrary: ObservableObject {
             selection = Set(ids); focusID = ids.first
             openPresetExport(ids)
             presetExport?.presets = [.web, .social, .story]
+            presetExport?.embedMetadata = true
             // CI also keeps a real export of every preset to list the files and their pixel sizes.
             if var st = presetExport {
                 st.presets = Set(ExportPreset.allCases)
@@ -1578,6 +1667,7 @@ struct StudioView: View {
 struct Sidebar: View {
     @EnvironmentObject var model: StudioLibrary
     @State private var renameText = ""
+    @State private var renameKeywordText = ""
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -1630,6 +1720,8 @@ struct Sidebar: View {
                     }
                 }
 
+                KeywordsSection(renameText: $renameKeywordText)
+
                 SidebarSection(title: "WATCH FOLDERS", trailing: AnyView(
                     Button { model.addWatchFolder() } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("Watch a folder for new files")
                 )) {
@@ -1670,6 +1762,12 @@ struct Sidebar: View {
             Button("Cancel", role: .cancel) { model.renamingCollection = nil }
         }
         .onChange(of: model.renamingCollection) { _, name in if let name { renameText = name } }
+        .alert("Rename Keyword", isPresented: Binding(get: { model.renamingKeyword != nil }, set: { if !$0 { model.renamingKeyword = nil } })) {
+            TextField("Keyword", text: $renameKeywordText)
+            Button("Rename") { if let old = model.renamingKeyword { model.renameKeyword(old, to: renameKeywordText) }; model.renamingKeyword = nil }
+            Button("Cancel", role: .cancel) { model.renamingKeyword = nil }
+        } message: { Text("Every asset tagged \"\(model.renamingKeyword ?? "")\" is updated. Using an existing keyword merges the two. ⌘Z undoes it.") }
+        .onChange(of: model.renamingKeyword) { _, k in if let k { renameKeywordText = k } }
     }
 
     private func symbol(for name: String) -> String {
@@ -1683,6 +1781,47 @@ struct Sidebar: View {
         case StudioCatalog.importedCollection: return "tray.and.arrow.down"
         case StudioCatalog.inboxCollection: return "tray.full"
         default: return "folder"
+        }
+    }
+}
+
+/// Every keyword in the library with counts. Click to filter; right-click to rename or merge.
+struct KeywordsSection: View {
+    @EnvironmentObject var model: StudioLibrary
+    @Binding var renameText: String
+    @State private var showAll = false
+    var body: some View {
+        let all = model.catalog.keywordCounts()
+        SidebarSection(title: "KEYWORDS", trailing: AnyView(Text("\(all.count)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary))) {
+            let shown = showAll ? all : Array(all.prefix(10))
+            WrapLayout(spacing: 5) {
+                ForEach(shown, id: \.tag) { k in
+                    let on = model.keywordFilter == k.tag
+                    HStack(spacing: 4) {
+                        Text(k.tag).font(.system(size: 11, weight: on ? .semibold : .regular)).lineLimit(1)
+                        Text("\(k.count)").font(.system(size: 9.5).monospacedDigit()).foregroundStyle(on ? Color.white.opacity(0.8) : Color.secondary)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(on ? Theme.accent.opacity(0.45) : Color.white.opacity(0.06), in: Capsule())
+                    .overlay(Capsule().stroke(on ? Theme.accent : Theme.hairline))
+                    .contentShape(Capsule())
+                    .onTapGesture { model.toggleKeywordFilter(k.tag) }
+                    .help("\(k.count) asset\(k.count == 1 ? "" : "s") · click to filter, right-click to rename or merge")
+                    .contextMenu {
+                        Button(on ? "Stop Filtering" : "Show Assets Tagged \"\(k.tag)\"") { model.toggleKeywordFilter(k.tag) }
+                        Button("Rename…") { model.renamingKeyword = k.tag }
+                        Menu("Merge Into") {
+                            ForEach(all.filter { $0.tag != k.tag }.prefix(25), id: \.tag) { o in Button("\(o.tag)  (\(o.count))") { model.renameKeyword(k.tag, to: o.tag) } }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+            if all.count > 10 {
+                Button(showAll ? "Show fewer" : "Show all \(all.count)") { showAll.toggle() }
+                    .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent).padding(.horizontal, 9)
+            }
+            if all.isEmpty { Text("Tags you add show up here.").font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 9) }
         }
     }
 }
@@ -1764,25 +1903,36 @@ struct SidebarRow: View {
 
 struct AssetBrowser: View {
     @EnvironmentObject var model: StudioLibrary
+    @ViewBuilder private func headerControls(compact: Bool) -> some View {
+        HStack(spacing: 8) {
+            SortMenu(compact: compact)
+            if let id = model.selectedSmart {
+                Button { model.beginEdit(smart: id) } label: {
+                    if compact { Image(systemName: "slider.horizontal.3") } else { Label("Edit Rules", systemImage: "slider.horizontal.3").fixedSize() }
+                }.buttonStyle(.bordered).controlSize(.small).help("Edit rules")
+            } else if model.canSaveSearch {
+                Button { model.beginNewSmart() } label: {
+                    if compact { Image(systemName: "sparkles") } else { Label("Save as Smart", systemImage: "sparkles").fixedSize() }
+                }.buttonStyle(.borderedProminent).controlSize(.small).help("Save this search as a live smart collection")
+            }
+        }.fixedSize()
+    }
     var body: some View {
         let items = model.filtered
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     if model.selectedSmart != nil { Image(systemName: "sparkles").foregroundStyle(Theme.smart).font(.title3) }
-                    Text(model.browsingTitle).font(.system(size: 22, weight: .bold)).lineLimit(1)
+                    Text(model.browsingTitle).font(.system(size: 22, weight: .bold)).lineLimit(1).layoutPriority(2)
                     let files = model.filteredFileCount
                     Text(files > items.count ? "\(items.count) items · \(files) files" : "\(items.count) \(items.count == 1 ? "asset" : "assets")")
                         .font(.callout).foregroundStyle(.secondary).fixedSize()
                         .help(files > items.count ? "Stacks show as one card; \(files - items.count) older versions are tucked inside" : "")
-                    Spacer()
-                    SortMenu()
-                    if let id = model.selectedSmart {
-                        Button { model.beginEdit(smart: id) } label: { Label("Edit Rules", systemImage: "slider.horizontal.3").fixedSize() }
-                            .buttonStyle(.bordered).controlSize(.small)
-                    } else if model.canSaveSearch {
-                        Button { model.beginNewSmart() } label: { Label("Save as Smart", systemImage: "sparkles").fixedSize() }
-                            .buttonStyle(.borderedProminent).controlSize(.small).help("Save this search as a live smart collection")
+                    Spacer(minLength: 8)
+                    // Full labels when there is room; icons only when the title would otherwise be cut.
+                    ViewThatFits(in: .horizontal) {
+                        headerControls(compact: false)
+                        headerControls(compact: true)
                     }
                 }
                 if let id = model.selectedSmart, let smart = model.catalog.smartCollection(id) {
@@ -1808,7 +1958,16 @@ struct AssetBrowser: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Pinned outside the scrolling media chips so an active rating or label filter is always visible.
                     Rectangle().fill(Theme.hairline).frame(width: 1, height: 18)
-                    HStack(spacing: 6) { RatingFilterChips() }.fixedSize()
+                    HStack(spacing: 6) {
+                        if let k = model.keywordFilter {
+                            Button { model.keywordFilter = nil } label: {
+                                HStack(spacing: 4) { Image(systemName: "tag.fill").font(.system(size: 9)); Text(k).lineLimit(1); Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
+                                    .font(.system(size: 11.5, weight: .semibold)).padding(.horizontal, 9).padding(.vertical, 5)
+                                    .background(Theme.accent.opacity(0.35), in: Capsule()).overlay(Capsule().stroke(Theme.accent))
+                            }.buttonStyle(.plain).help("Stop filtering by this keyword")
+                        }
+                        RatingFilterChips()
+                    }.fixedSize()
                 }
             }
             .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 10)
@@ -1860,6 +2019,7 @@ struct MediaFoldMenu: View {
 /// Grid sort for the current collection; each collection remembers its own.
 struct SortMenu: View {
     @EnvironmentObject var model: StudioLibrary
+    var compact = false
     var body: some View {
         let cur = model.currentSort
         Menu {
@@ -1867,7 +2027,8 @@ struct SortMenu: View {
                 Button { model.setSort(s) } label: { Label(s.title, systemImage: s == cur ? "checkmark" : s.symbol) }
             }
         } label: {
-            Label(cur.title, systemImage: "arrow.up.arrow.down").font(.system(size: 11.5, weight: .semibold))
+            if compact { Image(systemName: "arrow.up.arrow.down").font(.system(size: 11.5, weight: .semibold)) }
+            else { Label(cur.title, systemImage: "arrow.up.arrow.down").font(.system(size: 11.5, weight: .semibold)) }
         }
         .menuStyle(.borderlessButton).fixedSize()
         .padding(.horizontal, 9).padding(.vertical, 4)
@@ -2106,6 +2267,7 @@ struct SelectionBar: View {
                 Button("Original Files…") { model.exportToFolder(model.selection, mode: .originals) }
                 Button("Presets…") { model.openPresetExport() }
                 Button("Review Gallery…") { model.exportGallery() }
+                if model.canWriteMetadata { Button("Write Metadata Sidecars") { model.writeMetadata(model.selection) } }
                 if model.canReveal { Divider(); Button("Reveal in Finder") { model.reveal(model.selection) } }
                 Divider()
                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.selectedAssets.map(\.id), title: "\(model.selection.count) Selected Assets") }
@@ -3191,6 +3353,12 @@ struct PresetExportSheet: View {
                         .pickerStyle(.segmented).labelsHidden()
                     Text(state.crop == .detail ? "Square and story crops move toward the busiest detail." : "Square and story crops take the middle.")
                         .font(.caption).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                    Toggle(isOn: $state.embedMetadata) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Embed title, tags, rating and label").font(.callout)
+                            Text("In the JPEG and TIFF copies. Originals are never changed.").font(.caption).foregroundStyle(.tertiary)
+                        }
+                    }.toggleStyle(.checkbox).padding(.top, 4)
                     InspectorLabel(text: "FILE NAMES").padding(.top, 6)
                     TextField(FilenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
                     Text(FilenamePattern.tokens.joined(separator: "  ")).font(.caption2.monospaced()).foregroundStyle(.tertiary)
@@ -4149,7 +4317,7 @@ enum MediaRenderer {
     }
 
     /// Crops and scales one preset output, then encodes it (JPEG 0.86, PNG, or TIFF with its dpi).
-    static func writePreset(_ img: CGImage, output o: ExportOutput, to url: URL) -> Bool {
+    static func writePreset(_ img: CGImage, output o: ExportOutput, to url: URL, metadata: FileMetadata? = nil) -> Bool {
         let r = CGRect(x: o.crop.x, y: o.crop.y, width: o.crop.w, height: o.crop.h)
         guard let cropped = (r == CGRect(x: 0, y: 0, width: img.width, height: img.height)) ? img : img.cropping(to: r) else { return false }
         let opaque = o.format == .jpeg
@@ -4164,7 +4332,11 @@ enum MediaRenderer {
         var props: [CFString: Any] = [kCGImagePropertyDPIWidth: o.dpi, kCGImagePropertyDPIHeight: o.dpi]
         if o.format == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = 0.86 }
         if o.format == .tiff { props[kCGImagePropertyTIFFDictionary] = [kCGImagePropertyTIFFCompression: 5] }   // LZW
-        CGImageDestinationAddImage(dest, scaled, props as CFDictionary)
+        if let metadata, o.format != .png, let xmp = CGImageMetadataCreateFromXMPData(Data(XmpMetadata.packet(metadata).utf8) as CFData) {
+            CGImageDestinationAddImageAndMetadata(dest, scaled, xmp, props as CFDictionary)
+        } else {
+            CGImageDestinationAddImage(dest, scaled, props as CFDictionary)
+        }
         return CGImageDestinationFinalize(dest)
     }
 

@@ -464,3 +464,32 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   "All Media" menu instead of being squeezed and cut off.
 - Logic and tests: `Culling.swift` (sort, cull session, reject toggle,
   undo history) and `CullingTests.swift`.
+
+## 1.13.0: keywords and metadata round-trip
+
+- Imported and watched files bring their own metadata: keywords become
+  tags, a title replaces the file-name title, and stars and color labels
+  carry over (a -1 rating arrives as rejected). ASSSETS reads an `.xmp`
+  sidecar first, then XMP embedded in JPEG, PNG, TIFF or PSD, then IPTC
+  keywords and object name. Lightroom color labels and Bridge's default
+  label names (Select, Second, Approved, Review, To Do) both map.
+- File > Write Metadata to Files (.xmp sidecars), also in the selection
+  bar's Export menu, writes title, tags, rating and label to
+  `<name>.xmp` next to each of your files. The original files are never
+  modified. An existing sidecar keeps everything else in it (develop
+  settings, camera data, other fields); only those four fields change.
+  Bundled library files are skipped.
+- Export with Presets has "Embed title, tags, rating and label", which
+  writes them into the exported JPEG and TIFF copies. The choice is
+  remembered.
+- KEYWORDS in the sidebar lists every tag with its count (top 10, or show
+  all). Click one to filter the grid (a removable chip appears by the
+  filters, and Save as Smart includes it). Right-click to rename or merge
+  into another keyword across the whole library; smart collection rules
+  follow, and ⌘Z undoes it. How-it-got-here tags (file type, imported,
+  watched, bundled) stay out of the list and out of sidecars.
+- The collection title keeps priority in the grid header: at narrow
+  widths the Sort and Save as Smart controls shrink to icons first.
+- Logic and tests: `XmpMetadata.swift` and `XmpMetadataTests.swift`
+  (Lightroom sidecar, JPEG with XMP and IPTC, PNG iTXt, round-trip,
+  write-back that keeps other settings, rename and merge).
