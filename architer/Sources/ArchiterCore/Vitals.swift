@@ -36,11 +36,15 @@ public struct CustomCondition: Codable, Equatable, Sendable, Identifiable {
     public var hindersAttacks: Bool
     /// Ability-check disadvantage.
     public var hindersChecks: Bool
+    /// Speed drops to 0, like the built-in grappled/restrained states.
+    public var immobilizes: Bool
 
-    public init(name: String, hindersAttacks: Bool = false, hindersChecks: Bool = false) {
+    public init(name: String, hindersAttacks: Bool = false, hindersChecks: Bool = false,
+                immobilizes: Bool = false) {
         self.name = name
         self.hindersAttacks = hindersAttacks
         self.hindersChecks = hindersChecks
+        self.immobilizes = immobilizes
     }
 
     public init(from decoder: Decoder) throws {
@@ -49,6 +53,7 @@ public struct CustomCondition: Codable, Equatable, Sendable, Identifiable {
         name = try c.decode(String.self, forKey: .name)
         hindersAttacks = try c.decodeIfPresent(Bool.self, forKey: .hindersAttacks) ?? false
         hindersChecks = try c.decodeIfPresent(Bool.self, forKey: .hindersChecks) ?? false
+        immobilizes = try c.decodeIfPresent(Bool.self, forKey: .immobilizes) ?? false
     }
 }
 

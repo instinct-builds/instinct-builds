@@ -644,6 +644,17 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
             $0.tier == .expert ? "\($0.name) (expertise)" : $0.name
         }.joined(separator: ", ")
     }
+    /// Genre-standard: grappled or restrained (built-in) - or any custom
+    /// condition flagged immobilizing - drops every speed to 0.
+    public var immobilized: Bool {
+        conditions.contains(.grappled) || conditions.contains(.restrained)
+            || customConditions.contains(where: \.immobilizes)
+    }
+    /// Movement readout after condition effects: "0 ft (immobilized)" when
+    /// immobilized, else the normal summary.
+    public var effectiveMovementSummary: String {
+        immobilized ? "0 ft (immobilized)" : movementSummary
+    }
     /// Passive value for a skill: 10 + its bonus (raw ability modifier when the
     /// sheet has no such skill). The table standard for noticing without rolling.
     public func passiveScore(forSkill name: String, ability: Ability) -> Int {

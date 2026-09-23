@@ -109,9 +109,9 @@ struct VitalsBlock: View {
                     character.extraSpeeds.append(MovementSpeed(mode: .fly, feet: 30))
                 }
                 .controlSize(.small)
-                Text(character.movementSummary)
+                Text(character.effectiveMovementSummary)
                     .font(Theme.Typeface.caption)
-                    .foregroundStyle(Theme.inkMuted)
+                    .foregroundStyle(character.immobilized ? Theme.danger : Theme.inkMuted)
             }
             HStack(spacing: Theme.Gap.md) {
                 CardSectionLabel(text: "Passive senses")
@@ -198,6 +198,7 @@ struct ConditionGrid: View {
                     .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 160)
                 Toggle("Atk dis", isOn: $cc.hindersAttacks).toggleStyle(.checkbox)
                 Toggle("Check dis", isOn: $cc.hindersChecks).toggleStyle(.checkbox)
+                Toggle("Speed 0", isOn: $cc.immobilizes).toggleStyle(.checkbox)
                 Button(role: .destructive) {
                     character.customConditions.removeAll { $0.id == cc.id }
                 } label: { Image(systemName: "minus.circle") }

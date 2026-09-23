@@ -194,6 +194,38 @@ struct CharacterTests {
         #expect(old.toolProficiencies.isEmpty)
     }
 
+    @Test func immobilizedDropsSpeeds() throws {
+        var c = Character(name: "T", level: 1)
+        c.speed = 30
+        let fly = MovementSpeed(mode: .fly, feet: 60)
+        c.extraSpeeds = [fly]
+        #expect(!c.immobilized)
+        #expect(c.effectiveMovementSummary == "30 ft, fly 60 ft")
+        // Built-in grappled and restrained both immobilize.
+        c.conditions = [.grappled]
+        #expect(c.immobilized)
+        #expect(c.effectiveMovementSummary == "0 ft (immobilized)")
+        c.conditions = [.restrained]
+        #expect(c.immobilized)
+        // Other built-ins do not.
+        c.conditions = [.prone]
+        #expect(!c.immobilized)
+        // Custom conditions immobilize only when flagged.
+        let rooted = CustomCondition(name: "Rooted", immobilizes: true)
+        let marked = CustomCondition(name: "Marked", hindersChecks: true)
+        c.conditions = []
+        c.customConditions = [marked]
+        #expect(!c.immobilized)
+        c.customConditions = [marked, rooted]
+        #expect(c.immobilized)
+        // Legacy custom-condition JSON without the immobilizes key decodes false.
+        let json = """
+        {"name":"Rooted"}
+        """.data(using: .utf8)!
+        let cc = try JSONDecoder().decode(CustomCondition.self, from: json)
+        #expect(!cc.immobilizes)
+    }
+
     @Test func defensesAdjustIncomingDamage() {
         var c = Character(name: "T", level: 1, maxHP: 30)
         c.resistances = [.fire]

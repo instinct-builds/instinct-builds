@@ -4,6 +4,17 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.16.0
+
+- Conditions meet movement: grappled and restrained drop every speed
+  (walking and extra modes) to 0, per the genre-standard rule. Custom
+  conditions gain a "Speed 0" flag with the same effect. The vitals
+  summary and the speed line in Markdown, HTML, and PDF exports show
+  "0 ft (immobilized)" while it lasts - no more stale movement on a
+  grabbed character.
+- Sample sheet: Wren is currently grappled (vine snare) to show the
+  interaction.
+
 ## What's in 2.15.0
 
 - Tool proficiencies as a structured list: each tool carries a training

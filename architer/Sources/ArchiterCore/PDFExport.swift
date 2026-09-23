@@ -188,7 +188,7 @@ public enum SheetPDFExporter {
                     ("HP", "\(c.currentHP)/\(c.maxHP)\(c.tempHP > 0 ? " +\(c.tempHP)t" : "")"),
                     ("AC", "\(c.computedAC)"),
                     ("Initiative", signed(c.initiative)),
-                    ("Speed", c.movementSummary),
+                    ("Speed", c.effectiveMovementSummary),
                     ("Passive Perc", "\(c.passivePerception)"),
                     ("Passive Inv", "\(c.passiveInvestigation)"),
                     ("Passive Ins", "\(c.passiveInsight)"),
