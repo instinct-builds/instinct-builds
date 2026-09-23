@@ -514,3 +514,27 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   When the inspector is too narrow it hides instead of wrapping one
   letter per line.
 - Logic and tests: `BatchRename.swift` and `BatchRenameTests.swift`.
+
+## 1.15.0: search by color
+
+- The swatch button at the end of the search field opens Search by Color:
+  15 swatches, your recent colors, the system eyedropper (pick a color
+  anywhere on screen), the color panel, and a hex field. Picking a color
+  filters the grid to assets with a palette color near it and ranks them
+  closest first. An asset where the color dominates ranks above one where
+  it is a small accent.
+- A tolerance slider goes from Close to Loose. Distances are CIEDE2000,
+  where about 2 is a barely visible difference and 12-16 is the same
+  color family.
+- The active color shows as a chip next to the rating and label filters.
+  Click it to clear. Save as Smart keeps the color, so a search becomes a
+  live collection.
+- Click any swatch under COLOR PALETTE in the inspector to search for that
+  color. Right-click still copies the hex.
+- Smart collections have a Color rule ("contains a color near #254BB4")
+  with its own tolerance. Favorites only moved onto the Label row so the
+  editor keeps its height on small screens.
+- The last 6 colors are kept with the library.
+- Logic and tests: `ColorSearch.swift` and `ColorSearchTests.swift`
+  (Lab conversion, the published CIEDE2000 reference pairs, ranking,
+  the smart rule and old-catalog decoding, recent colors).

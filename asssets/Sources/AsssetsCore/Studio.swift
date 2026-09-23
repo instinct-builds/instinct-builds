@@ -136,8 +136,10 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var watchFolders: [String] = []
     /// Grid sort per collection or smart collection (1.12); missing means date added.
     public var viewSorts: [String: AssetSort] = [:]
+    /// Colors searched lately, newest first (1.15).
+    public var recentColors: [String] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts, recentColors }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -149,6 +151,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         smartSeeded = try c.decodeIfPresent(Bool.self, forKey: .smartSeeded) ?? false
         watchFolders = try c.decodeIfPresent([String].self, forKey: .watchFolders) ?? []
         viewSorts = ((try? c.decodeIfPresent([String: String].self, forKey: .viewSorts)) ?? [:]).compactMapValues(AssetSort.init(rawValue:))
+        recentColors = ((try? c.decodeIfPresent([String].self, forKey: .recentColors)) ?? []).compactMap(ColorSearch.normalize)
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {

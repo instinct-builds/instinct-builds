@@ -48,14 +48,16 @@ public struct SmartRules: Codable, Equatable, Sendable {
     public var minRating = 0
     /// Any of these color labels; empty means any (1.11).
     public var labels: [ColorLabel] = []
+    /// Contains a color near this one (1.15).
+    public var color: ColorQuery? = nil
 
     public init(text: String = "", kinds: [MediaKind] = [], requiredTags: [String] = [], favoritesOnly: Bool = false,
-                tone: PaletteTone? = nil, collection: String? = nil, minRating: Int = 0, labels: [ColorLabel] = []) {
+                tone: PaletteTone? = nil, collection: String? = nil, minRating: Int = 0, labels: [ColorLabel] = [], color: ColorQuery? = nil) {
         self.text = text; self.kinds = kinds; self.requiredTags = requiredTags; self.favoritesOnly = favoritesOnly
-        self.tone = tone; self.collection = collection; self.minRating = minRating; self.labels = labels
+        self.tone = tone; self.collection = collection; self.minRating = minRating; self.labels = labels; self.color = color
     }
 
-    enum CodingKeys: String, CodingKey { case text, kinds, requiredTags, favoritesOnly, tone, collection, minRating, labels }
+    enum CodingKeys: String, CodingKey { case text, kinds, requiredTags, favoritesOnly, tone, collection, minRating, labels, color }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
@@ -66,9 +68,10 @@ public struct SmartRules: Codable, Equatable, Sendable {
         collection = try c.decodeIfPresent(String.self, forKey: .collection)
         minRating = try c.decodeIfPresent(Int.self, forKey: .minRating) ?? 0
         labels = (try? c.decodeIfPresent([ColorLabel].self, forKey: .labels)) ?? []
+        color = try? c.decodeIfPresent(ColorQuery.self, forKey: .color)
     }
 
-    public var isEmpty: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty && kinds.isEmpty && requiredTags.isEmpty && !favoritesOnly && tone == nil && collection == nil && minRating == 0 && labels.isEmpty }
+    public var isEmpty: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty && kinds.isEmpty && requiredTags.isEmpty && !favoritesOnly && tone == nil && collection == nil && minRating == 0 && labels.isEmpty && color == nil }
 
     public func matches(_ a: StudioAsset) -> Bool {
         if !kinds.isEmpty && !kinds.contains(a.kind) { return false }
@@ -78,6 +81,7 @@ public struct SmartRules: Codable, Equatable, Sendable {
         if let collection, a.collection != collection { return false }
         if !requiredTags.allSatisfy({ a.searchTags.contains($0) }) { return false }
         if let tone, PaletteTone.of(a.palette) != tone { return false }
+        if let color, !ColorSearch.matches(color, a) { return false }
         let terms = text.lowercased().split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
         guard !terms.isEmpty else { return true }
         let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.searchTags + a.palette).joined(separator: " ").lowercased()
@@ -89,6 +93,7 @@ public struct SmartRules: Codable, Equatable, Sendable {
         var parts: [String] = []
         if !kinds.isEmpty { parts.append(kinds.map(\.rawValue).joined(separator: " or ")) }
         if let tone { parts.append("\(tone.rawValue.lowercased()) palette") }
+        if let color { parts.append("color \(color.closeness) \(color.hex)") }
         if favoritesOnly { parts.append("favorites") }
         if minRating > 0 { parts.append(minRating == 5 ? "rated 5★" : "rated \(minRating)★ or more") }
         if !labels.isEmpty { parts.append(labels.map(\.name).joined(separator: " or ").lowercased() + " label") }

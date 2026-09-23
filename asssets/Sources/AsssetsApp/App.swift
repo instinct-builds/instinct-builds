@@ -567,9 +567,15 @@ final class StudioLibrary: ObservableObject {
         didSet { UserDefaults.standard.set(keepRating, forKey: "compareKeepRating") }
     }
     /// Files in the current view before stacks collapse, for the header's "4 items · 7 files".
-    var filteredFileCount: Int { unstackedFiltered.filter { ratingFilter.matches($0) && (keywordFilter.map($0.tags.contains) ?? true) }.count }
+    var filteredFileCount: Int { unstackedFiltered.filter(passesPinnedFilters).count }
+    /// Rating, label, keyword and color filters that sit on top of the collection and search box.
+    func passesPinnedFilters(_ a: StudioAsset) -> Bool {
+        ratingFilter.matches(a) && (keywordFilter.map(a.tags.contains) ?? true) && (colorQuery.map { ColorSearch.matches($0, a) } ?? true)
+    }
     var filtered: [StudioAsset] {
-        let list = unstackedFiltered.filter { ratingFilter.matches($0) && (keywordFilter.map($0.tags.contains) ?? true) }
+        let list = unstackedFiltered.filter(passesPinnedFilters)
+        // A color search ranks by closeness (dominant matches first) and shows every version, like Find Similar.
+        if let q = colorQuery, similarTo == nil { return ColorSearch.rank(list, q) }
         if similarTo != nil || (selectedSmart == nil && selectedCollection == Self.missingCollection) { return list }
         return catalog.collapsingStacks(currentSort.apply(list), expanded: expandedStacks)
     }
@@ -590,7 +596,7 @@ final class StudioLibrary: ObservableObject {
         if let t = similarTo { return "Similar to " + (catalog.assets.first { $0.id == t }?.title ?? "asset") }
         return selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection
     }
-    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil) }
+    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil || colorQuery != nil) }
 
     // MARK: File metadata and keywords (1.13)
 
@@ -632,6 +638,33 @@ final class StudioLibrary: ObservableObject {
         mutate(merging ? "Merge Keyword" : "Rename Keyword") { n = $0.renameTag(old, to: target) }
         if keywordFilter == old { keywordFilter = target }
         flash(merging ? "Merged \"\(old)\" into \"\(target)\" on \(n) assets" : "Renamed \"\(old)\" to \"\(target)\" on \(n) assets")
+    }
+
+    // MARK: Search by color (1.15)
+
+    @Published var colorQuery: ColorQuery?
+    @Published var showColorPicker = false
+    /// Filters and ranks the grid by a color. `remember` adds it to the recent colors (not while dragging in the color panel).
+    func searchColor(_ hex: String, tolerance: Double? = nil, remember: Bool = true) {
+        guard let h = ColorSearch.normalize(hex) else { flash("Not a color: \(hex)"); return }
+        colorQuery = ColorQuery(hex: h, tolerance: tolerance ?? colorQuery?.tolerance ?? ColorQuery.defaultTolerance)
+        if remember && catalog.recentColors.first != h { mutate { $0.noteRecentColor(h) } }
+    }
+    func setColorTolerance(_ t: Double) { if let q = colorQuery { colorQuery = ColorQuery(hex: q.hex, tolerance: t) } }
+    func clearColorSearch() { colorQuery = nil }
+    /// The system eyedropper: pick a color anywhere on screen.
+    func sampleScreenColor() {
+        showColorPicker = false
+        NSColorSampler().show { [weak self] c in
+            guard let c else { return }
+            let h = Self.hex(c)
+            DispatchQueue.main.async { self?.searchColor(h) }
+        }
+    }
+    nonisolated static func hex(_ c: NSColor) -> String {
+        let s = c.usingColorSpace(.sRGB) ?? c
+        func v(_ x: CGFloat) -> Int { Int((min(1, max(0, x)) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", v(s.redComponent), v(s.greenComponent), v(s.blueComponent))
     }
 
     // MARK: Batch rename (1.14)
@@ -1074,10 +1107,12 @@ final class StudioLibrary: ObservableObject {
         var rules = SmartRules(text: search, kinds: selectedKind.map { [$0] } ?? [])
         ratingFilter.apply(to: &rules)
         if let k = keywordFilter, !rules.requiredTags.contains(k) { rules.requiredTags.append(k) }
+        rules.color = colorQuery
         if selectedCollection == StudioCatalog.favorites { rules.favoritesOnly = true }
         else if selectedCollection != StudioCatalog.allAssets { rules.collection = selectedCollection }
         let t = search.trimmingCharacters(in: .whitespaces)
-        smartEditor = SmartEditorState(existing: nil, name: t.isEmpty ? (selectedKind?.rawValue ?? (ratingFilter.minRating > 0 ? "\(ratingFilter.minRating) Stars and Up" : "Smart Collection")) : t.capitalized, rules: rules)
+        let colorName = colorQuery.map { "Near " + $0.hex }
+        smartEditor = SmartEditorState(existing: nil, name: t.isEmpty ? (colorName ?? selectedKind?.rawValue ?? (ratingFilter.minRating > 0 ? "\(ratingFilter.minRating) Stars and Up" : "Smart Collection")) : t.capitalized, rules: rules)
     }
     func beginEdit(smart id: UUID) {
         guard let s = catalog.smartCollection(id) else { return }
@@ -1092,7 +1127,7 @@ final class StudioLibrary: ObservableObject {
         } else {
             var id = UUID()
             mutate { id = $0.createSmartCollection(named: state.name, rules: rules) }
-            search = ""; selectedKind = nil; ratingFilter = RatingFilter(); keywordFilter = nil
+            search = ""; selectedKind = nil; ratingFilter = RatingFilter(); keywordFilter = nil; colorQuery = nil
             show(smart: id)
             flash("Saved smart collection \(catalog.smartCollection(id)?.name ?? "")")
         }
@@ -1618,6 +1653,29 @@ final class StudioLibrary: ObservableObject {
                 runPresetExport(st, to: out)
                 presetExport = keep
             }
+        case "color-search", "color-smart", "color-smart-editor":
+            // A deep blue picked from the library's mockup backdrops; two earlier picks show in Recent.
+            show(collection: StudioCatalog.allAssets)
+            let blue = "#254BB4"
+            if demo == "color-search" {
+                for h in ["#E03131", "#40C057"] { mutate { $0.noteRecentColor(h) } }
+                searchColor(blue, tolerance: 12)
+                if let a = filtered.first { selection = [a.id]; focusID = a.id }
+                // CI keeps the ranking with distances as text proof.
+                let lines = filtered.prefix(20).compactMap { a -> String? in
+                    guard let m = ColorSearch.match(colorQuery!, palette: a.palette) else { return nil }
+                    return String(format: "%@\t%@\t%.2f", a.title, a.palette.first ?? "", m.distance)
+                }
+                try? (["query \(blue) tolerance 12 · \(filtered.count) matches"] + lines).joined(separator: "\n")
+                    .write(to: supportRoot.appendingPathComponent("demo-color-search.txt"), atomically: true, encoding: .utf8)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.showColorPicker = true }
+            } else {
+                var id = UUID()
+                mutate("New Smart Collection") { id = $0.createSmartCollection(named: "Blue Hour", rules: SmartRules(color: ColorQuery(hex: blue, tolerance: 12))) }
+                show(smart: id)
+                if let a = filtered.first { selection = [a.id]; focusID = a.id }
+                if demo == "color-smart-editor" { beginEdit(smart: id) }
+            }
         case "batch-rename":
             // Eight textures picked in the grid, renamed for a client hand-off.
             show(collection: "Material Textures")
@@ -2014,6 +2072,7 @@ struct AssetBrowser: View {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Search titles, tags, colors…", text: $model.search).textFieldStyle(.plain)
                     if !model.search.isEmpty { Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
+                    ColorSearchButton()
                 }
                 .padding(.horizontal, 12).padding(.vertical, 9)
                 .background(Theme.raised, in: RoundedRectangle(cornerRadius: 11))
@@ -2031,6 +2090,17 @@ struct AssetBrowser: View {
                     // Pinned outside the scrolling media chips so an active rating or label filter is always visible.
                     Rectangle().fill(Theme.hairline).frame(width: 1, height: 18)
                     HStack(spacing: 6) {
+                        if let q = model.colorQuery {
+                            Button { model.clearColorSearch() } label: {
+                                HStack(spacing: 5) {
+                                    Circle().fill(Color(hex: q.hex)).frame(width: 11, height: 11).overlay(Circle().stroke(Color.white.opacity(0.6)))
+                                    Text(q.hex).font(.system(size: 11, weight: .semibold, design: .monospaced)).lineLimit(1)
+                                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                                }
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(Color(hex: q.hex).opacity(0.28), in: Capsule()).overlay(Capsule().stroke(Color(hex: q.hex)))
+                            }.buttonStyle(.plain).help("Ranked by how close each palette is to \(q.hex). Click to stop filtering by color.")
+                        }
                         if let k = model.keywordFilter {
                             Button { model.keywordFilter = nil } label: {
                                 HStack(spacing: 4) { Image(systemName: "tag.fill").font(.system(size: 9)); Text(k).lineLimit(1); Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
@@ -2636,6 +2706,10 @@ struct SmartEditor: View {
                     }.pickerStyle(.segmented).labelsHidden()
                 }
                 GridRow {
+                    Text("Color").foregroundStyle(.secondary)
+                    SmartColorRule(color: $state.rules.color)
+                }
+                GridRow {
                     Text("In").foregroundStyle(.secondary)
                     Picker("Collection", selection: $state.rules.collection) {
                         Text("Any collection").tag(String?.none)
@@ -2659,11 +2733,10 @@ struct SmartEditor: View {
                             }
                         }
                         Text(state.rules.labels.isEmpty ? "Any label" : "Any of these").font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 12)
+                        // Shares the label row since 1.15, which keeps the editor's height with the new Color row.
+                        Toggle("Favorites only", isOn: $state.rules.favoritesOnly)
                     }
-                }
-                GridRow {
-                    Text("")
-                    Toggle("Favorites only", isOn: $state.rules.favoritesOnly)
                 }
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -3211,7 +3284,14 @@ struct Inspector: View {
                                     Color(hex: hex).frame(height: 30).clipShape(RoundedRectangle(cornerRadius: 6))
                                     Text(hex).font(.system(size: 8, design: .monospaced)).foregroundStyle(.secondary)
                                 }
-                                .onTapGesture { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(hex, forType: .string); model.flash("Copied \(hex)") }
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(model.colorQuery?.hex == hex ? Color.white : Color.clear, lineWidth: 2).frame(height: 30), alignment: .top)
+                                .contentShape(Rectangle())
+                                .onTapGesture { model.searchColor(hex) }
+                                .help("Find assets with this color")
+                                .contextMenu {
+                                    Button("Find Assets with This Color") { model.searchColor(hex) }
+                                    Button("Copy \(hex)") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(hex, forType: .string); model.flash("Copied \(hex)") }
+                                }
                             }
                         }
                         let smarts = model.catalog.smartCollections.filter { $0.rules.matches(asset) }
@@ -3380,6 +3460,120 @@ struct AssetViewer: View {
                                  fixSeams: model.fixSeams.contains(asset.id), fit: true)
                 if asset.kind == .audio, let p = asset.importedPath { AudioButton(url: URL(fileURLWithPath: p)).id(p) }
             }
+        }
+    }
+}
+
+/// Swatch button in the search field; opens the color picker popover (1.15).
+struct ColorSearchButton: View {
+    @EnvironmentObject var model: StudioLibrary
+    var body: some View {
+        Button { model.showColorPicker.toggle() } label: {
+            Group {
+                if let q = model.colorQuery {
+                    Circle().fill(Color(hex: q.hex)).overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1.5))
+                } else {
+                    Circle().fill(AngularGradient(colors: [.red, .orange, .yellow, .green, .cyan, .blue, .purple, .red], center: .center))
+                        .overlay(Circle().stroke(Color.white.opacity(0.25)))
+                }
+            }
+            .frame(width: 16, height: 16)
+            .padding(3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Search by color")
+        .popover(isPresented: $model.showColorPicker, arrowEdge: .bottom) { ColorSearchPopover().environmentObject(model) }
+    }
+}
+
+struct ColorSearchPopover: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State private var hexText = ""
+    var body: some View {
+        let q = model.colorQuery
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Search by Color").font(.headline)
+                Spacer()
+                if q != nil { Button("Clear") { model.clearColorSearch() }.buttonStyle(.borderless).font(.caption) }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 8), count: 5), spacing: 8) {
+                ForEach(ColorSearch.swatches, id: \.self) { h in swatch(h, size: 30) }
+            }
+            if !model.catalog.recentColors.isEmpty {
+                InspectorLabel(text: "RECENT")
+                HStack(spacing: 8) { ForEach(model.catalog.recentColors, id: \.self) { h in swatch(h, size: 22) } }
+            }
+            HStack(spacing: 8) {
+                Button { model.sampleScreenColor() } label: { Label("Eyedropper", systemImage: "eyedropper") }.help("Pick a color anywhere on screen")
+                ColorPicker("", selection: Binding(
+                    get: { Color(hex: q?.hex ?? "#808080") },
+                    set: { model.searchColor(StudioLibrary.hex(NSColor($0)), remember: false) }), supportsOpacity: false)
+                    .labelsHidden().help("Open the color panel")
+                TextField("#4DABF7", text: $hexText).textFieldStyle(.roundedBorder).font(.callout.monospaced()).frame(width: 92)
+                    .onSubmit { model.searchColor(hexText) }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    InspectorLabel(text: "TOLERANCE")
+                    Spacer()
+                    Text(q.map { "\($0.closeness.capitalized) · ΔE \(Int($0.tolerance))" } ?? "Pick a color").font(.caption.monospaced()).foregroundStyle(.secondary)
+                }
+                Slider(value: Binding(get: { q?.tolerance ?? ColorQuery.defaultTolerance }, set: { model.setColorTolerance($0) }), in: ColorQuery.toleranceRange)
+                    .disabled(q == nil)
+                HStack { Text("Close").font(.caption2); Spacer(); Text("Loose").font(.caption2) }.foregroundStyle(.tertiary)
+            }
+            if q != nil {
+                let n = model.filtered.count
+                Text("\(n) \(n == 1 ? "match" : "matches"), closest first").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .frame(width: 262)
+        .onAppear { hexText = q?.hex ?? "" }
+        .onChange(of: model.colorQuery?.hex) { _, h in hexText = h ?? "" }
+    }
+
+    private func swatch(_ h: String, size: CGFloat) -> some View {
+        let on = model.colorQuery?.hex == h
+        return Button { model.searchColor(h) } label: {
+            RoundedRectangle(cornerRadius: size / 4).fill(Color(hex: h)).frame(width: size, height: size)
+                .overlay(RoundedRectangle(cornerRadius: size / 4).stroke(on ? Color.white : Color.white.opacity(0.18), lineWidth: on ? 2.5 : 1))
+        }.buttonStyle(.plain).help(h)
+    }
+}
+
+/// The smart editor's "contains a color near" rule.
+struct SmartColorRule: View {
+    @Binding var color: ColorQuery?
+    @EnvironmentObject var model: StudioLibrary
+    /// Recent colors first, then the standard swatches, no repeats.
+    private var choices: [String] {
+        var out: [String] = []
+        for h in model.catalog.recentColors + ColorSearch.swatches where !out.contains(h) { out.append(h) }
+        return Array(out.prefix(14))
+    }
+    var body: some View {
+        // One line, so the editor stays the same height as before on small screens.
+        HStack(spacing: 7) {
+            if let c = color {
+                Circle().fill(Color(hex: c.hex)).frame(width: 18, height: 18).overlay(Circle().stroke(Color.white.opacity(0.6)))
+                Text(c.hex).font(.callout.monospaced()).fixedSize()
+                Slider(value: Binding(get: { c.tolerance }, set: { color = ColorQuery(hex: c.hex, tolerance: $0) }), in: ColorQuery.toleranceRange)
+                    .frame(width: 96).help("Tolerance: \(c.closeness) (ΔE \(Int(c.tolerance)))")
+                Button { color = nil } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary).help("Remove the color rule")
+                Rectangle().fill(Theme.hairline).frame(width: 1, height: 14)
+            } else {
+                Text("Any").font(.caption).foregroundStyle(.secondary).fixedSize()
+            }
+            ForEach(Array(choices.prefix(color == nil ? 14 : 7)), id: \.self) { h in
+                Button { color = ColorQuery(hex: h, tolerance: color?.tolerance ?? ColorQuery.defaultTolerance) } label: {
+                    Circle().fill(Color(hex: h)).frame(width: 16, height: 16)
+                        .overlay(Circle().stroke(color?.hex == h ? Color.white : Color.white.opacity(0.2), lineWidth: color?.hex == h ? 2 : 1))
+                }.buttonStyle(.plain).help(h)
+            }
+            Spacer(minLength: 0)
         }
     }
 }

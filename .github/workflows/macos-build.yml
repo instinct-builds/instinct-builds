@@ -168,6 +168,12 @@ jobs:
           if find "$FE" -maxdepth 1 -type f -name '*.jpg' | grep -q .; then echo "files landed outside their subfolders"; exit 1; fi
           J=$(find "$FE" -mindepth 3 -name '*.jpg' | head -1); grep -q "dc:subject" "$J" || { echo "no embedded XMP in $J"; exit 1; }
           echo "folder export: $(grep -c . "$T") files in $(cut -d/ -f2-3 "$T" | sort -u | wc -l | tr -d ' ') folders, XMP embedded"
+          shoot color-search 1920x1200 color-search demo-color-search.txt
+          C="ASSSETS-$ASSSETS_VERSION-color-search.txt"; cp "$SUP/demo-color-search.txt" "$C"; cat "$C"
+          n=$(head -1 "$C" | sed -E 's/.* ([0-9]+) matches/\1/'); test "$n" -ge 8 || { echo "color search found only $n"; exit 1; }
+          awk -F'\t' 'NR>1 && $3+0 > 12.0 { bad=1 } END { exit bad }' "$C" || { echo "a ranked result is outside the tolerance"; exit 1; }
+          shoot color-smart 1920x1200 color-smart
+          shoot color-smart-editor 1920x1200 color-smart-editor
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
@@ -200,6 +206,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-color-search.txt
 
   au:
     runs-on: macos-latest
