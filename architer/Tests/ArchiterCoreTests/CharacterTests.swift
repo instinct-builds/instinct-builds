@@ -95,10 +95,12 @@ struct CharacterTests {
         #expect(over.currentHP == 10)
         // Old saves without the companions key decode empty.
         let json = """
-        {"name":"Old","lineage":"","calling":"","background":"",
+        {"id":"00000000-0000-0000-0000-000000000001",
+        "name":"Old","lineage":"","calling":"","background":"",
         "level":1,"experience":0,"scores":{},"skills":[],
         "savingThrowProficiencies":[],"maxHP":8,"currentHP":8,"armorClass":10,"speed":30,
-        "attacks":[],"inventory":[],"notes":""}
+        "attacks":[],"inventory":[],"notes":"",
+        "layout":{"blocks":[{"kind":"identity","visible":true,"size":"regular"}]}}
         """.data(using: .utf8)!
         let old = try JSONDecoder().decode(Character.self, from: json)
         #expect(old.companions.isEmpty)
