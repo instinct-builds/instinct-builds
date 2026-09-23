@@ -52,6 +52,10 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     /// Stable identity for bundled content ("starter:<file>", "generated:<collection>:<n>").
     /// nil for the user's own imports. Added in 0.4; absent in 0.3 catalogs.
     public var sourceKey: String?
+    /// Tags ASSSETS computed from pixels and metadata (1.6). Searchable, but only shown as suggestions until accepted.
+    public var autoTags: [String] = []
+    /// Suggestions the user dismissed; never suggested or matched again for this asset.
+    public var rejectedTags: [String] = []
 
     public init(id: UUID = UUID(), title: String, kind: MediaKind, tags: [String], collection: String,
                 palette: [String], seed: Int, favorite: Bool = false, importedPath: String? = nil,
@@ -61,7 +65,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         self.resolution = resolution; self.sourceKey = sourceKey
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey }
+    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -75,7 +79,14 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         importedPath = try c.decodeIfPresent(String.self, forKey: .importedPath)
         resolution = try c.decodeIfPresent(String.self, forKey: .resolution) ?? ""
         sourceKey = try c.decodeIfPresent(String.self, forKey: .sourceKey)
+        autoTags = try c.decodeIfPresent([String].self, forKey: .autoTags) ?? []
+        rejectedTags = try c.decodeIfPresent([String].self, forKey: .rejectedTags) ?? []
     }
+
+    /// Auto tags still waiting for the user: not already a real tag, not dismissed.
+    public var suggestedTags: [String] { autoTags.filter { !tags.contains($0) && !rejectedTags.contains($0) } }
+    /// What search and smart rules match against: the user's tags plus pending suggestions.
+    public var searchTags: [String] { tags + suggestedTags }
 
     public var isStarter: Bool { sourceKey?.hasPrefix("starter:") ?? false }
 }
@@ -190,7 +201,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
             case Self.favorites: guard a.favorite else { return false }
             default: guard a.collection == collection else { return false }
             }
-            let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.tags + a.palette).joined(separator: " ").lowercased()
+            let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.searchTags + a.palette).joined(separator: " ").lowercased()
             return terms.allSatisfy(hay.contains)
         }
     }

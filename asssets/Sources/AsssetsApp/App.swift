@@ -149,6 +149,7 @@ final class StudioLibrary: ObservableObject {
         try? FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
         install()
         startWatching()
+        refreshAutoTags()
         applyLaunchArguments()
         installKeyMonitor()
     }
@@ -328,7 +329,7 @@ final class StudioLibrary: ObservableObject {
         if !found.isEmpty {
             var c = catalog
             added = c.syncWatch(found: found)
-            if !added.isEmpty { mutate { $0 = c } }
+            if !added.isEmpty { mutate { $0 = c }; refreshAutoTags() }
         }
         let now = catalog.missingIDs { fm.fileExists(atPath: $0) }
         if now != missing { missing = now }
@@ -642,6 +643,30 @@ final class StudioLibrary: ObservableObject {
         if n > 1 { flash("Tagged \(n) assets") }
     }
     func removeTag(_ tag: String, from ids: Set<UUID>) { mutate { $0.removeTag(tag, from: ids) } }
+    func acceptSuggestions(_ tags: [String]? = nil, for ids: Set<UUID>) {
+        let n = catalog.assets.filter { ids.contains($0.id) }.reduce(0) { sum, a in sum + (tags.map { t in t.filter(a.suggestedTags.contains).count } ?? a.suggestedTags.count) }
+        guard n > 0 else { return }
+        mutate { $0.acceptSuggestions(tags, for: ids) }
+        if tags == nil || n > 1 { flash("Accepted \(n) suggested \(n == 1 ? "tag" : "tags")") }
+    }
+    func rejectSuggestion(_ tag: String, for ids: Set<UUID>) { mutate { $0.rejectSuggestion(tag, for: ids) } }
+
+    /// Reads local facts for assets that have no suggestions yet and stores the suggestions.
+    /// Runs off the main thread; nothing leaves the Mac.
+    func refreshAutoTags(force: Bool = false) {
+        let todo = catalog.assets.filter { force || $0.autoTags.isEmpty }
+        guard !todo.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            var results: [(UUID, [String])] = []
+            for a in todo { results.append((a.id, AutoTags.suggest(await AutoTagReader.facts(for: a)))) }
+            await MainActor.run { [results] in
+                var changed = false
+                var c = self.catalog
+                for (id, tags) in results where c.setAutoTags(tags, for: id) { changed = true }
+                if changed { self.mutate { $0 = c } }
+            }
+        }
+    }
     func move(_ ids: Set<UUID>, to collection: String) {
         var n = 0
         mutate { n = $0.move(ids, to: collection) }
@@ -800,7 +825,7 @@ final class StudioLibrary: ObservableObject {
                 } else if let id = c.importFile(path: url.path) { added.append(id) }
             }
         }
-        if !added.isEmpty { show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
+        if !added.isEmpty { refreshAutoTags(); show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
         else { flash("No new supported files found") }
     }
 
@@ -927,6 +952,22 @@ final class StudioLibrary: ObservableObject {
                 try? fm.copyItem(at: p.pdf, to: self.supportRoot.appendingPathComponent("demo-contact-sheet.pdf"))
                 let small = SheetPreview(title: p.title, ids: Array(p.ids.prefix(4)), pdf: p.pdf)
                 self.buildBrandKit(small, mode: .originals, to: self.supportRoot.appendingPathComponent("demo-brand-kit.zip"))
+                // Whole-library sheet, so CI can report the size of a 28-asset PDF with JPEG thumbnails.
+                _ = await ContactSheetRenderer.render(title: "ASSSETS Library", assets: self.catalog.assets,
+                                                      to: self.supportRoot.appendingPathComponent("demo-contact-sheet-all.pdf"))
+            }
+        case "autotags", "autotags-audio":
+            // Suggested tags are searchable before they're accepted: "tileable" finds textures nobody tagged by hand.
+            if demo == "autotags" {
+                show(collection: StudioCatalog.allAssets); search = "tileable"
+                Task { @MainActor in
+                    var tries = 0
+                    while self.filtered.isEmpty && tries < 40 { try? await Task.sleep(nanoseconds: 150_000_000); tries += 1 }
+                    if let a = self.filtered.first(where: { $0.importedPath?.hasSuffix("terrazzo-texture.png") == true }) ?? self.filtered.first { self.selection = [a.id]; self.focusID = a.id }
+                }
+            } else {
+                show(collection: "Sound Beds")
+                if let a = filtered.first(where: { $0.importedPath?.hasSuffix(".wav") == true }) ?? filtered.first { selection = [a.id]; focusID = a.id }
             }
         case "vectors":
             selectedKind = .vector
@@ -1708,11 +1749,31 @@ enum ContactSheetRenderer {
     static let card = NSColor(white: 1, alpha: 0.05)
     static let accent = NSColor(red: 0.55, green: 0.38, blue: 1.0, alpha: 1)
 
+    /// Re-encodes a thumbnail as JPEG so Quartz embeds it with DCT compression instead of raw pixels.
+    /// Transparent art is flattened onto the sheet's card color first so it doesn't turn black.
+    static func jpegRoundTrip(_ img: CGImage, maxPixel: Int = 560, quality: Double = 0.72) -> CGImage? {
+        let scale = min(1, Double(maxPixel) / Double(max(img.width, img.height)))
+        let w = max(1, Int(Double(img.width) * scale)), h = max(1, Int(Double(img.height) * scale))
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.setFillColor(CGColor(red: 0.09, green: 0.092, blue: 0.13, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.interpolationQuality = .high
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let flat = ctx.makeImage() else { return nil }
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, flat, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(dest), let src = CGImageSourceCreateWithData(data, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(src, 0, nil)
+    }
+
     static func render(title: String, assets: [StudioAsset], to url: URL) async -> Bool {
         var images: [UUID: CGImage] = [:]
         for a in assets {
-            if a.importedPath == nil { images[a.id] = MediaRenderer.generated(a, width: 600) }
-            else if let img = await MediaRenderer.thumbnail(for: a, maxPixel: 600) { images[a.id] = img }
+            var img: CGImage?
+            if a.importedPath == nil { img = MediaRenderer.generated(a, width: 600) }
+            else { img = await MediaRenderer.thumbnail(for: a, maxPixel: 600) }
+            if let img { images[a.id] = jpegRoundTrip(img) ?? img }
         }
         let sheet = BrandKit.layout(count: assets.count)
         var box = CGRect(x: 0, y: 0, width: sheet.pageWidth, height: sheet.pageHeight)
@@ -1970,6 +2031,24 @@ struct TagChip: View {
     }
 }
 
+/// A suggested tag: dashed outline, tap to accept, x to dismiss.
+struct SuggestionChip: View {
+    let tag: String
+    let accept: () -> Void
+    let reject: () -> Void
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: accept) {
+                HStack(spacing: 3) { Image(systemName: "plus").font(.system(size: 8, weight: .bold)); Text(tag).font(.caption) }
+            }.buttonStyle(.plain).foregroundStyle(Theme.smart).help("Add \"\(tag)\" to tags")
+            Button(action: reject) { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }.buttonStyle(.plain).foregroundStyle(.tertiary).help("Dismiss suggestion")
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Theme.smart.opacity(0.07), in: Capsule())
+        .overlay(Capsule().stroke(Theme.smart.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+    }
+}
+
 struct Inspector: View {
     @EnvironmentObject var model: StudioLibrary
     let asset: StudioAsset
@@ -2027,6 +2106,19 @@ struct Inspector: View {
                         }
                         InspectorLabel(text: "TAGS")
                         WrapLayout(spacing: 5) { ForEach(asset.tags, id: \.self) { tag in TagChip(tag: tag) { model.removeTag(tag, from: [asset.id]) } } }
+                        if !asset.suggestedTags.isEmpty {
+                            HStack {
+                                Label("SUGGESTED", systemImage: "sparkles").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.smart)
+                                Spacer()
+                                Button("Accept all") { model.acceptSuggestions(for: [asset.id]) }.buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(Theme.smart)
+                            }.padding(.top, 2)
+                            WrapLayout(spacing: 5) {
+                                ForEach(asset.suggestedTags, id: \.self) { tag in
+                                    SuggestionChip(tag: tag, accept: { model.acceptSuggestions([tag], for: [asset.id]) }, reject: { model.rejectSuggestion(tag, for: [asset.id]) })
+                                }
+                            }
+                            Text("Read on this Mac from the file's pixels and sound. Searchable before you accept.").font(.caption2).foregroundStyle(.tertiary)
+                        }
                         HStack {
                             TextField("Add tags, comma separated", text: $newTag).textFieldStyle(.roundedBorder)
                                 .onSubmit { model.addTags(newTag, to: [asset.id]); newTag = "" }
@@ -2312,6 +2404,14 @@ struct BatchInspector: View {
                     Text("Shared by all").font(.caption).foregroundStyle(.secondary)
                     WrapLayout(spacing: 5) { ForEach(common, id: \.self) { tag in TagChip(tag: tag) { model.removeTag(tag, from: ids) } } }
                 }
+                let pending = assets.reduce(0) { $0 + $1.suggestedTags.count }
+                if pending > 0 {
+                    HStack {
+                        Label("\(pending) suggested \(pending == 1 ? "tag" : "tags") across the selection", systemImage: "sparkles").font(.caption).foregroundStyle(Theme.smart)
+                        Spacer()
+                        Button("Accept all") { model.acceptSuggestions(for: ids) }.buttonStyle(.bordered).tint(Theme.smart)
+                    }
+                }
                 InspectorLabel(text: "ORGANIZE")
                 HStack(spacing: 8) {
                     Button { model.toggleFavorite(ids) } label: { Label(assets.allSatisfy { $0.favorite } ? "Unfavorite" : "Favorite All", systemImage: "heart") }.buttonStyle(.bordered)
@@ -2390,6 +2490,39 @@ struct WrapLayout: Layout {
 // MARK: - Thumbnails and rendering
 
 /// Caches decoded previews. Real files decode off the main thread through ImageIO/AVFoundation.
+/// Collects the local facts behind suggested tags: real pixels, alpha, seams, durations and peaks.
+enum AutoTagReader {
+    static func facts(for a: StudioAsset) async -> AutoTags.Facts {
+        var f = AutoTags.Facts(kind: a.kind, palette: a.palette)
+        if let d = AutoTags.dimensions(in: a.resolution) { f.width = d.0; f.height = d.1 }
+        guard let path = a.importedPath, FileManager.default.fileExists(atPath: path) else { return f }
+        let url = URL(fileURLWithPath: path)
+        switch url.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg", "tif", "tiff", "heic", "gif", "webp":
+            guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { break }
+            if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+               let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int { f.width = w; f.height = h }
+            if let small = MediaRenderer.pixelBuffer(fromSource: src, maxPixel: 256) {
+                // Transparent only when real pixels are see-through, not just because the file has an alpha channel.
+                var clear = 0
+                for i in stride(from: 3, to: small.rgba.count, by: 4) where small.rgba[i] < 250 { clear += 1 }
+                f.hasAlpha = clear * 50 > small.width * small.height
+                if a.kind == .texture { f.tileable = Seamless.analyze(small).tileable }
+            }
+        case "mov", "mp4", "m4v", "webm":
+            if let d = try? await AVURLAsset(url: url).load(.duration), d.isNumeric { f.durationSeconds = d.seconds }
+        case "wav":
+            if let data = try? Data(contentsOf: url), let s = AsssetsCore.Waveform.summarize(wav: data, buckets: 8) {
+                f.durationSeconds = s.duration; f.loudnessDBFS = s.peakDBFS
+            }
+        case "aif", "aiff", "mp3", "m4a":
+            if let d = try? await AVURLAsset(url: url).load(.duration), d.isNumeric { f.durationSeconds = d.seconds }
+        default: break
+        }
+        return f
+    }
+}
+
 @MainActor
 final class ThumbnailStore: ObservableObject {
     static let shared = ThumbnailStore()

@@ -126,8 +126,15 @@ jobs:
           shoot watch 1920x1200 watch-folders
           shoot duplicates 1920x1200 duplicates
           shoot similar 1920x1200 find-similar
+          shoot autotags 1920x1200 autotags
+          shoot autotags-audio 1920x1200 autotags-audio
           shoot contact-sheet 1920x1200 contact-sheet
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
+          for i in $(seq 1 20); do [ -s "$SUP/demo-contact-sheet-all.pdf" ] && break; sleep 1; done
+          cp "$SUP/demo-contact-sheet-all.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"
+          ls -l ASSSETS-$ASSSETS_VERSION-contact-sheet*.pdf | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
+          # JPEG thumbnails keep the 28-asset sheet small.
+          test "$(stat -f%z "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf")" -lt 3500000
           test "$(mdls -raw -name kMDItemNumberOfPages "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" 2>/dev/null || echo 4)" != "0"
           sips -s format png --resampleWidth 1600 "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" --out "ASSSETS-$ASSSETS_VERSION-contact-sheet-cover.png" >/dev/null
           unzip -l "$SUP/demo-brand-kit.zip" | tee "ASSSETS-$ASSSETS_VERSION-brand-kit-listing.txt"

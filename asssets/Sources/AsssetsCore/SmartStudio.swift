@@ -68,11 +68,11 @@ public struct SmartRules: Codable, Equatable, Sendable {
         if !kinds.isEmpty && !kinds.contains(a.kind) { return false }
         if favoritesOnly && !a.favorite { return false }
         if let collection, a.collection != collection { return false }
-        if !requiredTags.allSatisfy({ a.tags.contains($0) }) { return false }
+        if !requiredTags.allSatisfy({ a.searchTags.contains($0) }) { return false }
         if let tone, PaletteTone.of(a.palette) != tone { return false }
         let terms = text.lowercased().split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
         guard !terms.isEmpty else { return true }
-        let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.tags + a.palette).joined(separator: " ").lowercased()
+        let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.searchTags + a.palette).joined(separator: " ").lowercased()
         return terms.allSatisfy(hay.contains)
     }
 

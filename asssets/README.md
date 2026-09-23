@@ -295,3 +295,27 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - CI harness: every screenshot now starts from the same fresh catalog. CI
   also uploads the rendered contact-sheet PDF and a listing of a demo
   kit's contents.
+
+## 1.6.0: suggested tags and lighter contact sheets
+
+- ASSSETS now reads each asset on your Mac and suggests tags: up to three
+  color names from its palette, light or dark, vivid or muted, square,
+  landscape or portrait, 4k+, print-ready (A4/Letter at 300 dpi), small,
+  transparent (only when pixels are actually see-through), tileable (from
+  the seam check), short or long for video and audio, and quiet or loud for
+  WAV files from their real peak level. Nothing leaves the Mac and no
+  service or key is involved.
+- Suggestions show in the inspector under the tags as dashed chips. Tap one
+  to add it, x to dismiss it for that asset, or Accept all. The batch
+  inspector has Accept all for the whole selection.
+- Suggestions are searchable and work in smart-collection tag rules before
+  you accept them, but they stay separate from your own tags: they aren't
+  written as keywords and a dismissed one never comes back.
+- Tags are read on launch, on import and when a watch folder picks up new
+  files, off the main thread.
+- Contact sheets embed JPEG thumbnails instead of raw pixels, so a sheet of
+  the whole bundled library is a fraction of its old size. Transparent art
+  is flattened onto the card color first.
+- Logic and tests: `AutoTags.swift` and `AutoTagTests.swift`. CI adds two
+  screenshots (search by a suggested tag, audio suggestions) and checks the
+  size of a whole-library contact sheet.

@@ -8,6 +8,8 @@ public struct WaveformSummary: Equatable, Sendable {
     public var channels: Int
     public var bitsPerSample: Int
     public var duration: Double      // seconds
+    public var peak: Float = 0       // raw full-scale peak before normalizing, 0...1
+    public var peakDBFS: Double { peak > 0 ? 20 * log10(Double(peak)) : -120 }
 }
 
 public enum Waveform {
@@ -65,7 +67,7 @@ public enum Waveform {
         }
         let top = peaks.max() ?? 0
         if top > 0 { peaks = peaks.map { min(1, $0 / top) } }
-        return WaveformSummary(peaks: peaks, sampleRate: rate, channels: channels, bitsPerSample: bits, duration: Double(frames) / Double(rate))
+        return WaveformSummary(peaks: peaks, sampleRate: rate, channels: channels, bitsPerSample: bits, duration: Double(frames) / Double(rate), peak: min(1, top))
     }
 }
 
