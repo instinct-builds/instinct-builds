@@ -417,7 +417,7 @@ int main() {
             AudioUnit t = openUnit();
             if (!t) return false;
             bool ok = setState(t, p)
-                      && AudioUnitSetParameter(t, mp::WtPosA, kAudioUnitScope_Global, 0, (AudioUnitParameterValue)wtpos, 0) == noErr;
+                      && AudioUnitSetParameter(t, muew::params::WtPosA, kAudioUnitScope_Global, 0, (AudioUnitParameterValue)wtpos, 0) == noErr;
             std::vector<float> bl(512), br(512);
             out.clear();
             ok = ok && render(t, bl, br) && MusicDeviceMIDIEvent(t, 0x90, 48, 110, 0) == noErr;
