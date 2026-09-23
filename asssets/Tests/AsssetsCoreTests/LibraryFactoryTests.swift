@@ -80,9 +80,12 @@ struct LibraryFactoryTests {
 struct SeamlessTests {
     @Test func generatedTexturesAreTileable() throws {
         for name in TextureFactory.names {
-            let img = try #require(TextureFactory.make(name, size: 192))
+            let img = try #require(TextureFactory.make(name, size: 512))
             let r = Seamless.analyze(img)
             #expect(r.tileable, "\(name): \(r)")
+            // The app checks a downscaled copy, which smooths the interior but keeps any wrap mismatch.
+            let small = Seamless.analyze(Thumbnailer.thumbnail(from: img, maxDim: 128))
+            #expect(small.tileable, "\(name) downscaled: \(small)")
         }
     }
 

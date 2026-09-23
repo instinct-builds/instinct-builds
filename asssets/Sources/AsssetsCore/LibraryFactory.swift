@@ -12,12 +12,16 @@ struct TileNoise {
         return Float(h & 0xFFFF) / 65535
     }
     /// u, v in 0..<1 across the tile; `period` lattice cells per tile.
-    func value(_ u: Double, _ v: Double, period: Int) -> Float {
-        let x = u * Double(period), y = v * Double(period)
+    func value(_ u: Double, _ v: Double, period: Int) -> Float { value(u, v, periodX: period, periodY: period) }
+
+    /// Anisotropic version: different lattice counts across and down, still wrapping on both axes.
+    func value(_ u: Double, _ v: Double, periodX: Int, periodY: Int) -> Float {
+        let x = u * Double(periodX), y = v * Double(periodY)
         let xi = Int(floor(x)), yi = Int(floor(y))
         let fx = Float(x - floor(x)), fy = Float(y - floor(y))
-        func w(_ i: Int) -> Int { ((i % period) + period) % period }
-        let a = hash(w(xi), w(yi)), b = hash(w(xi + 1), w(yi)), c = hash(w(xi), w(yi + 1)), d = hash(w(xi + 1), w(yi + 1))
+        func wx(_ i: Int) -> Int { ((i % periodX) + periodX) % periodX }
+        func wy(_ i: Int) -> Int { ((i % periodY) + periodY) % periodY }
+        let a = hash(wx(xi), wy(yi)), b = hash(wx(xi + 1), wy(yi)), c = hash(wx(xi), wy(yi + 1)), d = hash(wx(xi + 1), wy(yi + 1))
         let sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy)
         return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy
     }
@@ -76,7 +80,9 @@ public enum TextureFactory {
         case "brushed-metal-texture.png":
             for y in 0..<size { for x in 0..<size {
                 let u = Double(x) / S, v = Double(y) / S
-                let streak = n.value(u, v, period: 1024) * 0.2 + n.fbm(u / 64 + v, v, period: 512, octaves: 3) * 0.6
+                // Long horizontal grain: few lattice cells across, many down, wrapping both ways.
+                let grain = n.value(u, v, periodX: 6, periodY: 700) * 0.5 + n.value(u, v, periodX: 12, periodY: 1400) * 0.3 + n.value(u, v, periodX: 3, periodY: 350) * 0.2
+                let streak = n.value(u, v, period: 1024) * 0.2 + grain * 0.6
                 let t = 0.55 + (streak - 0.4) * 0.5 + Float(sin(v * .pi * 2)) * 0.04
                 put(x, y, (t * 0.93, t * 0.95, t))
             } }
