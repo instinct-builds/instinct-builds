@@ -75,3 +75,49 @@ struct LibraryFactoryTests {
         #expect(d.smartCollections.map(\.name) == ["Favorite Motion & Sound"])
     }
 }
+
+@Suite("Seamless check")
+struct SeamlessTests {
+    @Test func generatedTexturesAreTileable() throws {
+        for name in TextureFactory.names {
+            let img = try #require(TextureFactory.make(name, size: 192))
+            let r = Seamless.analyze(img)
+            #expect(r.tileable, "\(name): \(r)")
+        }
+    }
+
+    @Test func gradientHasASeam() {
+        var px = [UInt8]()
+        for _ in 0..<64 { for x in 0..<64 { let v = UInt8(x * 4); px += [v, v, v, 255] } }
+        let r = Seamless.analyze(PixelBuffer(width: 64, height: 64, rgba: px))
+        #expect(!r.tileable)
+        #expect(r.horizontal > 10)
+        #expect(r.vertical < 1)
+    }
+
+    @Test func offsetBlendRemovesTheSeam() {
+        var px = [UInt8]()
+        for y in 0..<96 { for x in 0..<128 { px += [UInt8(x * 2), UInt8(y * 2), UInt8((x + y) % 256), 255] } }
+        let img = PixelBuffer(width: 128, height: 96, rgba: px)
+        #expect(!Seamless.analyze(img).tileable)
+        let fixed = Seamless.makeTileable(img)
+        #expect(Seamless.analyze(fixed).tileable, "\(Seamless.analyze(fixed))")
+        // The middle of the image is left alone.
+        #expect(fixed.pixel(x: 64, y: 48) == img.pixel(x: 64, y: 48))
+    }
+
+    @Test func flatImageIsTileable() {
+        let r = Seamless.analyze(PixelBuffer(width: 16, height: 16, rgba: [UInt8](repeating: 128, count: 16 * 16 * 4)))
+        #expect(r.tileable)
+    }
+
+    @Test func tilingRepeatsPixels() {
+        var px = [UInt8]()
+        for y in 0..<3 { for x in 0..<2 { px += [UInt8(x), UInt8(y), 7, 255] } }
+        let img = PixelBuffer(width: 2, height: 3, rgba: px)
+        let t = Seamless.tiled(img, times: 3)
+        #expect(t.width == 6 && t.height == 9)
+        for y in 0..<9 { for x in 0..<6 { #expect(t.pixel(x: x, y: y) == img.pixel(x: x % 2, y: y % 3)) } }
+        #expect(Seamless.tiled(img, times: 0) == img)
+    }
+}

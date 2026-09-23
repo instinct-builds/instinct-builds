@@ -148,3 +148,20 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   collection default. 0.6.0 installs are updated on first launch.
 - The "Favorite Motion & Sound" smart collection is now "Favorite Clips",
   so it fits in the sidebar. A collection the user edited keeps its name.
+
+## 0.8.0: texture tiling and seam fixing
+
+- `Seamless.swift` (core, tested): measures whether an image repeats
+  without a seam by comparing the wrap-around edges with neighboring
+  pixels inside the image. It also makes any image tileable (offset and
+  blend) and builds tiled images.
+- App: textures get a 1x / 2x2 / 3x3 repeat preview on the inspector
+  image, plus a live seam badge. "Seamless" appears when the image passes
+  the check. "Visible seam - Fix" blends the edges for the preview and
+  export only; the file on disk is never changed. PNG export follows the
+  repeat and fix settings, capped at 6144 px.
+- The "seamless" tag on bundled textures is now checked against the pixels
+  on install. All 8 generated 0.7 textures pass. The older 4K-named
+  textures fail the check, so they lose the tag and get the Fix button.
+- CI screenshots: textures-tiling (terrazzo 3x3) and seam-fix (a legacy
+  texture repeated 2x2 with Fix on).

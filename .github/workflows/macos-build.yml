@@ -80,6 +80,7 @@ jobs:
           test $(ls "$SUP/StarterLibrary" | wc -l) -ge 57
           test $(ls "$SUP/StarterLibrary"/*.psd | wc -l) -eq 10
           python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["assets"]; p=[x for x in a if (x.get("importedPath") or "").endswith(".psd")]; assert len(p)==10 and all("layers" in x["resolution"] for x in p), [x["resolution"] for x in p]; print("psd metadata ok")' "$SUP/studio-catalog.json"
+          python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["assets"]; t=[x for x in a if x.get("kind")=="Textures" and "starter" in (x.get("sourceKey") or "")]; gen=[x for x in t if "texture.png" in x["importedPath"]]; assert len(gen)==8 and all("seamless" in x["tags"] for x in gen), [(x["title"], x["tags"]) for x in gen]; print("seamless tags:", sum("seamless" in x["tags"] for x in t), "of", len(t))' "$SUP/studio-catalog.json"
           run_once; second=$(count); echo "relaunch: $second assets"
           test "$first" = "$second"
           # Simulate a 0.3 catalog: drop the new keys, file starter media under Imported, remove the 0.4 file.
@@ -113,6 +114,8 @@ jobs:
           shoot smart 1920x1200 smart-collection
           shoot smart-editor 1920x1200 smart-editor
           shoot psd 1920x1200 psd-layers
+          shoot textures 1920x1200 textures-tiling
+          shoot seam-fix 1920x1200 seam-fix
           for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
       - name: Upload ASSSETS release
         uses: actions/upload-artifact@v4

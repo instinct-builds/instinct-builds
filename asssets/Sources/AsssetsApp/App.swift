@@ -70,6 +70,10 @@ final class StudioLibrary: ObservableObject {
     @Published var smartEditor: SmartEditorState?
     /// Per-asset PSD layer visibility flips for this session (layer indices).
     @Published var psdToggled: [UUID: Set<Int>] = [:]
+    /// Texture repeat preview (1 = off, 2 = 2 x 2, 3 = 3 x 3) and per-asset seam fixing, for this session.
+    @Published var tileRepeat = 1
+    @Published var fixSeams: Set<UUID> = []
+    func tiles(for a: StudioAsset) -> Int { a.kind == .texture ? tileRepeat : 1 }
 
     func togglePsdLayer(_ index: Int, of id: UUID) {
         var set = psdToggled[id] ?? []
@@ -168,6 +172,12 @@ final class StudioLibrary: ObservableObject {
                    let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int {
                     c.assets[i].resolution = "\(w) × \(h)"
                     StudioCatalog.correctResolutionClaims(&c.assets[i], width: w, height: h)
+                    // Only claim "seamless" for textures that actually repeat without a seam.
+                    if c.assets[i].kind == .texture, let small = MediaRenderer.pixelBuffer(fromSource: src, maxPixel: 512) {
+                        let tileable = Seamless.analyze(small).tileable
+                        if tileable, !c.assets[i].tags.contains("seamless") { c.assets[i].tags.append("seamless") }
+                        if !tileable { c.assets[i].tags.removeAll { $0 == "seamless" } }
+                    }
                 }
             default: break
             }
@@ -353,13 +363,13 @@ final class StudioLibrary: ObservableObject {
         if picked.count == 1, let a = picked.first {
             let p = NSSavePanel(); p.nameFieldStringValue = a.title.replacingOccurrences(of: " ", with: "-") + "-\(effect.rawValue.lowercased().replacingOccurrences(of: " ", with: "-")).png"; p.allowedContentTypes = [.png]
             guard p.runModal() == .OK, let url = p.url else { return }
-            let ok = MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], to: url)
+            let ok = MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], tiles: tiles(for: a), fixSeams: fixSeams.contains(a.id), to: url)
             flash(ok ? "Exported \(url.lastPathComponent)" : "Export failed")
         } else {
             let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true; p.prompt = "Export Here"
             guard p.runModal() == .OK, let dir = p.url else { return }
             var n = 0
-            for a in picked where MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], to: dir.appendingPathComponent(a.title.replacingOccurrences(of: " ", with: "-") + ".png")) { n += 1 }
+            for a in picked where MediaRenderer.exportPNG(a, effect: effect, amount: intensity, psdToggled: psdToggled[a.id] ?? [], tiles: tiles(for: a), fixSeams: fixSeams.contains(a.id), to: dir.appendingPathComponent(a.title.replacingOccurrences(of: " ", with: "-") + ".png")) { n += 1 }
             flash("Exported \(n) of \(picked.count) previews")
         }
     }
@@ -369,7 +379,8 @@ final class StudioLibrary: ObservableObject {
     private func applyLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
-        switch value("-asssets-demo") {
+        let demo = value("-asssets-demo")
+        switch demo {
         case "batch":
             show(collection: "Material Textures")
             let ids = filtered.prefix(4).map(\.id)
@@ -400,6 +411,14 @@ final class StudioLibrary: ObservableObject {
                 if let a = filtered.first { selection = [a.id]; focusID = a.id }
                 var rules = s.rules; rules.kinds = [.texture, .vector, .video]; rules.requiredTags = ["original"]
                 smartEditor = SmartEditorState(existing: s.id, name: "Cool Brand Kit", rules: rules)
+            }
+        case "textures", "seam-fix":
+            show(collection: "Material Textures")
+            let file = demo == "textures" ? "terrazzo-texture.png" : "night-grid-4k.png"
+            if let a = filtered.first(where: { $0.importedPath?.hasSuffix(file) == true }) ?? filtered.first {
+                selection = [a.id]; focusID = a.id
+                tileRepeat = demo == "textures" ? 3 : 2
+                if demo == "seam-fix" { fixSeams.insert(a.id) }
             }
         case "vectors":
             selectedKind = .vector
@@ -1045,11 +1064,54 @@ struct Inspector: View {
         } else {
             ZStack {
                 Color.black.opacity(0.35)
-                ProcessedPreview(asset: asset, effect: model.effect, amount: model.intensity, psdToggled: model.psdToggled[asset.id] ?? [])
+                ProcessedPreview(asset: asset, effect: model.effect, amount: model.intensity, psdToggled: model.psdToggled[asset.id] ?? [],
+                                 tiles: model.tiles(for: asset), fixSeams: model.fixSeams.contains(asset.id))
+                if asset.kind == .texture { TileControls(asset: asset).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom).padding(8) }
                 if asset.kind == .video, asset.importedPath != nil {
                     Button { playing = true } label: { Image(systemName: "play.fill").font(.title2).padding(16).background(.ultraThinMaterial, in: Circle()) }.buttonStyle(.plain)
                 }
                 if asset.kind == .audio, let p = asset.importedPath { AudioButton(url: URL(fileURLWithPath: p)).id(p) }
+            }
+        }
+    }
+}
+
+/// Repeat preview and seam status for textures, floating over the inspector preview.
+struct TileControls: View {
+    @EnvironmentObject var model: StudioLibrary
+    @ObservedObject private var store = ThumbnailStore.shared
+    let asset: StudioAsset
+    var body: some View {
+        let report = store.seamReport(asset)
+        let fixing = model.fixSeams.contains(asset.id)
+        HStack(spacing: 6) {
+            HStack(spacing: 2) {
+                ForEach([1, 2, 3], id: \.self) { n in
+                    Button { model.tileRepeat = n } label: {
+                        Text(n == 1 ? "1×" : "\(n)×\(n)").font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(model.tileRepeat == n ? Theme.accent : Color.clear, in: Capsule())
+                            .foregroundStyle(model.tileRepeat == n ? Color.white : Color.secondary)
+                    }.buttonStyle(.plain).help(n == 1 ? "Single tile" : "Preview a \(n) × \(n) repeat")
+                }
+            }
+            .padding(2).background(.black.opacity(0.55), in: Capsule())
+            Spacer(minLength: 4)
+            if let report {
+                if report.tileable && !fixing {
+                    Label("Seamless", systemImage: "checkmark.seal.fill").font(.system(size: 10.5, weight: .semibold))
+                        .padding(.horizontal, 9).padding(.vertical, 5).background(.black.opacity(0.55), in: Capsule()).foregroundStyle(Color.green)
+                } else {
+                    Button {
+                        if fixing { model.fixSeams.remove(asset.id) } else { model.fixSeams.insert(asset.id) }
+                    } label: {
+                        Label(fixing ? "Seams fixed" : "Visible seam · Fix", systemImage: fixing ? "wand.and.stars" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(fixing ? Theme.accent.opacity(0.85) : Color.black.opacity(0.55), in: Capsule())
+                            .foregroundStyle(fixing ? Color.white : Color.orange)
+                    }.buttonStyle(.plain).help(fixing ? "Show the original file" : "Blend the edges so the texture repeats cleanly (preview and export only)")
+                }
             }
         }
     }
@@ -1313,6 +1375,32 @@ final class ThumbnailStore: ObservableObject {
     }
 
     private var fx: [String: CGImage] = [:]
+    private var tileCache: [String: CGImage] = [:]
+    private var seamCache: [String: Seamless.Report] = [:]
+
+    /// Repeat preview: downsized first so a 3 x 3 grid stays small, then optionally seam-fixed and tiled.
+    func tiled(_ img: CGImage, id: String, times n: Int, fixSeams: Bool) -> CGImage {
+        let key = "\(id)|\(img.width)|\(n)|\(fixSeams)"
+        if let hit = tileCache[key] { return hit }
+        guard var buf = MediaRenderer.pixelBuffer(from: img, maxPixel: n > 1 ? 640 : 1400) else { return img }
+        if fixSeams { buf = Seamless.makeTileable(buf) }
+        let out = MediaRenderer.cgImage(Seamless.tiled(buf, times: n)) ?? img
+        if tileCache.count > 40 { tileCache.removeAll() }
+        tileCache[key] = out
+        return out
+    }
+
+    /// Seam check on the displayed image (cached per asset and size).
+    func seamReport(_ asset: StudioAsset) -> Seamless.Report? {
+        guard let img = image(for: asset, pixels: 1400) else { return nil }
+        let key = "\(asset.id)|\(img.width)"
+        if let hit = seamCache[key] { return hit }
+        guard let buf = MediaRenderer.pixelBuffer(from: img, maxPixel: 512) else { return nil }
+        let r = Seamless.analyze(buf)
+        seamCache[key] = r
+        return r
+    }
+
     func processed(_ base: CGImage, id: String, effect: EffectPreset, amount: Double) -> CGImage {
         guard effect != .original else { return base }
         let key = "\(id)|\(base.width)|\(effect.rawValue)|\(Int(amount * 50))"
@@ -1348,6 +1436,8 @@ struct ProcessedPreview: View {
     let amount: Double
     var pixels = 1400
     var psdToggled: Set<Int> = []
+    var tiles = 1
+    var fixSeams = false
     @ObservedObject private var store = ThumbnailStore.shared
     var body: some View {
         GeometryReader { geo in
@@ -1355,7 +1445,8 @@ struct ProcessedPreview: View {
             let fetched: CGImage? = isPsd ? store.psdComposite(asset, toggled: psdToggled, maxPixel: pixels) : store.image(for: asset, pixels: pixels)
             if let base = fetched {
                 let key = isPsd ? asset.id.uuidString + "|" + psdToggled.sorted().map(String.init).joined(separator: ",") : asset.id.uuidString
-                let cg = store.processed(base, id: key, effect: effect, amount: amount)
+                let fx = store.processed(base, id: key, effect: effect, amount: amount)
+                let cg = (tiles > 1 || fixSeams) ? store.tiled(fx, id: key + "|\(effect.rawValue)|\(Int(amount * 50))", times: tiles, fixSeams: fixSeams) : fx
                 Image(decorative: cg, scale: 1).resizable()
                     .aspectRatio(contentMode: asset.kind == .vector || asset.kind == .mockup ? .fit : .fill)
                     .frame(width: geo.size.width, height: geo.size.height).clipped()
@@ -1542,7 +1633,33 @@ enum MediaRenderer {
         return ctx.makeImage()
     }
 
-    static func exportPNG(_ asset: StudioAsset, effect: EffectPreset, amount: Double, psdToggled: Set<Int> = [], to url: URL) -> Bool {
+    /// Draws a CGImage into 8-bit RGBA (straight alpha), downscaled so the long side is at most `maxPixel`.
+    static func pixelBuffer(from img: CGImage, maxPixel: Int) -> PixelBuffer? {
+        let scale = min(1, Double(maxPixel) / Double(max(img.width, img.height)))
+        let w = max(1, Int(Double(img.width) * scale)), h = max(1, Int(Double(img.height) * scale))
+        guard let ctx = bitmap(w, h) else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = ctx.data else { return nil }
+        let row = ctx.bytesPerRow
+        let src = data.bindMemory(to: UInt8.self, capacity: row * h)
+        var out = [UInt8](repeating: 0, count: w * h * 4)
+        for y in 0..<h { for x in 0..<w {
+            let s = y * row + x * 4, d = (y * w + x) * 4
+            let a = src[s + 3]
+            out[d + 3] = a
+            for c in 0..<3 { out[d + c] = a == 0 ? 0 : UInt8(min(255, Int(src[s + c]) * 255 / Int(a))) }
+        } }
+        return PixelBuffer(width: w, height: h, rgba: out)
+    }
+
+    static func pixelBuffer(fromSource src: CGImageSource, maxPixel: Int) -> PixelBuffer? {
+        let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: maxPixel, kCGImageSourceCreateThumbnailWithTransform: true]
+        guard let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return pixelBuffer(from: img, maxPixel: maxPixel)
+    }
+
+    static func exportPNG(_ asset: StudioAsset, effect: EffectPreset, amount: Double, psdToggled: Set<Int> = [], tiles: Int = 1, fixSeams: Bool = false, to url: URL) -> Bool {
         var base: CGImage?
         if let p = asset.importedPath {
             let file = URL(fileURLWithPath: p)
@@ -1558,6 +1675,14 @@ enum MediaRenderer {
                 if let src = CGImageSourceCreateWithURL(file as CFURL, nil) { base = CGImageSourceCreateImageAtIndex(src, 0, nil) }
             }
         } else { base = generated(asset, width: 2400) }
+        if let img = base, tiles > 1 || fixSeams {
+            // Tiled exports stay at or under 6144 px on the long side.
+            let limit = tiles > 1 ? 6144 / tiles : max(img.width, img.height)
+            if var buf = pixelBuffer(from: img, maxPixel: limit) {
+                if fixSeams { buf = Seamless.makeTileable(buf) }
+                base = cgImage(tiles > 1 ? Seamless.tiled(buf, times: tiles) : buf)
+            }
+        }
         guard let img = base, let out = apply(effect, amount: amount, to: img),
               let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return false }
         CGImageDestinationAddImage(dest, out, nil)
