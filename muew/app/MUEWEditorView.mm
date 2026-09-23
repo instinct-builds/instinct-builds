@@ -691,7 +691,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         const double hz = lo * std::pow(hi / lo, i / (double)(pts - 1));
         f.reset();
         double re = 0, im = 0; // fundamental only (single-bin DFT), so DRIVE's harmonics don't read as gain
-        const int n = comb ? 2600 : 1400, win = 500;
+        const int cycles = std::max(1, (int)std::ceil(500 * hz / sr));      // whole cycles, so low tones don't leak
+        const int win = (int)std::lround(cycles * sr / hz), n = (comb ? 2100 : 900) + win;
         for (int s2 = 0; s2 < n; ++s2) {
             const double ph = 2 * M_PI * hz * s2 / sr;
             float y = f.process((float)(amp * std::sin(ph)));
