@@ -136,6 +136,15 @@ jobs:
           shoot export-presets 1920x1200 export-presets demo-exports/done.txt
           ( cd "$SUP/demo-exports" && for f in *; do [ "$f" = done.txt ] && continue; printf '%s\t%s\t' "$f" "$(stat -f%z "$f")"; sips -g pixelWidth -g pixelHeight -g dpiWidth "$f" | awk 'NR>1{printf "%s=%s ", $1, $2}'; echo; done ) | tee "ASSSETS-$ASSSETS_VERSION-export-presets.txt"
           test "$(grep -c . "ASSSETS-$ASSSETS_VERSION-export-presets.txt")" -ge 18
+          shoot gallery 1920x1200 gallery-app demo-gallery/gallery-done.txt
+          G=$(ls -d "$SUP/demo-gallery/"*Review | head -1); test -f "$G/index.html"
+          unzip -l "$G.zip" | tee "ASSSETS-$ASSSETS_VERSION-gallery-listing.txt"; grep -q 'index.html' "ASSSETS-$ASSSETS_VERSION-gallery-listing.txt"
+          CH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; test -x "$CH"
+          U=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$G/index.html")
+          "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-web.png" "$U?demo=grid" || true
+          "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-lightbox.png" "$U?demo=lightbox" || true
+          test -s "ASSSETS-$ASSSETS_VERSION-gallery-web.png"
+          shoot gallery-import 1920x1200 gallery-import
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
@@ -164,6 +173,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-contact-sheet*.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-pdf-sizes.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-export-presets.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
 
   au:

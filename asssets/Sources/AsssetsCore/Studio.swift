@@ -56,6 +56,8 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     public var autoTags: [String] = []
     /// Suggestions the user dismissed; never suggested or matched again for this asset.
     public var rejectedTags: [String] = []
+    /// Notes clients left in a review gallery (1.9), one per reviewer per gallery.
+    public var clientNotes: [ClientNote] = []
 
     public init(id: UUID = UUID(), title: String, kind: MediaKind, tags: [String], collection: String,
                 palette: [String], seed: Int, favorite: Bool = false, importedPath: String? = nil,
@@ -65,7 +67,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         self.resolution = resolution; self.sourceKey = sourceKey
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags }
+    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -81,6 +83,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         sourceKey = try c.decodeIfPresent(String.self, forKey: .sourceKey)
         autoTags = try c.decodeIfPresent([String].self, forKey: .autoTags) ?? []
         rejectedTags = try c.decodeIfPresent([String].self, forKey: .rejectedTags) ?? []
+        clientNotes = try c.decodeIfPresent([ClientNote].self, forKey: .clientNotes) ?? []
     }
 
     /// Auto tags still waiting for the user: not already a real tag, not dismissed.

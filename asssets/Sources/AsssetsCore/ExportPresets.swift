@@ -25,6 +25,9 @@ public struct ExportOutput: Equatable, Sendable {
     public var crop: ExportRect        // in source pixels
     public var format: ExportFormat
     public var dpi: Int
+    public init(suffix: String, width: Int, height: Int, crop: ExportRect, format: ExportFormat, dpi: Int) {
+        self.suffix = suffix; self.width = width; self.height = height; self.crop = crop; self.format = format; self.dpi = dpi
+    }
 }
 
 public enum ExportPreset: String, CaseIterable, Codable, Identifiable, Sendable {

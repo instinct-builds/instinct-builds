@@ -43,6 +43,11 @@ struct ASSSETSApp: App {
                 Button("Export with Presets…") { library.openPresetExport() }
                     .keyboardShortcut("e", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
                 Button("Export Picks with Presets…") { library.openPresetExport(library.pickIDs, title: "Picks") }.disabled(library.pickIDs.isEmpty)
+                Divider()
+                Button("Export Review Gallery…") { library.exportGallery() }
+                    .keyboardShortcut("g", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
+                Button("Export Current View as Review Gallery…") { library.exportGallery(library.filtered.map(\.id), title: library.browsingTitle) }
+                Button("Import Client Feedback…") { library.importFeedback() }
                 Button("Reveal in Finder") { library.reveal(library.selection) }
                     .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
                 Button("Contact Sheet & Brand Kit…") { library.openContactSheetForCurrentView() }
@@ -178,6 +183,97 @@ final class StudioLibrary: ObservableObject {
                 if fixedDir != nil { try? written.map(\.lastPathComponent).sorted().joined(separator: "\n").write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8) }
             }
         }
+    }
+
+    // MARK: Client review gallery
+
+    @Published var galleryRunning = false
+
+    /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
+    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil) {
+        let list = ids ?? filtered.map(\.id).filter(selection.contains)
+        let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
+        let assets = list.compactMap { byID[$0] }.filter { $0.kind != .audio }
+        guard !assets.isEmpty else { flash("Select images, textures, vectors, mockups or clips for a gallery"); return }
+        let name = title ?? (selection.count > 1 || ids != nil ? browsingTitle : "Review")
+        var parent = fixedDir
+        if parent == nil {
+            let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
+            p.prompt = "Create Gallery Here"; p.message = "Creates a \"\(DragOut.safeName(name)) Review\" folder and zip with \(assets.count) assets"
+            guard p.runModal() == .OK, let u = p.url else { return }
+            parent = u
+        }
+        guard let parent else { return }
+        let taken = Set((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
+        let folderName = DragOut.uniqueName(DragOut.safeName(name + " Review"), taken: taken)
+        let folder = parent.appendingPathComponent(folderName, isDirectory: true)
+        let jobs = assets.map { a in (a, effect, intensity, psdToggled[a.id] ?? [], tiles(for: a), fixSeams.contains(a.id)) }
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let created = df.string(from: Date())
+        galleryRunning = true
+        flash("Building gallery for \(assets.count) assets…")
+        Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            try? fm.createDirectory(at: folder.appendingPathComponent("images"), withIntermediateDirectories: true)
+            try? fm.createDirectory(at: folder.appendingPathComponent("thumbs"), withIntermediateDirectories: true)
+            var items: [ReviewGallery.Item] = []
+            for (i, job) in jobs.enumerated() {
+                let (a, fx, amt, psd, tiles, fix) = job
+                guard let img = MediaRenderer.exportBase(a, effect: fx, amount: amt, psdToggled: psd, tiles: tiles, fixSeams: fix) else { continue }
+                let stem = ReviewGallery.stem(i, count: jobs.count)
+                let full = ExportRect(x: 0, y: 0, w: img.width, h: img.height)
+                func sized(_ edge: Int) -> ExportOutput {
+                    let s = min(1, Double(edge) / Double(max(img.width, img.height)))
+                    return ExportOutput(suffix: "", width: max(1, Int(Double(img.width) * s)), height: max(1, Int(Double(img.height) * s)), crop: full, format: .jpeg, dpi: 72)
+                }
+                guard MediaRenderer.writePreset(img, output: sized(2000), to: folder.appendingPathComponent("images/\(stem).jpg")),
+                      MediaRenderer.writePreset(img, output: sized(640), to: folder.appendingPathComponent("thumbs/\(stem).jpg")) else { continue }
+                items.append(.init(id: a.id.uuidString, title: a.title, kind: a.kind.singular, resolution: a.resolution, palette: a.palette,
+                                   tags: a.tags, image: "images/\(stem).jpg", thumb: "thumbs/\(stem).jpg"))
+            }
+            let manifest = ReviewGallery.Manifest(title: name, created: created, items: items)
+            let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
+            // A zip next to the folder, ready to send.
+            let zip = parent.appendingPathComponent(folderName + ".zip")
+            try? fm.removeItem(at: zip)
+            let proc = Process(); proc.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            proc.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", folder.path, zip.path]
+            try? proc.run(); proc.waitUntilExit()
+            let zipped = proc.terminationStatus == 0
+            await MainActor.run { [items] in
+                self.galleryRunning = false
+                guard ok, !items.isEmpty else { self.flash("Could not build the gallery"); return }
+                self.flash("Gallery ready: \(items.count) assets\(zipped ? ", zipped" : "")")
+                if fixedDir == nil { NSWorkspace.shared.activateFileViewerSelecting([zipped ? zip : folder]) }
+                else { try? "\(items.count)".write(to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8) }
+            }
+        }
+    }
+
+    func importFeedback() {
+        let p = NSOpenPanel(); p.allowedContentTypes = [.json]; p.allowsMultipleSelection = true
+        p.message = "Choose the feedback file(s) your client downloaded from the review gallery"
+        guard p.runModal() == .OK else { return }
+        importFeedback(p.urls)
+    }
+
+    func importFeedback(_ urls: [URL]) {
+        var total = StudioCatalog.FeedbackResult(), reviewers: [String] = [], bad = 0
+        for u in urls {
+            guard let data = try? Data(contentsOf: u), let f = ReviewGallery.decodeFeedback(data) else { bad += 1; continue }
+            var r = StudioCatalog.FeedbackResult()
+            mutate { r = $0.applyFeedback(f) }
+            total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown
+            total.smartCollection = r.smartCollection ?? total.smartCollection
+            let who = f.reviewer.trimmingCharacters(in: .whitespaces); if !who.isEmpty && !reviewers.contains(who) { reviewers.append(who) }
+        }
+        if total.favorites + total.notes == 0 {
+            flash(bad > 0 ? "That isn't an ASSSETS review feedback file" : "No favorites or notes in that feedback"); return
+        }
+        var msg = "\(total.favorites) client \(total.favorites == 1 ? "pick" : "picks"), \(total.notes) \(total.notes == 1 ? "note" : "notes")"
+        if !reviewers.isEmpty { msg += " from " + reviewers.joined(separator: ", ") }
+        if total.unknown > 0 { msg += " · \(total.unknown) not in this library" }
+        flash(msg)
+        if let id = total.smartCollection { show(smart: id) }
     }
 
     var canCompare: Bool { (2...CompareSession.maxAssets).contains(selection.count) }
@@ -771,6 +867,9 @@ final class StudioLibrary: ObservableObject {
         if n > 1 { flash("Tagged \(n) assets") }
     }
     func removeTag(_ tag: String, from ids: Set<UUID>) { mutate { $0.removeTag(tag, from: ids) } }
+    func removeClientNote(_ n: ClientNote, from id: UUID) {
+        mutate { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].clientNotes.removeAll { $0 == n } } }
+    }
     func acceptSuggestions(_ tags: [String]? = nil, for ids: Set<UUID>) {
         let n = catalog.assets.filter { ids.contains($0.id) }.reduce(0) { sum, a in sum + (tags.map { t in t.filter(a.suggestedTags.contains).count } ?? a.suggestedTags.count) }
         guard n > 0 else { return }
@@ -1111,6 +1210,23 @@ final class StudioLibrary: ObservableObject {
                 markCompare(.keep); markCompare(.reject)
                 compareZoom.zoom(by: 2.5, anchorX: 0.3, anchorY: 0.35)
             } else { swipeSplit = 0.46; compareSwipe = true }
+        case "gallery":
+            let ids = catalog.assets.filter { $0.collection == "Device Mockups" }.prefix(12).map(\.id)
+            show(collection: "Device Mockups")
+            let out = supportRoot.appendingPathComponent("demo-gallery", isDirectory: true)
+            try? FileManager.default.removeItem(at: out)
+            try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+            exportGallery(Array(ids), title: "Launch Mockups", to: out)
+        case "gallery-import":
+            // The same file the gallery page writes when a client presses Download feedback.
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let notes = ["Love this one. Can we try it with the warmer backdrop?", "", "Great for the store page, maybe crop tighter."]
+            let items = mocks.prefix(3).enumerated().map { i, a in ReviewGallery.Feedback.Entry(id: a.id.uuidString.lowercased(), favorite: i != 1, note: notes[i]) }
+            let fb = ReviewGallery.Feedback(gallery: "demo", title: "Launch Mockups", reviewer: "Jordan (client)", items: Array(items))
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Launch Mockups feedback - Jordan.json")
+            if let data = try? JSONEncoder().encode(fb) { try? data.write(to: url) }
+            importFeedback([url])
+            if let a = mocks.first { selection = [a.id]; focusID = a.id; scrollInspectorToTags = true }
         case "export-presets":
             // Wide 3:2 mockups, so the square and story crops have somewhere to slide.
             let files = ["cosmetic-plinth-mockup.png", "device-stage-mockup.png", "album-gatefold-mockup.png"]
@@ -1509,6 +1625,7 @@ struct SelectionBar: View {
                 Button("As Shown…") { model.exportToFolder(model.selection, mode: .asShown) }
                 Button("Original Files…") { model.exportToFolder(model.selection, mode: .originals) }
                 Button("Presets…") { model.openPresetExport() }
+                Button("Review Gallery…") { model.exportGallery() }
                 if model.canReveal { Divider(); Button("Reveal in Finder") { model.reveal(model.selection) } }
                 Divider()
                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.selectedAssets.map(\.id), title: "\(model.selection.count) Selected Assets") }
@@ -2278,6 +2395,24 @@ struct Inspector: View {
                                 }
                             }
                         }
+                        if !asset.clientNotes.isEmpty {
+                            InspectorLabel(text: "CLIENT NOTES").id("inspector-notes")
+                            ForEach(asset.clientNotes, id: \.self) { n in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "text.bubble.fill").foregroundStyle(Color(red: 1, green: 0.36, blue: 0.54))
+                                        Text(n.reviewer).font(.caption.weight(.semibold))
+                                        Spacer()
+                                        Button { model.removeClientNote(n, from: asset.id) } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
+                                            .buttonStyle(.plain).foregroundStyle(.tertiary).help("Remove this note")
+                                    }
+                                    Text(n.text).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(red: 1, green: 0.36, blue: 0.54).opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
+                                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color(red: 1, green: 0.36, blue: 0.54).opacity(0.35)))
+                            }
+                        }
                         InspectorLabel(text: "TAGS").id("inspector-tags")
                         WrapLayout(spacing: 5) { ForEach(asset.tags, id: \.self) { tag in TagChip(tag: tag) { model.removeTag(tag, from: [asset.id]) } } }
                         if !asset.suggestedTags.isEmpty {
@@ -2314,7 +2449,8 @@ struct Inspector: View {
                 .onAppear {
                     // Demo only: bring the tag rows into view for the suggested-tags screenshot.
                     guard model.scrollInspectorToTags else { return }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { withAnimation { proxy.scrollTo("inspector-tags", anchor: .top) } }
+                    let target = asset.clientNotes.isEmpty ? "inspector-tags" : "inspector-notes"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { withAnimation { proxy.scrollTo(target, anchor: .top) } }
                 }
                 }
             }
@@ -2465,8 +2601,8 @@ struct PresetExportSheet: View {
                     InspectorLabel(text: "CROP").padding(.top, 6)
                     Picker("", selection: $state.crop) { ForEach(CropMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                         .pickerStyle(.segmented).labelsHidden()
-                    Text(state.crop == .detail ? "Square and story crops slide toward the most detailed part of the image." : "Square and story crops take the middle of the image.")
-                        .font(.caption).foregroundStyle(.tertiary)
+                    Text(state.crop == .detail ? "Square and story crops move toward the busiest detail." : "Square and story crops take the middle.")
+                        .font(.caption).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
                     InspectorLabel(text: "FILE NAMES").padding(.top, 6)
                     TextField(FilenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
                     Text(FilenamePattern.tokens.joined(separator: "  ")).font(.caption2.monospaced()).foregroundStyle(.tertiary)
@@ -2548,7 +2684,7 @@ struct CropPreview: View {
                         RoundedRectangle(cornerRadius: 3).stroke(color, style: StrokeStyle(lineWidth: 2, dash: full ? [5, 3] : []))
                         Text(item.0).font(.system(size: 10, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 2)
                             .background(color, in: Capsule()).foregroundStyle(.black).padding(5)
-                            .offset(y: CGFloat(i) * (full ? 20 : 0))
+                            .offset(y: CGFloat(i) * 20)   // stacked, so side-by-side crops never cover each other's label
                     }
                     .frame(width: CGFloat(r.w) * s, height: CGFloat(r.h) * s)
                     .offset(x: CGFloat(r.x) * s, y: CGFloat(r.y) * s)

@@ -366,3 +366,28 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Logic and tests: `ExportPresets.swift` and `ExportPresetTests.swift`.
   CI exports every preset for three mockups and lists each file's pixel
   size and dpi.
+
+## 1.9.0: client review gallery
+
+- File > Export Review Gallery… (⌥⌘G, or Review Gallery… in the selection
+  bar's Export menu) builds a "<name> Review" folder and a zip of it:
+  `index.html`, `images/` (2000 px JPEG) and `thumbs/` (640 px). Export
+  Current View as Review Gallery… does the same for whatever is on screen.
+- The page is one offline file in the ASSSETS dark style: a grid with
+  palettes, a lightbox with tags, a heart per asset, a notes box, a
+  Favorites-only filter and a name field. No server, CDN, fonts or
+  tracking; it opens from the zip in any browser. Progress is kept in the
+  browser until the client presses Download feedback, which saves a small
+  JSON file.
+- File > Import Client Feedback… reads one or more of those files.
+  Favorites get the `client-pick` tag and land in a Client Picks smart
+  collection; notes show in the inspector under CLIENT NOTES with the
+  reviewer's name. Re-importing the same reviewer's file replaces their
+  earlier notes; several reviewers can comment on the same asset.
+  Unknown assets are counted and skipped.
+- 1.8.0 fixes: crop labels in the presets sheet no longer overlap, and the
+  crop help line wraps instead of truncating.
+- Logic and tests: `ReviewGallery.swift` (manifest, page, feedback format,
+  import) and `ReviewGalleryTests.swift`. CI builds a gallery, lists the
+  zip, screenshots the page and lightbox in headless Chrome, and shows an
+  imported feedback file in the app.
