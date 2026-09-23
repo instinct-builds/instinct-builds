@@ -21,6 +21,7 @@ enum ID {
     UnisonDetuneA, UnisonDetuneB, UnisonWidth, DistDrive, CompAmount, // 0.7.0
     WtPosA, WtPosB, // 0.9.0: user-table frame position
     SubLevel, NoiseLevel, NoiseTone, Filter2Cutoff, Filter2Reso, // 0.10.0
+    PhaserMix, FlangerMix, // 0.13.0
     Count
 };
 
@@ -63,6 +64,8 @@ inline const Def& def(int id) {
         {"Noise Tone", Percent, 0, 100, false},
         {"Filter 2 Cutoff", Hertz, 40, 18000, true},
         {"Filter 2 Resonance", Generic, 0.1, 8, false},
+        {"Phaser Mix", Percent, 0, 100, false},
+        {"Flanger Mix", Percent, 0, 100, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -95,6 +98,8 @@ inline double& field(Preset& p, int id) {
     case NoiseTone: return p.voice.noiseTone;
     case Filter2Cutoff: return p.voice.filter2Cutoff;
     case Filter2Reso: return p.voice.filter2Reso;
+    case PhaserMix: return p.fx.phaser.mix;
+    case FlangerMix: return p.fx.flanger.mix;
     default: return p.fx.reverb.mix;
     }
 }

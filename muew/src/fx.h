@@ -322,6 +322,137 @@ private:
     CompressorParams p_;
 };
 
+struct PhaserParams {
+    bool enabled = false;
+    double rateHz = 0.4;   // 0.02..8
+    double depth = 0.7;    // 0..1 sweep width
+    double feedback = 0.5; // 0..0.9
+    double mix = 0.5;      // 0..1
+};
+
+// Six first-order allpass stages per channel with a swept break frequency
+// (log sweep 180 Hz to ~4.5 kHz at full depth). The right channel's LFO runs
+// a quarter cycle ahead for width. Feedback from the last stage deepens the
+// notches. 0.13.0.
+class Phaser {
+public:
+    void init(double sr) { sr_ = sr; }
+    void set(const PhaserParams& p) { p_ = p; }
+    inline void process(float& l, float& r) {
+        const double fb = std::clamp(p_.feedback, 0.0, 0.9), mix = std::clamp(p_.mix, 0.0, 1.0);
+        const double depth = std::clamp(p_.depth, 0.0, 1.0);
+        // Dry + swept copy cancels about half the power at mid mix; this
+        // keeps switching the unit on at roughly the same loudness.
+        const double comp = 1.0 / std::sqrt((1.0 - mix) * (1.0 - mix) + mix * mix);
+        for (int ch = 0; ch < 2; ++ch) {
+            double lfo = 0.5 + 0.5 * std::sin(2.0 * M_PI * (phase_ + ch * 0.25));
+            double hz = 180.0 * std::pow(25.0, depth * lfo);
+            double t = std::tan(M_PI * std::min(hz, sr_ * 0.45) / sr_);
+            double a = (t - 1.0) / (t + 1.0);
+            // Negative, soft-limited feedback: no low-end build-up, and the
+            // resonance stays bounded; the wet side is trimmed to match.
+            double x = (ch ? r : l) - fb * std::tanh(last_[ch]);
+            for (int k = 0; k < kStages; ++k) {
+                double y = a * x + s_[ch][k];
+                s_[ch][k] = x - a * y;
+                if (std::fabs(s_[ch][k]) < 1e-20) s_[ch][k] = 0.0;
+                x = y;
+            }
+            last_[ch] = x;
+            x *= 1.0 - 0.25 * fb;
+            float& io = ch ? r : l;
+            io = (float)(((1.0 - mix) * io + mix * x) * comp);
+        }
+        phase_ += std::clamp(p_.rateHz, 0.02, 8.0) / sr_;
+        phase_ -= std::floor(phase_);
+    }
+    const PhaserParams& params() const { return p_; }
+private:
+    static const int kStages = 6;
+    double sr_ = 44100.0, phase_ = 0.0;
+    double s_[2][kStages] = {}, last_[2] = {};
+    PhaserParams p_;
+};
+
+struct FlangerParams {
+    bool enabled = false;
+    double rateHz = 0.25;  // 0.02..8
+    double depth = 0.7;    // 0..1: sweep 0.3 ms to 0.3 + 4 ms
+    double feedback = 0.5; // 0..0.9
+    double mix = 0.5;      // 0..1
+};
+
+// Short modulated delay with feedback: the comb notches sweep through the
+// spectrum. Quadrature LFOs per side. 0.13.0.
+class Flanger {
+public:
+    void init(double sr) {
+        sr_ = sr;
+        int maxD = (int)(sr * 0.01) + 4;
+        dl_.resize(maxD); dr_.resize(maxD);
+    }
+    void set(const FlangerParams& p) { p_ = p; }
+    inline void process(float& l, float& r) {
+        const double fb = std::clamp(p_.feedback, 0.0, 0.9), mix = std::clamp(p_.mix, 0.0, 1.0);
+        const double depth = std::clamp(p_.depth, 0.0, 1.0);
+        double lfoL = 0.5 + 0.5 * std::sin(2.0 * M_PI * phase_);
+        double lfoR = 0.5 + 0.5 * std::sin(2.0 * M_PI * (phase_ + 0.25));
+        double dL = (0.3 + 4.0 * depth * lfoL) * 0.001 * sr_;
+        double dR = (0.3 + 4.0 * depth * lfoR) * 0.001 * sr_;
+        float wL = dl_.read(dL), wR = dr_.read(dR);
+        dl_.push(l + (float)(fb * std::tanh(wL)));
+        dr_.push(r + (float)(fb * std::tanh(wR)));
+        wL *= (float)(1.0 - 0.25 * fb); wR *= (float)(1.0 - 0.25 * fb);
+        const double comp = 1.0 / std::sqrt((1.0 - mix) * (1.0 - mix) + mix * mix); // level match, as in Phaser
+        l = (float)(((1.0 - mix) * l + mix * wL) * comp);
+        r = (float)(((1.0 - mix) * r + mix * wR) * comp);
+        phase_ += std::clamp(p_.rateHz, 0.02, 8.0) / sr_;
+        phase_ -= std::floor(phase_);
+    }
+    const FlangerParams& params() const { return p_; }
+private:
+    double sr_ = 44100.0, phase_ = 0.0;
+    FlangerParams p_;
+    DelayLine dl_, dr_;
+};
+
+// FX units by stable id. The ids are the serialized chain-order values:
+// append-only, never renumber.
+enum FxUnit { FxDist, FxChorus, FxDelay, FxComp, FxReverb, FxEQ, FxPhaser, FxFlanger, kFxUnits };
+
+inline const char* fxUnitName(int u) {
+    static const char* n[kFxUnits] = {"dist", "chorus", "delay", "comp", "reverb", "eq", "phaser", "flanger"};
+    return (u >= 0 && u < kFxUnits) ? n[u] : "";
+}
+
+// Chain order: slot -> unit id. The default is the 0.7.0 signal order with
+// the 0.13.0 units appended, so older presets render exactly as before.
+struct FxOrder {
+    int slot[kFxUnits] = {FxDist, FxChorus, FxDelay, FxComp, FxReverb, FxEQ, FxPhaser, FxFlanger};
+    bool isDefault() const { for (int i = 0; i < kFxUnits; ++i) if (slot[i] != i) return false; return true; }
+    bool operator==(const FxOrder& o) const { for (int i = 0; i < kFxUnits; ++i) if (slot[i] != o.slot[i]) return false; return true; }
+    bool operator!=(const FxOrder& o) const { return !(*this == o); }
+    int slotOf(int unit) const { for (int i = 0; i < kFxUnits; ++i) if (slot[i] == unit) return i; return -1; }
+    // Takes the unit in slot `from` out and reinserts it at slot `to`;
+    // the units between shift by one. Returns false for a no-op or bad slot.
+    bool move(int from, int to) {
+        if (from < 0 || from >= kFxUnits || to < 0 || to >= kFxUnits || from == to) return false;
+        int u = slot[from];
+        if (from < to) for (int i = from; i < to; ++i) slot[i] = slot[i + 1];
+        else for (int i = from; i > to; --i) slot[i] = slot[i - 1];
+        slot[to] = u;
+        return true;
+    }
+    // Accepts only a full permutation of the known units.
+    bool assign(const int* v, int n) {
+        if (n != kFxUnits) return false;
+        bool seen[kFxUnits] = {};
+        for (int i = 0; i < n; ++i) { if (v[i] < 0 || v[i] >= kFxUnits || seen[v[i]]) return false; seen[v[i]] = true; }
+        for (int i = 0; i < n; ++i) slot[i] = v[i];
+        return true;
+    }
+};
+
 struct FXParams {
     ChorusParams chorus;
     DelayParams delay;
@@ -330,27 +461,40 @@ struct FXParams {
     DistortionParams dist;
     EQParams eq;
     CompressorParams comp;
+    // 0.13.0: phaser, flanger (off by default) and a reorderable chain.
+    PhaserParams phaser;
+    FlangerParams flanger;
+    FxOrder order;
 };
 
-// Rack order: distortion -> chorus -> delay -> compressor -> reverb -> EQ.
-// Each stage passes through untouched when off.
+// Rack order comes from FXParams::order (default: distortion -> chorus ->
+// delay -> compressor -> reverb -> EQ -> phaser -> flanger). Each stage
+// passes through untouched when off.
 class FXChain {
 public:
-    void init(double sr) { chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); }
+    void init(double sr) { chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); phaser_.init(sr); flanger_.init(sr); }
     void set(const FXParams& p) {
         chorus_.set(p.chorus); delay_.set(p.delay); reverb_.set(p.reverb);
         dist_.set(p.dist); eq_.set(p.eq); comp_.set(p.comp);
+        phaser_.set(p.phaser); flanger_.set(p.flanger);
         p_ = p;
     }
     // Macro routes into the distortion drive (Dest::DistDrive).
     void setDriveOffset(double d) { dist_.setDriveOffset(d); }
     inline void process(float& l, float& r) {
-        if (p_.dist.enabled) dist_.process(l, r);
-        if (p_.chorus.enabled) chorus_.process(l, r);
-        if (p_.delay.enabled) delay_.process(l, r);
-        if (p_.comp.enabled) comp_.process(l, r);
-        if (p_.reverb.enabled) reverb_.process(l, r);
-        if (p_.eq.enabled) eq_.process(l, r);
+        for (int i = 0; i < kFxUnits; ++i) {
+            switch (p_.order.slot[i]) {
+            case FxDist: if (p_.dist.enabled) dist_.process(l, r); break;
+            case FxChorus: if (p_.chorus.enabled) chorus_.process(l, r); break;
+            case FxDelay: if (p_.delay.enabled) delay_.process(l, r); break;
+            case FxComp: if (p_.comp.enabled) comp_.process(l, r); break;
+            case FxReverb: if (p_.reverb.enabled) reverb_.process(l, r); break;
+            case FxEQ: if (p_.eq.enabled) eq_.process(l, r); break;
+            case FxPhaser: if (p_.phaser.enabled) phaser_.process(l, r); break;
+            case FxFlanger: if (p_.flanger.enabled) flanger_.process(l, r); break;
+            default: break;
+            }
+        }
     }
     const FXParams& params() const { return p_; }
     double compressorReductionDb() const { return comp_.gainReductionDb(); }
@@ -362,6 +506,8 @@ private:
     Distortion dist_;
     EQ3 eq_;
     Compressor comp_;
+    Phaser phaser_;
+    Flanger flanger_;
 };
 
 } // namespace muew

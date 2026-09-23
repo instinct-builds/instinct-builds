@@ -256,7 +256,7 @@ int main() {
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(wk.x, wk.y - 30), w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(wk.x, wk.y - 30), w)];
             CGFloat cardH = (t - 286 - 44 - 58 - 6) / 2;
-            NSPoint dr = NSMakePoint(468 + 26, 58 + cardH + 6 + 27); // DISTORTION drive ring: up 30 pt = +20%
+            NSPoint dr = NSMakePoint(468 + 19, 58 + cardH + 6 + 24); // DISTORTION drive ring (chain slot 1): up 30 pt = +20%
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, dr, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(dr.x, dr.y + 15), w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(dr.x, dr.y + 30), w)];
@@ -386,6 +386,33 @@ int main() {
                   "SUB knob drag on page 2 reached the AU as parameter 23 without touching ATTACK");
             fflush(stdout);
         });
+        After(6.9, ^{ // 0.13.0 FX chain: drag PHASER from slot 7 to slot 2, switch it on, raise its mix
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            NSPoint from = NSMakePoint(468 + 2 * 78 + 30, 58 + h - 26);         // PHASER card body (bottom row, 3rd)
+            NSPoint to = NSMakePoint(468 + 1 * 78 + 30, 58 + h + 6 + h - 26);   // CHORUS card (top row, 2nd)
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, to, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, to, w)];
+            Click(view, w, NSMakePoint(468 + 78 + 70 - 11, 58 + h + 6 + h - 13)); // its LED, now in slot 2
+            NSPoint ring = NSMakePoint(468 + 78 + 19, 58 + h + 6 + 24);          // its MIX ring: up 30 pt = +20%
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, ring, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(ring.x, ring.y + 15), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(ring.x, ring.y + 30), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(ring.x, ring.y + 30), w)];
+            muew::Preset st;
+            bool ok = State(st);
+            AudioUnitParameterValue pm = -1;
+            AudioUnitGetParameter(gUnit, muew::params::PhaserMix, kAudioUnitScope_Global, 0, &pm);
+            std::string ord;
+            for (int i = 0; i < muew::kFxUnits; ++i) ord += std::string(i ? " " : "") + muew::fxUnitName(st.fx.order.slot[i]);
+            printf("fx chain: %s; phaser %s, mix %.2f (param 28 = %.1f)\n", ord.c_str(), st.fx.phaser.enabled ? "on" : "off", st.fx.phaser.mix, pm);
+            Check(ok && ord == "dist phaser chorus delay comp reverb eq flanger", "dragging the PHASER card moved it to chain slot 2 in the AU state");
+            Check(ok && st.fx.phaser.enabled && pm > 60 && pm < 80 && std::fabs(st.fx.phaser.mix - pm / 100.0) < 1e-3,
+                  "PHASER LED and MIX ring reached the AU (parameter 28)");
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });
@@ -425,7 +452,7 @@ int main() {
             Snapshot(view, "MUEW_BROWSER_PNG", "full browser snapshot written");
         });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack, mod matrix, wavetable editor, filter 2 + sub page and full browser\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack + chain reorder, mod matrix, wavetable editor, filter 2 + sub page and full browser\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

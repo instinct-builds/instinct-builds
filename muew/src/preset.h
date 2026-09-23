@@ -39,6 +39,7 @@ struct PresetInfo {
 //                  0.8.0 adds optional `lfo34`, `sync` and `env3` lines.
 //                  0.10.0 adds optional `sub`, `noise` and `filter2` lines.
 //                  0.11.0 adds an optional `desc` line (browser text).
+//                  0.13.0 adds optional `phaser`, `flanger` and `fxorder` lines.
 //                  0.9.0 adds optional `wtpos`, `wt1` and `wt2` lines (user
 //                  wavetables: frame count, then 256 samples per frame).
 // Version 1 text still parses; fields it lacks keep their VoiceParams
@@ -113,6 +114,20 @@ struct Preset {
             o << "eq " << (fx.eq.enabled ? 1 : 0) << " " << fx.eq.lowDb << " " << fx.eq.midDb << " " << fx.eq.highDb << "\n";
         if (fx.comp.enabled != d.comp.enabled || fx.comp.amount != d.comp.amount)
             o << "comp " << (fx.comp.enabled ? 1 : 0) << " " << fx.comp.amount << "\n";
+        auto fxLine = [&](const char* k, bool en, double a, double b, double c, double m) {
+            o << k << " " << (en ? 1 : 0) << " " << a << " " << b << " " << c << " " << m << "\n";
+        };
+        const auto& ph = fx.phaser; const auto& dp = d.phaser;
+        if (ph.enabled != dp.enabled || ph.rateHz != dp.rateHz || ph.depth != dp.depth || ph.feedback != dp.feedback || ph.mix != dp.mix)
+            fxLine("phaser", ph.enabled, ph.rateHz, ph.depth, ph.feedback, ph.mix);
+        const auto& fl = fx.flanger; const auto& df = d.flanger;
+        if (fl.enabled != df.enabled || fl.rateHz != df.rateHz || fl.depth != df.depth || fl.feedback != df.feedback || fl.mix != df.mix)
+            fxLine("flanger", fl.enabled, fl.rateHz, fl.depth, fl.feedback, fl.mix);
+        if (!fx.order.isDefault()) {
+            o << "fxorder";
+            for (int i = 0; i < kFxUnits; ++i) o << " " << fxUnitName(fx.order.slot[i]);
+            o << "\n";
+        }
         return o.str();
     }
 
@@ -258,6 +273,26 @@ struct Preset {
                 fx.comp.enabled = e != 0;
                 fx.comp.amount = std::clamp(fx.comp.amount, 0.0, 1.0);
             }
+            else if (key == "phaser" || key == "flanger") {
+                int e = 0; double rate, depth, fb, mix;
+                if (ls >> e >> rate >> depth >> fb >> mix && std::isfinite(rate) && std::isfinite(depth) && std::isfinite(fb) && std::isfinite(mix)) {
+                    rate = std::clamp(rate, 0.02, 8.0); depth = std::clamp(depth, 0.0, 1.0);
+                    fb = std::clamp(fb, 0.0, 0.9); mix = std::clamp(mix, 0.0, 1.0);
+                    if (key == "phaser") fx.phaser = PhaserParams{e != 0, rate, depth, fb, mix};
+                    else fx.flanger = FlangerParams{e != 0, rate, depth, fb, mix};
+                }
+            }
+            else if (key == "fxorder") { // unit names; anything but a full permutation keeps the default
+                int v[kFxUnits]; int n = 0; std::string w;
+                while (ls >> w) {
+                    int u = -1;
+                    for (int k = 0; k < kFxUnits; ++k) if (w == fxUnitName(k)) u = k;
+                    if (u < 0 || n >= kFxUnits) { n = -1; break; }
+                    v[n++] = u;
+                }
+                FxOrder ord;
+                if (n == kFxUnits && ord.assign(v, n)) fx.order = ord;
+            }
             else if (key == "routes") { size_t n; ls >> n; } // count is advisory
             else if (key == "route") {
                 ModRoute r; int s, d;
@@ -344,7 +379,12 @@ struct Preset {
             && fa.dist.drive == fb.dist.drive && fa.dist.mix == fb.dist.mix
             && fa.eq.enabled == fb.eq.enabled && fa.eq.lowDb == fb.eq.lowDb
             && fa.eq.midDb == fb.eq.midDb && fa.eq.highDb == fb.eq.highDb
-            && fa.comp.enabled == fb.comp.enabled && fa.comp.amount == fb.comp.amount;
+            && fa.comp.enabled == fb.comp.enabled && fa.comp.amount == fb.comp.amount
+            && fa.phaser.enabled == fb.phaser.enabled && fa.phaser.rateHz == fb.phaser.rateHz
+            && fa.phaser.depth == fb.phaser.depth && fa.phaser.feedback == fb.phaser.feedback && fa.phaser.mix == fb.phaser.mix
+            && fa.flanger.enabled == fb.flanger.enabled && fa.flanger.rateHz == fb.flanger.rateHz
+            && fa.flanger.depth == fb.flanger.depth && fa.flanger.feedback == fb.flanger.feedback && fa.flanger.mix == fb.flanger.mix
+            && fa.order == fb.order;
     }
 
 private:

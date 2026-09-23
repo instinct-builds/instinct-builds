@@ -60,6 +60,10 @@ struct MUEWEditorHost {
     int dropKnob;
     int routeDrag;
     int modFieldDrag;
+    // 0.13.0 FX chain: card slot being dragged to a new place (-1 = none)
+    // and the slot it would land in.
+    int fxMove;
+    int fxDrop;
     // 0.9.0 wavetable editor: oscillator being edited (-1 = closed), the
     // selected frame, draw (0) or harmonic (1) mode, the last stroke point,
     // and the oscillator whose WT POS bar is being dragged (-1 = none).

@@ -55,7 +55,7 @@ static NSUserDefaults* MUEWDefaults() {
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -187,18 +187,25 @@ static NSUserDefaults* MUEWDefaults() {
     NSRect r = [self unisonStrip:osc];
     return NSMakeRect(r.origin.x + 6 + i * 13, r.origin.y, 13, r.size.height);
 }
-// FX rack: 3 x 2 cards in signal order DIST, CHORUS, DELAY / COMP, REVERB, EQ.
+// FX rack: 4 x 2 cards laid out in chain order (FXParams::order), left to
+// right, top to bottom. Card geometry is by slot; the unit in a slot is
+// current.fx.order.slot[s]. Unit ids follow muew::FxUnit.
 - (CGFloat)fxCardH { return ([self top] - 286 - 44 - 58 - 6) / 2; }
-- (NSRect)fxCard:(int)i {
+- (NSRect)fxCard:(int)slot {
     CGFloat h = [self fxCardH];
-    return NSMakeRect(468 + (i % 3) * 104, i < 3 ? 58 + h + 6 : 58, 96, h);
+    return NSMakeRect(468 + (slot % 4) * 78, slot < 4 ? 58 + h + 6 : 58, 70, h);
 }
-- (NSPoint)fxRingCenter:(int)i { NSRect r = [self fxCard:i]; return NSMakePoint(r.origin.x + 26, r.origin.y + 27); }
-- (NSRect)fxLed:(int)i { NSRect r = [self fxCard:i]; return NSMakeRect(NSMaxX(r) - 26, NSMaxY(r) - 24, 22, 18); }
-// AU parameter behind each FX ring (-1: the EQ has no ring).
-static int FxParam(int i) {
-    static const int id[6] = {params::DistDrive, params::ChorusMix, params::DelayMix, params::CompAmount, params::ReverbMix, -1};
-    return (i >= 0 && i < 6) ? id[i] : -1;
+- (NSPoint)fxRingCenter:(int)slot { NSRect r = [self fxCard:slot]; return NSMakePoint(r.origin.x + 19, r.origin.y + 24); }
+- (NSRect)fxLed:(int)slot { NSRect r = [self fxCard:slot]; return NSMakeRect(NSMaxX(r) - 20, NSMaxY(r) - 22, 18, 18); }
+- (int)fxSlotAt:(NSPoint)p {
+    for (int s = 0; s < kFxUnits; ++s) if (NSPointInRect(p, NSInsetRect([self fxCard:s], -4, -3))) return s;
+    return -1;
+}
+// AU parameter behind each unit's ring (-1: the EQ has no ring).
+static int FxParam(int u) {
+    static const int id[kFxUnits] = {params::DistDrive, params::ChorusMix, params::DelayMix, params::CompAmount, params::ReverbMix, -1,
+                                     params::PhaserMix, params::FlangerMix};
+    return (u >= 0 && u < kFxUnits) ? id[u] : -1;
 }
 static bool& FxEnabled(Preset& p, int i) {
     switch (i) {
@@ -207,6 +214,8 @@ static bool& FxEnabled(Preset& p, int i) {
     case 2: return p.fx.delay.enabled;
     case 3: return p.fx.comp.enabled;
     case 4: return p.fx.reverb.enabled;
+    case 6: return p.fx.phaser.enabled;
+    case 7: return p.fx.flanger.enabled;
     default: return p.fx.eq.enabled;
     }
 }
@@ -750,28 +759,63 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     CGFloat low = top - 286;
     [self panel:NSMakeRect(24, 38, 760, low - 48) title:@"MODULATION + EFFECTS"];
     [self drawMatrix];
-    // FX rack, signal order left to right, top to bottom.
+    // FX rack, chain order left to right, top to bottom. Cards drag to reorder.
     const FXParams& f = current.fx;
-    char det[6][40];
+    char det[kFxUnits][40];
     snprintf(det[0], 40, "%s", ui::distModeName(f.dist.mode));
     snprintf(det[1], 40, "RATE %.2f Hz", f.chorus.rateHz);
     snprintf(det[2], 40, "%.0f / %.0f ms", f.delay.timeLSec * 1000, f.delay.timeRSec * 1000);
     snprintf(det[3], 40, "RATIO %.1f:1", 1.5 + 6.5 * std::clamp(f.comp.amount, 0.0, 1.0));
     snprintf(det[4], 40, "DECAY %.2f", f.reverb.decay);
-    snprintf(det[5], 40, "%+.0f  %+.0f  %+.0f dB", f.eq.lowDb, f.eq.midDb, f.eq.highDb);
-    static const char* names[6] = {"DISTORTION", "CHORUS", "DELAY", "COMPRESS", "REVERB", "EQ"};
-    static const char* ringLabel[6] = {"DRIVE", "MIX", "MIX", "AMOUNT", "MIX", ""};
-    for (int i = 0; i < 6; ++i) {
-        NSRect r = [self fxCard:i];
+    snprintf(det[5], 40, "%+.0f %+.0f %+.0f dB", f.eq.lowDb, f.eq.midDb, f.eq.highDb);
+    snprintf(det[6], 40, "%.2f Hz  FB %.0f", f.phaser.rateHz, f.phaser.feedback * 100);
+    snprintf(det[7], 40, "%.2f Hz  FB %.0f", f.flanger.rateHz, f.flanger.feedback * 100);
+    static const char* names[kFxUnits] = {"DIST", "CHORUS", "DELAY", "COMP", "REVERB", "EQ", "PHASER", "FLANGER"};
+    static const char* ringLabel[kFxUnits] = {"DRIVE", "MIX", "MIX", "AMOUNT", "MIX", "", "MIX", "MIX"};
+    static const int accHex[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff};
+    {
+        NSRect c0 = [self fxCard:0];
+        TextA(fxMove >= 0 ? @"DROP TO MOVE IN THE CHAIN" : @"FX CHAIN  \u2022  DRAG CARDS TO REORDER",
+              NSMakeRect(c0.origin.x, NSMaxY(c0) + 12, 304, 12), 8, fxMove >= 0 ? C(0x75ead8) : C(0x4f5a69),
+              NSFontWeightSemibold, NSTextAlignmentRight);
+    }
+    for (int s = 0; s < kFxUnits; ++s) { // flow chevrons between neighbours
+        if (s % 4 == 3) continue;
+        NSRect r = [self fxCard:s];
+        NSBezierPath* ch = [NSBezierPath bezierPath];
+        CGFloat cx = NSMaxX(r) + 4, cy = NSMidY(r);
+        [ch moveToPoint:NSMakePoint(cx - 1.5, cy + 3)]; [ch lineToPoint:NSMakePoint(cx + 1.5, cy)]; [ch lineToPoint:NSMakePoint(cx - 1.5, cy - 3)];
+        [C(0x3b4552) setStroke]; ch.lineWidth = 1.2; [ch stroke];
+    }
+    for (int s = 0; s < kFxUnits; ++s) {
+        const int i = f.order.slot[s];
+        NSRect r = [self fxCard:s];
         bool on = FxEnabled(const_cast<Preset&>(current), i);
-        NSColor* acc = i == 0 ? C(0xf27a55) : i == 3 ? C(0x6cb6ff) : i == 5 ? C(0x5adac8) : C(0xf2ab55);
-        FillRound(r, 8, on ? C(0x1d2530) : C(0x181d25));
-        Text(S(names[i]), NSMakeRect(r.origin.x + 10, NSMaxY(r) - 20, 70, 13), 9, on ? acc : C(0x5f6b7b), NSFontWeightSemibold);
-        NSRect led = [self fxLed:i];
-        FillRound(NSMakeRect(NSMidX(led) - 4, NSMidY(led) - 4, 8, 8), 4, on ? acc : C(0x303947));
-        Text(S(det[i]), NSMakeRect(r.origin.x + 10, NSMaxY(r) - 34, 80, 11), 8, on ? C(0x8793a3) : C(0x4a5462), NSFontWeightMedium);
-        if (i == 5) { // EQ: response curve instead of a ring
-            NSRect plot = NSMakeRect(r.origin.x + 8, r.origin.y + 8, r.size.width - 16, 38);
+        bool moving = fxMove == s;
+        NSColor* acc = C(accHex[i]);
+        FillRound(r, 8, moving ? C(0x121820) : on ? C(0x1d2530) : C(0x181d25));
+        if (fxMove >= 0 && fxDrop == s && fxDrop != fxMove) { // landing slot
+            NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:8 yRadius:8];
+            [C(0x75ead8) setStroke]; o.lineWidth = 1.5; [o stroke];
+            CGFloat bx = fxDrop < fxMove ? r.origin.x - 4 : NSMaxX(r) + 4; // insertion bar on the side it slides in from
+            FillRound(NSMakeRect(bx - 1, r.origin.y + 6, 2, r.size.height - 12), 1, C(0x75ead8));
+        }
+        if (moving) {
+            NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5) xRadius:8 yRadius:8];
+            CGFloat dash[2] = {3, 3}; [o setLineDash:dash count:2 phase:0];
+            [C(0x3b4552) setStroke]; o.lineWidth = 1; [o stroke];
+        }
+        CGFloat alpha = moving ? 0.35 : 1.0;
+        Text(S(names[i]), NSMakeRect(r.origin.x + 8, NSMaxY(r) - 19, 46, 13), 8.5,
+             [(on ? acc : C(0x5f6b7b)) colorWithAlphaComponent:alpha], NSFontWeightSemibold);
+        NSRect led = [self fxLed:s];
+        FillRound(NSMakeRect(NSMidX(led) - 3.5, NSMidY(led) - 3.5, 7, 7), 3.5, [(on ? acc : C(0x303947)) colorWithAlphaComponent:alpha]);
+        Text(S(det[i]), NSMakeRect(r.origin.x + 8, NSMaxY(r) - 32, r.size.width - 12, 11), 7,
+             [(on ? C(0x8793a3) : C(0x4a5462)) colorWithAlphaComponent:alpha], NSFontWeightMedium);
+        TextA([NSString stringWithFormat:@"%d", s + 1], NSMakeRect(NSMaxX(r) - 16, r.origin.y + 4, 11, 10), 7,
+              C(0x3b4552), NSFontWeightBold, NSTextAlignmentRight); // chain position
+        if (i == FxEQ) { // EQ: response curve instead of a ring
+            NSRect plot = NSMakeRect(r.origin.x + 6, r.origin.y + 14, r.size.width - 12, 30);
             FillRound(plot, 4, C(0x0f141b));
             [C(0x232b36) setStroke];
             NSBezierPath* zero = [NSBezierPath bezierPath];
@@ -785,21 +829,30 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                                         NSMidY(plot) + std::clamp(db, -12.0, 12.0) / 12.0 * (plot.size.height / 2 - 4));
                 k ? [curve lineToPoint:q] : [curve moveToPoint:q];
             }
-            [(on ? acc : C(0x3b4552)) setStroke]; curve.lineWidth = 1.6; [curve stroke];
+            [[(on ? acc : C(0x3b4552)) colorWithAlphaComponent:alpha] setStroke]; curve.lineWidth = 1.4; [curve stroke];
             continue;
         }
         double val = params::get(current, FxParam(i)) / 100.0;
         bool dragging = dragKnob == kFxDrag + i;
-        NSPoint c = [self fxRingCenter:i];
+        NSPoint c = [self fxRingCenter:s];
         NSBezierPath* ring = [NSBezierPath bezierPath];
-        [ring appendBezierPathWithArcWithCenter:c radius:15 startAngle:225 endAngle:-45 clockwise:YES];
-        [C(0x303947) setStroke]; ring.lineWidth = 3; [ring stroke];
+        [ring appendBezierPathWithArcWithCenter:c radius:12 startAngle:225 endAngle:-45 clockwise:YES];
+        [[C(0x303947) colorWithAlphaComponent:alpha] setStroke]; ring.lineWidth = 2.6; [ring stroke];
         NSBezierPath* arc = [NSBezierPath bezierPath];
-        [arc appendBezierPathWithArcWithCenter:c radius:15 startAngle:225 endAngle:225 - 270 * val clockwise:YES];
-        [(on ? acc : C(0x4a5462)) setStroke]; arc.lineWidth = 3; [arc stroke];
-        Text(S(ringLabel[i]), NSMakeRect(r.origin.x + 48, r.origin.y + 29, 44, 11), 8, C(0x6f7b8b), NSFontWeightSemibold);
-        Text([NSString stringWithFormat:@"%.0f%%", val * 100], NSMakeRect(r.origin.x + 48, r.origin.y + 12, 44, 16), 12,
-             dragging ? acc : (on ? C(0xd5dce5) : C(0x5f6b7b)), NSFontWeightMedium);
+        [arc appendBezierPathWithArcWithCenter:c radius:12 startAngle:225 endAngle:225 - 270 * val clockwise:YES];
+        [[(on ? acc : C(0x4a5462)) colorWithAlphaComponent:alpha] setStroke]; arc.lineWidth = 2.6; [arc stroke];
+        Text(S(ringLabel[i]), NSMakeRect(r.origin.x + 35, r.origin.y + 27, 34, 10), 6.5,
+             [C(0x6f7b8b) colorWithAlphaComponent:alpha], NSFontWeightSemibold);
+        Text([NSString stringWithFormat:@"%.0f%%", val * 100], NSMakeRect(r.origin.x + 35, r.origin.y + 12, 34, 14), 10.5,
+             [(dragging ? acc : (on ? C(0xd5dce5) : C(0x5f6b7b))) colorWithAlphaComponent:alpha], NSFontWeightMedium);
+    }
+    if (fxMove >= 0 && fxMove < kFxUnits) { // the card under the pointer
+        const int u = f.order.slot[fxMove];
+        NSRect g = NSMakeRect(dragPoint.x - 35, dragPoint.y - 12, 70, 24);
+        FillRound(g, 7, C(0x26303c));
+        NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(g, 0.5, 0.5) xRadius:7 yRadius:7];
+        [C(accHex[u]) setStroke]; o.lineWidth = 1; [o stroke];
+        TextA(S(names[u]), NSMakeRect(g.origin.x, g.origin.y + 6, g.size.width, 12), 9, C(accHex[u]), NSFontWeightBold, NSTextAlignmentCenter);
     }
     [self drawTableEditor];
     [self drawDragBadge];
@@ -919,10 +972,11 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         CGFloat reach = [self oscRowKnob:k] ? 6 : 8; // osc-row knobs sit 60 pt apart
         if (hypot(p.x - c.x, p.y - c.y) < [self knobRadius:k] + reach) return k;
     }
-    for (int i = 0; i < 6; ++i) {
-        if (FxParam(i) < 0) continue;
-        NSPoint c = [self fxRingCenter:i];
-        if (hypot(p.x - c.x, p.y - c.y) < 22) return kFxDrag + i;
+    for (int s = 0; s < kFxUnits; ++s) {
+        const int u = current.fx.order.slot[s];
+        if (FxParam(u) < 0) continue;
+        NSPoint c = [self fxRingCenter:s];
+        if (hypot(p.x - c.x, p.y - c.y) < 16) return kFxDrag + u;
     }
     return -1;
 }
@@ -1536,15 +1590,20 @@ static int SortForColumn(int c) {
         return;
     }
     if ([self matrixMouseDown:p event:e]) return;
-    for (int i = 0; i < 6; ++i)
-        if (NSPointInRect(p, [self fxLed:i])) { // toggle an FX stage
-            bool& en = FxEnabled(current, i);
+    for (int s = 0; s < kFxUnits; ++s)
+        if (NSPointInRect(p, [self fxLed:s])) { // toggle an FX stage
+            bool& en = FxEnabled(current, current.fx.order.slot[s]);
             en = !en;
             edited = true;
             [self applySound];
             [self setNeedsDisplay:YES];
             return;
         }
+    if (int s = [self fxSlotAt:p]; s >= 0) { // pick up a card to move it in the chain
+        fxMove = s; fxDrop = s; dragPoint = p;
+        [self setNeedsDisplay:YES];
+        return;
+    }
     for (int o = 0; o < 2; ++o)
         for (int i = 0; i < kMaxUnison; ++i)
             if (NSPointInRect(p, [self unisonPip:o voice:i])) { // pick the unison voice count
@@ -1605,6 +1664,13 @@ static int SortForColumn(int c) {
         [self setNeedsDisplay:YES];
         return;
     }
+    if (fxMove >= 0) {
+        dragPoint = p;
+        int s = [self fxSlotAt:p];
+        if (s >= 0) fxDrop = s;
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (dragSource >= 0) {
         dragPoint = p;
         NSInteger k = [self hitKnob:p];
@@ -1646,6 +1712,13 @@ static int SortForColumn(int c) {
         if (slot >= 0) { matrixPage = slot / 4; edited = true; [self applySound]; }
         else NSBeep(); // matrix full
     }
+    if (fxMove >= 0) { // drop: move the unit to the landing slot
+        NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+        int s = [self fxSlotAt:p];
+        if (s >= 0) fxDrop = s;
+        if (fxDrop >= 0 && current.fx.order.move(fxMove, fxDrop)) { edited = true; [self applySound]; }
+    }
+    fxMove = -1; fxDrop = -1;
     dragSource = -1; dropKnob = -1; routeDrag = -1; modFieldDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
