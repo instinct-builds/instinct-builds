@@ -133,3 +133,34 @@ struct CharacterRollHistoryTests {
         #expect(decoded.characterName == "Wren")
     }
 }
+
+@Suite("Roll history filtering")
+struct RollHistoryFilterTests {
+    private func roll(_ expression: String, label: String? = nil, character: String? = nil) -> RollResult {
+        var r = RollResult(expression: expression, dice: [], modifier: 0, total: 10, alternateTotal: nil)
+        r.label = label
+        r.characterName = character
+        return r
+    }
+
+    @Test func matchesLabelsAndExpressions() throws {
+        let rolls = [
+            roll("2d10+3", label: "Fire Bolt damage (fire: resist 7 - immune 0 - vuln 28)", character: "Wren"),
+            roll("1d20+7", label: "Stealth check", character: "Wren"),
+            roll("2d6+3"),
+        ]
+        // Label text matches, case- and diacritic-insensitive.
+        #expect(rolls.matching("stealth").count == 1)
+        #expect(rolls.matching("FIRE BOLT").count == 1)
+        // Expression matches even when a label is present.
+        #expect(rolls.matching("2d10").count == 1)
+        #expect(rolls.matching("2d6+3").count == 1)
+        // No match yields empty; blank queries return everything.
+        #expect(rolls.matching("dragon").isEmpty)
+        #expect(rolls.matching("").count == 3)
+        #expect(rolls.matching("   ").count == 3)
+        // Composes with the character scope filter.
+        #expect(rolls.forCharacter("Wren").matching("damage").count == 1)
+        #expect(rolls.forCharacter("Wren").matching("2d6").isEmpty)
+    }
+}

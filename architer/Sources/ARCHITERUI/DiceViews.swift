@@ -43,10 +43,12 @@ public struct DiceRollerView: View {
     @State private var saveForCharacter = true
     /// History scope: false = whole table, true = selected character only.
     @State private var historyForCharacter = false
+    /// Text filter over history labels and expressions; blank shows all.
+    @State private var historyFilter = ""
 
     private var visibleHistory: [RollResult] {
         let name = historyForCharacter ? model.selected?.wrappedValue.name : nil
-        return model.rollHistory.forCharacter(name)
+        return model.rollHistory.forCharacter(name).matching(historyFilter)
     }
 
     public var body: some View {
@@ -127,6 +129,14 @@ public struct DiceRollerView: View {
                     .labelsHidden()
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 220)
+                }
+                TextField("Filter rolls", text: $historyFilter)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(maxWidth: 160)
+                if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text("\(visibleHistory.count) of \(model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
                 }
                 Spacer()
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)

@@ -50,6 +50,19 @@ public extension Array where Element == RollResult {
         guard let name else { return self }
         return filter { $0.characterName == name }
     }
+
+    /// Rolls whose label or expression contains the query, case- and
+    /// diacritic-insensitive. A blank query returns everything, so the
+    /// filter composes freely after forCharacter.
+    func matching(_ query: String) -> [RollResult] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return self }
+        return filter { roll in
+            [roll.label, roll.expression].compactMap { $0 }.contains {
+                $0.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            }
+        }
+    }
 }
 
 /// Parses and evaluates dice notation: `d20`, `2d6+3`, `4d6kh3` (keep highest 3),

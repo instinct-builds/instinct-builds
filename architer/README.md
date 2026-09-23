@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.29.0
+
+- Dice history filters: a "Filter rolls" field on the Dice tab narrows
+  history by label or expression text (case- and diacritic-insensitive),
+  composing with the All/character scope picker - "fire" finds the typed
+  damage rolls, "2d6" the matching expressions, a macro name its rolls.
+  While a filter is active a "shown of total" count appears next to it.
+
 ## What's in 2.28.0
 
 - Compact-PDF running header: continuation pages (page 2+) now carry the
