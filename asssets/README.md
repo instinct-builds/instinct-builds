@@ -391,3 +391,29 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   import) and `ReviewGalleryTests.swift`. CI builds a gallery, lists the
   zip, screenshots the page and lightbox in headless Chrome, and shows an
   imported feedback file in the app.
+
+## 1.10.0: version stacks
+
+- Files whose names differ only by a version marker are grouped into one
+  stack: `v2`, `v03`, `ver 4`, `rev5`, `draft`, `final`, `final 2`,
+  `final final`, `copy`, `copy 2`, plus the unmarked original. Plain
+  numbers such as "Vector 01" or "Grid 4K" are not treated as versions,
+  and an image never stacks with a video of the same name. Detection runs
+  after imports and watch-folder scans, and a new round joins its
+  existing stack.
+- A stack shows as one card (the newest version) with a "3 versions"
+  badge and a pile edge behind it. Click the badge to show every version
+  in the grid; click again to collapse. A search that matches only an
+  older version still shows that version.
+- Stack menu in the selection bar: Stack as Versions (⌘G) groups any
+  selection by hand; Unstack (⇧⌘G) splits it. Unstacked files are left
+  alone by auto-detection from then on.
+- The inspector's VERSIONS strip lists the stack oldest to newest. Click a
+  version to inspect it. "Compare with v2" opens the shown version and the
+  one before it in compare; ⌘-click any other version and press Compare 2
+  to open that pair. Right-click a version to remove it from the stack.
+- 1.9.0 fixes: gallery and brand kit zips no longer carry a `__MACOSX`
+  folder (CI now fails if one appears), and crop labels in the presets
+  sheet sit in a legend above the image with numbered frame tags, so a
+  crop at the edge can't clip its label.
+- Logic and tests: `VersionStacks.swift` and `VersionStackTests.swift`.

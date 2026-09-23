@@ -30,6 +30,9 @@ struct ASSSETSApp: App {
                 Button("Compare Selection") { library.openCompare() }.keyboardShortcut("c", modifiers: [.command, .option]).disabled(!library.canCompare)
                 Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
+                Divider()
+                Button("Stack as Versions") { library.stackSelection() }.keyboardShortcut("g", modifiers: [.command]).disabled(!library.canStack)
+                Button("Unstack") { library.unstackSelection() }.keyboardShortcut("g", modifiers: [.command, .shift]).disabled(!library.canUnstack)
             }
             CommandGroup(after: .pasteboard) {
                 Button("Select All Assets") { library.selectAllVisible() }.keyboardShortcut("a", modifiers: [.command, .option])
@@ -236,7 +239,7 @@ final class StudioLibrary: ObservableObject {
             let zip = parent.appendingPathComponent(folderName + ".zip")
             try? fm.removeItem(at: zip)
             let proc = Process(); proc.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-            proc.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", folder.path, zip.path]
+            proc.arguments = ["-c", "-k", "--norsrc", "--keepParent", folder.path, zip.path]
             try? proc.run(); proc.waitUntilExit()
             let zipped = proc.terminationStatus == 0
             await MainActor.run { [items] in
@@ -493,7 +496,14 @@ final class StudioLibrary: ObservableObject {
 
     // MARK: Browsing and selection
 
+    /// Stacks whose versions are all shown in the grid (toggled from the card badge or the inspector).
+    @Published var expandedStacks: Set<UUID> = []
     var filtered: [StudioAsset] {
+        let list = unstackedFiltered
+        if similarTo != nil || (selectedSmart == nil && selectedCollection == Self.missingCollection) { return list }
+        return catalog.collapsingStacks(list, expanded: expandedStacks)
+    }
+    private var unstackedFiltered: [StudioAsset] {
         if let target = similarTo {
             let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
             let hits = similarMatches.compactMap { byID[$0.id] }
@@ -513,6 +523,51 @@ final class StudioLibrary: ObservableObject {
     var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil) }
     var focused: StudioAsset? { focusID.flatMap { id in catalog.assets.first { $0.id == id } } }
     var selectedAssets: [StudioAsset] { catalog.assets.filter { selection.contains($0.id) } }
+
+    // MARK: Version stacks (1.10)
+
+    /// Selection plus every hidden version behind a collapsed stack card.
+    func withStackMembers(_ ids: Set<UUID>) -> Set<UUID> {
+        var out = ids
+        for a in catalog.assets where ids.contains(a.id) { if let s = a.stackID { for b in catalog.assets where b.stackID == s { out.insert(b.id) } } }
+        return out
+    }
+    var canStack: Bool { selection.count >= 2 }
+    var canUnstack: Bool { selectedAssets.contains { $0.stackID != nil } }
+    func stackSelection() {
+        let ids = withStackMembers(selection)
+        var sid: UUID?
+        mutate { sid = $0.stack(ids) }
+        guard let sid else { return }
+        let top = catalog.stackTop(ids.first!)
+        expandedStacks.remove(sid)
+        if let top { selection = [top.id]; focusID = top.id }
+        flash("Stacked \(ids.count) versions")
+    }
+    func unstackSelection() {
+        let ids = withStackMembers(selection)
+        mutate { $0.unstack(ids) }
+        selection = ids; focusID = focusID ?? ids.first
+        flash("Unstacked \(ids.count) assets")
+    }
+    func unstack(_ ids: Set<UUID>) {
+        mutate { $0.unstack(ids) }
+        flash(ids.count == 1 ? "Removed from stack" : "Unstacked \(ids.count) assets")
+    }
+    func toggleStackExpanded(_ asset: StudioAsset) {
+        guard let s = asset.stackID else { return }
+        if expandedStacks.contains(s) { expandedStacks.remove(s) } else { expandedStacks.insert(s) }
+    }
+    /// Groups new files by version name; runs after imports and watch-folder scans.
+    func autoStackNew() {
+        var c = catalog
+        if c.autoStack() > 0 { mutate { $0 = c } }
+    }
+    func compareVersions(_ a: UUID, _ b: UUID) {
+        let order = catalog.versions(of: a).map(\.id)
+        let pair = order.filter { $0 == a || $0 == b }
+        openCompare(pair.count == 2 ? pair : [a, b])
+    }
 
     func show(collection: String) { similarTo = nil; selectedCollection = collection; selectedSmart = nil; anchorID = nil }
     func show(smart id: UUID) { similarTo = nil; selectedSmart = id; selectedCollection = StudioCatalog.allAssets; anchorID = nil }
@@ -553,7 +608,7 @@ final class StudioLibrary: ObservableObject {
         if !found.isEmpty {
             var c = catalog
             added = c.syncWatch(found: found)
-            if !added.isEmpty { mutate { $0 = c }; refreshAutoTags() }
+            if !added.isEmpty { c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
         }
         let now = catalog.missingIDs { fm.fileExists(atPath: $0) }
         if now != missing { missing = now }
@@ -689,7 +744,7 @@ final class StudioLibrary: ObservableObject {
         try? fm.removeItem(at: zip)
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        task.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", stage.path, zip.path]
+        task.arguments = ["-c", "-k", "--norsrc", "--keepParent", stage.path, zip.path]
         do { try task.run(); task.waitUntilExit() } catch { return false }
         try? fm.removeItem(at: stage.deletingLastPathComponent())
         return task.terminationStatus == 0 && fm.fileExists(atPath: zip.path)
@@ -1051,6 +1106,7 @@ final class StudioLibrary: ObservableObject {
                     for case let file as URL in e { if let id = c.importFile(path: file.path) { added.append(id) } }
                 } else if let id = c.importFile(path: url.path) { added.append(id) }
             }
+            if !added.isEmpty { c.autoStack() }
         }
         if !added.isEmpty { refreshAutoTags(); show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
         else { flash("No new supported files found") }
@@ -1165,6 +1221,28 @@ final class StudioLibrary: ObservableObject {
             }
             watch([drop.path])
             if let a = catalog.assets.first(where: { $0.importedPath?.hasSuffix("terrazzo-texture.png") == true && $0.isStarter }) { findSimilar(a.id) }
+        case "stacks", "stack-compare":
+            // A client drop with three rounds of the same hero plus a draft of a mockup: auto-stacked on scan.
+            let fm = FileManager.default
+            let drop = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Client Drops", isDirectory: true)
+            try? fm.removeItem(at: drop)
+            try? fm.createDirectory(at: drop, withIntermediateDirectories: true)
+            let rounds: [(String, String)] = [("terrazzo-texture.png", "Lobby Floor v1.png"), ("marble-veins-texture.png", "Lobby Floor v2.png"),
+                                              ("cork-board-texture.png", "Lobby Floor final.png"), ("night-grid-4k.png", "Keynote Backdrop.png"),
+                                              ("phone-screen-mockup.psd", "App Store Hero draft.psd"), ("phone-screen-mockup.psd", "App Store Hero v2.psd"),
+                                              ("coffee-cup-mockup.psd", "Cafe Menu Cup.psd")]
+            for (src, dst) in rounds where fm.fileExists(atPath: starterRoot.appendingPathComponent(src).path) {
+                try? fm.copyItem(at: starterRoot.appendingPathComponent(src), to: drop.appendingPathComponent(dst))
+            }
+            watch([drop.path])
+            scanWatchFolders()
+            show(collection: StudioCatalog.inboxCollection)
+            if let top = catalog.assets.first(where: { $0.importedPath?.hasSuffix("Lobby Floor final.png") == true }) {
+                selection = [top.id]; focusID = top.id
+                if demo == "stack-compare", let v1 = catalog.assets.first(where: { $0.importedPath?.hasSuffix("Lobby Floor v1.png") == true }) {
+                    compareVersions(v1.id, top.id); compareSwipe = true; swipeSplit = 0.5
+                }
+            }
         case "contact-sheet":
             show(collection: "Material Textures")
             let ids = filtered.map(\.id)
@@ -1620,6 +1698,14 @@ struct SelectionBar: View {
                     if compact { Image(systemName: "rectangle.split.2x1") } else { Label("Compare", systemImage: "rectangle.split.2x1").fixedSize() }
                 }.help("Compare side by side (⌥⌘C)")
             }
+            if model.canStack || model.canUnstack {
+                Menu {
+                    if model.canStack { Button("Stack as Versions") { model.stackSelection() } }
+                    if model.canUnstack { Button("Unstack") { model.unstackSelection() } }
+                } label: {
+                    if compact { Image(systemName: "square.stack.3d.up") } else { Label("Stack", systemImage: "square.stack.3d.up") }
+                }.menuStyle(.borderlessButton).fixedSize().help("Group versions under one card (⌘G) or split them (⇧⌘G)")
+            }
             MoveMenu(ids: model.selection, compact: compact)
             Menu {
                 Button("As Shown…") { model.exportToFolder(model.selection, mode: .asShown) }
@@ -1792,6 +1878,16 @@ struct AssetCard: View {
                             .foregroundStyle(asset.favorite ? Color.pink : Color.white).padding(7).background(.black.opacity(0.4), in: Circle())
                     }.buttonStyle(.plain).padding(7)
                 }
+                if asset.stackID != nil, model.similarTo == nil {
+                    let n = model.catalog.stackCount(asset)
+                    let open = model.expandedStacks.contains(asset.stackID!)
+                    Button { model.toggleStackExpanded(asset) } label: {
+                        Label(open ? "\(VersionStacks.rank(asset).1)" : "\(n) versions", systemImage: "square.stack.3d.up.fill")
+                            .font(.system(size: 9.5, weight: .bold)).padding(.horizontal, 7).padding(.vertical, 4)
+                            .background(open ? Theme.smart.opacity(0.7) : Theme.accent, in: Capsule())
+                    }.buttonStyle(.plain).padding(8).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .help(open ? "Collapse this stack" : "Show all versions in the grid")
+                }
                 if selected && model.selection.count > 1 {
                     Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(.white, Theme.accent).padding(7)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1804,6 +1900,16 @@ struct AssetCard: View {
             HStack(spacing: 2) { ForEach(Array(asset.palette.prefix(5).enumerated()), id: \.offset) { _, hex in Color(hex: hex).frame(height: 4) } }.clipShape(Capsule())
         }
         .padding(8)
+        .background(alignment: .top) {
+            // Collapsed stacks read as a pile: two offset card edges behind the top version.
+            if asset.stackID != nil, model.similarTo == nil, !model.expandedStacks.contains(asset.stackID!) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 15).fill(Theme.raised.opacity(0.55)).padding(.horizontal, 14).offset(y: -8)
+                    RoundedRectangle(cornerRadius: 15).fill(Theme.raised.opacity(0.8)).overlay(RoundedRectangle(cornerRadius: 15).stroke(Theme.hairline))
+                        .padding(.horizontal, 7).offset(y: -4)
+                }
+            }
+        }
         .background(RoundedRectangle(cornerRadius: 15).fill(selected ? Theme.accent.opacity(0.17) : hovering ? Color.white.opacity(0.075) : Theme.raised))
         .overlay(RoundedRectangle(cornerRadius: 15).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: selected ? 2 : 1))
         .shadow(color: .black.opacity(0.3), radius: 10, y: 6)
@@ -2339,6 +2445,56 @@ struct SuggestionChip: View {
     }
 }
 
+/// The inspector's version strip: every version in the stack, oldest to newest. Click one to inspect it;
+/// ⌘-click a second (or use the compare button) to open the two side by side.
+struct VersionStrip: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    @State private var pick: UUID?
+    var body: some View {
+        let versions = model.catalog.versions(of: asset.id)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                InspectorLabel(text: "VERSIONS · \(versions.count)")
+                Spacer()
+                if let p = pick, p != asset.id {
+                    Button { model.compareVersions(p, asset.id); pick = nil } label: {
+                        Label("Compare 2", systemImage: "rectangle.split.2x1").font(.caption.weight(.semibold))
+                    }.buttonStyle(.plain).foregroundStyle(Theme.accent)
+                } else if versions.count >= 2, let prev = versions.last(where: { $0.id != asset.id && VersionStacks.rank($0).0 < VersionStacks.rank(asset).0 }) ?? versions.first(where: { $0.id != asset.id }) {
+                    Button { model.compareVersions(prev.id, asset.id) } label: {
+                        Label("Compare with \(VersionStacks.rank(prev).1)", systemImage: "rectangle.split.2x1").font(.caption.weight(.semibold))
+                    }.buttonStyle(.plain).foregroundStyle(Theme.accent).help("Open this version and the one before it in compare")
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(versions) { v in
+                        let current = v.id == asset.id, picked = v.id == pick
+                        VStack(spacing: 4) {
+                            Thumbnail(asset: v, pixels: 160).frame(width: 64, height: 46).clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(current ? Theme.accent : picked ? Theme.smart : Theme.hairline, lineWidth: current || picked ? 2 : 1))
+                            Text(VersionStacks.rank(v).1).font(.system(size: 9.5, weight: .bold))
+                                .foregroundStyle(current ? Theme.accent : picked ? Theme.smart : .secondary)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if NSEvent.modifierFlags.contains(.command) { pick = current ? nil : v.id }
+                            else { pick = nil; model.selection = [v.id]; model.focusID = v.id }
+                        }
+                        .contextMenu {
+                            if !current { Button("Compare with Current") { model.compareVersions(v.id, asset.id) } }
+                            Button("Remove from Stack") { model.unstack([v.id]) }
+                        }
+                        .help(current ? "Showing this version" : "Click to inspect · ⌘-click to pick for compare")
+                    }
+                }
+            }
+            Text("⌘-click any version to compare it with the one shown.").font(.caption2).foregroundStyle(.tertiary)
+        }
+    }
+}
+
 struct Inspector: View {
     @EnvironmentObject var model: StudioLibrary
     let asset: StudioAsset
@@ -2371,6 +2527,7 @@ struct Inspector: View {
                 ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        if asset.stackID != nil { VersionStrip(asset: asset) }
                         if asset.kind != .audio { SimilarStrip(asset: asset) }
                         if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
                         InspectorLabel(text: "COLOR PALETTE")
@@ -2666,7 +2823,23 @@ struct PresetExportSheet: View {
 struct CropPreview: View {
     let image: CGImage
     let windows: [(String, ExportRect)]
+    static let colors = [Theme.accent, Theme.smart, Theme.watch, Theme.warning, Color.pink]
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Labels live above the image, so a crop hugging an edge can't clip them.
+            WrapLayout(spacing: 6) {
+                ForEach(Array(windows.enumerated()), id: \.offset) { i, item in
+                    HStack(spacing: 5) {
+                        Text("\(i + 1)").font(.system(size: 9, weight: .heavy)).frame(width: 15, height: 15).background(Self.colors[i % 5], in: Circle()).foregroundStyle(.black)
+                        Text(item.0).font(.system(size: 10.5, weight: .bold)).foregroundStyle(Self.colors[i % 5])
+                    }
+                    .padding(.horizontal, 7).padding(.vertical, 3).background(Self.colors[i % 5].opacity(0.14), in: Capsule())
+                }
+            }
+            frames
+        }
+    }
+    private var frames: some View {
         GeometryReader { geo in
             let s = min(geo.size.width / CGFloat(image.width), geo.size.height / CGFloat(image.height))
             let w = CGFloat(image.width) * s, h = CGFloat(image.height) * s
@@ -2682,9 +2855,9 @@ struct CropPreview: View {
                             .frame(width: CGFloat(r.w) * s, height: CGFloat(r.h) * s, alignment: .topLeading).clipped()
                             .opacity(full ? 0 : 1)
                         RoundedRectangle(cornerRadius: 3).stroke(color, style: StrokeStyle(lineWidth: 2, dash: full ? [5, 3] : []))
-                        Text(item.0).font(.system(size: 10, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(color, in: Capsule()).foregroundStyle(.black).padding(5)
-                            .offset(y: CGFloat(i) * 20)   // stacked, so side-by-side crops never cover each other's label
+                        // A small numbered corner tag ties each frame to its legend chip; it sits inside the frame, never clipped.
+                        Text("\(i + 1)").font(.system(size: 9, weight: .heavy)).frame(width: 15, height: 15)
+                            .background(color, in: Circle()).foregroundStyle(.black).padding(4)
                     }
                     .frame(width: CGFloat(r.w) * s, height: CGFloat(r.h) * s)
                     .offset(x: CGFloat(r.x) * s, y: CGFloat(r.y) * s)
