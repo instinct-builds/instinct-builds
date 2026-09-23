@@ -51,6 +51,12 @@ func run(model: AppModel, character: Character, outDir: String) {
     model.rollCheck("Stealth check", bonus: 7, mode: .advantage)
     model.roll("1d8+1d4+2")
     model.roll("d20")
+    // Seed macros so the dice render shows both groups (character + table),
+    // and a tool roll so history shows the 2.18 roll-from-sheet path.
+    model.saveMacro(name: "Fireball", expression: "8d6")
+    model.saveMacro(name: "Sneak attack", expression: "1d8+4d6+3", forCharacter: character.name)
+    let tool = character.toolProficiencies[0]
+    model.rollCheck("\(tool.name) check (INT)", bonus: character.toolBonus(tool, ability: .intelligence))
     let width: CGFloat = 1180
     renderPNG(
         SheetColumnView(character: .constant(character))

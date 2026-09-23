@@ -4,6 +4,21 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.18.0
+
+- Per-character dice macros: macros can now bind to a character or stay
+  table-wide. The Dice tab groups them ("Wren Halloway" above "Table"),
+  and a "For <name> only" toggle picks the scope at save time. Scoped
+  macros persist in the same dice-macros.json - files from before 2.18
+  load as table-wide, untouched. Same-named macros can coexist across
+  scopes (table "Initiative" vs Wren's "Initiative").
+- Macro rolls are labeled: rolling a macro records history under its
+  name, not the raw expression.
+- Tool checks roll from the sheet: each tool proficiency row gains an
+  ability menu (DEX default, per-roll choice - tools borrow their
+  ability from the check) and a Roll button wired into the
+  condition-aware roller, closing the gap from 2.15.0.
+
 ## What's in 2.17.0
 
 - Print-friendly compact PDF: a second layout style for export -

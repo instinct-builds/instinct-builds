@@ -37,6 +37,8 @@ public struct DiceRollerView: View {
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
     @State private var macroNameDraft = ""
+    /// Save scope for new macros: true binds them to the selected character.
+    @State private var saveForCharacter = true
     /// History scope: false = whole table, true = selected character only.
     @State private var historyForCharacter = false
 
@@ -72,33 +74,38 @@ public struct DiceRollerView: View {
             }
             VStack(alignment: .leading, spacing: Theme.Gap.sm) {
                 Text("Macros").font(.headline)
-                ForEach(model.macros) { macro in
-                    HStack {
-                        Text(macro.name)
-                            .font(Theme.Typeface.headline)
-                            .foregroundStyle(Theme.ink)
-                        Text(macro.expression)
-                            .font(Theme.Typeface.caption)
-                            .foregroundStyle(Theme.inkMuted)
-                        Spacer()
-                        Button("Roll") { model.roll(macro.expression) }
-                            .buttonStyle(RollButtonStyle())
-                        Button(role: .destructive) {
-                            model.deleteMacro(named: macro.name)
-                        } label: { Image(systemName: "minus.circle") }
-                    }
+                let characterMacros = model.visibleMacros.filter { $0.characterName != nil }
+                let tableMacros = model.visibleMacros.filter { $0.characterName == nil }
+                if !characterMacros.isEmpty, let name = model.selected?.wrappedValue.name {
+                    Text(name)
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                    ForEach(characterMacros) { macroRow($0) }
                 }
+                if !characterMacros.isEmpty {
+                    Text("Table")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                }
+                ForEach(tableMacros) { macroRow($0) }
                 HStack {
                     TextField("Macro name", text: $macroNameDraft)
                         .textFieldStyle(InsetFieldStyle())
                         .frame(width: 160)
                     Button("Save current as macro") {
-                        model.saveMacro(name: macroNameDraft, expression: expression)
+                        model.saveMacro(
+                            name: macroNameDraft, expression: expression,
+                            forCharacter: saveForCharacter ? model.selected?.wrappedValue.name : nil)
                         macroNameDraft = ""
                     }
                     .buttonStyle(RollButtonStyle())
                     .disabled(macroNameDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                     .help("Bind the dice notation above to a reusable shortcut")
+                    if let name = model.selected?.wrappedValue.name {
+                        Toggle("For \(name) only", isOn: $saveForCharacter)
+                            .toggleStyle(.checkbox)
+                            .font(Theme.Typeface.caption)
+                    }
                 }
             }
             HStack {
@@ -126,6 +133,27 @@ public struct DiceRollerView: View {
         .padding(Theme.Gap.lg)
         .background(Theme.surface)
         .preferredColorScheme(.dark)
+    }
+}
+
+extension DiceRollerView {
+    /// One macro row: name, expression, roll (labeled with the macro name so
+    /// history reads clearly) and delete.
+    @ViewBuilder func macroRow(_ macro: DiceMacro) -> some View {
+        HStack {
+            Text(macro.name)
+                .font(Theme.Typeface.headline)
+                .foregroundStyle(Theme.ink)
+            Text(macro.expression)
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.inkMuted)
+            Spacer()
+            Button("Roll") { model.rollLabeled(macro.name, macro.expression) }
+                .buttonStyle(RollButtonStyle())
+            Button(role: .destructive) {
+                model.deleteMacro(macro)
+            } label: { Image(systemName: "minus.circle") }
+        }
     }
 }
 

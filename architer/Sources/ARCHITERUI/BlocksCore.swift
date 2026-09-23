@@ -158,22 +158,9 @@ struct IdentityBlock: View {
                 .textFieldStyle(InsetFieldStyle())
                 .font(Theme.Typeface.caption)
             ForEach($character.toolProficiencies) { $tool in
-                HStack(spacing: Theme.Gap.sm) {
-                    TextField("Tool", text: $tool.name)
-                        .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 180)
-                    Picker("", selection: $tool.tier) {
-                        ForEach([ProficiencyTier.proficient, .expert], id: \.self) {
-                            Text($0 == .expert ? "Expertise" : "Proficient").tag($0)
-                        }
-                    }
-                    .labelsHidden().frame(width: 110)
-                    Text("+\(tool.tier.multiplier * character.proficiencyBonus) over ability")
-                        .font(Theme.Typeface.caption).foregroundStyle(Theme.inkFaint)
-                    Button(role: .destructive) {
-                        character.toolProficiencies.removeAll { $0.id == tool.id }
-                    } label: { Image(systemName: "minus.circle") }
+                ToolProficiencyRow(tool: $tool, character: character) {
+                    character.toolProficiencies.removeAll { $0.id == tool.id }
                 }
-                .font(.caption)
             }
             Button("Add tool proficiency") {
                 character.toolProficiencies.append(ToolProficiency(name: ""))
@@ -376,6 +363,49 @@ struct CustomSkillsBlock: View {
                 }
             }
         }
+    }
+}
+
+/// A trained tool row: name, tier, the bonus readout, and a check roll
+/// against a chosen ability - tools borrow their ability from the check,
+/// so the roller picks it per roll (DEX is the common case).
+private struct ToolProficiencyRow: View {
+    @EnvironmentObject var model: AppModel
+    @Binding var tool: ToolProficiency
+    let character: Character
+    let remove: () -> Void
+    @State private var ability: Ability = .dexterity
+
+    var body: some View {
+        HStack(spacing: Theme.Gap.sm) {
+            TextField("Tool", text: $tool.name)
+                .textFieldStyle(InsetFieldStyle()).frame(maxWidth: 180)
+            Picker("", selection: $tool.tier) {
+                ForEach([ProficiencyTier.proficient, .expert], id: \.self) {
+                    Text($0 == .expert ? "Expertise" : "Proficient").tag($0)
+                }
+            }
+            .labelsHidden().frame(width: 110)
+            Menu(ability.abbreviation) {
+                ForEach(Ability.allCases, id: \.self) { a in
+                    Button(a.abbreviation) { ability = a }
+                }
+            }
+            .frame(width: 52)
+            .help("Ability for the tool check")
+            Button("Roll") {
+                model.rollCheck("\(tool.name) check (\(ability.abbreviation))",
+                                bonus: character.toolBonus(tool, ability: ability))
+            }
+            .buttonStyle(RollButtonStyle())
+            .disabled(tool.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            Text("+\(tool.tier.multiplier * character.proficiencyBonus) over ability")
+                .font(Theme.Typeface.caption).foregroundStyle(Theme.inkFaint)
+            Button(role: .destructive, action: remove) {
+                Image(systemName: "minus.circle")
+            }
+        }
+        .font(.caption)
     }
 }
 #endif

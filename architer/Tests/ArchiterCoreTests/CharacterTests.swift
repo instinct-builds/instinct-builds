@@ -670,6 +670,39 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func macrosScopePerCharacterAndDecodeLegacy() throws {
+        // Legacy JSON without characterName decodes as table-wide.
+        let legacy = #"[{"name":"Fireball","expression":"8d6"}]"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode([DiceMacro].self, from: legacy)
+        #expect(decoded == [DiceMacro(name: "Fireball", expression: "8d6")])
+        #expect(decoded[0].characterName == nil)
+        #expect(decoded[0].id == "fireball")
+
+        // Scoped ids let a table macro and a character macro share a name.
+        let table = DiceMacro(name: "Initiative", expression: "1d20+2")
+        let wren = DiceMacro(name: "Initiative", expression: "1d20+5", characterName: "Wren Halloway")
+        let other = DiceMacro(name: "Sneak attack", expression: "2d6", characterName: "Bruk")
+        #expect(table.id != wren.id)
+        #expect(wren.id == "wren halloway:initiative")
+
+        // Visibility: table-wide plus the selected character's own.
+        let all = [table, wren, other]
+        #expect(visibleMacros(all, for: "Wren Halloway") == [table, wren])
+        #expect(visibleMacros(all, for: "wren halloway") == [table, wren])
+        #expect(visibleMacros(all, for: nil) == [table])
+
+        // Round-trip preserves scope, and the store round-trips scoped macros.
+        let data = try JSONEncoder().encode(all)
+        let roundTripped = try JSONDecoder().decode([DiceMacro].self, from: data)
+        #expect(roundTripped == all)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("architer-macros-\(UUID().uuidString)")
+        let store = MacroStore(directory: dir)
+        store.save(all)
+        #expect(store.load() == all)
+        try? FileManager.default.removeItem(at: dir)
+    }
+
     @Test func currencyConsolidationKeepsValue() {
         let purse = Currency(copper: 1234, silver: 7, electrum: 3, gold: 5, platinum: 0)
         let tidy = purse.normalized()

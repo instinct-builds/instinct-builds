@@ -101,11 +101,14 @@ public final class AppModel: ObservableObject {
         selectedID = characters.first?.id
     }
 
-    /// Adds or replaces a macro by name; invalid names/expressions are ignored.
-    public func saveMacro(name: String, expression: String) {
+    /// Adds or replaces a macro by scoped id; invalid names/expressions are
+    /// ignored. Passing a character name binds the macro to that character,
+    /// so a table macro and a character macro can share a name.
+    public func saveMacro(name: String, expression: String, forCharacter characterName: String? = nil) {
         let macro = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
-            expression: expression.trimmingCharacters(in: .whitespaces))
+            expression: expression.trimmingCharacters(in: .whitespaces),
+            characterName: characterName)
         guard macro.isValid else { return }
         macros.removeAll { $0.id == macro.id }
         macros.append(macro)
@@ -113,9 +116,14 @@ public final class AppModel: ObservableObject {
         macroStore.save(macros)
     }
 
-    public func deleteMacro(named name: String) {
-        macros.removeAll { $0.name.lowercased() == name.lowercased() }
+    public func deleteMacro(_ macro: DiceMacro) {
+        macros.removeAll { $0.id == macro.id }
         macroStore.save(macros)
+    }
+
+    /// Table-wide macros plus any bound to the selected character.
+    public var visibleMacros: [DiceMacro] {
+        ArchiterCore.visibleMacros(macros, for: selected?.wrappedValue.name)
     }
 
     public func toggleFavorite(kind: CompendiumKind, name: String) {

@@ -3,13 +3,22 @@ import Foundation
 /// A saved dice shortcut: a name bound to a dice expression, so a table's
 /// usual rolls ("Fireball", "Sneak attack") are one tap away.
 public struct DiceMacro: Codable, Equatable, Sendable, Identifiable {
-    public var id: String { name.lowercased() }
+    /// Scoped id: table-wide macros key by name alone (the pre-2.18 shape),
+    /// character macros prefix the owner, so both can share a name.
+    public var id: String {
+        guard let characterName else { return name.lowercased() }
+        return "\(characterName.lowercased()):\(name.lowercased())"
+    }
     public var name: String
     public var expression: String
+    /// Owner when the macro is per-character; nil means shared by the table.
+    /// Optional, so macro files written before 2.18 decode unchanged.
+    public var characterName: String?
 
-    public init(name: String, expression: String) {
+    public init(name: String, expression: String, characterName: String? = nil) {
         self.name = name
         self.expression = expression
+        self.characterName = characterName
     }
 
     /// Trimmed, non-empty name and an expression the dice parser accepts.
@@ -42,5 +51,16 @@ public struct MacroStore: Sendable {
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? enc.encode(macros) else { return }
         try? data.write(to: fileURL, options: .atomic)
+    }
+}
+
+/// The macros worth showing when `characterName` sits at the table: the
+/// shared table-wide set plus that character's own. Matching is
+/// case-insensitive; a nil selection sees the shared set only.
+public func visibleMacros(_ macros: [DiceMacro], for characterName: String?) -> [DiceMacro] {
+    macros.filter {
+        guard let owner = $0.characterName else { return true }
+        guard let characterName else { return false }
+        return owner.caseInsensitiveCompare(characterName) == .orderedSame
     }
 }
