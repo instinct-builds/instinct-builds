@@ -443,8 +443,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         CGFloat y = NSMidY(r) + std::clamp((double)wv[i], -1.1, 1.1) * r.size.height * .36;
         i ? [p lineToPoint:NSMakePoint(x, y)] : [p moveToPoint:NSMakePoint(x, y)];
     }
+    // 0.19.0: round joins (sharp warps made miter spikes) and a clip so a wave never leaves its display
+    [NSGraphicsContext saveGraphicsState];
+    [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 1, 1) xRadius:6 yRadius:6] addClip];
+    p.lineJoinStyle = NSLineJoinStyleRound;
     [[col colorWithAlphaComponent:.25] setStroke]; p.lineWidth = 5; [p stroke];
     [col setStroke]; p.lineWidth = 1.8; [p stroke];
+    [NSGraphicsContext restoreGraphicsState];
     // Click-to-edit pill, and for a user table its frame position bar.
     NSRect pill = NSMakeRect(NSMaxX(r) - 40, NSMaxY(r) - 17, 34, 13);
     FillRound(pill, 4, user ? [col colorWithAlphaComponent:.22] : C(0x161c25));
@@ -466,6 +471,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         int nf = std::max(1, (int)t.size());
         for (int i = 1; i < nf - 1; ++i)
             FillRound(NSMakeRect(bar.origin.x + bar.size.width * i / (nf - 1) - .5, bar.origin.y + 1.5, 1, 4), .5, C(0x0a0d12, .8));
+        FillRound(NSMakeRect(r.origin.x + 5, NSMaxY(r) - 17, 50, 13), 4, C(0x0a0d12, .85)); // 0.19.0: keeps the label readable over the wave
         TextA([NSString stringWithFormat:@"POS %.0f%%", pos * 100], NSMakeRect(r.origin.x + 8, NSMaxY(r) - 16, 70, 11), 7.5,
               col, NSFontWeightSemibold, NSTextAlignmentLeft);
     }
@@ -1256,7 +1262,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [acc setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(q.x - 1.5, q.y - 1.5, 3, 3)] fill];
     }
     // Hint on its own line under the canvas so the shape never runs through it (0.18.0).
-    Text(isRemap ? @"X = INPUT PHASE  \u2022  Y = OUTPUT PHASE  \u2022  CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND" :
+    Text(isRemap ? @"X = INPUT PHASE  \u2022  Y = OUTPUT PHASE  \u2022  CLICK ADDS  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND" :
          isLfo && !drawn ? @"EDITING TURNS CUSTOM ON  \u2022  CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND"
                          : @"CLICK ADDS A POINT  \u2022  DOUBLE-CLICK DELETES  \u2022  DRAG \u25C6 TO BEND",
          NSMakeRect(c.origin.x + 2, P.origin.y + 32, 380, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
