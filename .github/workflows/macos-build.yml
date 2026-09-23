@@ -179,6 +179,14 @@ jobs:
           B="ASSSETS-$ASSSETS_VERSION-board-render.png"; cp "$SUP/demo-board.png" "$B"; cp "$SUP/demo-board.pdf" "ASSSETS-$ASSSETS_VERSION-board-render.pdf"
           bw=$(sips -g pixelWidth "$B" | awk '/pixelWidth/ {print $2}'); bh=$(sips -g pixelHeight "$B" | awk '/pixelHeight/ {print $2}')
           echo "board PNG ${bw}x${bh}"; test "$bw" -ge 1600 -a "$bh" -ge 800 || { echo "board PNG too small"; exit 1; }
+          shoot focus 1920x1200 focus
+          shoot present 1920x1200 present
+          shoot board-gallery 1920x1200 board-gallery-app demo-board-gallery/gallery-done.txt
+          BG=$(ls -d "$SUP/demo-board-gallery/"*Review | head -1); test -s "$BG/board.png"; grep -q '"spots"' "$BG/index.html" || { echo "board gallery has no board"; exit 1; }
+          unzip -l "$BG.zip" | tee "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"; grep -q 'board.png' "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"
+          BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
+          "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
+          test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"
           shoot color-smart-editor 1920x1200 color-smart-editor
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
@@ -214,6 +222,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-color-search.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-gallery-listing.txt
 
   au:
     runs-on: macos-latest

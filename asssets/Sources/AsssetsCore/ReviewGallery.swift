@@ -33,8 +33,34 @@ public enum ReviewGallery {
         public var title: String
         public var created: String       // yyyy-MM-dd
         public var items: [Item]
-        public init(gallery: String = UUID().uuidString, title: String, created: String, items: [Item]) {
-            self.gallery = gallery; self.title = title; self.created = created; self.items = items
+        /// Set when the gallery was shared from a moodboard (1.17): the board image with a clickable spot per asset.
+        public var board: Board?
+        public init(gallery: String = UUID().uuidString, title: String, created: String, items: [Item], board: Board? = nil) {
+            self.gallery = gallery; self.title = title; self.created = created; self.items = items; self.board = board
+        }
+    }
+
+    public struct Board: Codable, Equatable, Sendable {
+        /// An asset's place on the board image, as fractions (0-1) of its width and height.
+        public struct Spot: Codable, Equatable, Sendable {
+            public var id: String
+            public var x: Double, y: Double, w: Double, h: Double
+            public init(id: String, x: Double, y: Double, w: Double, h: Double) { self.id = id; self.x = x; self.y = y; self.w = w; self.h = h }
+        }
+        public var image: String
+        public var width: Int
+        public var height: Int
+        public var spots: [Spot]
+        public init(image: String, width: Int, height: Int, spots: [Spot]) { self.image = image; self.width = width; self.height = height; self.spots = spots }
+    }
+
+    /// Spots for the asset cards whose assets made it into the gallery, back to front, measured against the export frame.
+    public static func spots(for board: Moodboard, including ids: Set<UUID>) -> [Board.Spot] {
+        let r = board.exportRect
+        guard r.w > 0, r.h > 0 else { return [] }
+        return board.layered.compactMap { it in
+            guard it.kind == .asset, let a = it.assetID, ids.contains(a) else { return nil }
+            return Board.Spot(id: a.uuidString, x: (it.x - r.x) / r.w, y: (it.y - r.y) / r.h, w: it.w / r.w, h: it.h / r.h)
         }
     }
 
@@ -108,11 +134,16 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 .pickbtn{border:1px solid var(--pick);color:var(--pick);background:transparent;border-radius:9px;padding:10px;font-weight:650}.pickbtn.on{background:var(--pick);color:#fff}
 .nav{display:flex;gap:8px}.nav button{flex:1;background:var(--raised);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:9px}
 .close{position:absolute;top:16px;left:18px;background:rgba(255,255,255,.1);border:0;color:#fff;border-radius:50%;width:34px;height:34px;font-size:15px}
-.hint{color:var(--faint);font-size:11.5px;margin-top:auto}footer{color:var(--faint);font-size:12px;text-align:center;padding:0 0 28px}
+.hint{color:var(--faint);font-size:11.5px;margin-top:auto}
+#board{padding:26px 32px 0;display:none}#board.on{display:block}#board .lbl{margin:0 0 10px}
+.bwrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#0b0c12}.bwrap img{width:100%;display:block}
+.spot{position:absolute;border:2px solid transparent;border-radius:10px;cursor:zoom-in;transition:border-color .12s,background .12s}.spot:hover{border-color:var(--accent);background:rgba(140,97,255,.12)}
+.spot.picked{border-color:var(--pick)}.spot .heart{top:6px;right:6px;width:26px;height:26px;line-height:26px;font-size:13px;pointer-events:none}footer{color:var(--faint);font-size:12px;text-align:center;padding:0 0 28px}
 </style></head><body>
 <header><div><div class="brand">ASSSETS</div><h1 id="title"></h1><div class="sub" id="sub"></div></div><div class="spacer"></div>
 <button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
 <button class="primary" id="download">Download feedback</button></header>
+<section id="board"><div class="lbl">BOARD · CLICK ANY IMAGE TO REVIEW IT</div><div class="bwrap" id="bwrap"></div></section>
 <main id="grid"></main>
 <div id="lb"><div class="stage"><button class="close" id="close" title="Close (Esc)">✕</button><img id="lbimg" alt=""></div>
 <aside><h2 id="lbtitle"></h2><div class="r" id="lbres"></div><div class="sw" id="lbsw"></div>
@@ -138,7 +169,11 @@ const th=document.createElement('div');th.className='thumb';const im=document.cr
 const h=document.createElement('button');h.className='heart';h.textContent=s.favorite?'♥':'♡';h.title='Favorite';h.onclick=e=>{e.stopPropagation();s.favorite=!s.favorite;save();render()};th.appendChild(h);
 if(s.note.trim()){const n=document.createElement('div');n.className='noted';n.textContent='✎ Note';th.appendChild(n)}
 const m=document.createElement('div');m.className='meta';const t=document.createElement('div');t.className='t';t.textContent=it.title;const r=document.createElement('div');r.className='r';r.textContent=it.kind+' · '+it.resolution;
-const sw=document.createElement('div');sw.className='sw';swatches(sw,it.palette);m.append(t,r,sw);c.append(th,m);g.appendChild(c)});sub()}
+const sw=document.createElement('div');sw.className='sw';swatches(sw,it.palette);m.append(t,r,sw);c.append(th,m);g.appendChild(c)});sub();board()}
+function board(){if(!M.board)return;$('board').classList.add('on');const w=$('bwrap');w.innerHTML='';const im=document.createElement('img');im.src=M.board.image;im.alt=M.title;w.appendChild(im);
+M.board.spots.forEach(sp=>{const i=M.items.findIndex(it=>it.id===sp.id);if(i<0)return;const s=st(sp.id);const d=document.createElement('div');d.className='spot'+(s.favorite?' picked':'');
+d.style.left=(sp.x*100)+'%';d.style.top=(sp.y*100)+'%';d.style.width=(sp.w*100)+'%';d.style.height=(sp.h*100)+'%';d.title=M.items[i].title;d.onclick=()=>open(i);
+if(s.favorite){const h=document.createElement('span');h.className='heart';h.textContent='♥';d.appendChild(h)}w.appendChild(d)})}
 function open(i){cur=i;const it=M.items[i],s=st(it.id);$('lbimg').src=it.image;$('lbtitle').textContent=it.title;$('lbres').textContent=it.kind+' · '+it.resolution;swatches($('lbsw'),it.palette);
 $('lbtags').innerHTML='';it.tags.slice(0,12).forEach(t=>{const s2=document.createElement('span');s2.textContent=t;$('lbtags').appendChild(s2)});
 $('lbnote').value=s.note;$('lbpick').className='pickbtn'+(s.favorite?' on':'');$('lbpick').textContent=s.favorite?'♥ Favorited':'♥ Favorite';$('lb').classList.add('open')}

@@ -122,6 +122,15 @@ final class StudioLibrary: ObservableObject {
     @Published var renamingBoard: UUID?
     @Published var boardZoom = 1.0
     @Published var fitBoardRequest = 0
+    /// Inspector column on/off (1.17), remembered between launches.
+    @Published var showInspector = UserDefaults.standard.object(forKey: "showInspector") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showInspector, forKey: "showInspector") }
+    }
+    /// Board being presented and the card in focus (-1 = the whole board).
+    @Published var presenting: UUID?
+    @Published var presentIndex = -1
+    var presentEnteredFullScreen = false
+    var isDemo = false
     @Published var smartEditor: SmartEditorState?
     /// Per-asset PSD layer visibility flips for this session (layer indices).
     @Published var psdToggled: [UUID: Set<Int>] = [:]
@@ -231,7 +240,7 @@ final class StudioLibrary: ObservableObject {
     @Published var galleryRunning = false
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
-    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil) {
+    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil) {
         let list = ids ?? filtered.map(\.id).filter(selection.contains)
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = list.compactMap { byID[$0] }.filter { $0.kind != .audio }
@@ -271,7 +280,12 @@ final class StudioLibrary: ObservableObject {
                 items.append(.init(id: a.id.uuidString, title: a.title, kind: a.kind.singular, resolution: a.resolution, palette: a.palette,
                                    tags: a.tags, image: "images/\(stem).jpg", thumb: "thumbs/\(stem).jpg"))
             }
-            let manifest = ReviewGallery.Manifest(title: name, created: created, items: items)
+            var boardView: ReviewGallery.Board?
+            if let board, (try? board.png.write(to: folder.appendingPathComponent("board.png"))) != nil {
+                let spots = ReviewGallery.spots(for: board.layout, including: Set(items.compactMap { UUID(uuidString: $0.id) }))
+                boardView = .init(image: "board.png", width: board.width, height: board.height, spots: spots)
+            }
+            let manifest = ReviewGallery.Manifest(title: name, created: created, items: items, board: boardView)
             let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
             // A zip next to the folder, ready to send.
             let zip = parent.appendingPathComponent(folderName + ".zip")
@@ -382,6 +396,16 @@ final class StudioLibrary: ObservableObject {
             case 0: cull?.autoAdvance.toggle(); flash(cull?.autoAdvance == true ? "Auto-advance on" : "Auto-advance off")  // A
             case 32: cullNextUndecided()                                               // U
             case 53, 36, 76: closeCull()                                               // Esc, Return
+            default: break
+            }
+            return true
+        }
+        if presenting != nil {
+            switch e.keyCode {
+            case 124, 125, 49, 36: stepPresent(1)                                     // → ↓ Space Return
+            case 123, 126: stepPresent(-1)                                            // ← ↑
+            case 115, 29: presentIndex = -1                                           // Home, 0: whole board
+            case 53: stopPresenting()                                                 // Esc
             default: break
             }
             return true
@@ -1391,6 +1415,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
+        if demo != nil { isDemo = true; showInspector = demo != "focus" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1735,6 +1760,20 @@ final class StudioLibrary: ObservableObject {
                     try? "done \(Int(size?.width ?? 0))x\(Int(size?.height ?? 0)) \(items) items pdf=\(pdf != nil)".write(to: self.supportRoot.appendingPathComponent("demo-board.txt"), atomically: true, encoding: .utf8)
                 }
             }
+        case "focus", "present", "board-gallery":
+            let id = makeDemoBoard()
+            show(board: id)
+            if demo == "present" {
+                startPresenting(id)
+                presentIndex = 0
+            } else if demo == "board-gallery" {
+                let out = supportRoot.appendingPathComponent("demo-board-gallery", isDirectory: true)
+                try? FileManager.default.removeItem(at: out)
+                try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareBoardGallery(id, to: out) }
+            } else if let b = catalog.board(id), let first = b.items.first(where: { $0.kind == .asset }) {
+                boardItem = first.id; if let a = first.assetID { selection = [a]; focusID = a }
+            }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -1916,6 +1955,142 @@ extension StudioLibrary {
     }
 }
 
+
+// MARK: - Present and share boards (1.17)
+
+extension StudioLibrary {
+    func startPresenting(_ id: UUID) {
+        guard let b = catalog.board(id), !b.items.isEmpty else { flash("Add something to the board first"); return }
+        editingNote = nil; viewerID = nil
+        presentIndex = -1
+        presenting = id
+        // Real full screen when the user starts it; demos stay in the window so CI can capture them.
+        if !isDemo, let w = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }), !w.styleMask.contains(.fullScreen) {
+            presentEnteredFullScreen = true
+            w.toggleFullScreen(nil)
+        }
+    }
+
+    func stopPresenting() {
+        presenting = nil
+        if presentEnteredFullScreen {
+            presentEnteredFullScreen = false
+            if let w = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }), w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
+        }
+    }
+
+    func stepPresent(_ d: Int) {
+        guard let b = presenting.flatMap({ catalog.board($0) }) else { return }
+        presentIndex = max(-1, min(b.items.count - 1, presentIndex + d))
+    }
+
+    /// Review gallery of the board's assets (reading order) with the rendered board on top.
+    func shareBoardGallery(_ id: UUID, to fixedDir: URL? = nil) {
+        guard let board = catalog.board(id) else { return }
+        var seen = Set<UUID>()
+        let ids = board.readingOrder.compactMap { $0.kind == .asset ? $0.assetID : nil }.filter { seen.insert($0).inserted }
+        guard !ids.isEmpty else { flash("Add assets to the board first"); return }
+        Task { @MainActor in
+            guard let rendered = await self.renderBoard(id), let cg = rendered.0.cgImage,
+                  let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { self.flash("Couldn't render \(board.name)"); return }
+            self.exportGallery(ids, title: board.name, to: fixedDir, board: (png, cg.width, cg.height, board))
+        }
+    }
+}
+
+/// Drag to resize the inspector; double-click restores the default width.
+struct InspectorResizeHandle: View {
+    @Binding var width: Double
+    @State private var start: Double?
+    @State private var hovering = false
+    var body: some View {
+        Rectangle().fill(hovering || start != nil ? Theme.accent.opacity(0.5) : Theme.hairline).frame(width: hovering || start != nil ? 3 : 1)
+            .padding(.horizontal, 3).contentShape(Rectangle())
+            .onHover { h in hovering = h; if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { v in
+                    let base = start ?? width
+                    if start == nil { start = width }
+                    width = min(420, max(290, base - Double(v.translation.width)))
+                }
+                .onEnded { _ in start = nil })
+            .onTapGesture(count: 2) { width = 316 }
+            .help("Drag to resize the inspector")
+    }
+}
+
+/// Full-window board presentation: the whole board, then card by card in reading order.
+struct PresentView: View {
+    @EnvironmentObject var model: StudioLibrary
+    let board: Moodboard
+
+    var body: some View {
+        let order = board.readingOrder
+        let idx = model.presentIndex
+        let focus: BoardItem? = idx >= 0 && idx < order.count ? order[idx] : nil
+        let bounds = board.bounds ?? BoardRect(x: 0, y: 0, w: 800, h: 600)
+        let canvasW = bounds.maxX + Moodboard.margin, canvasH = bounds.maxY + Moodboard.margin
+        GeometryReader { geo in
+            let f = Moodboard.fit(focus?.rect ?? bounds, width: Double(geo.size.width), height: Double(geo.size.height) - 64,
+                                  margin: focus == nil ? 48 : 72, maxScale: focus == nil ? 1.5 : 3)
+            ZStack(alignment: .topLeading) {
+                Color(red: 0.02, green: 0.022, blue: 0.035)
+                ZStack(alignment: .topLeading) {
+                    ForEach(board.layered) { item in
+                        BoardItemView(item: item, asset: item.assetID.flatMap { id in model.catalog.assets.first { $0.id == id } },
+                                      selected: false, editing: false, detail: focus == nil ? 2 : 4)
+                            .frame(width: item.w, height: item.h)
+                            .opacity(focus == nil || focus?.id == item.id ? 1 : 0.18)
+                            .offset(x: item.x, y: item.y)
+                            .onTapGesture {
+                                if let i = order.firstIndex(where: { $0.id == item.id }) { model.presentIndex = model.presentIndex == i ? -1 : i }
+                            }
+                    }
+                }
+                .frame(width: canvasW, height: canvasH, alignment: .topLeading)
+                .scaleEffect(CGFloat(f.scale), anchor: .topLeading)
+                .offset(x: f.x, y: f.y)
+                .animation(.spring(response: 0.5, dampingFraction: 0.86), value: idx)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
+            .overlay(alignment: .bottom) { caption(order: order, idx: idx, focus: focus).padding(.bottom, 18) }
+            .overlay(alignment: .topTrailing) {
+                Button { model.stopPresenting() } label: {
+                    Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.1), in: Circle())
+                }.buttonStyle(.plain).foregroundStyle(.white).padding(18).help("Stop presenting (Esc)")
+            }
+        }
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func label(_ item: BoardItem) -> String {
+        switch item.kind {
+        case .asset: return item.assetID.flatMap { id in model.catalog.assets.first { $0.id == id }?.title } ?? "Asset"
+        case .note: return item.text.split(separator: "\n").first.map(String.init) ?? "Note"
+        case .palette: return "Palette · " + item.colors.joined(separator: " ")
+        }
+    }
+
+    private func caption(order: [BoardItem], idx: Int, focus: BoardItem?) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "rectangle.3.group").foregroundStyle(Theme.accent)
+            Text(board.name).font(.system(size: 13, weight: .bold))
+            Text(focus == nil ? "Whole board" : "\(idx + 1) of \(order.count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+            if let focus { Text(label(focus)).font(.system(size: 12.5, weight: .medium)).lineLimit(1).frame(maxWidth: 360, alignment: .leading) }
+            Divider().frame(height: 14)
+            HStack(spacing: 6) {
+                Button { model.stepPresent(-1) } label: { Image(systemName: "chevron.left") }.disabled(idx < 0)
+                Button { model.stepPresent(1) } label: { Image(systemName: "chevron.right") }.disabled(idx >= order.count - 1)
+            }.buttonStyle(.borderless)
+            Text("← → step · 0 whole board · Esc exit").font(.caption2).foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(.ultraThinMaterial, in: Capsule()).overlay(Capsule().stroke(Theme.hairline))
+    }
+}
+
 // MARK: - Board canvas
 
 struct BoardCanvas: View {
@@ -1925,6 +2100,8 @@ struct BoardCanvas: View {
     @State private var sizing: (id: UUID, dw: Double, dh: Double)?
     @State private var viewport: CGSize = .zero
     @State private var dropTargeted = false
+    /// Off after a manual zoom; while on, the board refits when the view changes size (inspector, window).
+    @State private var autoFit = true
 
     private var z: Double { model.boardZoom }
     private var canvas: CGSize {
@@ -1961,8 +2138,8 @@ struct BoardCanvas: View {
                 .background(Theme.ink)
                 .overlay(RoundedRectangle(cornerRadius: 2).stroke(dropTargeted ? Theme.accent : .clear, lineWidth: 2))
                 .onAppear { viewport = geo.size; fit() }
-                .onChange(of: geo.size) { _, s in viewport = s }
-                .onChange(of: model.fitBoardRequest) { _, _ in fit() }
+                .onChange(of: geo.size) { _, s in viewport = s; if autoFit { fit() } }
+                .onChange(of: model.fitBoardRequest) { _, _ in autoFit = true; fit() }
             }
         }
         .background(Theme.backdrop)
@@ -1987,13 +2164,16 @@ struct BoardCanvas: View {
             Toggle(isOn: Binding(get: { board.snap }, set: { v in model.updateBoard(board.id, v ? "Snap On" : "Snap Off") { $0.snap = v } })) { Image(systemName: "grid") }
                 .toggleStyle(.button).help("Snap to grid")
             HStack(spacing: 4) {
-                Button { model.boardZoom = max(0.25, z / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
-                Button { fit() } label: { Text("\(Int((z * 100).rounded()))%").font(.caption.monospacedDigit()).frame(minWidth: 34) }.help("Fit the board")
-                Button { model.boardZoom = min(2, z * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
+                Button { autoFit = false; model.boardZoom = max(0.25, z / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
+                Button { autoFit = true; fit() } label: { Text("\(Int((z * 100).rounded()))%").font(.caption.monospacedDigit()).frame(minWidth: 34) }.help("Fit the board")
+                Button { autoFit = false; model.boardZoom = min(2, z * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
             }
+            Button { model.startPresenting(board.id) } label: { Image(systemName: "play.fill").foregroundStyle(Theme.accent) }.help("Present the board full screen")
             Menu {
                 Button("PNG…") { model.exportBoard(board.id, pdf: false) }
                 Button("PDF…") { model.exportBoard(board.id, pdf: true) }
+                Divider()
+                Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
             } label: { Label("Export", systemImage: "square.and.arrow.up") }.fixedSize().help("Export the board")
         }
         .buttonStyle(.borderless)
@@ -2121,6 +2301,8 @@ struct BoardItemView: View {
     let asset: StudioAsset?
     let selected: Bool
     let editing: Bool
+    /// Thumbnail pixels per point; Present asks for more because it zooms in.
+    var detail = 2.0
     @State private var draft = ""
     @State private var hovering = false
 
@@ -2136,7 +2318,7 @@ struct BoardItemView: View {
         case .asset:
             ZStack(alignment: .bottomLeading) {
                 if let asset {
-                    Thumbnail(asset: asset, pixels: Int(min(1200, max(item.w, item.h) * 2)))
+                    Thumbnail(asset: asset, pixels: Int(min(2400, max(item.w, item.h) * detail)))
                 } else { Theme.panel }
                 if let asset, hovering || selected {
                     Text(asset.title).font(.caption.weight(.semibold)).lineLimit(1).padding(.horizontal, 8).padding(.vertical, 5)
@@ -2239,20 +2421,29 @@ struct BoardExportView: View {
 
 struct StudioView: View {
     @EnvironmentObject var model: StudioLibrary
+    @AppStorage("inspectorWidth") private var inspectorWidth = 316.0
     var body: some View {
+        // Sidebar | content + inspector. The inspector lives inside the detail column so it can collapse (1.17).
         NavigationSplitView {
             Sidebar().navigationSplitViewColumnWidth(min: 246, ideal: 258, max: 320)
-        } content: {
-            Group {
-                if let id = model.selectedBoard, let board = model.catalog.board(id) { BoardCanvas(board: board) } else { AssetBrowser() }
-            }.navigationSplitViewColumnWidth(min: 400, ideal: 600)
         } detail: {
-            Group {
-                if model.selection.count > 1 { BatchInspector(assets: model.selectedAssets) }
-                else if let asset = model.focused { Inspector(asset: asset) }
-                else { EmptyInspector() }
+            HStack(spacing: 0) {
+                Group {
+                    if let id = model.selectedBoard, let board = model.catalog.board(id) { BoardCanvas(board: board) } else { AssetBrowser() }
+                }
+                .frame(minWidth: 400, maxWidth: .infinity)
+                if model.showInspector {
+                    InspectorResizeHandle(width: $inspectorWidth)
+                    Group {
+                        if model.selection.count > 1 { BatchInspector(assets: model.selectedAssets) }
+                        else if let asset = model.focused { Inspector(asset: asset) }
+                        else { EmptyInspector() }
+                    }
+                    .frame(width: min(420, max(290, inspectorWidth)))
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
-            .navigationSplitViewColumnWidth(min: 290, ideal: 316, max: 420)
+            .animation(.easeOut(duration: 0.18), value: model.showInspector)
         }
         .navigationSplitViewStyle(.balanced)
         .background(Theme.ink)
@@ -2266,6 +2457,9 @@ struct StudioView: View {
                     Slider(value: $model.gridScale, in: 120...280).frame(width: 90)
                     Image(systemName: "square.grid.2x2").font(.caption)
                 }.foregroundStyle(.secondary).help("Thumbnail size")
+                Button { model.showInspector.toggle() } label: { Label("Inspector", systemImage: "sidebar.right") }
+                    .keyboardShortcut("i", modifiers: [.command, .option])
+                    .help(model.showInspector ? "Hide the inspector (⌥⌘I)" : "Show the inspector (⌥⌘I)")
             }
         }
         .confirmationDialog("Remove \(model.pendingRemoval.count) asset\(model.pendingRemoval.count == 1 ? "" : "s") from the library?",
@@ -2289,6 +2483,10 @@ struct StudioView: View {
         .overlay {
             if model.compare != nil { CompareView().transition(.opacity) }
         }
+        .overlay {
+            if let id = model.presenting, let board = model.catalog.board(id) { PresentView(board: board).transition(.opacity) }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.presenting)
         .animation(.easeOut(duration: 0.16), value: model.compare != nil)
         .overlay {
             if model.cull != nil { CullView().transition(.opacity) }
@@ -2352,6 +2550,9 @@ struct Sidebar: View {
                     ForEach(model.catalog.boards) { board in
                         SidebarRow(title: board.name, symbol: "rectangle.3.group", count: board.items.count, selected: model.selectedBoard == board.id, boardDrop: board.id) { model.show(board: board.id) }
                             .contextMenu {
+                                Button("Present") { model.show(board: board.id); model.startPresenting(board.id) }
+                                Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
+                                Divider()
                                 Button("Rename…") { renameBoardText = board.name; model.renamingBoard = board.id }
                                 Button("Export PNG…") { model.exportBoard(board.id, pdf: false) }
                                 Button("Export PDF…") { model.exportBoard(board.id, pdf: true) }

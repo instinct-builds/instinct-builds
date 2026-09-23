@@ -565,3 +565,24 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   layout and wrapping, snapping, drop points, aspect-locked resize,
   z-order, palette cards, tidy and export bounds, catalog round-trip, and
   catalogs from before 1.16).
+
+## 1.17.0: focus and presenting
+
+- The inspector can be hidden with the toolbar button or ⌥⌘I, so the grid
+  or a board gets the full window width. Drag its left edge to resize it
+  (290-420 pt; double-click resets it). Both settings are kept between
+  launches. A board that was fitted refits when the space changes.
+- Present (the play button in the board header, or Present in the
+  sidebar menu) shows the board full screen. It starts with the whole
+  board, then steps through the cards row by row with the arrow keys,
+  Space or Return. The card in focus zooms in, the rest dim. 0 goes back
+  to the whole board, Esc leaves full screen. Click a card to jump to it.
+- Share as Review Gallery (Export menu or sidebar) builds the 1.9 client
+  gallery from the board's assets in reading order, with the rendered
+  board on top. Each image on the board is clickable and opens that
+  asset's review panel; favorites show a heart on the board too.
+  Feedback files import the same way as before.
+- Logic and tests: `Moodboard.readingOrder`, `Moodboard.fit`,
+  `ReviewGallery.Board` and `ReviewGallery.spots` in
+  `MoodboardTests.swift` (row grouping, fit and clamping, spot fractions,
+  manifest round-trip, galleries from before 1.17).

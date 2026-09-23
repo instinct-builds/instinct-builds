@@ -101,3 +101,48 @@ struct MoodboardTests {
         #expect(old.boards.isEmpty)
     }
 }
+
+@Suite("Presenting and sharing boards")
+struct BoardPresentTests {
+    @Test func readingOrderIsRowsThenColumns() {
+        var b = Moodboard(name: "B"); b.snap = false
+        let c = b.addNote("c", at: (x: 600, y: 50))
+        let a = b.addNote("a", at: (x: 40, y: 40))
+        let d = b.addNote("d", at: (x: 40, y: 400))
+        let bb = b.addNote("b", at: (x: 320, y: 90))   // starts lower but inside the first row's upper half
+        #expect(b.readingOrder.map(\.id) == [a, bb, c, d])
+        #expect(Moodboard(name: "E").readingOrder.isEmpty)
+    }
+
+    @Test func fitCentersAndClamps() {
+        let f = Moodboard.fit(BoardRect(x: 100, y: 100, w: 200, h: 100), width: 1000, height: 600, margin: 50)
+        #expect(f.scale == 4) // capped
+        #expect(f.x == (1000 - 800) / 2 - 400 && f.y == (600 - 400) / 2 - 400)
+        let g = Moodboard.fit(BoardRect(x: 0, y: 0, w: 2000, h: 500), width: 1000, height: 600, margin: 0)
+        #expect(g.scale == 0.5 && g.x == 0 && g.y == 175)
+        #expect(Moodboard.fit(BoardRect(x: 0, y: 0, w: 0, h: 0), width: 10, height: 10) == (1, 0, 0))
+    }
+
+    @Test func gallerySpotsAndManifest() throws {
+        var b = Moodboard(name: "B")
+        let a1 = UUID(), a2 = UUID(), gone = UUID()
+        b.addAsset(a1, aspect: 1, width: 200, at: (x: 40, y: 40))
+        b.addAsset(a2, aspect: 2, width: 400, at: (x: 260, y: 40))
+        b.addAsset(gone, aspect: 1, at: (x: 700, y: 40))
+        b.addNote("note")
+        let spots = ReviewGallery.spots(for: b, including: [a1, a2])
+        #expect(spots.map(\.id) == [a1.uuidString, a2.uuidString])
+        let r = b.exportRect
+        #expect(abs(spots[0].x - 40 / r.w) < 1e-9 && abs(spots[1].w - 400 / r.w) < 1e-9)
+        #expect(spots.allSatisfy { $0.x >= 0 && $0.y >= 0 && $0.x + $0.w <= 1 && $0.y + $0.h <= 1 })
+        let m = ReviewGallery.Manifest(gallery: "g", title: "Board", created: "2026-09-23", items: [],
+                                       board: .init(image: "board.png", width: 2000, height: 1000, spots: spots))
+        let back = try JSONDecoder().decode(ReviewGallery.Manifest.self, from: JSONEncoder().encode(m))
+        #expect(back == m)
+        // 1.9-1.16 manifests have no board.
+        let old = try JSONDecoder().decode(ReviewGallery.Manifest.self, from: Data(#"{"gallery":"g","title":"t","created":"x","items":[]}"#.utf8))
+        #expect(old.board == nil)
+        let html = ReviewGallery.html(m)
+        #expect(html.contains("id=\"bwrap\"") && html.contains("\"board.png\"") && !html.contains("https://"))
+    }
+}

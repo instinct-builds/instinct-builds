@@ -188,6 +188,26 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         for i in items.indices where items[i].kind == .palette && (items[i].assetID.map(ids.contains) ?? false) { items[i].assetID = nil }
     }
 
+    /// Present order (1.17): rows top to bottom, left to right within a row. A card joins the current row
+    /// when its top edge is above the middle of the row's first card.
+    public var readingOrder: [BoardItem] {
+        let byY = items.sorted { $0.y == $1.y ? $0.x < $1.x : $0.y < $1.y }
+        var rows: [[BoardItem]] = []
+        for it in byY {
+            if let first = rows.last?.first, it.y < first.y + first.h / 2 { rows[rows.count - 1].append(it) }
+            else { rows.append([it]) }
+        }
+        return rows.flatMap { $0.sorted { $0.x == $1.x ? $0.y < $1.y : $0.x < $1.x } }
+    }
+
+    /// Scale and offset that center `rect` inside a `width` x `height` view with `margin` on every side.
+    /// Apply as: scale the board around its top-left corner, then translate by (x, y).
+    public static func fit(_ rect: BoardRect, width: Double, height: Double, margin: Double = 40, maxScale: Double = 4) -> (scale: Double, x: Double, y: Double) {
+        guard rect.w > 0, rect.h > 0, width > 0, height > 0 else { return (1, 0, 0) }
+        let s = max(0.01, min((width - 2 * margin) / rect.w, (height - 2 * margin) / rect.h, maxScale))
+        return (s, (width - rect.w * s) / 2 - rect.x * s, (height - rect.h * s) / 2 - rect.y * s)
+    }
+
     /// Lays everything out in rows, back to front, keeping sizes.
     public mutating func tidy() {
         var x = Self.margin, y = Self.margin, rowH = 0.0
