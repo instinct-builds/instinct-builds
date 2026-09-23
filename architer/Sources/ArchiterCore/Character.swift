@@ -764,6 +764,14 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         return "\(word): \(amount) -> \(adjusted)"
     }
 
+    /// Outgoing-defense annotation for a damage total of the given type:
+    /// what the roll deals against resistance, immunity, and vulnerability.
+    /// Mirrors adjustedDamage's math (halve rounds down, double, zero).
+    public static func outgoingDefenseNote(total: Int, type: DamageType) -> String {
+        let amount = max(0, total)
+        return "\(type.rawValue): resist \(amount / 2) - immune 0 - vuln \(amount * 2)"
+    }
+
     /// Damage eats temporary HP first, then real HP. Falling to 0 clears temp.
     public mutating func applyDamage(_ amount: Int, type: DamageType? = nil) {
         var remaining = adjustedDamage(amount, type: type)

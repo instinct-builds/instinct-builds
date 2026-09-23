@@ -209,6 +209,7 @@ public struct MacroRowView: View {
 /// A styled history entry: label, per-die chips (dropped dice struck out),
 /// advantage alternate, and a crit glow on natural 20s / 1s.
 struct RollCard: View {
+    @EnvironmentObject var model: AppModel
     let roll: RollResult
 
     private var crit: Bool {
@@ -241,6 +242,13 @@ struct RollCard: View {
                 }
             }
             Spacer()
+            Button {
+                model.addRollToJournal(roll)
+            } label: { Image(systemName: "square.and.pencil") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help("Add this roll to the journal")
+                .disabled(model.selected == nil)
             if let alt = roll.alternateTotal {
                 Text("\(alt)")
                     .font(Theme.Typeface.caption.monospacedDigit())

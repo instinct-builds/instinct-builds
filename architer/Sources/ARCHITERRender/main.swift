@@ -57,9 +57,18 @@ func run(model: AppModel, character: Character, outDir: String) {
     model.saveMacro(name: "Sneak attack", expression: "1d8+4d6+3", forCharacter: character.name)
     let tool = character.toolProficiencies[0]
     model.rollCheck("\(tool.name) check (INT)", bonus: character.toolBonus(tool, ability: .intelligence))
+    // 2.24.0 proofs: an attack whose damage history entry carries the
+    // outgoing-defense note, and that entry quick-added to the journal so
+    // the sheet render shows it in the journal block.
+    if let fireBolt = character.attacks.first(where: { $0.name == "Fire Bolt" }) {
+        model.rollAttack(fireBolt, for: character)
+        if let rolled = model.rollHistory.first { model.addRollToJournal(rolled) }
+    }
     let width: CGFloat = 1180
+    // Render the model's copy: the journal quick-add above mutated it.
+    let sheetCharacter = model.selected?.wrappedValue ?? character
     renderPNG(
-        SheetColumnView(character: .constant(character))
+        SheetColumnView(character: .constant(sheetCharacter))
             .padding()
             .background(Theme.surface)
             .environmentObject(model),

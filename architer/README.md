@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.24.0
+
+- Outgoing-defense notes: attack damage rolls now carry what the total
+  deals against each defense on the target - "Fire Bolt damage (fire:
+  resist 6 - immune 0 - vuln 26)" - using the same halve-down / zero /
+  double math as incoming defenses (2.20.0). Typed attacks get the note;
+  untyped roll plain.
+- Journal quick-add: every roll card has a pencil - one tap appends the
+  roll (label, total, expression) to the selected character's journal.
+
 ## What's in 2.23.0
 
 - Per-tool default ability, persisted: the ability menu on a tool

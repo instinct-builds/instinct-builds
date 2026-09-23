@@ -194,6 +194,15 @@ struct CharacterTests {
         #expect(old.toolProficiencies.isEmpty)
     }
 
+    @Test func outgoingDefenseNoteMirrorsDefenseMath() throws {
+        // The note shows what a damage total deals against each defense,
+        // with the same rounding as adjustedDamage (halve rounds down).
+        #expect(Character.outgoingDefenseNote(total: 13, type: .fire) == "fire: resist 6 - immune 0 - vuln 26")
+        #expect(Character.outgoingDefenseNote(total: 14, type: .piercing) == "piercing: resist 7 - immune 0 - vuln 28")
+        // Negative totals clamp like applyDamage does.
+        #expect(Character.outgoingDefenseNote(total: -3, type: .cold) == "cold: resist 0 - immune 0 - vuln 0")
+    }
+
     @Test func toolProficiencyDefaultAbilityPersists() throws {
         // Saves written before 2.23 carry no defaultAbility key.
         let legacy = Data(#"{"name":"Thieves' tools","tier":"proficient"}"#.utf8)

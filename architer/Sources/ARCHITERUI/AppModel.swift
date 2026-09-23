@@ -192,6 +192,25 @@ public final class AppModel: ObservableObject {
         if let r = try? roller.rollLabeled(label, expression) { record(r) }
     }
 
+    /// Damage roll labeled with the outgoing-defense math for its type -
+    /// what the total deals against resistance, immunity, and vulnerability
+    /// on the target. Untyped or unrecognized types roll without a note.
+    private func recordDamageRoll(_ label: String, _ expression: String, type: DamageType?) {
+        guard var r = try? roller.rollLabeled(label, expression) else { return }
+        if let type {
+            r.label = "\(label) (\(Character.outgoingDefenseNote(total: r.total, type: type)))"
+        }
+        record(r)
+    }
+
+    /// Quick-add a history roll to the selected character's journal.
+    public func addRollToJournal(_ roll: RollResult) {
+        guard var c = selected?.wrappedValue else { return }
+        let title = roll.label ?? roll.expression
+        c.journal.append(JournalEntry(date: "", title: title, text: "Rolled \(roll.total) (\(roll.expression))"))
+        selected?.wrappedValue = c
+    }
+
     /// Level-up assistant: roll the hit die or take the average, then apply.
     public func levelUp(rollHP: Bool) {
         guard var c = selected?.wrappedValue, c.level < 20 else { return }
@@ -246,10 +265,11 @@ public final class AppModel: ObservableObject {
         let crit = attackRoll.dice.contains { $0.sides == 20 && $0.kept && $0.value == 20 }
         let damageExpr = attack.damageString(scores: c.scores)
         let grip = attack.twoHanded && attack.versatileExpression != nil ? " (two-handed)" : ""
+        let damageType = DamageType(rawValue: attack.damageType.trimmingCharacters(in: .whitespaces).lowercased())
         if crit, let parsed = try? DiceExpression.parse(damageExpr) {
-            rollLabeled("\(attack.name) damage (CRIT\(grip))", parsed.doubledDice())
+            recordDamageRoll("\(attack.name) damage (CRIT\(grip))", parsed.doubledDice(), type: damageType)
         } else {
-            rollLabeled("\(attack.name) damage\(grip)", damageExpr)
+            recordDamageRoll("\(attack.name) damage\(grip)", damageExpr, type: damageType)
         }
         if attack.ammunition != nil, var sel = selected?.wrappedValue {
             _ = sel.spendAmmunition(attackID: attack.id)
