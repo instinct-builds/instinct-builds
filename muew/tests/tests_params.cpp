@@ -12,8 +12,10 @@ static int failures = 0;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); ++failures; } } while (0)
 
 int main() {
-    static_assert(params::Count == 16, "parameter IDs are append-only");
+    static_assert(params::Count == 21, "parameter IDs are append-only");
     CHECK(params::Macro1 == 12 && params::ReverbMix == 11);
+    CHECK(params::UnisonDetuneA == 16 && params::UnisonWidth == 18 && params::DistDrive == 19 && params::CompAmount == 20);
+    CHECK(ui::knobParam(ui::UniDetuneA) == 16 && ui::knobParam(ui::UniDetuneB) == 17 && ui::knobParam(ui::Width) == 18);
     CHECK((int)params::WarpA == (int)ui::WarpA && (int)params::MsegTime == (int)ui::MsegTime);
     // Knob params cover the same range as the editor knobs.
     for (int k = 0; k < ui::KnobCount; ++k) {
@@ -77,10 +79,14 @@ int main() {
     stripped.routes.erase(std::remove_if(stripped.routes.begin(), stripped.routes.end(),
         [](const ModRoute& rt) { return (int)rt.source >= (int)ModRoute::Source::Macro1; }), stripped.routes.end());
     CHECK(rms(dark) == rms(stripped)); // macro routes add exactly nothing at 0
+    // Every factory preset carries the six standard macro routes (0.7.0
+    // presets add Spread -> unison routes on top) with the macros at 0.
+    const int stdRoutes[6][2] = {{5, 2}, {6, 5}, {6, 6}, {7, 4}, {8, 1}, {8, 3}};
     for (const auto& fp : factoryPresets()) {
-        int macroRoutes = 0;
-        for (const auto& rt : fp.routes) if ((int)rt.source >= (int)ModRoute::Source::Macro1) ++macroRoutes;
-        CHECK(macroRoutes == 6 && fp.voice.macros[0] == 0 && fp.voice.macros[3] == 0);
+        int found = 0;
+        for (const auto& sr : stdRoutes)
+            for (const auto& rt : fp.routes) if ((int)rt.source == sr[0] && (int)rt.dest == sr[1]) { ++found; break; }
+        CHECK(found == 6 && fp.voice.macros[0] == 0 && fp.voice.macros[3] == 0);
     }
     Preset bright = dark; params::set(bright, params::Macro1, 100);
     double b0 = brightness(dark), b1 = brightness(bright);

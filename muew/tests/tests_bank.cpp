@@ -53,7 +53,7 @@ int main() {
     std::string err;
     PresetBank bank;
     check(bank.loadManifest("presets", err), "factory bank loads in manifest order: " + err);
-    check(bank.size() >= 24 && bank.size() <= 32, "factory bank ships 24-32 presets");
+    check(bank.size() >= 38 && bank.size() <= 64, "factory bank ships 38-64 presets");
     check((int)bank.size() == kFactoryPresetCount, "embedded bank has the same count as the files");
 
     // Legacy AU numbers 0-7 keep their original sounds and slugs.

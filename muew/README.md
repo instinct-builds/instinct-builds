@@ -165,3 +165,20 @@ simple 3-device license key scheme follow there.
   - The app and the AU share the folder.
   - In Live, loading a user preset shows its name as the plugin's preset.
 - The code is `src/user_presets.h` (portable, tested on Linux) and `ui::Library` (factory bank followed by user presets, so AU factory numbers never move).
+
+## 0.7.0 Unison and a deeper FX rack
+
+- Unison on both oscillators: 1-8 stacked voices each, with detune (outer
+  voices up to +-1 semitone), a shared stereo width and blend. Pick the voice
+  count with the pips under each oscillator display; UNISON A/B and WIDTH are
+  knobs (AU parameters 16-18) and mod destinations (7-9). One voice per
+  oscillator is the classic mono path, so every earlier preset renders
+  sample-identical.
+- FX rack grows to six stages in signal order: distortion (soft clip, fold,
+  bitcrush), chorus, delay, compressor (one knob), reverb and a 3-band EQ.
+  Click a stage's light to switch it; drag its ring to set drive, mix or
+  amount. Drive and compressor are AU parameters 19-20; the macros can drive
+  the distortion (mod destination 10).
+- Eight new factory sounds (AU numbers 30-37): Hyper Saw, Anthem Stack, Reese
+  Grind, Hoover Rise, Fold Screamer, Crushed Keys, Wide Pluck, Growl Stack.
+  Authored by scripts/author_070_presets.py; bank.txt stays append-only.

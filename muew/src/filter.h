@@ -43,6 +43,7 @@ public:
     }
 
     void reset() { ic1_ = ic2_ = 0.0; }
+    void copyStateFrom(const SVFilter& o) { ic1_ = o.ic1_; ic2_ = o.ic2_; }
 
 private:
     double sr_ = 44100.0;

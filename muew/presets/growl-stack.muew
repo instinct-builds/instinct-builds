@@ -1,0 +1,39 @@
+muew-preset 2
+name Growl Stack
+category Bass
+author MUEW Factory
+tags growl unison distorted
+osc1Shape 3
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.5
+filterCutoff 1100
+filterReso 1.8
+filterMode 0
+amp 0.003 0.3 0.75 0.12
+mod 0.005 0.4 0.2 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 6 0.25
+warp2 0 0
+mseg 0.5 1 5 0 0 0.25 1 0.5 0.1 0.75 0.8 1 0
+unison 3 1 0.15 0.25 0.5 0.8
+routes 11
+route 4 5 0.6
+route 4 2 1.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.6 0.9
+eq 1 2 2 -2
+comp 1 0.6

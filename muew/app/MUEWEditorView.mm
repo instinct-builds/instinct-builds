@@ -1,6 +1,7 @@
 // MUEWEditorView.mm - shared MUEW editor implementation (see MUEWEditorView.h).
 #import "MUEWEditorView.h"
 #include "user_presets.h"
+#include "au_params.h"
 #include <cmath>
 
 using namespace muew;
@@ -144,18 +145,57 @@ static NSUserDefaults* MUEWDefaults() {
 - (int)listRows { return (int)std::floor(([self listTop] - 76) / kRowH); }
 - (NSPoint)knobCenter:(int)k {
     CGFloat t = [self top];
-    NSPoint p[] = {{98, t - 194}, {195, t - 194}, {308, t - 194}, {405, t - 194},
+    NSPoint p[] = {{70, t - 192}, {190, t - 192}, {310, t - 192}, {430, t - 192},
                    {536, t - 94}, {637, t - 94}, {536, t - 200}, {637, t - 200}, {732, t - 200}};
     if (ui::isMacro(k)) { // macro strip in the header
         CGFloat h = self.bounds.size.height;
         return NSMakePoint(772 + (k - ui::Macro1) * 56, h - 38);
     }
+    // Oscillator row: WARP A, UNISON A, MIX | WIDTH | WARP B, UNISON B, DETUNE
+    if (k == ui::UniDetuneA) return NSMakePoint(130, t - 192);
+    if (k == ui::Width) return NSMakePoint(250, t - 192);
+    if (k == ui::UniDetuneB) return NSMakePoint(370, t - 192);
     return p[k];
+}
+- (BOOL)oscRowKnob:(int)k {
+    return k == ui::WarpA || k == ui::Mix || k == ui::WarpB || k == ui::Detune || ui::isUnison(k);
 }
 - (CGFloat)knobRadius:(int)k {
     if (ui::isMacro(k)) return 13;
+    if ([self oscRowKnob:k]) return 19;
     return (k == ui::Cutoff || k == ui::Resonance) ? 30 : 25;
 }
+// Unison strip under each oscillator display: 8 voice pips + readout.
+- (NSRect)unisonStrip:(int)osc { return NSMakeRect(osc ? 252 : 46, [self top] - 151, 190, 18); }
+- (NSRect)unisonPip:(int)osc voice:(int)i {
+    NSRect r = [self unisonStrip:osc];
+    return NSMakeRect(r.origin.x + 6 + i * 13, r.origin.y, 13, r.size.height);
+}
+// FX rack: 3 x 2 cards in signal order DIST, CHORUS, DELAY / COMP, REVERB, EQ.
+- (CGFloat)fxCardH { return ([self top] - 286 - 44 - 58 - 6) / 2; }
+- (NSRect)fxCard:(int)i {
+    CGFloat h = [self fxCardH];
+    return NSMakeRect(468 + (i % 3) * 104, i < 3 ? 58 + h + 6 : 58, 96, h);
+}
+- (NSPoint)fxRingCenter:(int)i { NSRect r = [self fxCard:i]; return NSMakePoint(r.origin.x + 26, r.origin.y + 27); }
+- (NSRect)fxLed:(int)i { NSRect r = [self fxCard:i]; return NSMakeRect(NSMaxX(r) - 26, NSMaxY(r) - 24, 22, 18); }
+// AU parameter behind each FX ring (-1: the EQ has no ring).
+static int FxParam(int i) {
+    static const int id[6] = {params::DistDrive, params::ChorusMix, params::DelayMix, params::CompAmount, params::ReverbMix, -1};
+    return (i >= 0 && i < 6) ? id[i] : -1;
+}
+static bool& FxEnabled(Preset& p, int i) {
+    switch (i) {
+    case 0: return p.fx.dist.enabled;
+    case 1: return p.fx.chorus.enabled;
+    case 2: return p.fx.delay.enabled;
+    case 3: return p.fx.comp.enabled;
+    case 4: return p.fx.reverb.enabled;
+    default: return p.fx.eq.enabled;
+    }
+}
+static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
+- (int)paramForDrag:(NSInteger)d { return d >= kFxDrag ? FxParam((int)(d - kFxDrag)) : ui::knobParam((int)d); }
 - (NSRect)chipRect:(int)i {
     CGFloat t = [self top];
     return NSMakeRect(812 + (i % 3) * 51, t - 90 - (i / 3) * 22, 46, 18);
@@ -199,7 +239,8 @@ static NSUserDefaults* MUEWDefaults() {
     [C(0xeaf1f8) setStroke]; line.lineWidth = 2; [line stroke];
     NSString* label = dragKnob == k ? S(ui::knobReadout(current.voice, k)) : S(ui::knobLabel(k));
     bool macro = ui::isMacro(k);
-    TextA(label, NSMakeRect(c.x - rad - 16, c.y - rad - (macro ? 18 : 25), rad * 2 + 32, 13), macro ? 8 : 10,
+    CGFloat lw2 = std::max<CGFloat>(60, rad * 2 + 32);
+    TextA(label, NSMakeRect(c.x - lw2 / 2, c.y - rad - (macro ? 18 : 25), lw2, 13), macro ? 8 : 10,
           dragKnob == k ? accent : C(0xa8b2c1), macro ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
 }
 
@@ -325,9 +366,28 @@ static NSUserDefaults* MUEWDefaults() {
          NSMakeRect(50, top - 47, 190, 16), 10, C(0x5adac8), NSFontWeightSemibold);
     Text([NSString stringWithFormat:@"OSC B  \u2022  %s  \u2022  %s", ui::shapeName(v.osc2Shape), ui::warpName(v.osc2WarpMode)],
          NSMakeRect(256, top - 47, 190, 16), 10, C(0x9d7df2), NSFontWeightSemibold);
+    for (int o = 0; o < 2; ++o) { // unison strips
+        NSColor* col = o ? C(0x9d7df2) : C(0x5adac8);
+        NSRect st = [self unisonStrip:o];
+        FillRound(st, 5, C(0x0f141b));
+        int n = ui::unisonVoices(v, o);
+        for (int i = 0; i < kMaxUnison; ++i) {
+            NSRect pr = [self unisonPip:o voice:i];
+            NSRect dot = NSMakeRect(NSMidX(pr) - 3.5, NSMidY(pr) - 3.5, 7, 7);
+            [(i < n ? col : C(0x2a323e)) setFill];
+            [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
+        }
+        NSString* ro = S(ui::unisonReadout(v, o));
+        if (n > 1) ro = [ro stringByAppendingFormat:@"  \u00b1%.0f ct", (o ? v.osc2UniDetune : v.osc1UniDetune) * 100];
+        TextA(ro, NSMakeRect(st.origin.x + 110, st.origin.y + 3, 74, 12), 8, n > 1 ? col : C(0x5f6b7b),
+              NSFontWeightSemibold, NSTextAlignmentRight);
+    }
     [self knob:ui::WarpA accent:C(0x5adac8)];
+    [self knob:ui::UniDetuneA accent:C(0x5adac8)];
     [self knob:ui::Mix accent:C(0x5adac8)];
+    [self knob:ui::Width accent:C(0xc3cbd6)];
     [self knob:ui::WarpB accent:C(0x9d7df2)];
+    [self knob:ui::UniDetuneB accent:C(0x9d7df2)];
     [self knob:ui::Detune accent:C(0x9d7df2)];
 
     // Filter + amp
@@ -413,29 +473,56 @@ static NSUserDefaults* MUEWDefaults() {
         TextA([NSString stringWithFormat:@"%+.2f", rt.amount], NSMakeRect(x + 10, cardTop - 114, 76, 12), 9, C(0x8793a3), NSFontWeightMedium, NSTextAlignmentCenter);
         [self sourcePreview:rt.source in:NSMakeRect(x + 12, 72, 72, 44) color:mseg ? C(0x66e2d0) : C(0x6cb6ff)];
     }
-    struct FxCard { const char* name; bool on; double mix; std::string detail; };
-    char d0[32], d1[32], d2[32];
-    snprintf(d0, sizeof d0, "RATE %.2f Hz", current.fx.chorus.rateHz);
-    snprintf(d1, sizeof d1, "%.0f / %.0f ms", current.fx.delay.timeLSec * 1000, current.fx.delay.timeRSec * 1000);
-    snprintf(d2, sizeof d2, "DECAY %.2f", current.fx.reverb.decay);
-    FxCard fx[3] = {{"CHORUS", current.fx.chorus.enabled, current.fx.chorus.mix, d0},
-                    {"DELAY", current.fx.delay.enabled, current.fx.delay.mix, d1},
-                    {"REVERB", current.fx.reverb.enabled, current.fx.reverb.mix, d2}};
-    for (int i = 0; i < 3; ++i) {
-        CGFloat x = 468 + i * 104;
-        FillRound(NSMakeRect(x, 58, 96, cardH), 8, C(0x1b222c));
-        Text(S(fx[i].name), NSMakeRect(x + 10, cardTop - 22, 60, 14), 10, fx[i].on ? C(0xf2ab55) : C(0x5f6b7b), NSFontWeightSemibold);
-        FillRound(NSMakeRect(x + 78, cardTop - 17, 8, 8), 4, fx[i].on ? C(0xf2ab55) : C(0x303947));
-        TextA(S(fx[i].detail), NSMakeRect(x + 6, cardTop - 44, 84, 12), 8, C(0x8793a3), NSFontWeightMedium, NSTextAlignmentCenter);
-        NSPoint c = NSMakePoint(x + 48, 104);
-        double mv = fx[i].on ? fx[i].mix : 0;
+    // FX rack, signal order left to right, top to bottom.
+    const FXParams& f = current.fx;
+    char det[6][40];
+    snprintf(det[0], 40, "%s", ui::distModeName(f.dist.mode));
+    snprintf(det[1], 40, "RATE %.2f Hz", f.chorus.rateHz);
+    snprintf(det[2], 40, "%.0f / %.0f ms", f.delay.timeLSec * 1000, f.delay.timeRSec * 1000);
+    snprintf(det[3], 40, "RATIO %.1f:1", 1.5 + 6.5 * std::clamp(f.comp.amount, 0.0, 1.0));
+    snprintf(det[4], 40, "DECAY %.2f", f.reverb.decay);
+    snprintf(det[5], 40, "%+.0f  %+.0f  %+.0f dB", f.eq.lowDb, f.eq.midDb, f.eq.highDb);
+    static const char* names[6] = {"DISTORTION", "CHORUS", "DELAY", "COMPRESS", "REVERB", "EQ"};
+    static const char* ringLabel[6] = {"DRIVE", "MIX", "MIX", "AMOUNT", "MIX", ""};
+    for (int i = 0; i < 6; ++i) {
+        NSRect r = [self fxCard:i];
+        bool on = FxEnabled(const_cast<Preset&>(current), i);
+        NSColor* acc = i == 0 ? C(0xf27a55) : i == 3 ? C(0x6cb6ff) : i == 5 ? C(0x5adac8) : C(0xf2ab55);
+        FillRound(r, 8, on ? C(0x1d2530) : C(0x181d25));
+        Text(S(names[i]), NSMakeRect(r.origin.x + 10, NSMaxY(r) - 20, 70, 13), 9, on ? acc : C(0x5f6b7b), NSFontWeightSemibold);
+        NSRect led = [self fxLed:i];
+        FillRound(NSMakeRect(NSMidX(led) - 4, NSMidY(led) - 4, 8, 8), 4, on ? acc : C(0x303947));
+        Text(S(det[i]), NSMakeRect(r.origin.x + 10, NSMaxY(r) - 34, 80, 11), 8, on ? C(0x8793a3) : C(0x4a5462), NSFontWeightMedium);
+        if (i == 5) { // EQ: response curve instead of a ring
+            NSRect plot = NSMakeRect(r.origin.x + 8, r.origin.y + 8, r.size.width - 16, 38);
+            FillRound(plot, 4, C(0x0f141b));
+            [C(0x232b36) setStroke];
+            NSBezierPath* zero = [NSBezierPath bezierPath];
+            [zero moveToPoint:NSMakePoint(plot.origin.x + 4, NSMidY(plot))]; [zero lineToPoint:NSMakePoint(NSMaxX(plot) - 4, NSMidY(plot))];
+            [zero stroke];
+            NSBezierPath* curve = [NSBezierPath bezierPath];
+            for (int k = 0; k <= 48; ++k) {
+                double hz = 20.0 * std::pow(1000.0, k / 48.0), lo = hz / 180.0, hi = hz / 6000.0, oct = std::log2(hz / 1200.0);
+                double db = f.eq.lowDb / (1 + lo * lo) + f.eq.highDb * hi * hi / (1 + hi * hi) + f.eq.midDb * std::exp(-oct * oct * 1.5);
+                NSPoint q = NSMakePoint(plot.origin.x + 4 + (plot.size.width - 8) * k / 48.0,
+                                        NSMidY(plot) + std::clamp(db, -12.0, 12.0) / 12.0 * (plot.size.height / 2 - 4));
+                k ? [curve lineToPoint:q] : [curve moveToPoint:q];
+            }
+            [(on ? acc : C(0x3b4552)) setStroke]; curve.lineWidth = 1.6; [curve stroke];
+            continue;
+        }
+        double val = params::get(current, FxParam(i)) / 100.0;
+        bool dragging = dragKnob == kFxDrag + i;
+        NSPoint c = [self fxRingCenter:i];
         NSBezierPath* ring = [NSBezierPath bezierPath];
-        [ring appendBezierPathWithArcWithCenter:c radius:20 startAngle:225 endAngle:-45 clockwise:YES];
+        [ring appendBezierPathWithArcWithCenter:c radius:15 startAngle:225 endAngle:-45 clockwise:YES];
         [C(0x303947) setStroke]; ring.lineWidth = 3; [ring stroke];
         NSBezierPath* arc = [NSBezierPath bezierPath];
-        [arc appendBezierPathWithArcWithCenter:c radius:20 startAngle:225 endAngle:225 - 270 * mv clockwise:YES];
-        [C(0xf2ab55) setStroke]; arc.lineWidth = 3; [arc stroke];
-        TextA([NSString stringWithFormat:@"MIX %.0f%%", mv * 100], NSMakeRect(x + 6, 66, 84, 12), 9, C(0xa8b2c1), NSFontWeightMedium, NSTextAlignmentCenter);
+        [arc appendBezierPathWithArcWithCenter:c radius:15 startAngle:225 endAngle:225 - 270 * val clockwise:YES];
+        [(on ? acc : C(0x4a5462)) setStroke]; arc.lineWidth = 3; [arc stroke];
+        Text(S(ringLabel[i]), NSMakeRect(r.origin.x + 48, r.origin.y + 29, 44, 11), 8, C(0x6f7b8b), NSFontWeightSemibold);
+        Text([NSString stringWithFormat:@"%.0f%%", val * 100], NSMakeRect(r.origin.x + 48, r.origin.y + 12, 44, 16), 12,
+             dragging ? acc : (on ? C(0xd5dce5) : C(0x5f6b7b)), NSFontWeightMedium);
     }
 }
 
@@ -443,7 +530,13 @@ static NSUserDefaults* MUEWDefaults() {
 - (NSInteger)hitKnob:(NSPoint)p {
     for (int k = 0; k < ui::KnobCount; ++k) {
         NSPoint c = [self knobCenter:k];
-        if (hypot(p.x - c.x, p.y - c.y) < [self knobRadius:k] + 8) return k;
+        CGFloat reach = [self oscRowKnob:k] ? 6 : 8; // osc-row knobs sit 60 pt apart
+        if (hypot(p.x - c.x, p.y - c.y) < [self knobRadius:k] + reach) return k;
+    }
+    for (int i = 0; i < 6; ++i) {
+        if (FxParam(i) < 0) continue;
+        NSPoint c = [self fxRingCenter:i];
+        if (hypot(p.x - c.x, p.y - c.y) < 22) return kFxDrag + i;
     }
     return -1;
 }
@@ -483,6 +576,13 @@ static NSUserDefaults* MUEWDefaults() {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     dragKnob = [self hitKnob:p];
     dragStart = p;
+    if (dragKnob >= kFxDrag) { // FX ring: drive / mix / amount, published as AU parameters
+        int id = [self paramForDrag:dragKnob];
+        if (host) host->parameterGesture(id, true);
+        dragValue = params::get(current, id) / 100.0;
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (dragKnob >= 0) {
         if (host) host->parameterGesture(ui::knobParam((int)dragKnob), true);
         if (e.clickCount == 2 && currentIndex >= 0) { // double-click restores the preset value
@@ -493,6 +593,24 @@ static NSUserDefaults* MUEWDefaults() {
         [self setNeedsDisplay:YES];
         return;
     }
+    for (int i = 0; i < 6; ++i)
+        if (NSPointInRect(p, [self fxLed:i])) { // toggle an FX stage
+            bool& en = FxEnabled(current, i);
+            en = !en;
+            edited = true;
+            [self applySound];
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    for (int o = 0; o < 2; ++o)
+        for (int i = 0; i < kMaxUnison; ++i)
+            if (NSPointInRect(p, [self unisonPip:o voice:i])) { // pick the unison voice count
+                ui::setUnisonVoices(current.voice, o, i + 1);
+                edited = true;
+                [self applySound];
+                [self setNeedsDisplay:YES];
+                return;
+            }
     if (NSPointInRect(p, [self prevRect])) { [self stepPreset:-1]; return; }
     if (NSPointInRect(p, [self nextRect])) { [self stepPreset:1]; return; }
     NSArray* chips = ChipLabels();
@@ -535,6 +653,14 @@ static NSUserDefaults* MUEWDefaults() {
     if (dragKnob < 0) return;
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
+    if (dragKnob >= kFxDrag) {
+        int id = [self paramForDrag:dragKnob];
+        params::set(current, id, std::clamp(dragValue + (p.y - dragStart.y) / scale, 0.0, 1.0) * 100.0);
+        edited = true;
+        if (!host || !host->editParameter(id, current)) [self applySound];
+        [self setNeedsDisplay:YES];
+        return;
+    }
     ui::setKnob(current.voice, (int)dragKnob, dragValue + (p.y - dragStart.y) / scale);
     edited = true;
     [self knobEdited:(int)dragKnob];
@@ -542,7 +668,7 @@ static NSUserDefaults* MUEWDefaults() {
 }
 
 - (void)mouseUp:(NSEvent*)e {
-    if (dragKnob >= 0 && host) host->parameterGesture(ui::knobParam((int)dragKnob), false);
+    if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
     dragKnob = -1;
     [self setNeedsDisplay:YES];
 }

@@ -20,7 +20,12 @@ public:
 
     inline float process() {
         const double hz = freq_ * std::pow(2.0, detune_ / 12.0);
-        const double level = Wavetable::levelForFrequency(hz, sr_);
+        return processAt(hz, Wavetable::levelForFrequency(hz, sr_));
+    }
+
+    // Same output as process() for a precomputed frequency and mip level;
+    // unison stacks share one level and pitch computation per sample.
+    inline float processAt(double hz, double level) {
         const double p = warpedPhase(phase_);
         float out = table_->sampleFractional(shape_, level, p);
         if (warpMode_ == WarpMode::Fold && warp_ > 0.0) {

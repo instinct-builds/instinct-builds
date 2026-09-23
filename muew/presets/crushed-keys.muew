@@ -1,0 +1,37 @@
+muew-preset 2
+name Crushed Keys
+category Keys
+author MUEW Factory
+tags lofi bitcrush soft
+osc1Shape 1
+osc2Shape 0
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 3000
+filterReso 0.5
+filterMode 0
+amp 0.003 0.9 0.35 0.5
+mod 0.003 0.6 0 0.3
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 2 1 0.1 0.25 0.5 0.8
+routes 10
+route 2 2 1.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 1 0.5 3 10 0.25
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.6 0.55 0.28
+dist 1 2 0.55 0.5
+eq 1 1 0 -3

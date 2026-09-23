@@ -14,6 +14,9 @@
 //   5. drag the header Macro 1 knob -> AU parameter 12 moves (automatable)
 //   6. save a user preset, host switches away, click User chip + the saved
 //      row -> the AU holds the saved sound under its own name
+//   7. host selects Fold Screamer; click unison pip 5 on osc A, drag the
+//      WIDTH knob and the distortion DRIVE ring, click the All chip -> the
+//      AU holds 5 voices, parameter 18 (width) and 19 (drive) moved
 // The window stays up long enough for the workflow to screenshot it.
 #import <AppKit/AppKit.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -223,8 +226,41 @@ int main() {
                      && st.voice.macros[0] > 0.3, "User chip lists the saved preset and loading it restores the sound");
             fflush(stdout);
         });
+        After(5.5, ^{ SelectPreset(34); }); // host switches to Fold Screamer (unison + distortion/EQ/compressor)
+        After(5.8, ^{
+            CGFloat t = view.bounds.size.height - 100;
+            NSPoint pip = NSMakePoint(46 + 6 + 4 * 13 + 6.5, t - 142); // osc A unison pip 5
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, pip, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, pip, w)];
+            NSPoint wk = NSMakePoint(250, t - 192); // WIDTH knob: drag down 30 pt = -20%
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, wk, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(wk.x, wk.y - 15), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(wk.x, wk.y - 30), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(wk.x, wk.y - 30), w)];
+            CGFloat cardH = (t - 286 - 44 - 58 - 6) / 2;
+            NSPoint dr = NSMakePoint(468 + 26, 58 + cardH + 6 + 27); // DISTORTION drive ring: up 30 pt = +20%
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, dr, w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(dr.x, dr.y + 15), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(dr.x, dr.y + 30), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(dr.x, dr.y + 30), w)];
+            NSPoint all = NSMakePoint(835, t - 81); // All chip, so the list shows the edited factory sound
+            [view mouseDown:Mouse(NSEventTypeLeftMouseDown, all, w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, all, w)];
+            AudioUnitParameterValue wv = 0, dv = 0;
+            AudioUnitGetParameter(gUnit, muew::params::UnisonWidth, kAudioUnitScope_Global, 0, &wv);
+            AudioUnitGetParameter(gUnit, muew::params::DistDrive, kAudioUnitScope_Global, 0, &dv);
+            muew::Preset st;
+            bool ok = State(st);
+            printf("Fold Screamer edited: osc A %d voices, width %.1f%%, drive %.1f%% (sound %.2f / %.2f)\n",
+                   st.voice.osc1Unison, wv, dv, st.voice.uniWidth, st.fx.dist.drive);
+            Check(ok && st.info.name == "Fold Screamer" && st.voice.osc1Unison == 5, "unison pip click set 5 voices in the AU's sound");
+            Check(wv > 30 && wv < 50 && std::fabs(st.voice.uniWidth - wv / 100.0) < 1e-3, "WIDTH knob drag reached the AU as parameter 18");
+            Check(dv > 45 && dv < 65 && std::fabs(st.fx.dist.drive - dv / 100.0) < 1e-3 && st.fx.dist.enabled,
+                  "distortion DRIVE ring drag reached the AU as parameter 19");
+            fflush(stdout);
+        });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros and user presets\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison and FX rack\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

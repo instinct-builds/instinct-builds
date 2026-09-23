@@ -59,7 +59,7 @@ static bool render(AudioUnit u, std::vector<float>& l, std::vector<float>& r) {
     bool ok=AudioUnitRender(u,&flags,&ts,0,frames,b)==noErr; free(b); return ok;
 }
 
-static constexpr int kExpectedPresets = 30;
+static constexpr int kExpectedPresets = 38;
 
 static double energy(const std::vector<float>& x, size_t a, size_t b) {
     double e=0; for(size_t i=a;i<b;++i)e+=double(x[i])*x[i]; return e;
@@ -272,7 +272,7 @@ int main() {
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
-        static_assert(mp::Count == 16, "0.6.0 publishes 16 parameters");
+        static_assert(mp::Count == 21, "0.7.0 publishes 21 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
             printf("FAIL: reselect Init Saw\n"); return 1;
         }
@@ -299,7 +299,42 @@ int main() {
         if (m0 <= 0 || m1 < m0 * 2 || !getState(unit, ms) || ms.voice.macros[0] != 1.0 || presetNumber(unit) != -1) {
             printf("FAIL: macro 1 not audible or not stored in the sound\n"); return 1;
         }
-        printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros and recall: ok\n", (int)mp::Count);
+        // 0.7.0: unison width (param 18) on a stacked factory sound, and the
+        // distortion drive (param 19) on a distorted one, are audible.
+        auto selectPreset = [&](int preset) -> bool {
+            AUPreset ps{preset, nullptr};
+            if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &ps, sizeof(ps)) != noErr) return false;
+            return true;
+        };
+        auto measureLR = [&](double& side, double& mid) -> bool {
+            AudioUnitReset(unit, kAudioUnitScope_Global, 0);
+            MusicDeviceMIDIEvent(unit, 0x90, 60, 110, 0);
+            side = mid = 0;
+            for (int blk = 0; blk < 24; ++blk) {
+                if (!render(unit, l, r)) return false;
+                if (blk < 4) continue;
+                for (UInt32 i = 0; i < frames; ++i) { double s = l[i] - r[i], m = l[i] + r[i]; side += s * s; mid += m * m; }
+            }
+            MusicDeviceMIDIEvent(unit, 0x80, 60, 0, 0);
+            return mid > 1e-9;
+        };
+        double side = 0, mid = 0, side0 = 0, mid0 = 0;
+        if (!selectPreset(30) || !measureLR(side, mid)) { printf("FAIL: render Hyper Saw\n"); return 1; }
+        AudioUnitSetParameter(unit, mp::UnisonWidth, kAudioUnitScope_Global, 0, 0.0f, 0);
+        if (!measureLR(side0, mid0)) { printf("FAIL: render Hyper Saw at width 0\n"); return 1; }
+        // (Its stereo delay keeps a little side signal even with the stack collapsed.)
+        printf("unison: Hyper Saw side/mid %.4f at preset width, %.4f at width 0\n", side / mid, side0 / mid0);
+        if (side / mid < 0.02 || side0 / mid0 > 0.5 * side / mid) { printf("FAIL: unison width not audible through the AU\n"); return 1; }
+        double dside = 0, dmid = 0, dside2 = 0, dmid2 = 0; (void)dside2;
+        if (!selectPreset(34) || !measureLR(dside, dmid)) { printf("FAIL: render Fold Screamer\n"); return 1; }
+        AudioUnitSetParameter(unit, mp::DistDrive, kAudioUnitScope_Global, 0, 100.0f, 0);
+        if (!measureLR(dside2, dmid2)) { printf("FAIL: render driven Fold Screamer\n"); return 1; }
+        muew::Preset fs;
+        printf("drive: Fold Screamer level %.1f at preset drive, %.1f at 100%%\n", dmid, dmid2);
+        if (std::fabs(dmid2 - dmid) < dmid * 0.02 || !getState(unit, fs) || fs.fx.dist.drive != 1.0) {
+            printf("FAIL: distortion drive not audible or not stored\n"); return 1;
+        }
+        printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros, unison width, drive and recall: ok\n", (int)mp::Count);
     }
 
     // Render notifications fire before and after each render (auval checks this).

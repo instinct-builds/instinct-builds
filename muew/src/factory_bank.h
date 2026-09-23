@@ -1007,6 +1007,316 @@ chorus 0 0.6 6 15 0.35
 delay 1 0.2 0.3 0.4 0.25
 reverb 1 0.5 0.5 0.2
 )MUEW"},
+    {"hyper-saw", R"MUEW(muew-preset 2
+name Hyper Saw
+category Lead
+author MUEW Factory
+tags supersaw unison wide
+osc1Shape 2
+osc2Shape 2
+osc2Detune 12
+osc2Level 0.35
+filterCutoff 7000
+filterReso 0.7
+filterMode 0
+amp 0.005 0.3 0.85 0.3
+mod 0.005 0.4 0.2 0.3
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 7 5 0.3 0.22 0.9 0.8
+routes 10
+route 1 2 1.2
+route 2 2 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.3 0.45 0.3 0.18
+reverb 1 0.6 0.45 0.2
+eq 1 0 -1 2
+comp 1 0.35
+)MUEW"},
+    {"anthem-stack", R"MUEW(muew-preset 2
+name Anthem Stack
+category Pad
+author MUEW Factory
+tags supersaw unison big
+osc1Shape 2
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.5
+filterCutoff 4200
+filterReso 0.5
+filterMode 0
+amp 0.35 1.2 0.85 1.8
+mod 0.8 1.5 0.5 1.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.15 0
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 8 6 0.35 0.3 1 0.85
+routes 10
+route 1 2 0.8
+route 3 9 -0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.3 5 12 0.2
+delay 1 0.4 0.6 0.3 0.15
+reverb 1 0.85 0.4 0.35
+comp 1 0.3
+)MUEW"},
+    {"reese-grind", R"MUEW(muew-preset 2
+name Reese Grind
+category Bass
+author MUEW Factory
+tags reese distorted dark
+osc1Shape 2
+osc2Shape 2
+osc2Detune 0.1
+osc2Level 0.8
+filterCutoff 650
+filterReso 1.3
+filterMode 0
+amp 0.01 0.3 0.9 0.2
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.18 1
+warp1 3 0.1
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 4 4 0.18 0.15 0.45 0.7
+routes 11
+route 3 2 1.1
+route 3 5 0.25
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.45 0.8
+eq 1 3 -2 -1
+comp 1 0.5
+)MUEW"},
+    {"hoover-rise", R"MUEW(muew-preset 2
+name Hoover Rise
+category Lead
+author MUEW Factory
+tags hoover unison rave
+osc1Shape 4
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.45
+filterCutoff 3800
+filterReso 0.9
+filterMode 0
+amp 0.01 0.4 0.8 0.35
+mod 0.01 0.4 0.2 0.3
+lfo1Rate 1.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 4 0.35
+warp2 0 0
+mseg 0.6 0 4 0 0.8 0.2 -0.3 0.5 0.05 1 0
+unison 8 4 0.55 0.4 1 0.9
+routes 12
+route 4 0 3
+route 4 1 3
+route 0 5 0.25
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 1 0.6 6 14 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.55 0.45 0.2
+dist 1 0 0.3 0.5
+comp 1 0.4
+)MUEW"},
+    {"fold-screamer", R"MUEW(muew-preset 2
+name Fold Screamer
+category Lead
+author MUEW Factory
+tags fold distorted aggressive
+osc1Shape 3
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.35
+filterCutoff 5000
+filterReso 1.2
+filterMode 0
+amp 0.005 0.25 0.8 0.2
+mod 0.005 0.5 0.3 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 6 0.2
+warp2 0 0
+mseg 0.8 1 3 0 0 0.5 1 1 0
+unison 3 1 0.12 0.25 0.6 0.75
+routes 11
+route 1 2 1.5
+route 4 5 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.25 0.375 0.35 0.2
+reverb 0 0.55 0.45 0.28
+dist 1 1 0.35 0.6
+eq 1 -2 4 1
+comp 1 0.45
+)MUEW"},
+    {"crushed-keys", R"MUEW(muew-preset 2
+name Crushed Keys
+category Keys
+author MUEW Factory
+tags lofi bitcrush soft
+osc1Shape 1
+osc2Shape 0
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 3000
+filterReso 0.5
+filterMode 0
+amp 0.003 0.9 0.35 0.5
+mod 0.003 0.6 0 0.3
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 2 1 0.1 0.25 0.5 0.8
+routes 10
+route 2 2 1.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 1 0.5 3 10 0.25
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.6 0.55 0.28
+dist 1 2 0.55 0.5
+eq 1 1 0 -3
+)MUEW"},
+    {"wide-pluck", R"MUEW(muew-preset 2
+name Wide Pluck
+category Pluck
+author MUEW Factory
+tags unison wide short
+osc1Shape 2
+osc2Shape 3
+osc2Detune 12
+osc2Level 0.3
+filterCutoff 4200
+filterReso 0.8
+filterMode 0
+amp 0.001 0.3 0 0.25
+mod 0.001 0.22 0 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.2 0.15 1 0.8
+routes 10
+route 1 2 2.4
+route 2 2 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 1 0.375 0.25 0.4 0.25
+reverb 1 0.5 0.5 0.18
+comp 1 0.35
+)MUEW"},
+    {"growl-stack", R"MUEW(muew-preset 2
+name Growl Stack
+category Bass
+author MUEW Factory
+tags growl unison distorted
+osc1Shape 3
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.5
+filterCutoff 1100
+filterReso 1.8
+filterMode 0
+amp 0.003 0.3 0.75 0.12
+mod 0.005 0.4 0.2 0.1
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 6 0.25
+warp2 0 0
+mseg 0.5 1 5 0 0 0.25 1 0.5 0.1 0.75 0.8 1 0
+unison 3 1 0.15 0.25 0.5 0.8
+routes 11
+route 4 5 0.6
+route 4 2 1.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+route 6 10 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 0 0.55 0.45 0.28
+dist 1 0 0.6 0.9
+eq 1 2 2 -2
+comp 1 0.6
+)MUEW"},
 };
 
 constexpr int kFactoryPresetCount = (int)(sizeof(kFactoryPresetTexts) / sizeof(kFactoryPresetTexts[0]));

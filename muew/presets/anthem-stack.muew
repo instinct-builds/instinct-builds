@@ -1,0 +1,36 @@
+muew-preset 2
+name Anthem Stack
+category Pad
+author MUEW Factory
+tags supersaw unison big
+osc1Shape 2
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.5
+filterCutoff 4200
+filterReso 0.5
+filterMode 0
+amp 0.35 1.2 0.85 1.8
+mod 0.8 1.5 0.5 1.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.15 0
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 8 6 0.35 0.3 1 0.85
+routes 10
+route 1 2 0.8
+route 3 9 -0.2
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.3 5 12 0.2
+delay 1 0.4 0.6 0.3 0.15
+reverb 1 0.85 0.4 0.35
+comp 1 0.3

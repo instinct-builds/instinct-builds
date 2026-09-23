@@ -89,14 +89,14 @@ struct AUEditorHost : MUEWEditorHost {
 
 // Owns the AU binding and follows host-side changes (host preset menu,
 // project recall) by watching the AU's state generation.
-@interface MUEWAUEditorContainer_0_6 : MUEWEditorView {
+@interface MUEWAUEditorContainer_0_7 : MUEWEditorView {
 @public
     AUEditorHost* auHost;
     NSTimer* follow;
 }
 @end
 
-@implementation MUEWAUEditorContainer_0_6
+@implementation MUEWAUEditorContainer_0_7
 - (void)syncFromAU:(BOOL)force {
     if (!auHost) return;
     UInt32 g = ReadGeneration(auHost->au);
@@ -125,7 +125,7 @@ struct AUEditorHost : MUEWEditorHost {
     [follow invalidate];
     follow = nil;
     if (self.window && auHost) {
-        __weak MUEWAUEditorContainer_0_6* weakSelf = self;
+        __weak MUEWAUEditorContainer_0_7* weakSelf = self;
         // 30 Hz: host automation moves the knobs smoothly. Only the generation
         // number is read unless the sound actually changed.
         follow = [NSTimer scheduledTimerWithTimeInterval:1.0 / 30.0 repeats:YES block:^(NSTimer* t) {
@@ -139,15 +139,15 @@ struct AUEditorHost : MUEWEditorHost {
 }
 @end
 
-@interface MUEWViewFactory_0_6 : NSObject <AUCocoaUIBase>
+@interface MUEWViewFactory_0_7 : NSObject <AUCocoaUIBase>
 @end
 
-@implementation MUEWViewFactory_0_6
+@implementation MUEWViewFactory_0_7
 - (unsigned)interfaceVersion { return 0; }
 - (NSString*)description { return @"MUEW Editor"; }
 - (NSView*)uiViewForAudioUnit:(AudioUnit)inAudioUnit withSize:(NSSize)inPreferredSize {
     (void)inPreferredSize; // fixed-size editor
-    MUEWAUEditorContainer_0_6* v = [[MUEWAUEditorContainer_0_6 alloc] initWithFrame:NSMakeRect(0, 0, 1000, 680)];
+    MUEWAUEditorContainer_0_7* v = [[MUEWAUEditorContainer_0_7 alloc] initWithFrame:NSMakeRect(0, 0, 1000, 680)];
     v->auHost = new AUEditorHost(inAudioUnit);
     v->host = v->auHost;
     [v syncFromAU:YES];

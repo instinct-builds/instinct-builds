@@ -4,7 +4,7 @@
 //
 // IDs are serialized by hosts inside saved sets and automation: append only,
 // never renumber. IDs 0-8 match ui::Knob 0-8; ui::knobParam maps the macro
-// knobs to 12-15.
+// knobs to 12-15 and the unison knobs to 16-18.
 #pragma once
 #include "preset.h"
 #include "factory_bank.h"
@@ -18,6 +18,7 @@ enum ID {
     WarpA, OscMix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime,
     ChorusMix, DelayMix, ReverbMix,
     Macro1, Macro2, Macro3, Macro4, // 0.6.0
+    UnisonDetuneA, UnisonDetuneB, UnisonWidth, DistDrive, CompAmount, // 0.7.0
     Count
 };
 
@@ -48,6 +49,11 @@ inline const Def& def(int id) {
         {"Macro 2 Warp", Percent, 0, 100, false},
         {"Macro 3 Reso", Percent, 0, 100, false},
         {"Macro 4 Spread", Percent, 0, 100, false},
+        {"Unison Detune A", Percent, 0, 100, false},
+        {"Unison Detune B", Percent, 0, 100, false},
+        {"Unison Width", Percent, 0, 100, false},
+        {"Distortion Drive", Percent, 0, 100, false},
+        {"Compressor", Percent, 0, 100, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -68,6 +74,11 @@ inline double& field(Preset& p, int id) {
     case ChorusMix: return p.fx.chorus.mix;
     case DelayMix: return p.fx.delay.mix;
     case Macro1: case Macro2: case Macro3: case Macro4: return p.voice.macros[id - Macro1];
+    case UnisonDetuneA: return p.voice.osc1UniDetune;
+    case UnisonDetuneB: return p.voice.osc2UniDetune;
+    case UnisonWidth: return p.voice.uniWidth;
+    case DistDrive: return p.fx.dist.drive;
+    case CompAmount: return p.fx.comp.amount;
     default: return p.fx.reverb.mix;
     }
 }

@@ -29,6 +29,10 @@ struct PresetInfo {
 // Format history:
 //   muew-preset 1  voice core, LFO1, routes, FX (0.1.x)
 //   muew-preset 2  adds metadata, LFO2, oscillator warp, MSEG points (0.3.0)
+//                  0.6.0 adds an optional `macros` line; 0.7.0 adds optional
+//                  `unison`, `dist`, `eq` and `comp` lines. Optional lines are
+//                  written only when they differ from the defaults, so older
+//                  files round-trip byte-identical and older builds skip them.
 // Version 1 text still parses; fields it lacks keep their VoiceParams
 // defaults, which match how 0.1.x/0.2.0 rendered those presets.
 struct Preset {
@@ -62,8 +66,25 @@ struct Preset {
         // Only when set, so factory files (all macros at 0) round-trip unchanged.
         if (voice.macros[0] != 0 || voice.macros[1] != 0 || voice.macros[2] != 0 || voice.macros[3] != 0)
             o << "macros " << voice.macros[0] << " " << voice.macros[1] << " " << voice.macros[2] << " " << voice.macros[3] << "\n";
+        if (hasUnison())
+            o << "unison " << voice.osc1Unison << " " << voice.osc2Unison << " " << voice.osc1UniDetune << " "
+              << voice.osc2UniDetune << " " << voice.uniWidth << " " << voice.uniBlend << "\n";
         writeRoutesAndFX(o);
+        const FXParams d;
+        if (fx.dist.enabled != d.dist.enabled || fx.dist.mode != d.dist.mode || fx.dist.drive != d.dist.drive || fx.dist.mix != d.dist.mix)
+            o << "dist " << (fx.dist.enabled ? 1 : 0) << " " << fx.dist.mode << " " << fx.dist.drive << " " << fx.dist.mix << "\n";
+        if (fx.eq.enabled != d.eq.enabled || fx.eq.lowDb != d.eq.lowDb || fx.eq.midDb != d.eq.midDb || fx.eq.highDb != d.eq.highDb)
+            o << "eq " << (fx.eq.enabled ? 1 : 0) << " " << fx.eq.lowDb << " " << fx.eq.midDb << " " << fx.eq.highDb << "\n";
+        if (fx.comp.enabled != d.comp.enabled || fx.comp.amount != d.comp.amount)
+            o << "comp " << (fx.comp.enabled ? 1 : 0) << " " << fx.comp.amount << "\n";
         return o.str();
+    }
+
+    bool hasUnison() const {
+        const VoiceParams d;
+        return voice.osc1Unison != d.osc1Unison || voice.osc2Unison != d.osc2Unison
+            || voice.osc1UniDetune != d.osc1UniDetune || voice.osc2UniDetune != d.osc2UniDetune
+            || voice.uniWidth != d.uniWidth || voice.uniBlend != d.uniBlend;
     }
 
     // Legacy writer, kept so version-1 compatibility stays testable.
@@ -120,6 +141,35 @@ struct Preset {
                 voice.mseg1Points = pts;
             }
             else if (key == "macros") { for (double& m : voice.macros) { double v = 0; if (ls >> v) m = std::clamp(v, 0.0, 1.0); } }
+            else if (key == "unison") {
+                ls >> voice.osc1Unison >> voice.osc2Unison >> voice.osc1UniDetune >> voice.osc2UniDetune
+                   >> voice.uniWidth >> voice.uniBlend;
+                voice.osc1Unison = std::clamp(voice.osc1Unison, 1, kMaxUnison);
+                voice.osc2Unison = std::clamp(voice.osc2Unison, 1, kMaxUnison);
+                voice.osc1UniDetune = std::clamp(voice.osc1UniDetune, 0.0, 1.0);
+                voice.osc2UniDetune = std::clamp(voice.osc2UniDetune, 0.0, 1.0);
+                voice.uniWidth = std::clamp(voice.uniWidth, 0.0, 1.0);
+                voice.uniBlend = std::clamp(voice.uniBlend, 0.0, 1.0);
+            }
+            else if (key == "dist") {
+                int e = 0; ls >> e >> fx.dist.mode >> fx.dist.drive >> fx.dist.mix;
+                fx.dist.enabled = e != 0;
+                fx.dist.mode = std::clamp(fx.dist.mode, 0, 2);
+                fx.dist.drive = std::clamp(fx.dist.drive, 0.0, 1.0);
+                fx.dist.mix = std::clamp(fx.dist.mix, 0.0, 1.0);
+            }
+            else if (key == "eq") {
+                int e = 0; ls >> e >> fx.eq.lowDb >> fx.eq.midDb >> fx.eq.highDb;
+                fx.eq.enabled = e != 0;
+                fx.eq.lowDb = std::clamp(fx.eq.lowDb, -12.0, 12.0);
+                fx.eq.midDb = std::clamp(fx.eq.midDb, -12.0, 12.0);
+                fx.eq.highDb = std::clamp(fx.eq.highDb, -12.0, 12.0);
+            }
+            else if (key == "comp") {
+                int e = 0; ls >> e >> fx.comp.amount;
+                fx.comp.enabled = e != 0;
+                fx.comp.amount = std::clamp(fx.comp.amount, 0.0, 1.0);
+            }
             else if (key == "routes") { size_t n; ls >> n; } // count is advisory
             else if (key == "route") {
                 ModRoute r; int s, d;
@@ -164,7 +214,10 @@ struct Preset {
             && a.mseg1Seconds == b.mseg1Seconds && a.mseg1Loop == b.mseg1Loop
             && a.mseg1Points.size() == b.mseg1Points.size()
             && a.macros[0] == b.macros[0] && a.macros[1] == b.macros[1]
-            && a.macros[2] == b.macros[2] && a.macros[3] == b.macros[3];
+            && a.macros[2] == b.macros[2] && a.macros[3] == b.macros[3]
+            && a.osc1Unison == b.osc1Unison && a.osc2Unison == b.osc2Unison
+            && a.osc1UniDetune == b.osc1UniDetune && a.osc2UniDetune == b.osc2UniDetune
+            && a.uniWidth == b.uniWidth && a.uniBlend == b.uniBlend;
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         for (size_t i = 0; i < a.mseg1Points.size(); ++i)
             if (a.mseg1Points[i].time != b.mseg1Points[i].time
@@ -180,7 +233,12 @@ struct Preset {
             && fa.delay.timeRSec == fb.delay.timeRSec && fa.delay.feedback == fb.delay.feedback
             && fa.delay.mix == fb.delay.mix
             && fa.reverb.enabled == fb.reverb.enabled && fa.reverb.decay == fb.reverb.decay
-            && fa.reverb.damping == fb.reverb.damping && fa.reverb.mix == fb.reverb.mix;
+            && fa.reverb.damping == fb.reverb.damping && fa.reverb.mix == fb.reverb.mix
+            && fa.dist.enabled == fb.dist.enabled && fa.dist.mode == fb.dist.mode
+            && fa.dist.drive == fb.dist.drive && fa.dist.mix == fb.dist.mix
+            && fa.eq.enabled == fb.eq.enabled && fa.eq.lowDb == fb.eq.lowDb
+            && fa.eq.midDb == fb.eq.midDb && fa.eq.highDb == fb.eq.highDb
+            && fa.comp.enabled == fb.comp.enabled && fa.comp.amount == fb.comp.amount;
     }
 
 private:

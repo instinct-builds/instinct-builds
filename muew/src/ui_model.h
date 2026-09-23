@@ -46,6 +46,10 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::FilterResonance: return "RESO";
     case ModRoute::Dest::Osc1Warp: return "WARP A";
     case ModRoute::Dest::Osc2Warp: return "WARP B";
+    case ModRoute::Dest::Osc1Unison: return "UNISON A";
+    case ModRoute::Dest::Osc2Unison: return "UNISON B";
+    case ModRoute::Dest::UnisonWidth: return "WIDTH";
+    case ModRoute::Dest::DistDrive: return "DRIVE";
     }
     return "?";
 }
@@ -67,7 +71,9 @@ inline double routeDisplayAmount(const ModRoute& r) {
 }
 
 enum Knob { WarpA, Mix, WarpB, Detune, Cutoff, Resonance, Attack, Release, MsegTime,
-            Macro1, Macro2, Macro3, Macro4, KnobCount };
+            Macro1, Macro2, Macro3, Macro4,
+            UniDetuneA, UniDetuneB, Width, // 0.7.0
+            KnobCount };
 
 // What the factory presets assign each macro to (see presets/*.muew).
 inline const char* macroName(int i) {
@@ -75,21 +81,27 @@ inline const char* macroName(int i) {
     return (i >= 0 && i < 4) ? n[i] : "";
 }
 inline bool isMacro(int k) { return k >= Macro1 && k <= Macro4; }
+inline bool isUnison(int k) { return k >= UniDetuneA && k <= Width; }
 
 inline const char* knobLabel(int k) {
     static const char* n[] = {"WARP A", "MIX", "WARP B", "DETUNE", "CUTOFF", "RESONANCE", "ATTACK", "RELEASE", "MSEG TIME",
-                              "BRIGHT", "WARP", "RESO", "SPREAD"};
+                              "BRIGHT", "WARP", "RESO", "SPREAD", "UNISON", "UNISON", "WIDTH"};
     return (k >= 0 && k < KnobCount) ? n[k] : "";
 }
 
 // AU parameter ID behind a knob (muew::params): knobs 0-8 are params 0-8,
-// macros are params 12-15.
-inline int knobParam(int k) { return isMacro(k) ? 12 + (k - Macro1) : k; }
+// macros are params 12-15, unison detune A/B and width are 16-18.
+inline int knobParam(int k) {
+    if (isMacro(k)) return 12 + (k - Macro1);
+    if (isUnison(k)) return 16 + (k - UniDetuneA);
+    return k;
+}
 
 struct Range { double lo, hi; bool log; };
 inline Range knobRange(int k) {
     switch (k) {
-    case WarpA: case Mix: case WarpB: case Macro1: case Macro2: case Macro3: case Macro4: return {0.0, 1.0, false};
+    case WarpA: case Mix: case WarpB: case Macro1: case Macro2: case Macro3: case Macro4:
+    case UniDetuneA: case UniDetuneB: case Width: return {0.0, 1.0, false};
     case Detune: return {-24.0, 24.0, false};
     case Cutoff: return {40.0, 18000.0, true};
     case Resonance: return {0.1, 8.0, false};
@@ -122,6 +134,9 @@ inline double& knobField(VoiceParams& p, int k) {
     case Attack: return p.ampA;
     case Release: return p.ampR;
     case Macro1: case Macro2: case Macro3: case Macro4: return p.macros[k - Macro1];
+    case UniDetuneA: return p.osc1UniDetune;
+    case UniDetuneB: return p.osc2UniDetune;
+    case Width: return p.uniWidth;
     default: return p.mseg1Seconds;
     }
 }
@@ -138,9 +153,31 @@ inline std::string knobReadout(const VoiceParams& p, int k) {
     case Attack: case Release: case MsegTime:
         if (v < 1) snprintf(b, sizeof b, "%.0f ms", v * 1000); else snprintf(b, sizeof b, "%.2f s", v); break;
     case Resonance: snprintf(b, sizeof b, "Q %.2f", v); break;
+    case UniDetuneA: case UniDetuneB: snprintf(b, sizeof b, "\u00b1%.0f ct", v * 100); break;
     default: snprintf(b, sizeof b, "%.0f%%", v * 100); break;
     }
     return b;
+}
+
+// Unison voice count of an oscillator (0 = A, 1 = B) and the readout shown
+// under its waveform ("1 VOICE", "7 VOICES").
+inline int unisonVoices(const VoiceParams& p, int osc) { return std::clamp(osc == 0 ? p.osc1Unison : p.osc2Unison, 1, kMaxUnison); }
+inline void setUnisonVoices(VoiceParams& p, int osc, int n) { (osc == 0 ? p.osc1Unison : p.osc2Unison) = std::clamp(n, 1, kMaxUnison); }
+inline std::string unisonReadout(const VoiceParams& p, int osc) {
+    int n = unisonVoices(p, osc);
+    return std::to_string(n) + (n == 1 ? " VOICE" : " VOICES");
+}
+// Detune offsets (semitones) of each stacked voice, for the unison display.
+inline std::vector<double> unisonOffsets(const VoiceParams& p, int osc) {
+    int n = unisonVoices(p, osc);
+    double det = osc == 0 ? p.osc1UniDetune : p.osc2UniDetune;
+    std::vector<double> o;
+    for (int i = 0; i < n; ++i) o.push_back(n == 1 ? 0.0 : (2.0 * i / (n - 1) - 1.0) * det);
+    return o;
+}
+inline const char* distModeName(int m) {
+    static const char* n[] = {"SOFT CLIP", "FOLD", "BITCRUSH"};
+    return (m >= 0 && m < 3) ? n[m] : "?";
 }
 
 // One cycle of the engine's own oscillator output (band-limited table,

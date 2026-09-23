@@ -29,6 +29,14 @@ public:
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
         for (auto& v : voices_) v.setParams(p, routes);
+        // The FX rack is shared by all voices, so only the macro knobs (global
+        // sources) can modulate it.
+        double drive = 0.0;
+        for (const auto& r : routes) {
+            int s = (int)r.source - (int)ModRoute::Source::Macro1;
+            if (r.dest == ModRoute::Dest::DistDrive && s >= 0 && s < 4) drive += p.macros[s] * r.amount;
+        }
+        fx_.setDriveOffset(drive);
     }
 
     void noteOn(int note, float velocity) {
@@ -64,7 +72,8 @@ public:
     // Interleaved stereo: voice sum goes through the FX chain.
     void renderStereo(float* interleaved, int frames) {
         for (int i = 0; i < frames; ++i) {
-            float l = mixVoices(), r = l;
+            float l, r;
+            mixVoicesStereo(l, r);
             fx_.process(l, r);
             interleaved[i * 2]     = std::tanh(l * 1.6f);
             interleaved[i * 2 + 1] = std::tanh(r * 1.6f);
@@ -74,7 +83,8 @@ public:
     // Non-interleaved stereo (Audio Unit buffer layout): same path as renderStereo.
     void renderPlanar(float* left, float* right, int frames) {
         for (int i = 0; i < frames; ++i) {
-            float l = mixVoices(), r = l;
+            float l, r;
+            mixVoicesStereo(l, r);
             fx_.process(l, r);
             left[i]  = std::tanh(l * 1.6f);
             right[i] = std::tanh(r * 1.6f);
@@ -93,6 +103,14 @@ public:
         float mix = 0.0f;
         for (auto& v : voices_) if (v.isActive()) mix += v.process();
         return mix * 0.25f;  // headroom
+    }
+
+    // Stereo voice sum (unison stacks spread across the field). For mono
+    // voices l == r == mixVoices(), bit for bit.
+    inline void mixVoicesStereo(float& l, float& r) {
+        float ml = 0.0f, mr = 0.0f;
+        for (auto& v : voices_) if (v.isActive()) { float a, b; v.processStereo(a, b); ml += a; mr += b; }
+        l = ml * 0.25f; r = mr * 0.25f;
     }
 
     FXChain fx_;
