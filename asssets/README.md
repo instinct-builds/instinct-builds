@@ -340,3 +340,29 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Logic and tests: `Compare.swift` (session, shared zoom/pan math, diff,
   picks) and `CompareTests.swift`. CI adds compare and compare-swipe
   screenshots.
+
+## 1.8.0: export presets
+
+- Export > Presets… (selection bar, inspector Export menu, or ⌥⌘E) opens
+  a sheet with five presets:
+  - Web: JPEG at 2400 px on the long edge, plus a 1200 px `@1x`
+  - Social Square: JPEG 1080 × 1080
+  - Story: JPEG 1080 × 1920
+  - 4K PNG: 3840 px on the long edge
+  - Print TIFF: full size, 300 dpi, LZW
+  Long-edge presets never upscale.
+- Crop: Center, or Detail-aware, which slides the square and story crops
+  toward the most detailed part of the image (edge energy on a small copy)
+  instead of an empty margin. The sheet outlines every crop on the first
+  asset before you export.
+- File names follow a pattern, `{title}-{preset}` by default, with
+  `{w}`, `{h}`, `{n}` and `{collection}`. A live example shows the result.
+  Existing files are never overwritten.
+- Exports use the asset as shown (effect, PSD layers, tiling and seam fix).
+  "Export Picks with Presets…" exports everything kept in compare.
+- Rendering runs off the main thread with ImageIO. No services or keys.
+- Compare polish: Swipe now hugs the image's shape instead of
+  letterboxing, a mouse wheel zooms and trackpad scrolling pans.
+- Logic and tests: `ExportPresets.swift` and `ExportPresetTests.swift`.
+  CI exports every preset for three mockups and lists each file's pixel
+  size and dpi.

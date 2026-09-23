@@ -133,6 +133,9 @@ jobs:
           shoot autotags-audio 1920x1200 autotags-audio
           shoot compare 1920x1200 compare
           shoot compare-swipe 1920x1200 compare-swipe
+          shoot export-presets 1920x1200 export-presets demo-exports/done.txt
+          ( cd "$SUP/demo-exports" && for f in *; do [ "$f" = done.txt ] && continue; printf '%s\t%s\t' "$f" "$(stat -f%z "$f")"; sips -g pixelWidth -g pixelHeight -g dpiWidth "$f" | awk 'NR>1{printf "%s=%s ", $1, $2}'; echo; done ) | tee "ASSSETS-$ASSSETS_VERSION-export-presets.txt"
+          test "$(grep -c . "ASSSETS-$ASSSETS_VERSION-export-presets.txt")" -ge 18
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
@@ -160,6 +163,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-*.png
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-contact-sheet*.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-pdf-sizes.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-export-presets.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
 
   au:

@@ -40,6 +40,9 @@ struct ASSSETSApp: App {
                     .keyboardShortcut("e", modifiers: [.command]).disabled(library.selection.isEmpty)
                 Button("Export Original Files…") { library.exportToFolder(library.selection, mode: .originals) }
                     .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(library.selection.isEmpty)
+                Button("Export with Presets…") { library.openPresetExport() }
+                    .keyboardShortcut("e", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
+                Button("Export Picks with Presets…") { library.openPresetExport(library.pickIDs, title: "Picks") }.disabled(library.pickIDs.isEmpty)
                 Button("Reveal in Finder") { library.reveal(library.selection) }
                     .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
                 Button("Contact Sheet & Brand Kit…") { library.openContactSheetForCurrentView() }
@@ -103,12 +106,79 @@ final class StudioLibrary: ObservableObject {
     @Published var compareSwipe = false
     @Published var swipeSplit = 0.5
     private var keyMonitor: Any?
+    private var scrollMonitor: Any?
 
     func openViewer() {
         guard smartEditor == nil, duplicates == nil, sheetPreview == nil else { return }
         viewerID = focusID ?? selection.first ?? filtered.first?.id
     }
     func closeViewer() { viewerID = nil }
+
+    // MARK: Export presets
+
+    struct PresetExportState: Identifiable {
+        let id = UUID()
+        var ids: [UUID]
+        var title: String
+        var presets: Set<ExportPreset> = [.web, .social]
+        var crop: CropMode = .detail
+        var pattern = FilenamePattern.defaultPattern
+    }
+    @Published var presetExport: PresetExportState?
+    @Published var presetExportRunning = false
+
+    var pickIDs: [UUID] { catalog.assets.filter { $0.tags.contains(StudioCatalog.pickTag) }.map(\.id) }
+
+    func openPresetExport(_ ids: [UUID]? = nil, title: String? = nil) {
+        let list = ids ?? (selection.isEmpty ? [] : filtered.map(\.id).filter(selection.contains))
+        let usable = list.filter { id in catalog.assets.first { $0.id == id }?.kind != .audio }
+        guard !usable.isEmpty else { flash("Select images, textures, vectors or mockups to export"); return }
+        presetExport = PresetExportState(ids: usable, title: title ?? (usable.count == 1 ? "1 asset" : "\(usable.count) assets"))
+    }
+
+    /// Asks for a folder, then renders every preset off the main thread. Never overwrites existing files.
+    func runPresetExport(_ st: PresetExportState, to fixedDir: URL? = nil) {
+        var dir = fixedDir
+        if dir == nil {
+            let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
+            p.prompt = "Export Here"; p.message = "Export \(st.ids.count) assets with \(st.presets.count) presets"
+            guard p.runModal() == .OK, let u = p.url else { return }
+            dir = u
+        }
+        guard let dir else { return }
+        presetExport = nil
+        let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
+        let assets = st.ids.compactMap { byID[$0] }
+        let jobs = assets.map { a in (a, effect, intensity, psdToggled[a.id] ?? [], tiles(for: a), fixSeams.contains(a.id)) }
+        let presets = ExportPreset.allCases.filter(st.presets.contains)
+        presetExportRunning = true
+        flash("Exporting \(assets.count) assets…")
+        Task.detached(priority: .userInitiated) {
+            var taken = Set((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+            var written: [URL] = [], failed = 0
+            for (n, job) in jobs.enumerated() {
+                let (a, fx, amt, psd, tiles, fix) = job
+                guard let img = MediaRenderer.exportBase(a, effect: fx, amount: amt, psdToggled: psd, tiles: tiles, fixSeams: fix) else { failed += 1; continue }
+                var focus: [Double: ExportRect] = [:]
+                if st.crop == .detail, let small = MediaRenderer.pixelBuffer(from: img, maxPixel: 256) {
+                    for p in presets { if let asp = p.cropAspect { focus[asp] = SmartCrop.detailWindow(small, sourceWidth: img.width, sourceHeight: img.height, aspect: asp) } }
+                }
+                for p in presets {
+                    for o in p.outputs(width: img.width, height: img.height, crop: st.crop, focus: p.cropAspect.flatMap { focus[$0] }) {
+                        let name = DragOut.uniqueName(FilenamePattern.render(st.pattern, title: a.title, preset: p, output: o, index: n + 1, collection: a.collection), taken: taken)
+                        let url = dir.appendingPathComponent(name)
+                        if MediaRenderer.writePreset(img, output: o, to: url) { taken.insert(name); written.append(url) } else { failed += 1 }
+                    }
+                }
+            }
+            await MainActor.run { [written, failed] in
+                self.presetExportRunning = false
+                self.flash(failed == 0 ? "Exported \(written.count) files" : "Exported \(written.count) files, \(failed) failed")
+                if fixedDir == nil, !written.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(written) }
+                if fixedDir != nil { try? written.map(\.lastPathComponent).sorted().joined(separator: "\n").write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8) }
+            }
+        }
+    }
 
     var canCompare: Bool { (2...CompareSession.maxAssets).contains(selection.count) }
     func openCompare(_ ids: [UUID]? = nil) {
@@ -141,10 +211,27 @@ final class StudioLibrary: ObservableObject {
             let handled = MainActor.assumeIsolated { self.handleKey(event) }
             return handled ? nil : event
         }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self else { return event }
+            let handled = MainActor.assumeIsolated { self.handleScroll(event) }
+            return handled ? nil : event
+        }
+    }
+
+    /// In compare: a mouse wheel (or ⌘-scroll on a trackpad) zooms, two-finger trackpad scrolling pans.
+    private func handleScroll(_ e: NSEvent) -> Bool {
+        guard compare != nil else { return false }
+        let dy = Double(e.scrollingDeltaY), dx = Double(e.scrollingDeltaX)
+        if e.hasPreciseScrollingDeltas && !e.modifierFlags.contains(.command) {
+            compareZoom.pan(dx: dx / 700, dy: dy / 700)
+        } else if dy != 0 {
+            compareZoom.zoom(by: pow(1.0035, dy * (e.hasPreciseScrollingDeltas ? 1 : 12)))
+        }
+        return true
     }
 
     private func handleKey(_ e: NSEvent) -> Bool {
-        guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil, duplicates == nil, sheetPreview == nil else { return false }
+        guard e.modifierFlags.intersection([.command, .control, .option]).isEmpty, smartEditor == nil, duplicates == nil, sheetPreview == nil, presetExport == nil else { return false }
         if compare != nil {
             switch e.keyCode {
             case 40: markCompare(.keep); return true                                   // K
@@ -1024,6 +1111,24 @@ final class StudioLibrary: ObservableObject {
                 markCompare(.keep); markCompare(.reject)
                 compareZoom.zoom(by: 2.5, anchorX: 0.3, anchorY: 0.35)
             } else { swipeSplit = 0.46; compareSwipe = true }
+        case "export-presets":
+            // Wide 3:2 mockups, so the square and story crops have somewhere to slide.
+            let files = ["cosmetic-plinth-mockup.png", "device-stage-mockup.png", "album-gatefold-mockup.png"]
+            let ids = files.compactMap { f in catalog.assets.first(where: { $0.importedPath?.hasSuffix(f) == true })?.id }
+            if let a = ids.first, let c = catalog.assets.first(where: { $0.id == a })?.collection { show(collection: c) }
+            selection = Set(ids); focusID = ids.first
+            openPresetExport(ids)
+            presetExport?.presets = [.web, .social, .story]
+            // CI also keeps a real export of every preset to list the files and their pixel sizes.
+            if var st = presetExport {
+                st.presets = Set(ExportPreset.allCases)
+                let out = supportRoot.appendingPathComponent("demo-exports", isDirectory: true)
+                try? FileManager.default.removeItem(at: out)
+                try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+                let keep = presetExport
+                runPresetExport(st, to: out)
+                presetExport = keep
+            }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -1081,6 +1186,7 @@ struct StudioView: View {
         } message: { Text("Files on disk stay where they are.") }
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
         .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
+        .sheet(item: $model.presetExport) { st in PresetExportSheet(state: st).environmentObject(model) }
         .sheet(isPresented: Binding(get: { model.duplicates != nil }, set: { if !$0 { model.duplicates = nil } })) {
             DuplicatesSheet().environmentObject(model)
         }
@@ -1402,6 +1508,7 @@ struct SelectionBar: View {
             Menu {
                 Button("As Shown…") { model.exportToFolder(model.selection, mode: .asShown) }
                 Button("Original Files…") { model.exportToFolder(model.selection, mode: .originals) }
+                Button("Presets…") { model.openPresetExport() }
                 if model.canReveal { Divider(); Button("Reveal in Finder") { model.reveal(model.selection) } }
                 Divider()
                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.selectedAssets.map(\.id), title: "\(model.selection.count) Selected Assets") }
@@ -1717,6 +1824,8 @@ struct ExportMenuButton: View {
         Menu {
             Button("As Shown…") { model.exportToFolder(ids, mode: .asShown) }
             Button(ids.count == 1 ? "Original File…" : "Original Files…") { model.exportToFolder(ids, mode: .originals) }
+            Divider()
+            Button("Presets…") { model.openPresetExport(Array(ids)) }
         } label: {
             Label(title, systemImage: "square.and.arrow.up")
         } primaryAction: { model.exportToFolder(ids, mode: .asShown) }
@@ -2308,6 +2417,150 @@ struct AssetViewer: View {
     }
 }
 
+/// Pick presets, crop mode and a file-name pattern; shows the crops on the first asset before exporting.
+struct PresetExportSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State var state: StudioLibrary.PresetExportState
+    @State private var focus: [Double: ExportRect] = [:]
+    @State private var base: CGImage?
+
+    var body: some View {
+        let byID = Dictionary(uniqueKeysWithValues: model.catalog.assets.map { ($0.id, $0) })
+        let assets = state.ids.compactMap { byID[$0] }
+        let first = assets.first
+        let fileCount = assets.count * ExportPreset.allCases.filter(state.presets.contains).reduce(0) { $0 + ($1 == .web ? 2 : 1) }
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Export Presets").font(.system(size: 20, weight: .bold))
+                    Text("\(state.title) · \(fileCount) \(fileCount == 1 ? "file" : "files")").font(.caption.monospaced()).foregroundStyle(.secondary)
+                }
+                Spacer()
+                let picks = model.pickIDs
+                if !picks.isEmpty && Set(picks) != Set(state.ids) {
+                    Button { state.ids = picks; state.title = "Picks"; base = nil } label: { Label("Use Picks (\(picks.count))", systemImage: "checkmark.seal") }.buttonStyle(.bordered)
+                }
+            }
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    InspectorLabel(text: "PRESETS")
+                    ForEach(ExportPreset.allCases) { p in
+                        let on = state.presets.contains(p)
+                        Button { if on { state.presets.remove(p) } else { state.presets.insert(p) } } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: on ? "checkmark.square.fill" : "square").foregroundStyle(on ? Theme.accent : .secondary).font(.system(size: 15))
+                                Image(systemName: p.symbol).frame(width: 18).foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(p.rawValue).font(.callout.weight(.semibold))
+                                    Text(p.detail).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 7)
+                            .background(on ? Theme.accent.opacity(0.12) : Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Theme.accent.opacity(0.5) : Theme.hairline))
+                            .contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                    InspectorLabel(text: "CROP").padding(.top, 6)
+                    Picker("", selection: $state.crop) { ForEach(CropMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                        .pickerStyle(.segmented).labelsHidden()
+                    Text(state.crop == .detail ? "Square and story crops slide toward the most detailed part of the image." : "Square and story crops take the middle of the image.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                    InspectorLabel(text: "FILE NAMES").padding(.top, 6)
+                    TextField(FilenamePattern.defaultPattern, text: $state.pattern).textFieldStyle(.roundedBorder).font(.callout.monospaced())
+                    Text(FilenamePattern.tokens.joined(separator: "  ")).font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                    if let a = first, let p = ExportPreset.allCases.first(where: state.presets.contains) {
+                        let o = p.outputs(width: base?.width ?? 2048, height: base?.height ?? 2048)[0]
+                        Text("e.g. " + FilenamePattern.render(state.pattern, title: a.title, preset: p, output: o, index: 1, collection: a.collection))
+                            .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                .frame(width: 330)
+                VStack(alignment: .leading, spacing: 8) {
+                    InspectorLabel(text: first.map { "CROPS · " + $0.title.uppercased() } ?? "CROPS")
+                    if let base {
+                        let crops = ExportPreset.allCases.filter { state.presets.contains($0) }
+                        CropPreview(image: base, windows: crops.map { p in
+                            (p.rawValue, p.outputs(width: base.width, height: base.height, crop: state.crop, focus: p.cropAspect.flatMap { focus[$0] })[0].crop)
+                        })
+                    } else {
+                        ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            HStack {
+                if model.presetExportRunning { ProgressView().controlSize(.small); Text("Exporting…").font(.caption).foregroundStyle(.secondary) }
+                Spacer()
+                Button("Cancel") { model.presetExport = nil }.keyboardShortcut(.cancelAction)
+                Button("Export…") { model.runPresetExport(state) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                    .disabled(state.presets.isEmpty || assets.isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 820, height: 560)
+        .background(Theme.panel)
+        .task(id: state.ids.first) { await load(first) }
+    }
+
+    private func load(_ a: StudioAsset?) async {
+        guard let a else { return }
+        let fx = model.effect, amt = model.intensity, psd = model.psdToggled[a.id] ?? [], tiles = model.tiles(for: a), fix = model.fixSeams.contains(a.id)
+        let result: (CGImage?, [Double: ExportRect]) = await Task.detached(priority: .userInitiated) {
+            guard let img = MediaRenderer.exportBase(a, effect: fx, amount: amt, psdToggled: psd, tiles: tiles, fixSeams: fix) else { return (nil, [:]) }
+            var f: [Double: ExportRect] = [:]
+            if let small = MediaRenderer.pixelBuffer(from: img, maxPixel: 256) {
+                for p in ExportPreset.allCases { if let asp = p.cropAspect { f[asp] = SmartCrop.detailWindow(small, sourceWidth: img.width, sourceHeight: img.height, aspect: asp) } }
+            }
+            guard let buf = MediaRenderer.pixelBuffer(from: img, maxPixel: 900), let preview = MediaRenderer.cgImage(buf) else { return (img, f) }
+            return (preview, PresetExportSheet.scale(f, from: img, to: preview))
+        }.value
+        base = result.0; focus = result.1
+    }
+
+    /// Crop windows are computed on the full image; the preview image is smaller.
+    nonisolated static func scale(_ f: [Double: ExportRect], from big: CGImage, to small: CGImage) -> [Double: ExportRect] {
+        let s = Double(small.width) / Double(max(1, big.width))
+        return f.mapValues { r in ExportRect(x: Int(Double(r.x) * s), y: Int(Double(r.y) * s), w: Int(Double(r.w) * s), h: Int(Double(r.h) * s)) }
+    }
+}
+
+/// The source image with each preset's crop outlined and labeled.
+struct CropPreview: View {
+    let image: CGImage
+    let windows: [(String, ExportRect)]
+    var body: some View {
+        GeometryReader { geo in
+            let s = min(geo.size.width / CGFloat(image.width), geo.size.height / CGFloat(image.height))
+            let w = CGFloat(image.width) * s, h = CGFloat(image.height) * s
+            ZStack(alignment: .topLeading) {
+                Image(decorative: image, scale: 1).resizable().frame(width: w, height: h).opacity(0.55)
+                ForEach(Array(windows.enumerated()), id: \.offset) { i, item in
+                    let r = item.1
+                    let color = [Theme.accent, Theme.smart, Theme.watch, Theme.warning, Color.pink][i % 5]
+                    let full = r.x == 0 && r.y == 0 && r.w == image.width && r.h == image.height
+                    ZStack(alignment: .topLeading) {
+                        Image(decorative: image, scale: 1).resizable().frame(width: w, height: h)
+                            .offset(x: -CGFloat(r.x) * s, y: -CGFloat(r.y) * s)
+                            .frame(width: CGFloat(r.w) * s, height: CGFloat(r.h) * s, alignment: .topLeading).clipped()
+                            .opacity(full ? 0 : 1)
+                        RoundedRectangle(cornerRadius: 3).stroke(color, style: StrokeStyle(lineWidth: 2, dash: full ? [5, 3] : []))
+                        Text(item.0).font(.system(size: 10, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(color, in: Capsule()).foregroundStyle(.black).padding(5)
+                            .offset(y: CGFloat(i) * (full ? 20 : 0))
+                    }
+                    .frame(width: CGFloat(r.w) * s, height: CGFloat(r.h) * s)
+                    .offset(x: CGFloat(r.x) * s, y: CGFloat(r.y) * s)
+                }
+            }
+            .frame(width: w, height: h)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+}
+
 /// Full-window compare: 2-4 panes (or a swipe between 2) sharing one zoom and pan, with a keep/reject pass.
 struct CompareView: View {
     @EnvironmentObject var model: StudioLibrary
@@ -2325,7 +2578,11 @@ struct CompareView: View {
                 VStack(spacing: 14) {
                     header(s)
                     Group {
-                        if model.compareSwipe && assets.count == 2 { swipe(assets[0], assets[1], s) }
+                        if model.compareSwipe && assets.count == 2 {
+                            // The frame hugs the first asset's shape instead of letterboxing inside a wide pane.
+                            let d = AutoTags.dimensions(in: assets[0].resolution)
+                            swipe(assets[0], assets[1], s).aspectRatio(d.map { CGFloat($0.0) / CGFloat(max(1, $0.1)) } ?? 16 / 10, contentMode: .fit)
+                        }
                         else {
                             HStack(spacing: 12) {
                                 ForEach(Array(assets.enumerated()), id: \.element.id) { i, a in pane(a, index: i, s: s) }
@@ -2342,7 +2599,7 @@ struct CompareView: View {
                             Text(shared.prefix(8).joined(separator: "  ·  ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
-                        Text("K keep  ·  X reject  ·  Tab next  ·  drag to pan, pinch or +/- to zoom  ·  S swipe  ·  Return done  ·  Esc cancel")
+                        Text("K keep  ·  X reject  ·  Tab next  ·  drag or scroll to pan, pinch, wheel or +/- to zoom  ·  S swipe  ·  Return done  ·  Esc cancel")
                             .font(.caption).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.8)
                     }
                 }
@@ -3138,6 +3395,34 @@ enum MediaRenderer {
     }
 
     static func exportPNG(_ asset: StudioAsset, effect: EffectPreset, amount: Double, psdToggled: Set<Int> = [], tiles: Int = 1, fixSeams: Bool = false, to url: URL) -> Bool {
+        guard let out = exportBase(asset, effect: effect, amount: amount, psdToggled: psdToggled, tiles: tiles, fixSeams: fixSeams),
+              let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return false }
+        CGImageDestinationAddImage(dest, out, nil)
+        return CGImageDestinationFinalize(dest)
+    }
+
+    /// Crops and scales one preset output, then encodes it (JPEG 0.86, PNG, or TIFF with its dpi).
+    static func writePreset(_ img: CGImage, output o: ExportOutput, to url: URL) -> Bool {
+        let r = CGRect(x: o.crop.x, y: o.crop.y, width: o.crop.w, height: o.crop.h)
+        guard let cropped = (r == CGRect(x: 0, y: 0, width: img.width, height: img.height)) ? img : img.cropping(to: r) else { return false }
+        let opaque = o.format == .jpeg
+        guard let ctx = CGContext(data: nil, width: o.width, height: o.height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: opaque ? CGImageAlphaInfo.noneSkipLast.rawValue : CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+        if opaque { ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: o.width, height: o.height)) }
+        ctx.interpolationQuality = .high
+        ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: o.width, height: o.height))
+        guard let scaled = ctx.makeImage() else { return false }
+        let type: UTType = o.format == .jpeg ? .jpeg : o.format == .png ? .png : .tiff
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil) else { return false }
+        var props: [CFString: Any] = [kCGImagePropertyDPIWidth: o.dpi, kCGImagePropertyDPIHeight: o.dpi]
+        if o.format == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = 0.86 }
+        if o.format == .tiff { props[kCGImagePropertyTIFFDictionary] = [kCGImagePropertyTIFFCompression: 5] }   // LZW
+        CGImageDestinationAddImage(dest, scaled, props as CFDictionary)
+        return CGImageDestinationFinalize(dest)
+    }
+
+    /// The asset as it would export "as shown": effect, PSD layer toggles, tiling and seam fix applied.
+    static func exportBase(_ asset: StudioAsset, effect: EffectPreset, amount: Double, psdToggled: Set<Int> = [], tiles: Int = 1, fixSeams: Bool = false) -> CGImage? {
         var base: CGImage?
         if let p = asset.importedPath {
             let file = URL(fileURLWithPath: p)
@@ -3161,10 +3446,8 @@ enum MediaRenderer {
                 base = cgImage(tiles > 1 ? Seamless.tiled(buf, times: tiles) : buf)
             }
         }
-        guard let img = base, let out = apply(effect, amount: amount, to: img),
-              let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return false }
-        CGImageDestinationAddImage(dest, out, nil)
-        return CGImageDestinationFinalize(dest)
+        guard let img = base else { return nil }
+        return apply(effect, amount: amount, to: img)
     }
 }
 
