@@ -111,7 +111,10 @@ jobs:
           # Every shot after the first starts from the same fresh catalog, so one demo's files never leak into the next.
           shoot() {
             if [ -f /tmp/asssets-pristine.json ]; then cp /tmp/asssets-pristine.json "$SUP/studio-catalog.json"; rm -rf "$HOME/Pictures/Client Drops"; fi
-            open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep 9; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"; pkill -x ASSSETS || true; sleep 2
+            open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep 9; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
+            # Optional 4th arg: a file the demo writes in the background; keep the app alive until it lands.
+            if [ -n "${4:-}" ]; then for i in $(seq 1 90); do [ -s "$SUP/$4" ] && break; sleep 1; done; echo "waited ${i}s for $4"; fi
+            pkill -x ASSSETS || true; sleep 2
             [ -f /tmp/asssets-pristine.json ] || cp "$SUP/studio-catalog.json" /tmp/asssets-pristine.json
           }
           shoot media 1920x1200 library
@@ -128,13 +131,14 @@ jobs:
           shoot similar 1920x1200 find-similar
           shoot autotags 1920x1200 autotags
           shoot autotags-audio 1920x1200 autotags-audio
-          shoot contact-sheet 1920x1200 contact-sheet
+          shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
-          for i in $(seq 1 20); do [ -s "$SUP/demo-contact-sheet-all.pdf" ] && break; sleep 1; done
+          ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
           cp "$SUP/demo-contact-sheet-all.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"
-          ls -l ASSSETS-$ASSSETS_VERSION-contact-sheet*.pdf | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
+          ls -l ASSSETS-$ASSSETS_VERSION-contact-sheet*.pdf | tee -a "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
           # JPEG thumbnails keep the 28-asset sheet small.
-          test "$(stat -f%z "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf")" -lt 3500000
+          size=$(stat -f%z "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"); echo "whole-library sheet: $size bytes" | tee -a "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
+          test "$size" -lt 3500000
           test "$(mdls -raw -name kMDItemNumberOfPages "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" 2>/dev/null || echo 4)" != "0"
           sips -s format png --resampleWidth 1600 "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" --out "ASSSETS-$ASSSETS_VERSION-contact-sheet-cover.png" >/dev/null
           unzip -l "$SUP/demo-brand-kit.zip" | tee "ASSSETS-$ASSSETS_VERSION-brand-kit-listing.txt"
@@ -142,13 +146,15 @@ jobs:
           grep -q 'Contact Sheet.pdf' "ASSSETS-$ASSSETS_VERSION-brand-kit-listing.txt"
           for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
       - name: Upload ASSSETS release
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: asssets-${{ env.ASSSETS_VERSION }}
           path: |
             asssets/ASSSETS-${{ env.ASSSETS_VERSION }}.dmg
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-*.png
-            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-contact-sheet.pdf
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-contact-sheet*.pdf
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-pdf-sizes.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
 
   au:

@@ -953,8 +953,12 @@ final class StudioLibrary: ObservableObject {
                 let small = SheetPreview(title: p.title, ids: Array(p.ids.prefix(4)), pdf: p.pdf)
                 self.buildBrandKit(small, mode: .originals, to: self.supportRoot.appendingPathComponent("demo-brand-kit.zip"))
                 // Whole-library sheet, so CI can report the size of a 28-asset PDF with JPEG thumbnails.
-                _ = await ContactSheetRenderer.render(title: "ASSSETS Library", assets: self.catalog.assets,
-                                                      to: self.supportRoot.appendingPathComponent("demo-contact-sheet-all.pdf"))
+                // Written under a temp name and renamed at the end, so CI never measures a half-written file.
+                let tmp = self.supportRoot.appendingPathComponent("demo-contact-sheet-all.partial.pdf")
+                if await ContactSheetRenderer.render(title: "ASSSETS Library", assets: self.catalog.assets, to: tmp) {
+                    try? fm.removeItem(at: self.supportRoot.appendingPathComponent("demo-contact-sheet-all.pdf"))
+                    try? fm.moveItem(at: tmp, to: self.supportRoot.appendingPathComponent("demo-contact-sheet-all.pdf"))
+                }
             }
         case "autotags", "autotags-audio":
             // Suggested tags are searchable before they're accepted: "tileable" finds textures nobody tagged by hand.
