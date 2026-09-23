@@ -427,8 +427,7 @@ int main() {
             return ok;
         };
         std::vector<float> a0, a1; muew::Preset back;
-        if (!take(0.0, a0, nullptr) || !take(1.0, a1, &back)) { printf("FAIL: user table renders
-"); return 1; }
+        if (!take(0.0, a0, nullptr) || !take(1.0, a1, &back)) { printf("FAIL: user table renders\n"); return 1; }
         double d = 0, pk = 0;
         for (size_t i = 0; i < a0.size() && i < a1.size(); ++i) { d = std::max(d, (double)std::fabs(a0[i] - a1[i])); pk = std::max(pk, (double)std::fabs(a0[i])); }
         printf("user table: peak %.3f, WT POS 0 vs 1 delta %.3f, recalled frames %d, wtpos %.2f\n", pk, d, (int)back.tables[0].size(), back.voice.osc1WtPos);

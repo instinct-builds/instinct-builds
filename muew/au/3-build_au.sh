@@ -45,7 +45,7 @@ auval -v aumu Muew Inst 2>&1 | tee out/auval.log
 echo "== Host audio test =="
 clang++ -std=c++17 -O2 -isysroot "$(xcrun --show-sdk-path)" -Isrc -Iau \
   au/au_host_test.cpp -framework AudioToolbox -framework CoreAudio -framework CoreMIDI -framework CoreFoundation \
-  -o build/au_host_test
+  -o build/au_host_test 2>&1 | tee out/au_host_test_compile.log
 ./build/au_host_test 2>&1 | tee out/au_host_test.log
 
 echo "== Packaging =="
