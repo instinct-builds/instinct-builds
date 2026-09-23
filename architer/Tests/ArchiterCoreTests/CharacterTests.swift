@@ -150,6 +150,9 @@ struct CharacterTests {
         // Custom conditions drive effective roll mode like built-ins.
         #expect(c.effectiveRollMode(.normal, for: .attack) == .disadvantage)
         c.customConditions = [marked]
+        // Poisoned (built-in) still hinders attacks; Marked hinders checks only.
+        #expect(c.effectiveRollMode(.normal, for: .attack) == .disadvantage)
+        c.conditions = []
         #expect(c.effectiveRollMode(.normal, for: .attack) == .normal)
         #expect(c.effectiveRollMode(.advantage, for: .check) == .normal)
         // Old saves without the customConditions key decode empty.
