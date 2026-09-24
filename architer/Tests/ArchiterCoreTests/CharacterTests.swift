@@ -985,7 +985,7 @@ struct JournalTests {
 
     @Test func collapseStateDecodesAndRoundTrips() throws {
         // The pre-2.51.0 saved shape: no isCollapsed key at all.
-        let json = #"{\"date\":\"Session 1\",\"title\":\"Start\",\"text\":\"It began.\"}"#
+        let json = #"{"date":"Session 1","title":"Start","text":"It began."}"#
         let legacy = try JSONDecoder().decode(JournalEntry.self, from: Data(json.utf8))
         #expect(legacy.isCollapsed == nil)
         // A collapsed entry round-trips with its state.
