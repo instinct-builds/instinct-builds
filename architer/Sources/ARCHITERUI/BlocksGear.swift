@@ -249,6 +249,13 @@ public struct JournalBlock: View {
                             .foregroundStyle(Theme.inkFaint)
                             .help(collapsed ? "Expand entry" : "Collapse entry")
                         }
+                        // 2.55.0: copy this one entry (head + body).
+                        Button { model.copyJournalEntryToPasteboard(entry) } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.inkFaint)
+                        .help("Copy this entry")
                         // 2.50.0: nudge entries into the user's order;
                         // exports and the session recap follow it.
                         Button { character.moveJournalEntry(entry.id, by: -1) }

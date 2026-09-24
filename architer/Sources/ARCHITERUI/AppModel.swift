@@ -385,6 +385,15 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
+    /// Copy one journal entry (2.55.0): the row button's action - the
+    /// export head plus body, for sharing one finding without the whole
+    /// session recap.
+    public func copyJournalEntryToPasteboard(_ entry: JournalEntry) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(entry.shareText, forType: .string)
+    }
+
     /// One-tap session digest (2.49.0): drop a whole session's rolls into
     /// the journal as one entry, oldest first - the session-divider
     /// button's action, offered while auto-log is off.

@@ -325,6 +325,13 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// triangle (rule introduced with 2.51.0, shared model-side in
     /// 2.53.0 so the view and bulk actions agree).
     public var isLong: Bool { text.contains("\n") || text.count > 80 }
+
+    /// One-entry share block (2.55.0): the export head line followed by
+    /// the body, or the head alone for bodiless entries - what the
+    /// journal row's copy button puts on the pasteboard.
+    public var shareText: String {
+        text.isEmpty ? exportHead : exportHead + "\n" + text
+    }
 }
 
 public extension JournalEntry {

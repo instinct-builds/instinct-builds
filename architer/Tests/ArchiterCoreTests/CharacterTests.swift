@@ -1021,6 +1021,18 @@ struct JournalTests {
         #expect(c.journal[2].isCollapsed == nil)
     }
 
+    @Test func journalEntryShareText() throws {
+        // Stamped entry: head carries the creation time, body follows.
+        let stamped = JournalEntry(date: "2026-09-24", title: "Fire Bolt damage",
+                                   text: "Rolled 15 (2d10+3)",
+                                   createdAt: Date(timeIntervalSince1970: 1_790_000_000))
+        let head = stamped.exportHead
+        #expect(stamped.shareText == head + "\nRolled 15 (2d10+3)")
+        #expect(stamped.shareText.hasPrefix("2026-09-24 "))
+        // Bodiless entry shares its head alone.
+        #expect(JournalEntry(date: "Session 1", title: "Start").shareText == "Session 1 - Start")
+    }
+
     @Test func journalRoundTripsAndDefaults() throws {
         var c = Character(name: "Test")
         #expect(c.journal.isEmpty)

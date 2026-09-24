@@ -223,6 +223,12 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: width, name: "journal-collapse-all", outDir: outDir)
+        // 2.55.0 proof: the digest's one-entry share block, exactly what
+        // the row copy button puts on the pasteboard.
+        if let digestEntry = sel.journal.first(where: { $0.title.hasPrefix("Session ") }) {
+            try? digestEntry.shareText.write(to: URL(fileURLWithPath: "\(outDir)/journal-entry-copy.txt"),
+                                             atomically: true, encoding: .utf8)
+        }
         // 2.54.0 proof: the header filter narrows the journal by
         // title/body text - "fire bolt" keeps the attack, both damage
         // entries, and the digest (whose body mentions them), with the
