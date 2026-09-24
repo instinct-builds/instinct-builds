@@ -525,7 +525,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 // 0.14.0 FX detail panel: covers the matrix while a unit is open.
 static const int kFxAccent[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff, 0x75ead8, 0xff7fb0};
 // 0.27.0: HYPER and FILTER FX pages put a live picture beside compact rows.
-static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter; }
+// 0.28.0: COMP and REVERB join them (static curve per band, decay envelope).
+static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter || u == FxComp || u == FxReverb; }
 - (NSRect)fxDetailPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)fxDetailClose { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)fxDetailToggle { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 25, 46, 16); }
@@ -546,8 +547,8 @@ static int FxRowParam(int u, int i) {
     case FxDist: return i == 1 ? params::DistDrive : -1;
     case FxChorus: return i == 3 ? params::ChorusMix : -1;
     case FxDelay: return i == 5 ? params::DelayMix : -1;
-    case FxComp: return params::CompAmount;
-    case FxReverb: return i == 2 ? params::ReverbMix : -1;
+    case FxComp: return i == 1 ? params::CompAmount : i == 2 ? params::CompUpward : -1;  // 0.28.0 rows
+    case FxReverb: return i == 7 ? params::ReverbMix : i == 4 ? params::ReverbSize : -1; // 0.28.0 rows
     case FxPhaser: return i == 3 ? params::PhaserMix : -1;
     case FxFlanger: return i == 3 ? params::FlangerMix : -1;
     case FxHyper: return i == 3 ? params::HyperMix : -1;       // 0.27.0
@@ -1476,8 +1477,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     snprintf(det[0], 40, "%s", ui::distModeName(f.dist.mode));
     snprintf(det[1], 40, "RATE %.2f Hz", f.chorus.rateHz);
     snprintf(det[2], 40, "%s", ui::delayCardReadout(f.delay).c_str());
-    snprintf(det[3], 40, "RATIO %.1f:1", 1.5 + 6.5 * std::clamp(f.comp.amount, 0.0, 1.0));
-    snprintf(det[4], 40, "DECAY %.2f", f.reverb.decay);
+    if (f.comp.mode == 1) snprintf(det[3], 40, "3-BAND %.0f%%", 100.0 * std::clamp(f.comp.amount, 0.0, 1.0));
+    else snprintf(det[3], 40, "RATIO %.1f:1", 1.5 + 6.5 * std::clamp(f.comp.amount, 0.0, 1.0));
+    if (f.reverb.mode == 0) snprintf(det[4], 40, "DECAY %.2f", f.reverb.decay);
+    else snprintf(det[4], 40, "%s %.1fs", f.reverb.mode == 2 ? "PLATE" : "HALL", SpaceReverb::rt60(f.reverb.mode, f.reverb.decay));
     snprintf(det[5], 40, "%+.0f %+.0f %+.0f dB", f.eq.lowDb, f.eq.midDb, f.eq.highDb);
     snprintf(det[6], 40, "%.2f Hz  FB %.0f", f.phaser.rateHz, f.phaser.feedback * 100);
     snprintf(det[7], 40, "%.2f Hz  FB %.0f", f.flanger.rateHz, f.flanger.feedback * 100);
@@ -2173,6 +2176,125 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     Text(S(ui::filterFxModeName(fp.mode)), NSMakeRect(V.origin.x + 8, NSMaxY(V) - 12, 80, 10), 7, C(0x8793a3), NSFontWeightBold);
 }
 
+// 0.28.0 COMP page: input/output curve per band (from the parameters) beside the three band trims.
+- (void)drawCompVisual:(bool)on {
+    const CompressorParams& cp = current.fx.comp;
+    NSColor* acc = C(kFxAccent[FxComp]);
+    NSRect V = [self fxDetailVisual];
+    FillRound(V, 6, C(0x10151c));
+    const bool multi = cp.mode == 1;
+    NSRect plot = NSMakeRect(V.origin.x + 8, V.origin.y + 16, multi ? V.size.width - 62 : V.size.width - 16, V.size.height - 32);
+    auto xOf = [&](double db) { return plot.origin.x + plot.size.width * (std::clamp(db, -72.0, 0.0) + 72.0) / 72.0; };
+    auto yOf = [&](double db) { return plot.origin.y + plot.size.height * (std::clamp(db, -72.0, 6.0) + 72.0) / 78.0; };
+    [C(0x232b36) setStroke];
+    for (double g : {-60.0, -48.0, -36.0, -24.0, -12.0}) {
+        NSBezierPath* l = [NSBezierPath bezierPath];
+        [l moveToPoint:NSMakePoint(xOf(g), plot.origin.y)]; [l lineToPoint:NSMakePoint(xOf(g), NSMaxY(plot))];
+        [l moveToPoint:NSMakePoint(plot.origin.x, yOf(g))]; [l lineToPoint:NSMakePoint(NSMaxX(plot), yOf(g))]; [l stroke];
+    }
+    { NSBezierPath* l = [NSBezierPath bezierPath]; // unity line
+      [l moveToPoint:NSMakePoint(xOf(-72), yOf(-72))]; [l lineToPoint:NSMakePoint(xOf(0), yOf(0))];
+      CGFloat d[2] = {2, 3}; [l setLineDash:d count:2 phase:0]; [C(0x3a4452) setStroke]; [l stroke]; }
+    const double a = std::clamp(cp.amount, 0.0, 1.0);
+    MultibandComp mb; mb.init(48000.0); mb.set(cp);
+    auto outDb = [&](double in) {
+        if (multi) return in + mb.staticGainDb(in);
+        const double thr = -6.0 - 30.0 * a, ratio = 1.5 + 6.5 * a;
+        return in > thr ? thr + (in - thr) / ratio : in;
+    };
+    NSBezierPath* curve = [NSBezierPath bezierPath];
+    for (int k = 0; k <= 96; ++k) {
+        double in = -72.0 + 72.0 * k / 96.0;
+        NSPoint pt = NSMakePoint(xOf(in), yOf(outDb(in)));
+        k ? [curve lineToPoint:pt] : [curve moveToPoint:pt];
+    }
+    NSBezierPath* fill = [curve copy];
+    [fill lineToPoint:NSMakePoint(NSMaxX(plot), plot.origin.y)]; [fill lineToPoint:NSMakePoint(plot.origin.x, plot.origin.y)]; [fill closePath];
+    [C(kFxAccent[FxComp], on ? 0.12 : 0.05) setFill]; [fill fill];
+    [(on ? acc : C(0x4a5462)) setStroke]; curve.lineWidth = 1.8; [curve stroke];
+    if (multi) { // knees: where upward lift and downward squeeze start
+        for (double k : {-12.0 - 18.0 * a, -18.0 - 18.0 * a}) {
+            if (k == -18.0 - 18.0 * a && cp.upward <= 0.0) continue;
+            FillRound(NSMakeRect(xOf(k) - 3, yOf(outDb(k)) - 3, 6, 6), 3, on ? C(0xffffff) : C(0x8793a3));
+        }
+        // Band trims: three meters, centre is 0 dB, +/-12 dB range.
+        static const char* nm[3] = {"LO", "MID", "HI"};
+        const double trim[3] = {cp.lowDb, cp.midDb, cp.highDb};
+        for (int b = 0; b < 3; ++b) {
+            NSRect col = NSMakeRect(NSMaxX(plot) + 8 + b * 15, plot.origin.y, 11, plot.size.height);
+            FillRound(col, 3, C(0x19202a));
+            const CGFloat mid = NSMidY(col), h = col.size.height / 2 - 2;
+            const CGFloat y1 = mid + h * std::clamp(trim[b], -12.0, 12.0) / 12.0;
+            FillRound(NSMakeRect(col.origin.x + 2, std::min(mid, y1), 7, std::max<CGFloat>(std::fabs(y1 - mid), 1.5)), 2,
+                      on ? C(kFxAccent[FxComp], 0.85) : C(0x4a5462));
+            FillRound(NSMakeRect(col.origin.x, mid - 0.5, 11, 1), 0.5, C(0x5f6b7b));
+            TextA(S(nm[b]), NSMakeRect(col.origin.x - 4, V.origin.y + 3, 19, 10), 6, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+        }
+    }
+    Text(@"IN -72 dB", NSMakeRect(V.origin.x + 6, V.origin.y + 3, 50, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
+    TextA(@"0 dB", NSMakeRect(NSMaxX(plot) - 30, V.origin.y + 3, 30, 10), 6.5, C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
+    Text(S(ui::compModeName(cp.mode)), NSMakeRect(V.origin.x + 8, NSMaxY(V) - 12, 80, 10), 7, C(0x8793a3), NSFontWeightBold);
+    char t[32];
+    if (multi) snprintf(t, sizeof t, "UP %+.0f dB MAX", 18.0 * std::clamp(cp.upward, 0.0, 1.0));
+    else snprintf(t, sizeof t, "%.1f:1", 1.5 + 6.5 * a);
+    TextA(S(t), NSMakeRect(V.origin.x, NSMaxY(V) - 12, V.size.width - 8, 10), 7, on ? acc : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
+}
+
+// 0.28.0 REVERB page: energy over time - pre-delay gap, diffusion build, decay slope; the dim line is the treble dying first.
+- (void)drawReverbVisual:(bool)on {
+    const ReverbParams& rp = current.fx.reverb;
+    NSColor* acc = C(kFxAccent[FxReverb]);
+    NSRect V = [self fxDetailVisual];
+    FillRound(V, 6, C(0x10151c));
+    NSRect plot = NSMakeRect(V.origin.x + 8, V.origin.y + 16, V.size.width - 16, V.size.height - 32);
+    const bool classic = rp.mode == 0;
+    const double rt = classic ? -3.0 * 0.028 / std::log10(std::clamp(rp.decay, 0.05, 0.97)) : SpaceReverb::rt60(rp.mode, rp.decay);
+    const double pre = classic ? 0.0 : std::clamp(rp.preDelayMs, 0.0, 250.0) * 0.001;
+    const double span = std::max(0.5, (pre + rt) * 1.1);
+    auto xOf = [&](double sec) { return plot.origin.x + plot.size.width * std::clamp(sec / span, 0.0, 1.0); };
+    auto yOf = [&](double db) { return plot.origin.y + plot.size.height * (std::clamp(db, -66.0, 0.0) + 66.0) / 66.0; };
+    [C(0x232b36) setStroke];
+    for (double g : {-60.0, -40.0, -20.0}) {
+        NSBezierPath* l = [NSBezierPath bezierPath];
+        [l moveToPoint:NSMakePoint(plot.origin.x, yOf(g))]; [l lineToPoint:NSMakePoint(NSMaxX(plot), yOf(g))]; [l stroke];
+    }
+    const double build = classic ? 0.01 : (rp.mode == 2 ? 0.006 : 0.02 + 0.04 * std::clamp(rp.size, 0.0, 1.0));
+    const double damp = std::clamp(rp.damping, 0.0, 1.0) * (rp.mode == 2 ? 0.6 : 0.85);
+    auto env = [&](double t, double speed) { // dB at time t; speed > 1 decays faster
+        if (t < pre) return -80.0;
+        double u = t - pre, rise = std::min(1.0, u / build);
+        return 20.0 * std::log10(std::max(rise, 1e-4)) - 60.0 * speed * u / rt;
+    };
+    auto path = [&](double speed) {
+        NSBezierPath* c = [NSBezierPath bezierPath];
+        for (int k = 0; k <= 140; ++k) {
+            double t = span * k / 140.0;
+            NSPoint pt = NSMakePoint(xOf(t), yOf(env(t, speed)));
+            k ? [c lineToPoint:pt] : [c moveToPoint:pt];
+        }
+        return c;
+    };
+    if (pre > 0) FillRound(NSMakeRect(plot.origin.x, plot.origin.y, xOf(pre) - plot.origin.x, plot.size.height), 2, C(0x19202a));
+    NSBezierPath* body = path(1.0);
+    NSBezierPath* fill = [body copy];
+    [fill lineToPoint:NSMakePoint(NSMaxX(plot), plot.origin.y)]; [fill lineToPoint:NSMakePoint(plot.origin.x, plot.origin.y)]; [fill closePath];
+    [C(kFxAccent[FxReverb], on ? 0.14 : 0.05) setFill]; [fill fill];
+    NSBezierPath* treble = path(1.0 + 1.6 * damp);
+    CGFloat d[2] = {3, 3}; [treble setLineDash:d count:2 phase:0];
+    [C(kFxAccent[FxReverb], on ? 0.5 : 0.2) setStroke]; treble.lineWidth = 1; [treble stroke];
+    [(on ? acc : C(0x4a5462)) setStroke]; body.lineWidth = 1.8; [body stroke];
+    const CGFloat xr = xOf(pre + rt); // RT60 marker
+    FillRound(NSMakeRect(xr - 0.75, plot.origin.y, 1.5, plot.size.height), 0.75, on ? C(0xd5dce5, 0.6) : C(0x4a5462));
+    FillRound(NSMakeRect(xr - 3.5, yOf(-60) - 3.5, 7, 7), 3.5, on ? C(0xffffff) : C(0x8793a3));
+    char t[40];
+    snprintf(t, sizeof t, "%sRT60 %.1f s", classic ? "~" : "", rt);
+    TextA(S(t), NSMakeRect(V.origin.x, NSMaxY(V) - 12, V.size.width - 8, 10), 7, on ? acc : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
+    Text(S(ui::reverbModeName(rp.mode)), NSMakeRect(V.origin.x + 8, NSMaxY(V) - 12, 80, 10), 7, C(0x8793a3), NSFontWeightBold);
+    Text(@"0 s", NSMakeRect(V.origin.x + 6, V.origin.y + 3, 30, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
+    snprintf(t, sizeof t, "%.1f s", span);
+    TextA(S(t), NSMakeRect(NSMaxX(V) - 46, V.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
+}
+
 // ---- interaction ----
 - (void)drawFxDetail {
     const int u = fxDetail;
@@ -2221,7 +2343,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
                 NSRect seg = NSMakeRect(bar.origin.x + k * w + 1, bar.origin.y - 1, w - 2, 16);
                 bool sel = (int)v == k;
                 FillRound(seg, 4, sel ? C(kFxAccent[u], live ? 0.28 : 0.12) : C(0x10151c));
-                TextA(S(ui::distModeName(k)), NSMakeRect(seg.origin.x, seg.origin.y + 3, seg.size.width, 11), 7.5,
+                TextA(S(ui::fxChoiceName(u, k)), NSMakeRect(seg.origin.x, seg.origin.y + (compact ? 3.5 : 3), seg.size.width, 11), compact ? 6.5 : 7.5,
                       sel ? (live ? acc : C(0x8793a3)) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
             }
         } else if (c.fmt == ui::FmtChoice) { // stepper: left half steps down, right half up
@@ -2302,10 +2424,18 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     }
     case FxComp: {
         const double a = std::clamp(f.comp.amount, 0.0, 1.0);
-        snprintf(foot, sizeof foot, "THRESHOLD %.0f dB  \u2022  RATIO %.1f:1  \u2022  ONE-KNOB MAKEUP", -6.0 - 30.0 * a, 1.5 + 6.5 * a);
+        if (f.comp.mode == 1)
+            snprintf(foot, sizeof foot, "3 BANDS  \u2022  SPLITS 120 Hz / 2.5 kHz  \u2022  DOWN %.1f:1 ABOVE %.0f dB  \u2022  UP BELOW %.0f dB",
+                     1.0 + 5.0 * a, -12.0 - 18.0 * a, -18.0 - 18.0 * a);
+        else
+            snprintf(foot, sizeof foot, "THRESHOLD %.0f dB  \u2022  RATIO %.1f:1  \u2022  ONE-KNOB MAKEUP", -6.0 - 30.0 * a, 1.5 + 6.5 * a);
         break;
     }
-    case FxReverb: snprintf(foot, sizeof foot, "FOUR DAMPED COMBS INTO TWO ALLPASSES PER SIDE"); break;
+    case FxReverb:
+        if (f.reverb.mode == 0) snprintf(foot, sizeof foot, "FOUR DAMPED COMBS INTO TWO ALLPASSES PER SIDE");
+        else snprintf(foot, sizeof foot, "%s  \u2022  8-LINE FEEDBACK NETWORK  \u2022  RT60 %.1f s  \u2022  PRE %.0f ms",
+                      f.reverb.mode == 2 ? "PLATE" : "HALL", SpaceReverb::rt60(f.reverb.mode, f.reverb.decay), f.reverb.preDelayMs);
+        break;
     case FxPhaser: snprintf(foot, sizeof foot, "SIX ALLPASS STAGES  \u2022  SWEEP 180 Hz TO %.1f kHz", 0.18 * std::pow(25.0, std::clamp(f.phaser.depth, 0.0, 1.0))); break;
     case FxFlanger: snprintf(foot, sizeof foot, "SWEEP 0.3 TO %.1f ms  \u2022  QUADRATURE STEREO", 0.3 + 4.0 * std::clamp(f.flanger.depth, 0.0, 1.0)); break;
     case FxChorus: snprintf(foot, sizeof foot, "TWO MODULATED TAPS  \u2022  %.1f TO %.1f ms", f.chorus.baseMs, f.chorus.baseMs + f.chorus.depthMs); break;
@@ -2327,6 +2457,8 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     }
     if (u == FxHyper) [self drawHyperVisual:on];
     else if (u == FxFilter) [self drawFilterFxVisual:on];
+    else if (u == FxComp) [self drawCompVisual:on];
+    else if (u == FxReverb) [self drawReverbVisual:on];
     if (u == FxEQ) { // response curve under the three bands
         NSRect plot = NSMakeRect(P.origin.x + 104, P.origin.y + 14, 196, 66);
         FillRound(plot, 6, C(0x10151c));

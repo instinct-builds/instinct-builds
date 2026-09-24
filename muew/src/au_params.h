@@ -25,6 +25,7 @@ enum ID {
     GlideTime, UnisonBlend, // 0.23.0
     ArpGate, ArpSwing,      // 0.25.0
     HyperMix, FilterFxCutoff, // 0.27.0
+    ReverbSize, CompUpward,   // 0.28.0
     Count
 };
 
@@ -75,6 +76,8 @@ inline const Def& def(int id) {
         {"Arp Swing", Percent, 0, 50, false},
         {"Hyper Mix", Percent, 0, 100, false},
         {"Filter FX Cutoff", Hertz, 40, 18000, true},
+        {"Reverb Size", Percent, 0, 100, false},
+        {"Multiband Upward", Percent, 0, 100, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -115,6 +118,8 @@ inline double& field(Preset& p, int id) {
     case ArpSwing: return p.voice.arpSwing;
     case HyperMix: return p.fx.hyper.mix;
     case FilterFxCutoff: return p.fx.filter.cutoffHz;
+    case ReverbSize: return p.fx.reverb.size;
+    case CompUpward: return p.fx.comp.upward;
     default: return p.fx.reverb.mix;
     }
 }

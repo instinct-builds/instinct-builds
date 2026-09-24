@@ -12,7 +12,7 @@ static int failures = 0;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); ++failures; } } while (0)
 
 int main() {
-    static_assert(params::Count == 36 && params::HyperMix == 34 && params::FilterFxCutoff == 35 && params::ArpGate == 32 && params::ArpSwing == 33 && params::GlideTime == 30 && params::UnisonBlend == 31 && params::PhaserMix == 28 && params::FlangerMix == 29 && params::Filter2Reso == 27 && params::SubLevel == 23 && params::WtPosA == 21 && params::CompAmount == 20, "parameter IDs are append-only");
+    static_assert(params::Count == 38 && params::ReverbSize == 36 && params::CompUpward == 37 && params::HyperMix == 34 && params::FilterFxCutoff == 35 && params::ArpGate == 32 && params::ArpSwing == 33 && params::GlideTime == 30 && params::UnisonBlend == 31 && params::PhaserMix == 28 && params::FlangerMix == 29 && params::Filter2Reso == 27 && params::SubLevel == 23 && params::WtPosA == 21 && params::CompAmount == 20, "parameter IDs are append-only");
     CHECK(params::Macro1 == 12 && params::ReverbMix == 11);
     CHECK(params::UnisonDetuneA == 16 && params::UnisonWidth == 18 && params::DistDrive == 19 && params::CompAmount == 20);
     CHECK(ui::knobParam(ui::UniDetuneA) == 16 && ui::knobParam(ui::UniDetuneB) == 17 && ui::knobParam(ui::Width) == 18);

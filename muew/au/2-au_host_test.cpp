@@ -273,7 +273,7 @@ int main() {
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
-        static_assert(mp::Count == 36, "0.27.0 publishes 36 parameters");
+        static_assert(mp::Count == 38, "0.28.0 publishes 38 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
             printf("FAIL: reselect Init Saw\n"); return 1;
         }
@@ -354,7 +354,34 @@ int main() {
                 printf("FAIL: HYPER mix / FILTER FX cutoff not audible or not stored\n"); return 1;
             }
         }
-        printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros, unison width, drive, HYPER / FILTER FX and recall: ok\n", (int)mp::Count);
+        // 0.28.0: REVERB SIZE (param 36) reshapes a HALL; MULTIBAND UPWARD (param 37) lifts quiet bands.
+        {
+            muew::Preset sp;
+            if (!selectPreset(0) || !getState(unit, sp)) { printf("FAIL: select Airy Strings for Space + Dynamics\n"); return 1; }
+            sp.fx = muew::FXParams{};
+            sp.fx.reverb.enabled = true; sp.fx.reverb.mode = 1; sp.fx.reverb.mix = 1.0; sp.fx.reverb.size = 0.0; sp.fx.reverb.decay = 0.8;
+            double rs0 = 0, rm0 = 0, rs1 = 0, rm1 = 0;
+            if (!setState(unit, sp) || !measureLR(rs0, rm0)) { printf("FAIL: render HALL base\n"); return 1; }
+            AudioUnitSetParameter(unit, mp::ReverbSize, kAudioUnitScope_Global, 0, 100.0f, 0);
+            if (!measureLR(rs1, rm1)) { printf("FAIL: render HALL size 100\n"); return 1; }
+            muew::Preset sq;
+            const double dr = std::fabs(rm1 - rm0) / rm0 + std::fabs(rs1 - rs0) / std::max(rs0, 1e-9);
+            printf("space: HALL mid %.1f side %.1f at SIZE 0, mid %.1f side %.1f at SIZE 100\n", rm0, rs0, rm1, rs1);
+            if (dr < 0.03 || !getState(unit, sq) || sq.fx.reverb.size != 1.0 || sq.fx.reverb.mode != 1) {
+                printf("FAIL: REVERB SIZE not audible or not stored\n"); return 1;
+            }
+            sp.fx = muew::FXParams{};
+            sp.fx.comp.enabled = true; sp.fx.comp.mode = 1; sp.fx.comp.amount = 0.9; sp.fx.comp.upward = 0.0;
+            double cs0 = 0, cm0 = 0, cs1 = 0, cm1 = 0;
+            if (!setState(unit, sp) || !measureLR(cs0, cm0)) { printf("FAIL: render MULTIBAND base\n"); return 1; }
+            AudioUnitSetParameter(unit, mp::CompUpward, kAudioUnitScope_Global, 0, 100.0f, 0);
+            if (!measureLR(cs1, cm1)) { printf("FAIL: render MULTIBAND upward 100\n"); return 1; }
+            printf("dynamics: MULTIBAND level %.1f at UPWARD 0, %.1f at 100\n", cm0, cm1);
+            if (cm1 < cm0 * 1.03 || !getState(unit, sq) || sq.fx.comp.upward != 1.0 || sq.fx.comp.mode != 1) {
+                printf("FAIL: MULTIBAND UPWARD not audible or not stored\n"); return 1;
+            }
+        }
+        printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros, unison width, drive, HYPER / FILTER FX, SIZE / UPWARD and recall: ok\n", (int)mp::Count);
     }
 
     // Render notifications fire before and after each render (auval checks this).

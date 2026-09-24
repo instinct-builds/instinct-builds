@@ -45,6 +45,8 @@ struct PresetInfo {
 //                  0.27.0 adds optional `hyper <en> <rate> <detune> <dim> <mix>` and
 //                  `filterfx <en> <mode> <cutoff> <reso> <drive> <rate> <sync> <depth> <mix>`
 //                  lines; an older 8-unit `fxorder` line gets the new units appended.
+//                  0.28.0 adds optional `reverbx <mode> <predelay ms> <size> <width> <lowcut Hz>`
+//                  and `compx <mode> <upward> <speed> <low dB> <mid dB> <high dB> <mix>` lines.
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
@@ -142,6 +144,14 @@ struct Preset {
         const auto& fl = fx.flanger; const auto& df = d.flanger;
         if (fl.enabled != df.enabled || fl.rateHz != df.rateHz || fl.depth != df.depth || fl.feedback != df.feedback || fl.mix != df.mix)
             fxLine("flanger", fl.enabled, fl.rateHz, fl.depth, fl.feedback, fl.mix);
+        const auto& rv = fx.reverb; const auto& dr = d.reverb;
+        if (rv.mode != dr.mode || rv.preDelayMs != dr.preDelayMs || rv.size != dr.size || rv.width != dr.width || rv.lowCutHz != dr.lowCutHz)
+            o << "reverbx " << rv.mode << " " << rv.preDelayMs << " " << rv.size << " " << rv.width << " " << rv.lowCutHz << "\n";
+        const auto& cp = fx.comp; const auto& dc = d.comp;
+        if (cp.mode != dc.mode || cp.upward != dc.upward || cp.speed != dc.speed || cp.lowDb != dc.lowDb || cp.midDb != dc.midDb
+            || cp.highDb != dc.highDb || cp.mix != dc.mix)
+            o << "compx " << cp.mode << " " << cp.upward << " " << cp.speed << " " << cp.lowDb << " " << cp.midDb << " " << cp.highDb
+              << " " << cp.mix << "\n";
         const auto& hy = fx.hyper; const auto& dh = d.hyper;
         if (hy.enabled != dh.enabled || hy.rateHz != dh.rateHz || hy.detune != dh.detune || hy.dimension != dh.dimension || hy.mix != dh.mix)
             fxLine("hyper", hy.enabled, hy.rateHz, hy.detune, hy.dimension, hy.mix);
@@ -426,6 +436,24 @@ struct Preset {
                     else fx.flanger = FlangerParams{e != 0, rate, depth, fb, mix};
                 }
             }
+            else if (key == "reverbx") {
+                int m = 0; double pre, size, width, lc;
+                if (ls >> m >> pre >> size >> width >> lc && std::isfinite(pre) && std::isfinite(size) && std::isfinite(width) && std::isfinite(lc)) {
+                    fx.reverb.mode = std::clamp(m, 0, 2); fx.reverb.preDelayMs = std::clamp(pre, 0.0, 250.0);
+                    fx.reverb.size = std::clamp(size, 0.0, 1.0); fx.reverb.width = std::clamp(width, 0.0, 1.0);
+                    fx.reverb.lowCutHz = std::clamp(lc, 20.0, 1000.0);
+                }
+            }
+            else if (key == "compx") {
+                int m = 0; double up, sp, lo, mid, hi, mix;
+                if (ls >> m >> up >> sp >> lo >> mid >> hi >> mix && std::isfinite(up) && std::isfinite(sp) && std::isfinite(lo)
+                    && std::isfinite(mid) && std::isfinite(hi) && std::isfinite(mix)) {
+                    auto& c = fx.comp;
+                    c.mode = std::clamp(m, 0, 1); c.upward = std::clamp(up, 0.0, 1.0); c.speed = std::clamp(sp, 0.0, 1.0);
+                    c.lowDb = std::clamp(lo, -12.0, 12.0); c.midDb = std::clamp(mid, -12.0, 12.0); c.highDb = std::clamp(hi, -12.0, 12.0);
+                    c.mix = std::clamp(mix, 0.0, 1.0);
+                }
+            }
             else if (key == "hyper") {
                 int e = 0; double rate, det, dim, mix;
                 if (ls >> e >> rate >> det >> dim >> mix && std::isfinite(rate) && std::isfinite(det) && std::isfinite(dim) && std::isfinite(mix))
@@ -576,6 +604,10 @@ struct Preset {
             && fa.delay.mix == fb.delay.mix
             && fa.reverb.enabled == fb.reverb.enabled && fa.reverb.decay == fb.reverb.decay
             && fa.reverb.damping == fb.reverb.damping && fa.reverb.mix == fb.reverb.mix
+            && fa.reverb.mode == fb.reverb.mode && fa.reverb.preDelayMs == fb.reverb.preDelayMs && fa.reverb.size == fb.reverb.size
+            && fa.reverb.width == fb.reverb.width && fa.reverb.lowCutHz == fb.reverb.lowCutHz
+            && fa.comp.mode == fb.comp.mode && fa.comp.upward == fb.comp.upward && fa.comp.speed == fb.comp.speed
+            && fa.comp.lowDb == fb.comp.lowDb && fa.comp.midDb == fb.comp.midDb && fa.comp.highDb == fb.comp.highDb && fa.comp.mix == fb.comp.mix
             && fa.dist.enabled == fb.dist.enabled && fa.dist.mode == fb.dist.mode
             && fa.dist.drive == fb.dist.drive && fa.dist.mix == fb.dist.mix
             && fa.eq.enabled == fb.eq.enabled && fa.eq.lowDb == fb.eq.lowDb

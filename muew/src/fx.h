@@ -121,9 +121,100 @@ private:
 
 struct ReverbParams {
     bool enabled = false;
-    double decay = 0.6;   // 0..1 feedback amount
+    double decay = 0.6;   // 0..1 feedback amount (HALL/PLATE: RT60 on a log scale)
     double damping = 0.4; // 0..1 high-frequency loss
     double mix = 0.3;
+    // 0.28.0: engine mode (0 CLASSIC = the 0.7.0 combs, 1 HALL, 2 PLATE; append only).
+    // The rest only shape HALL/PLATE; CLASSIC ignores them so older sounds are unchanged.
+    int mode = 0;
+    double preDelayMs = 20.0; // 0..250
+    double size = 0.6;        // 0..1 room size (delay-line lengths)
+    double width = 1.0;       // 0..1 wet stereo width
+    double lowCutHz = 100.0;  // 20..1000 wet high-pass
+};
+
+// 0.28.0 HALL / PLATE engine: stereo pre-delay, four input allpass diffusers
+// per side, then an eight-line feedback delay network (Hadamard mixing) with
+// per-line damping, gains set from the RT60 and slow modulation on four
+// lines so the tail never rings metallic. HALL uses long, sparse lines;
+// PLATE short, dense lines and brighter damping.
+class SpaceReverb {
+public:
+    static constexpr int kLines = 8;
+    void init(double sr) {
+        sr_ = sr;
+        pre_[0].resize((int)(sr * 0.26) + 4); pre_[1].resize((int)(sr * 0.26) + 4);
+        for (auto& l : lines_) l.resize((int)(sr * 0.2) + 8);
+        for (auto& side : diff_) for (auto& d : side) d.line.resize((int)(sr * 0.03) + 8);
+        configured_ = false;
+    }
+    // Rebuilds lengths and gains; cheap, called when parameters change.
+    void configure(int mode, double decay, double damping, double size, double preDelayMs, double lowCutHz) {
+        const bool plate = mode == 2;
+        static const double hallMs[kLines] = {37.1, 41.9, 47.3, 53.9, 59.1, 67.7, 73.3, 79.9};
+        static const double plateMs[kLines] = {11.3, 13.7, 17.1, 19.9, 23.3, 27.1, 29.9, 33.7};
+        static const double diffMs[2][4] = {{4.71, 3.59, 12.73, 9.31}, {4.93, 3.77, 12.29, 9.67}};
+        const double sz = std::clamp(size, 0.0, 1.0);
+        const double scale = plate ? 0.6 + 0.8 * sz : 0.5 + sz;
+        rt60_ = rt60(mode, decay);
+        for (int i = 0; i < kLines; ++i) {
+            len_[i] = (plate ? plateMs[i] : hallMs[i]) * 0.001 * scale * sr_;
+            gain_[i] = std::pow(10.0, -3.0 * len_[i] / (rt60_ * sr_));
+        }
+        for (int c = 0; c < 2; ++c) for (int k = 0; k < 4; ++k) diff_[c][k].length = diffMs[c][k] * 0.001 * (0.6 + 0.6 * sz) * sr_;
+        diffG_ = plate ? 0.75 : 0.68;
+        damp_ = std::clamp(1.0 - std::clamp(damping, 0.0, 1.0) * (plate ? 0.6 : 0.85), 0.05, 1.0);
+        modDepth_ = (plate ? 0.00012 : 0.00032) * sr_;
+        preLen_ = std::clamp(preDelayMs, 0.0, 250.0) * 0.001 * sr_;
+        hpA_ = std::exp(-2.0 * M_PI * std::clamp(lowCutHz, 20.0, 1000.0) / sr_);
+        configured_ = true;
+    }
+    // RT60 (seconds) the DECAY knob gives in a mode: HALL 0.8..12 s, PLATE 0.5..6 s.
+    static double rt60(int mode, double decay) {
+        const double d = std::clamp(decay, 0.0, 0.97) / 0.97;
+        return mode == 2 ? 0.5 * std::pow(12.0, d) : 0.8 * std::pow(15.0, d);
+    }
+    double rt60() const { return rt60_; }
+    inline void process(float inL, float inR, float& wetL, float& wetR, double width) {
+        pre_[0].push(inL); pre_[1].push(inR);
+        double x[2] = {preLen_ >= 1.0 ? pre_[0].read(preLen_) : inL, preLen_ >= 1.0 ? pre_[1].read(preLen_) : inR};
+        for (int c = 0; c < 2; ++c)
+            for (auto& d : diff_[c]) { // Schroeder allpass
+                const double buf = d.line.read(d.length);
+                const double v = x[c] + diffG_ * buf;
+                d.line.push((float)v);
+                x[c] = buf - diffG_ * v;
+            }
+        double y[kLines];
+        for (int i = 0; i < kLines; ++i) {
+            double d = len_[i];
+            if (i < 4) { d += modDepth_ * (1.0 + std::sin(2.0 * M_PI * modPh_[i])); modPh_[i] += kModHz[i] / sr_; modPh_[i] -= std::floor(modPh_[i]); }
+            y[i] = lines_[i].read(d);
+            lp_[i] += damp_ * (y[i] - lp_[i]);
+            y[i] = lp_[i] * gain_[i];
+        }
+        // Fast Walsh-Hadamard transform, normalised: a lossless mix of all lines.
+        for (int h = 1; h < kLines; h <<= 1)
+            for (int i = 0; i < kLines; i += h << 1)
+                for (int j = i; j < i + h; ++j) { const double a = y[j], b = y[j + h]; y[j] = a + b; y[j + h] = a - b; }
+        for (int i = 0; i < kLines; ++i) lines_[i].push((float)(y[i] * 0.35355339059327373 + (i & 1 ? x[1] : x[0]) * 0.5));
+        double l = (lp_[0] - lp_[2] + lp_[4] - lp_[6]) * 0.5, r = (lp_[1] - lp_[3] + lp_[5] - lp_[7]) * 0.5;
+        // Wet low cut (one-pole high-pass), then width on mid/side.
+        hpL_ = hpA_ * (hpL_ + l - hpXL_); hpXL_ = l;
+        hpR_ = hpA_ * (hpR_ + r - hpXR_); hpXR_ = r;
+        const double m = 0.5 * (hpL_ + hpR_), sd = 0.5 * (hpL_ - hpR_) * std::clamp(width, 0.0, 1.0);
+        wetL = (float)(m + sd); wetR = (float)(m - sd);
+    }
+    bool configured() const { return configured_; }
+private:
+    struct AP { DelayLine line; double length = 1.0; };
+    static constexpr double kModHz[4] = {0.31, 0.43, 0.57, 0.71};
+    double sr_ = 44100.0, len_[kLines] = {}, gain_[kLines] = {}, lp_[kLines] = {}, modPh_[4] = {0.0, 0.25, 0.5, 0.75};
+    double diffG_ = 0.7, damp_ = 0.5, modDepth_ = 0.0, preLen_ = 0.0, hpA_ = 1.0, rt60_ = 2.0;
+    double hpL_ = 0, hpR_ = 0, hpXL_ = 0, hpXR_ = 0;
+    bool configured_ = false;
+    DelayLine pre_[2], lines_[kLines];
+    AP diff_[2][4];
 };
 
 // Schroeder-style reverb: 4 damped parallel combs into 2 series allpasses,
@@ -147,8 +238,11 @@ public:
                 aps_[ch][i].length = apTun[ch][i];
             }
         }
+        space_.init(sr); // 0.28.0
+        redecay();
     }
     void set(const ReverbParams& p) { p_ = p; redecay(); }
+    const SpaceReverb& space() const { return space_; }
     // Macro routes into the decay (Dest::FxReverbDecay). 0 = untouched.
     void setDecayOffset(double d) { decOff_ = d; redecay(); }
     float decay() const { return decay_; }
@@ -171,7 +265,9 @@ public:
     }
 
     inline void process(float& l, float& r) {
-        float wetL = processOne(0, l), wetR = processOne(1, r);
+        float wetL, wetR;
+        if (p_.mode == 1 || p_.mode == 2) space_.process(l, r, wetL, wetR, p_.width); // 0.28.0 HALL / PLATE
+        else { wetL = processOne(0, l); wetR = processOne(1, r); }
         l = (float)((1.0 - p_.mix) * l + p_.mix * wetL);
         r = (float)((1.0 - p_.mix) * r + p_.mix * wetR);
     }
@@ -183,9 +279,13 @@ private:
     ReverbParams p_;
     float decay_ = 0.6f;
     double decOff_ = 0.0;
-    void redecay() { decay_ = (float)(decOff_ != 0.0 ? std::clamp(p_.decay + decOff_, 0.0, 0.97) : p_.decay); }
+    void redecay() {
+        decay_ = (float)(decOff_ != 0.0 ? std::clamp(p_.decay + decOff_, 0.0, 0.97) : p_.decay);
+        if (p_.mode == 1 || p_.mode == 2) space_.configure(p_.mode, decay_, p_.damping, p_.size, p_.preDelayMs, p_.lowCutHz);
+    }
     Comb combs_[2][4];
     AP aps_[2][2];
+    SpaceReverb space_;
 };
 
 struct DistortionParams {
@@ -305,7 +405,83 @@ private:
 
 struct CompressorParams {
     bool enabled = false;
-    double amount = 0.5; // 0..1: one-knob threshold, ratio and makeup
+    double amount = 0.5; // 0..1: one-knob threshold, ratio and makeup (MULTIBAND: depth)
+    // 0.28.0: 0 ONE-KNOB (the 0.7.0 compressor), 1 MULTIBAND. Append only.
+    // The rest only shape MULTIBAND; ONE-KNOB ignores them.
+    int mode = 0;
+    double upward = 0.4;  // 0..1 upward compression (lifts quiet detail)
+    double speed = 0.5;   // 0..1 slow..fast attack/release
+    double lowDb = 0.0, midDb = 0.0, highDb = 0.0; // -12..12 band output trims
+    double mix = 1.0;     // 0..1
+};
+
+// 0.28.0 MULTIBAND: three bands split at 120 Hz and 2.5 kHz by complementary
+// two-pole lowpasses (low = LP(x), high = rest - LP(rest)), so with no gain
+// change the bands sum back to the input exactly. Each band, stereo linked,
+// is pushed down above its threshold and lifted below it (upward, faded out
+// between -60 and -80 dBFS so silence and noise floors are not raised), then trimmed.
+class MultibandComp {
+public:
+    static constexpr int kBands = 3;
+    void init(double sr) { sr_ = sr; a1_ = coef(120.0); a2_ = coef(2500.0); setTimes(0.5); }
+    void set(const CompressorParams& p) {
+        p_ = p;
+        setTimes(p.speed);
+        const double d = std::clamp(p.amount, 0.0, 1.0);
+        thrDb_ = -12.0 - 18.0 * d;
+        ratio_ = 1.0 + 5.0 * d;
+        upThrDb_ = thrDb_ - 6.0;
+        upRatio_ = 1.0 + 3.0 * std::clamp(p.upward, 0.0, 1.0) * d;
+        upMaxDb_ = 18.0 * std::clamp(p.upward, 0.0, 1.0);
+        trim_[0] = std::pow(10.0, std::clamp(p.lowDb, -12.0, 12.0) / 20.0);
+        trim_[1] = std::pow(10.0, std::clamp(p.midDb, -12.0, 12.0) / 20.0);
+        trim_[2] = std::pow(10.0, std::clamp(p.highDb, -12.0, 12.0) / 20.0);
+    }
+    // Static gain (dB) a band applies at a steady input level; the panel draws it.
+    double staticGainDb(double levelDb) const { return gainFor(levelDb); }
+    double bandGainDb(int b) const { return gDb_[std::clamp(b, 0, kBands - 1)]; }
+    inline void process(float& l, float& r) {
+        double in[2] = {l, r}, band[2][kBands];
+        for (int c = 0; c < 2; ++c) {
+            s1_[c][0] += a1_ * (in[c] - s1_[c][0]); s1_[c][1] += a1_ * (s1_[c][0] - s1_[c][1]);
+            const double low = s1_[c][1], rest = in[c] - low;
+            s2_[c][0] += a2_ * (rest - s2_[c][0]); s2_[c][1] += a2_ * (s2_[c][0] - s2_[c][1]);
+            band[c][0] = low; band[c][1] = s2_[c][1]; band[c][2] = rest - s2_[c][1];
+        }
+        double out[2] = {0.0, 0.0};
+        for (int b = 0; b < kBands; ++b) {
+            const double pk = std::max(std::fabs(band[0][b]), std::fabs(band[1][b]));
+            env_[b] = pk > env_[b] ? pk + atk_ * (env_[b] - pk) : pk + rel_ * (env_[b] - pk);
+            const double target = gainFor(20.0 * std::log10(env_[b] + 1e-9));
+            gDb_[b] = target + (target < gDb_[b] ? gAtk_ : gRel_) * (gDb_[b] - target);
+            const double g = std::pow(10.0, gDb_[b] / 20.0) * trim_[b];
+            out[0] += band[0][b] * g; out[1] += band[1][b] * g;
+        }
+        const double mix = std::clamp(p_.mix, 0.0, 1.0);
+        l = (float)((1.0 - mix) * in[0] + mix * out[0]);
+        r = (float)((1.0 - mix) * in[1] + mix * out[1]);
+    }
+private:
+    double coef(double hz) const { return 1.0 - std::exp(-2.0 * M_PI * hz / sr_); }
+    void setTimes(double speed) {
+        const double s = std::clamp(speed, 0.0, 1.0);
+        const double atkMs = 12.0 - 10.0 * s, relMs = 260.0 - 200.0 * s;
+        atk_ = std::exp(-1.0 / (atkMs * 0.001 * sr_)); rel_ = std::exp(-1.0 / (relMs * 0.001 * sr_));
+        gAtk_ = std::exp(-1.0 / (0.002 * sr_)); gRel_ = std::exp(-1.0 / (relMs * 0.0005 * sr_));
+    }
+    double gainFor(double lv) const {
+        if (lv > thrDb_) return -(lv - thrDb_) * (1.0 - 1.0 / ratio_);
+        if (lv < upThrDb_ && upMaxDb_ > 0.0) {
+            double up = std::min(upMaxDb_, (upThrDb_ - lv) * (1.0 - 1.0 / upRatio_));
+            if (lv < -60.0) up *= std::clamp((lv + 80.0) / 20.0, 0.0, 1.0); // fades out from -60 to -80 dBFS: noise floors stay put
+            return up;
+        }
+        return 0.0;
+    }
+    double sr_ = 44100.0, a1_ = 0.0, a2_ = 0.0, atk_ = 0.0, rel_ = 0.0, gAtk_ = 0.0, gRel_ = 0.0;
+    double thrDb_ = -21.0, ratio_ = 3.5, upThrDb_ = -27.0, upRatio_ = 1.6, upMaxDb_ = 7.2;
+    double s1_[2][2] = {}, s2_[2][2] = {}, env_[kBands] = {}, gDb_[kBands] = {}, trim_[kBands] = {1.0, 1.0, 1.0};
+    CompressorParams p_;
 };
 
 // Stereo-linked feed-forward compressor, one knob. amount sets threshold
@@ -318,6 +494,7 @@ public:
         sr_ = sr;
         atk_ = std::exp(-1.0 / (0.002 * sr));
         rel_ = std::exp(-1.0 / (0.12 * sr));
+        mb_.init(sr); mb_.set(p_); // 0.28.0
     }
     void set(const CompressorParams& p) {
         p_ = p;
@@ -325,8 +502,11 @@ public:
         thrDb_ = -6.0 - 30.0 * a;
         ratio_ = 1.5 + 6.5 * a;
         makeupDb_ = std::min(6.0, -thrDb_ * (1.0 - 1.0 / ratio_) * 0.3);
+        mb_.set(p);
     }
+    const MultibandComp& multiband() const { return mb_; }
     inline void process(float& l, float& r) {
+        if (p_.mode == 1) { mb_.process(l, r); return; } // 0.28.0 MULTIBAND
         const double peak = std::max(std::fabs(l), std::fabs(r));
         env_ = peak > env_ ? peak : peak + rel_ * (env_ - peak);
         const double levelDb = 20.0 * std::log10(env_ + 1e-9);
@@ -346,6 +526,7 @@ private:
     double sr_ = 44100.0, atk_ = 0.0, rel_ = 0.0, env_ = 0.0;
     double thrDb_ = -21.0, ratio_ = 4.75, makeupDb_ = 0.0, grDb_ = 0.0;
     CompressorParams p_;
+    MultibandComp mb_;
 };
 
 struct PhaserParams {

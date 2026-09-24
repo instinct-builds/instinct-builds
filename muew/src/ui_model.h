@@ -422,6 +422,16 @@ inline std::vector<double> unisonOffsets(const VoiceParams& p, int osc) {
     for (int i = 0; i < n; ++i) o.push_back(n == 1 ? 0.0 : (2.0 * i / (n - 1) - 1.0) * det);
     return o;
 }
+inline const char* reverbModeName(int m) { // 0.28.0
+    static const char* n[] = {"CLASSIC", "HALL", "PLATE"};
+    return n[std::clamp(m, 0, 2)];
+}
+inline const char* compModeName(int m) { // 0.28.0
+    static const char* n[] = {"ONE-KNOB", "MULTIBAND"};
+    return n[std::clamp(m, 0, 1)];
+}
+// Label of choice k on a segmented choice row (the panel draws every option).
+inline const char* fxChoiceName(int unit, int k);
 inline const char* filterFxModeName(int m) { // 0.27.0
     static const char* n[] = {"LOW PASS", "BAND PASS", "HIGH PASS", "NOTCH", "PEAK"};
     return n[std::clamp(m, 0, 4)];
@@ -429,6 +439,11 @@ inline const char* filterFxModeName(int m) { // 0.27.0
 inline const char* distModeName(int m) {
     static const char* n[] = {"SOFT CLIP", "FOLD", "BITCRUSH"};
     return (m >= 0 && m < 3) ? n[m] : "?";
+}
+inline const char* fxChoiceName(int unit, int k) {
+    if (unit == FxReverb) return reverbModeName(k);
+    if (unit == FxComp) return compModeName(k);
+    return distModeName(k);
 }
 
 // ---- 0.14.0 FX detail editor ----
@@ -451,9 +466,14 @@ inline const std::vector<FxControl>& fxControls(int unit) {
         {{"TIME L", FmtSec, 0.01, 1.99, true, -1}, {"SYNC L", FmtChoice, 0, kSyncCount - 1, false, -1},
          {"TIME R", FmtSec, 0.01, 1.99, true, -1}, {"SYNC R", FmtChoice, 0, kSyncCount - 1, false, -1},
          {"FEEDBACK", FmtPercent, 0, 0.95, false, (int)D::FxDelayFeedback}, {"MIX", FmtPercent, 0, 1, false, -1}},
-        {{"AMOUNT", FmtPercent, 0, 1, false, -1}},
-        {{"DECAY", FmtPercent, 0, 0.97, false, (int)D::FxReverbDecay}, {"DAMPING", FmtPercent, 0, 1, false, -1},
-         {"MIX", FmtPercent, 0, 1, false, -1}},
+        // 0.28.0: MODE first; MULTIBAND rows are inactive in ONE-KNOB
+        {{"MODE", FmtChoice, 0, 1, false, -1}, {"AMOUNT", FmtPercent, 0, 1, false, -1}, {"UPWARD", FmtPercent, 0, 1, false, -1},
+         {"SPEED", FmtPercent, 0, 1, false, -1}, {"LOW", FmtDb, -12, 12, false, -1}, {"MID", FmtDb, -12, 12, false, -1},
+         {"HIGH", FmtDb, -12, 12, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
+        // 0.28.0: MODE first; space rows are inactive in CLASSIC
+        {{"MODE", FmtChoice, 0, 2, false, -1}, {"DECAY", FmtPercent, 0, 0.97, false, (int)D::FxReverbDecay},
+         {"DAMPING", FmtPercent, 0, 1, false, -1}, {"PRE-DELAY", FmtMs, 0, 250, false, -1}, {"SIZE", FmtPercent, 0, 1, false, -1},
+         {"WIDTH", FmtPercent, 0, 1, false, -1}, {"LOW CUT", FmtHz, 20, 1000, true, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
         {{"LOW 180 Hz", FmtDb, -12, 12, false, -1}, {"MID 1.2 kHz", FmtDb, -12, 12, false, -1}, {"HIGH 6 kHz", FmtDb, -12, 12, false, -1}},
         {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxPhaserDepth},
          {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
@@ -483,8 +503,10 @@ inline double fxGet(const FXParams& f, int unit, int i) {
     case FxChorus: return i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix;
     case FxDelay: return i == 0 ? f.delay.timeLSec : i == 1 ? f.delay.syncL : i == 2 ? f.delay.timeRSec : i == 3 ? f.delay.syncR
                        : i == 4 ? f.delay.feedback : f.delay.mix;
-    case FxComp: return f.comp.amount;
-    case FxReverb: return i == 0 ? f.reverb.decay : i == 1 ? f.reverb.damping : f.reverb.mix;
+    case FxComp: return i == 0 ? f.comp.mode : i == 1 ? f.comp.amount : i == 2 ? f.comp.upward : i == 3 ? f.comp.speed
+                      : i == 4 ? f.comp.lowDb : i == 5 ? f.comp.midDb : i == 6 ? f.comp.highDb : f.comp.mix;
+    case FxReverb: return i == 0 ? f.reverb.mode : i == 1 ? f.reverb.decay : i == 2 ? f.reverb.damping : i == 3 ? f.reverb.preDelayMs
+                        : i == 4 ? f.reverb.size : i == 5 ? f.reverb.width : i == 6 ? f.reverb.lowCutHz : f.reverb.mix;
     case FxEQ: return i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb;
     case FxPhaser: return i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix;
     case FxFlanger: return i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix;
@@ -508,8 +530,16 @@ inline void fxSet(FXParams& f, int unit, int i, double v) {
         if (i == 1) f.delay.syncL = k; else if (i == 3) f.delay.syncR = k;
         else (i == 0 ? f.delay.timeLSec : i == 2 ? f.delay.timeRSec : i == 4 ? f.delay.feedback : f.delay.mix) = v;
         break;
-    case FxComp: f.comp.amount = v; break;
-    case FxReverb: (i == 0 ? f.reverb.decay : i == 1 ? f.reverb.damping : f.reverb.mix) = v; break;
+    case FxComp:
+        if (i == 0) f.comp.mode = k;
+        else (i == 1 ? f.comp.amount : i == 2 ? f.comp.upward : i == 3 ? f.comp.speed : i == 4 ? f.comp.lowDb : i == 5 ? f.comp.midDb
+              : i == 6 ? f.comp.highDb : f.comp.mix) = v;
+        break;
+    case FxReverb:
+        if (i == 0) f.reverb.mode = k;
+        else (i == 1 ? f.reverb.decay : i == 2 ? f.reverb.damping : i == 3 ? f.reverb.preDelayMs : i == 4 ? f.reverb.size
+              : i == 5 ? f.reverb.width : i == 6 ? f.reverb.lowCutHz : f.reverb.mix) = v;
+        break;
     case FxEQ: (i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb) = v; break;
     case FxPhaser: (i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix) = v; break;
     case FxFlanger: (i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix) = v; break;
@@ -533,7 +563,9 @@ inline double fxFromNorm(const FxControl& c, double n) {
 // A delay side follows the host tempo while its SYNC row is not FREE.
 inline bool fxRowInactive(const FXParams& f, int unit, int i) {
     return (unit == FxDelay && ((i == 0 && f.delay.syncL > 0) || (i == 2 && f.delay.syncR > 0)))
-        || (unit == FxFilter && i == 5 && f.filter.lfoSync > 0); // 0.27.0: a synced FILTER FX sweep ignores RATE
+        || (unit == FxFilter && i == 5 && f.filter.lfoSync > 0)  // 0.27.0: a synced FILTER FX sweep ignores RATE
+        || (unit == FxReverb && f.reverb.mode == 0 && i >= 3 && i <= 6) // 0.28.0: CLASSIC has no space rows
+        || (unit == FxComp && f.comp.mode == 0 && i >= 2);             // 0.28.0: ONE-KNOB has only AMOUNT
 }
 inline std::string fxValueText(const FXParams& f, int unit, int i) {
     const auto& cs = fxControls(unit);
@@ -544,6 +576,8 @@ inline std::string fxValueText(const FXParams& f, int unit, int i) {
     case FmtChoice:
         if (unit == FxDist) return distModeName((int)v);
         if (unit == FxFilter && i == 0) return filterFxModeName((int)v);
+        if (unit == FxReverb && i == 0) return reverbModeName((int)v);
+        if (unit == FxComp && i == 0) return compModeName((int)v);
         return syncName((int)v);
     case FmtPercent: snprintf(b, sizeof b, "%.0f%%", v * 100); break;
     case FmtHz:

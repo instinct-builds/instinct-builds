@@ -1017,6 +1017,60 @@ int main() {
                   "HYPER and FILTER FX switch off from their pages and keep their settings");
             fflush(stdout);
         });
+        After(7.08, ^{ // 0.28.0 Space + Dynamics: REVERB (HALL) and COMP (MULTIBAND) pages
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); };
+            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 52 - 17 * row + 8); };
+            const NSPoint toggle = NSMakePoint(36 + 424 - 84 + 23, 48 + 200 - 25 + 8);
+            muew::Preset st0; State(st0);
+            const int rs = st0.fx.order.slotOf(muew::FxReverb), cs = st0.fx.order.slotOf(muew::FxComp);
+            Click(view, w, card(rs));                 // REVERB page
+            if (!st0.fx.reverb.enabled) Click(view, w, toggle);
+            Click(view, w, bar(0, 0.5));              // MODE: HALL (middle segment)
+            Click(view, w, bar(1, 0.6));              // DECAY
+            Click(view, w, bar(3, 0.16));             // PRE-DELAY 40 ms
+            Click(view, w, bar(4, 0.8));              // SIZE 80% (parameter 36)
+            Click(view, w, bar(7, 0.35));             // MIX 35%
+            RenderBlock();
+            Snapshot(view, "MUEW_REVERB_PNG", "REVERB page snapshot written");
+            Click(view, w, card(cs));                 // COMP page
+            if (!st0.fx.comp.enabled) Click(view, w, toggle);
+            Click(view, w, bar(0, 0.75));             // MODE: MULTIBAND (right segment)
+            Click(view, w, bar(1, 0.6));              // AMOUNT 60%
+            Click(view, w, bar(2, 0.7));              // UPWARD 70% (parameter 37)
+            Click(view, w, bar(4, 0.75));             // LOW +6 dB
+            Click(view, w, bar(6, 0.625));            // HIGH +3 dB
+            RenderBlock();
+            Snapshot(view, "MUEW_COMP_PNG", "COMP page snapshot written");
+            muew::Preset st;
+            const bool ok = State(st);
+            AudioUnitParameterValue rsz = -1, cup = -1;
+            AudioUnitGetParameter(gUnit, muew::params::ReverbSize, kAudioUnitScope_Global, 0, &rsz);
+            AudioUnitGetParameter(gUnit, muew::params::CompUpward, kAudioUnitScope_Global, 0, &cup);
+            const auto& rv = st.fx.reverb; const auto& cp = st.fx.comp;
+            printf("fx28: reverb on %d mode %d decay %.2f pre %.1f size %.2f (param 36 = %.1f) mix %.2f; comp on %d mode %d amount %.2f up %.2f (param 37 = %.1f) low %.1f high %.1f\n",
+                   rv.enabled ? 1 : 0, rv.mode, rv.decay, rv.preDelayMs, rv.size, rsz, rv.mix, cp.enabled ? 1 : 0, cp.mode, cp.amount, cp.upward, cup, cp.lowDb, cp.highDb);
+            Check(ok && rv.enabled && rv.mode == 1 && std::fabs(rv.preDelayMs - 40.0) < 1.0 && std::fabs(rv.size - 0.8) < 0.01 && std::fabs(rsz - 80) < 1.0
+                  && std::fabs(rv.mix - 0.35) < 0.01, "REVERB page: HALL, PRE-DELAY, SIZE and MIX reached the AU (parameter 36)");
+            Check(ok && cp.enabled && cp.mode == 1 && std::fabs(cp.amount - 0.6) < 0.01 && std::fabs(cp.upward - 0.7) < 0.01 && std::fabs(cup - 70) < 1.0
+                  && std::fabs(cp.lowDb - 6.0) < 0.2 && std::fabs(cp.highDb - 3.0) < 0.2,
+                  "COMP page: MULTIBAND, AMOUNT, UPWARD, LOW and HIGH reached the AU (parameter 37)");
+            Check(ok && st.serialize().find("\nreverbx 1 ") != std::string::npos && st.serialize().find("\ncompx 1 ") != std::string::npos,
+                  "the AU state saves reverbx and compx lines");
+            // Put both units back as they were (classic modes, previous on/off) and reopen the DELAY detail.
+            Click(view, w, bar(0, 0.25));             // COMP MODE: ONE-KNOB
+            if (!st0.fx.comp.enabled) Click(view, w, toggle);
+            Click(view, w, card(rs));
+            Click(view, w, bar(0, 0.15));             // REVERB MODE: CLASSIC
+            if (!st0.fx.reverb.enabled) Click(view, w, toggle);
+            Click(view, w, card(st0.fx.order.slotOf(muew::FxDelay)));
+            muew::Preset back;
+            Check(State(back) && back.fx.reverb.mode == 0 && back.fx.comp.mode == 0 && back.fx.reverb.enabled == st0.fx.reverb.enabled
+                  && back.fx.comp.enabled == st0.fx.comp.enabled && back.fx.reverb.size == rv.size,
+                  "REVERB and COMP return to CLASSIC / ONE-KNOB from their pages and keep their settings");
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });
