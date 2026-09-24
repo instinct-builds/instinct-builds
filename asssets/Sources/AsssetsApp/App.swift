@@ -2586,6 +2586,7 @@ struct BoardCanvas: View {
         Menu {
             Button("Import Client Feedback…") { model.importFeedback() }
             Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
+            Button(board.versions.isEmpty ? "Versions…" : "Versions (\(board.versions.count))…") { model.boardVersionsOpen = true }
             if !board.reviews.isEmpty {
                 Divider()
                 Toggle("Picked by Client Only", isOn: $model.boardClientOnly)
@@ -2607,6 +2608,7 @@ struct BoardCanvas: View {
                 Image(systemName: board.reviews.isEmpty ? "person.2" : "person.2.fill")
             }
         }
+        .menuIndicator(compact ? .hidden : .visible)
         .fixedSize().help(board.reviews.isEmpty ? "Client review: share a gallery, import the feedback" : "Client picks and comments on this board")
     }
 
@@ -2642,7 +2644,8 @@ struct BoardCanvas: View {
                 if !compact { Button { autoFit = false; model.boardZoom = min(2, z * 1.25) } label: { Image(systemName: "plus.magnifyingglass") } }
             }
             reviewMenu(compact: compact)
-            versionsButton
+            // Next to the inspector the versions button folds into the people menu, so the board name keeps its room (1.20 fix).
+            if !compact { versionsButton }
             Button { model.startPresenting(board.id) } label: { Image(systemName: "play.fill").foregroundStyle(Theme.accent) }.help("Present the board full screen")
             Menu {
                 Button("PNG…") { model.exportBoard(board.id, pdf: false) }
@@ -2651,7 +2654,7 @@ struct BoardCanvas: View {
                 Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
             } label: {
                 if compact { Image(systemName: "square.and.arrow.up") } else { Label("Export", systemImage: "square.and.arrow.up") }
-            }.fixedSize().help("Export the board")
+            }.menuIndicator(compact ? .hidden : .visible).fixedSize().help("Export the board")
         }
     }
 
