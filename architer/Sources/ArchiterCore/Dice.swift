@@ -308,22 +308,38 @@ public func sessionSegments(_ rolls: [RollResult], now: Date = Date(),
 
 /// Per-session summary for the divider stats line (2.69.0): roll count,
 /// high/low totals, and natural 20/1 counts over kept d20 dice only - an
-/// unkept advantage die is not a crit the table saw.
+/// unkept advantage die is not a crit the table saw. 2.75.0: the
+/// first-to-last-roll span.
 public struct SessionStats: Equatable, Sendable {
     public let count: Int
     public let high: Int
     public let low: Int
     public let nat20s: Int
     public let nat1s: Int
+    /// Newest stamp minus oldest stamp; nil under two stamped rolls -
+    /// a lone or undated roll has no span worth printing.
+    public let span: TimeInterval?
 
-    /// "9 rolls \u{00B7} high 26 \u{00B7} low 5 \u{00B7} nat 20 \u{00D7}2" - crit counts
-    /// appear only when nonzero, so a quiet session reads short.
+    /// "9 rolls \u{00B7} high 26 \u{00B7} low 5 \u{00B7} nat 20 \u{00D7}2 \u{00B7} span 2h 14m" -
+    /// crit counts appear only when nonzero and the span only when it
+    /// exists, so a quiet session reads short.
     public var line: String {
         var parts = [count == 1 ? "1 roll" : "\(count) rolls",
                      "high \(high)", "low \(low)"]
         if nat20s > 0 { parts.append("nat 20 \u{00D7}\(nat20s)") }
         if nat1s > 0 { parts.append("nat 1 \u{00D7}\(nat1s)") }
+        if let span = span { parts.append("span " + SessionStats.formatSpan(span)) }
         return parts.joined(separator: " \u{00B7} ")
+    }
+
+    /// "2h 14m" style: whole hours read "2h", sub-hour "38m", sub-minute
+    /// "<1m" - rounded to the nearest minute so 59.6s still reads "1m".
+    static func formatSpan(_ span: TimeInterval) -> String {
+        let minutes = Int((span / 60).rounded())
+        if minutes < 1 { return "<1m" }
+        if minutes < 60 { return "\(minutes)m" }
+        let rem = minutes % 60
+        return rem == 0 ? "\(minutes / 60)h" : "\(minutes / 60)h \(rem)m"
     }
 }
 
@@ -362,14 +378,26 @@ public func sessionMarkdown(_ session: RollSession) -> String {
 
 /// The stats line for one session segment (2.69.0). Totals read
 /// RollResult.total (modifier included); crits count kept d20 faces.
+/// 2.75.0: the span runs from the oldest stamp to the newest.
 public func sessionStats(_ session: RollSession) -> SessionStats {
     let rolls = session.rolls
     let keptD20 = rolls.flatMap(\.dice).filter { $0.kept && $0.sides == 20 }
+    // 2.75.0: rolls are newest-first, so the span is the newest stamp
+    // minus the oldest; a lone or undated roll reports no span.
+    let span: TimeInterval?
+    if rolls.count >= 2,
+       let newest = rolls.first?.rolledAt,
+       let oldest = rolls.last?.rolledAt {
+        span = newest.timeIntervalSince(oldest)
+    } else {
+        span = nil
+    }
     return SessionStats(count: rolls.count,
                         high: rolls.map(\.total).max() ?? 0,
                         low: rolls.map(\.total).min() ?? 0,
                         nat20s: keptD20.filter { $0.value == 20 }.count,
-                        nat1s: keptD20.filter { $0.value == 1 }.count)
+                        nat1s: keptD20.filter { $0.value == 1 }.count,
+                        span: span)
 }
 
 /// Day groups for session-log exports (2.68.0): the 2.38.0 day groups

@@ -766,9 +766,44 @@ struct SessionSegmentTests {
         #expect(stats.low == 3)
         #expect(stats.nat20s == 1)
         #expect(stats.nat1s == 1)
-        #expect(stats.line == "3 rolls \u{00B7} high 27 \u{00B7} low 3 \u{00B7} nat 20 \u{00D7}1 \u{00B7} nat 1 \u{00D7}1")
+        // 2.75.0: 18:00 to 16:00 - a two-hour span, whole-hour format.
+        #expect(stats.span == 7200)
+        #expect(stats.line == "3 rolls \u{00B7} high 27 \u{00B7} low 3 \u{00B7} nat 20 \u{00D7}1 \u{00B7} nat 1 \u{00D7}1 \u{00B7} span 2h")
         let quiet = sessionStats(RollSession(number: 1, title: "t", key: nil, rolls: [plain]))
         #expect(quiet.line == "1 roll \u{00B7} high 10 \u{00B7} low 10")
+    }
+
+    // 2.75.0: the stats line carries the session's first-to-last-roll
+    // span - hours and minutes "2h 14m", whole hours "2h", sub-hour
+    // "38m", sub-minute "<1m"; single-roll and undated sessions print
+    // no span at all.
+    @Test func sessionStatsLineCarriesTheSpan() throws {
+        let cal = utc
+        let t0 = at(cal, 24, 16)
+        let long = RollSession(number: 1, title: "t", key: nil,
+                               rolls: [stamped("d20", at: at(cal, 24, 18, 14)),
+                                       stamped("2d6", at: t0)])
+        #expect(sessionStats(long).line.hasSuffix("span 2h 14m"))
+        let short = RollSession(number: 1, title: "t", key: nil,
+                                rolls: [stamped("d20", at: at(cal, 24, 18, 38)),
+                                        stamped("2d6", at: at(cal, 24, 18))])
+        #expect(sessionStats(short).line.hasSuffix("span 38m"))
+        let blink = RollSession(number: 1, title: "t", key: nil,
+                                rolls: [stamped("d20", at: cal.date(byAdding: .second, value: 20, to: at(cal, 24, 18))!),
+                                        stamped("2d6", at: at(cal, 24, 18))])
+        #expect(sessionStats(blink).line.hasSuffix("span <1m"))
+        // A lone roll has no span, and neither does an undated pair.
+        let lone = sessionStats(RollSession(number: 1, title: "t", key: nil,
+                                            rolls: [stamped("d20", at: at(cal, 24, 18))]))
+        #expect(lone.span == nil)
+        let undated = RollSession(number: 1, title: "t", key: nil,
+                                  rolls: [RollResult(expression: "d20", dice: [], modifier: 0,
+                                                     total: 10, alternateTotal: nil),
+                                          RollResult(expression: "2d6", dice: [], modifier: 0,
+                                                     total: 7, alternateTotal: nil)])
+        let undatedStats = sessionStats(undated)
+        #expect(undatedStats.span == nil)
+        #expect(!undatedStats.line.contains("span"))
     }
 
     // 2.70.0: share text = title (custom name included) + stats line +
@@ -781,7 +816,7 @@ struct SessionSegmentTests {
         let session = sessionSegments(rolls, now: now, calendar: cal)[0]
             .renamed("Night watch")
         let text = sessionShareText(session)
-        #expect(text.hasPrefix("Night watch\n2 rolls \u{00B7} high 10 \u{00B7} low 10\n\n"))
+        #expect(text.hasPrefix("Night watch\n2 rolls \u{00B7} high 10 \u{00B7} low 10 \u{00B7} span 1h\n\n"))
         // lines[2] is the blank separator after the stats line.
         let lines = text.components(separatedBy: "\n")
         #expect(lines[2].isEmpty)
