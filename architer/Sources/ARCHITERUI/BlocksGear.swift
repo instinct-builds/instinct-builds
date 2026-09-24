@@ -68,7 +68,19 @@ struct InventoryBlock: View {
                 HStack {
                     Toggle("", isOn: $item.equipped).labelsHidden().help("Equipped")
                     TextField("Item", text: $item.name).frame(minWidth: 160)
-                    Stepper("×\(item.quantity)", value: $item.quantity, in: 0...999)
+                    // 2.37.0: one-tap consume/restock through the same
+                    // binding, so each tap is a normal undoable edit.
+                    HStack(spacing: 2) {
+                        Button { item.consumeOne() } label: { Image(systemName: "minus.circle") }
+                            .disabled(item.quantity == 0)
+                            .help("Use one - undoable with Cmd-Z")
+                        Text("×\(item.quantity)")
+                            .font(.callout.monospacedDigit())
+                            .frame(minWidth: 32)
+                        Button { item.restockOne() } label: { Image(systemName: "plus.circle") }
+                            .disabled(item.quantity == 999)
+                            .help("Restock one - undoable with Cmd-Z")
+                    }
                     TextField("lb", value: Binding(
                         get: { item.weight ?? 0 },
                         set: { item.weight = $0 == 0 ? nil : $0 }

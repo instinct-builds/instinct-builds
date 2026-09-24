@@ -4,6 +4,15 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.37.0
+
+- Inventory consume/restock buttons: every item row gains one-tap - and
+  + buttons around the quantity (replacing the stepper), so using a
+  potion mid-fight is one click. Every tap is a normal edit on the
+  character, so Cmd-Z walks back consumptions one at a time; the model
+  clamps at 0 (consume disables) and 999 (restock disables). Pairs with
+  2.34.0: depleted rows can then vanish from compact PDFs.
+
 ## What's in 2.36.0
 
 - Per-macro damage-type tags: edit a macro and pick a type ("Fireball -

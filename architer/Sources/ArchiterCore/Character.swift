@@ -417,6 +417,12 @@ public struct InventoryItem: Codable, Equatable, Sendable, Identifiable {
     }
 
     public var totalWeight: Double { (weight ?? 0) * Double(quantity) }
+
+    /// One unit used / restocked (2.37.0), clamped like the init. The
+    /// sheet's quick buttons call these through the character binding, so
+    /// every tap lands on the undo stack.
+    public mutating func consumeOne() { quantity = max(0, quantity - 1) }
+    public mutating func restockOne() { quantity = min(999, quantity + 1) }
 }
 
 public struct Character: Codable, Equatable, Sendable, Identifiable {

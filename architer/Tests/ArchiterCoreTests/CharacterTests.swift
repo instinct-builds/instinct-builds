@@ -1111,3 +1111,24 @@ struct SampleContentTests {
         #expect(pdf.contains("(FEATURES"))
     }
 }
+
+@Suite("Inventory consume and restock")
+struct InventoryConsumeRestockTests {
+    @Test func consumeDecrementsAndClampsAtZero() {
+        var item = InventoryItem(name: "Potion of healing", quantity: 2)
+        item.consumeOne()
+        #expect(item.quantity == 1)
+        item.consumeOne()
+        item.consumeOne() // floor: never negative
+        #expect(item.quantity == 0)
+    }
+
+    @Test func restockIncrementsAndClampsAt999() {
+        var item = InventoryItem(name: "Arrows", quantity: 0)
+        item.restockOne()
+        #expect(item.quantity == 1)
+        var full = InventoryItem(name: "Arrows", quantity: 999)
+        full.restockOne() // ceiling: matches the init's 0...999 range
+        #expect(full.quantity == 999)
+    }
+}

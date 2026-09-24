@@ -67,6 +67,12 @@ func run(model: AppModel, character: Character, outDir: String) {
         model.rollAttack(fireBolt, for: character)
         if let rolled = model.rollHistory.first { model.addRollToJournal(rolled) }
     }
+    // 2.37.0 proof: a zero-quantity row renders its consume button
+    // disabled in the gear block below.
+    if var sel = model.selected?.wrappedValue {
+        sel.inventory.append(InventoryItem(name: "Arrows", quantity: 0, weight: 1, category: "Ammunition"))
+        model.selected?.wrappedValue = sel
+    }
     let width: CGFloat = 1180
     // Render the model's copy: the journal quick-add above mutated it.
     let sheetCharacter = model.selected?.wrappedValue ?? character
