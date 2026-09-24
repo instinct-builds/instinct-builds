@@ -133,6 +133,11 @@ final class StudioLibrary: ObservableObject {
     @Published var editingNote: UUID?
     @Published var renamingBoard: UUID?
     @Published var boardZoom = 1.0
+    /// Client rounds on the board (1.20): only cards a client picked, one reviewer or everyone, comment callouts, the versions popover.
+    @Published var boardClientOnly = false
+    @Published var boardReviewer: String?
+    @Published var boardShowComments = true
+    @Published var boardVersionsOpen = false
     @Published var fitBoardRequest = 0
     /// Inspector column on/off (1.17), remembered between launches.
     @Published var showInspector = UserDefaults.standard.object(forKey: "showInspector") as? Bool ?? true {
@@ -253,6 +258,7 @@ final class StudioLibrary: ObservableObject {
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
     func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil) {
+        let galleryID = UUID().uuidString, boardID = board?.layout.id
         let list = ids ?? filtered.map(\.id).filter(selection.contains)
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = list.compactMap { byID[$0] }.filter { $0.kind != .audio }
@@ -297,7 +303,7 @@ final class StudioLibrary: ObservableObject {
                 let spots = ReviewGallery.spots(for: board.layout, including: Set(items.compactMap { UUID(uuidString: $0.id) }))
                 boardView = .init(image: "board.png", width: board.width, height: board.height, spots: spots)
             }
-            let manifest = ReviewGallery.Manifest(title: name, created: created, items: items, board: boardView)
+            let manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView)
             let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
             // A zip next to the folder, ready to send.
             let zip = parent.appendingPathComponent(folderName + ".zip")
@@ -309,6 +315,8 @@ final class StudioLibrary: ObservableObject {
             await MainActor.run { [items] in
                 self.galleryRunning = false
                 guard ok, !items.isEmpty else { self.flash("Could not build the gallery"); return }
+                // Remember where it came from, so the client's feedback pins back onto this board (1.20).
+                if let boardID { self.mutate { $0.noteGalleryShared(galleryID, from: boardID) } }
                 self.flash("Gallery ready: \(items.count) assets\(zipped ? ", zipped" : "")")
                 if fixedDir == nil { NSWorkspace.shared.activateFileViewerSelecting([zipped ? zip : folder]) }
                 else { try? "\(items.count)".write(to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8) }
@@ -325,12 +333,14 @@ final class StudioLibrary: ObservableObject {
 
     func importFeedback(_ urls: [URL]) {
         var total = StudioCatalog.FeedbackResult(), reviewers: [String] = [], bad = 0
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let today = df.string(from: Date())
         for u in urls {
             guard let data = try? Data(contentsOf: u), let f = ReviewGallery.decodeFeedback(data) else { bad += 1; continue }
             var r = StudioCatalog.FeedbackResult()
-            mutate { r = $0.applyFeedback(f) }
+            mutate { r = $0.applyFeedback(f, imported: today) }
             total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown
             total.smartCollection = r.smartCollection ?? total.smartCollection
+            total.board = r.board ?? total.board
             let who = f.reviewer.trimmingCharacters(in: .whitespaces); if !who.isEmpty && !reviewers.contains(who) { reviewers.append(who) }
         }
         if total.favorites + total.notes == 0 {
@@ -339,8 +349,14 @@ final class StudioLibrary: ObservableObject {
         var msg = "\(total.favorites) client \(total.favorites == 1 ? "pick" : "picks"), \(total.notes) \(total.notes == 1 ? "note" : "notes")"
         if !reviewers.isEmpty { msg += " from " + reviewers.joined(separator: ", ") }
         if total.unknown > 0 { msg += " · \(total.unknown) not in this library" }
-        flash(msg)
-        if let id = total.smartCollection { show(smart: id) }
+        if let b = total.board, let name = catalog.board(b)?.name {
+            // Shared from a board: the round lands back on it as pins.
+            flash(msg + " · pinned on \(name)")
+            show(board: b); boardReviewer = nil; boardShowComments = true
+        } else {
+            flash(msg)
+            if let id = total.smartCollection { show(smart: id) }
+        }
     }
 
     var canCompare: Bool { (2...CompareSession.maxAssets).contains(selection.count) }
@@ -1429,7 +1445,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1788,6 +1804,11 @@ final class StudioLibrary: ObservableObject {
             } else if let b = catalog.board(id), let first = b.items.first(where: { $0.kind == .asset }) {
                 boardItem = first.id; if let a = first.assetID { selection = [a]; focusID = a }
             }
+        case "board-review", "board-versions":
+            let id = makeDemoReviewRound()
+            show(board: id)
+            if demo == "board-review" { boardClientOnly = true }
+            else { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self.boardVersionsOpen = true } }
         case "board-edit":
             let id = makeDemoSections()
             show(board: id)
@@ -1841,6 +1862,7 @@ extension StudioLibrary {
     func show(board id: UUID) {
         guard catalog.board(id) != nil else { return }
         similarTo = nil; selectedSmart = nil; boardItem = nil; editingNote = nil; editingConnector = nil
+        if selectedBoard != id { boardClientOnly = false; boardReviewer = nil; boardVersionsOpen = false }
         selectedBoard = id
         fitBoardRequest += 1
     }
@@ -1975,6 +1997,44 @@ extension StudioLibrary {
     }
 
     /// Demo board: mockups, textures and a loop with notes and a palette card, laid out by hand.
+    /// The lobby board after a client round: two saved versions, a shared gallery and two reviewers' feedback files imported (1.20).
+    func makeDemoReviewRound() -> UUID {
+        let id = makeDemoBoard()
+        let gallery = "demo-review-round"
+        let stamp = { (m: Int) in ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(-m) * 60)) }
+        mutate { c in
+            _ = c.updateBoard(id) { b in
+                b.saveVersion(named: "First pass", saved: stamp(26 * 60))
+                b.saveVersion(named: "Sent to client", saved: stamp(95))
+            }
+            c.noteGalleryShared(gallery, from: id)
+        }
+        let all = catalog.assets
+        func aid(_ f: String) -> String { all.first { $0.importedPath?.hasSuffix(f) == true }?.id.uuidString.lowercased() ?? "" }
+        typealias E = ReviewGallery.Feedback.Entry
+        let rounds = [
+            ReviewGallery.Feedback(gallery: gallery, title: "Lobby Refresh", reviewer: "Mara Quinn", items: [
+                E(id: aid("cosmetic-plinth-mockup.png"), favorite: true, note: "This is the lobby. Brass plinth by the entrance."),
+                E(id: aid("sandstone-4k.png"), favorite: true, note: ""),
+                E(id: aid("device-stage-mockup.png"), favorite: false, note: "Feels too tech for us - drop it?"),
+                E(id: aid("paper-grain-4k.png"), favorite: true, note: "")]),
+            ReviewGallery.Feedback(gallery: gallery, title: "Lobby Refresh", reviewer: "Theo Park", items: [
+                E(id: aid("album-gatefold-mockup.png"), favorite: true, note: "Use this type for the signage."),
+                E(id: aid("cosmetic-plinth-mockup.png"), favorite: true, note: "")])]
+        let dir = FileManager.default.temporaryDirectory
+        let urls: [URL] = rounds.compactMap { f in
+            let u = dir.appendingPathComponent("Lobby Refresh feedback - \(f.reviewer).json")
+            guard let data = try? JSONEncoder().encode(f), (try? data.write(to: u)) != nil else { return nil }
+            return u
+        }
+        importFeedback(urls)
+        // A tweak after the round, so the versions list has something to compare.
+        if let b = catalog.board(id), let motion = b.items.first(where: { it in it.kind == .asset && all.first { a in a.id == it.assetID }?.importedPath?.hasSuffix("motion-loop-01.mp4") == true }) {
+            updateBoard(id, "Move") { $0.moveGroup([motion.id], dx: 20, dy: 20) }
+        }
+        return id
+    }
+
     func makeDemoBoard() -> UUID {
         let all = catalog.assets
         func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
@@ -2325,6 +2385,7 @@ struct BoardCanvas: View {
                             .onTapGesture { model.boardSelection = []; model.editingNote = nil }
                         ForEach(board.layered) { item in card(item) }
                         connectorLayer
+                        pinLayer
                         linkLine
                         guideLines
                         if let m = marquee {
@@ -2472,9 +2533,91 @@ struct BoardCanvas: View {
             headerRow(compact: true)
         }
         .buttonStyle(.borderless)
+        // On the header, not the button: ViewThatFits builds both rows, and one popover must own the flag.
+        .popover(isPresented: $model.boardVersionsOpen, attachmentAnchor: .point(UnitPoint(x: 0.8, y: 1)), arrowEdge: .top) {
+            BoardVersionsPanel(board: board).environmentObject(model)
+        }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.panel)
+    }
+
+    private var subtitle: String {
+        let n = "\(board.items.count) item\(board.items.count == 1 ? "" : "s")"
+        guard !board.reviews.isEmpty else { return n }
+        let picked = pins.values.filter(\.picked).count
+        return n + " · \(picked) picked by " + (model.boardReviewer ?? (board.reviewers.count == 1 ? board.reviewers[0] : "\(board.reviewers.count) reviewers"))
+    }
+
+    private var pins: [UUID: BoardPin] { board.pins(reviewer: model.boardReviewer) }
+
+    private func dimmed(_ item: BoardItem) -> Bool {
+        guard model.boardClientOnly, !board.reviews.isEmpty else { return false }
+        if item.kind == .frame || item.kind == .heading { return false }
+        return pins[item.id]?.picked != true
+    }
+
+    /// Client picks and comments from imported feedback, drawn on the cards they belong to (1.20).
+    @ViewBuilder private var pinLayer: some View {
+        if !board.reviews.isEmpty {
+            let all = pins
+            let t = min(2.2, 1 / max(0.1, z))
+            ForEach(board.layered.filter { all[$0.id] != nil }) { item in
+                let r = itemRect(item), pin = all[item.id]!
+                if !(model.boardClientOnly && !pin.picked) {
+                    ClientPinBadge(pin: pin)
+                        .scaleEffect(CGFloat(t), anchor: .topTrailing)
+                        .frame(width: r.w - 8, alignment: .topTrailing)
+                        .offset(x: r.x, y: r.y + 8)
+                    if model.boardShowComments, !pin.comments.isEmpty {
+                        let scale = min(t, max(1, (r.w - 16) / 220))
+                        ClientCommentCallout(comments: pin.comments, width: max(120, (r.w - 16) / scale))
+                            .scaleEffect(CGFloat(scale), anchor: .bottomLeading)
+                            .frame(width: r.w - 16, height: r.h - 16, alignment: .bottomLeading)
+                            .offset(x: r.x + 8, y: r.y + 8)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
+        }
+    }
+
+    private func reviewMenu(compact: Bool) -> some View {
+        Menu {
+            Button("Import Client Feedback…") { model.importFeedback() }
+            Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
+            if !board.reviews.isEmpty {
+                Divider()
+                Toggle("Picked by Client Only", isOn: $model.boardClientOnly)
+                Toggle("Show Comments", isOn: $model.boardShowComments)
+                Picker("Reviewer", selection: $model.boardReviewer) {
+                    Text("All Reviewers").tag(String?.none)
+                    ForEach(board.reviewers, id: \.self) { r in Text(r).tag(String?.some(r)) }
+                }
+                Divider()
+                Button("Clear Client Rounds", role: .destructive) {
+                    model.updateBoard(board.id, "Clear Client Rounds") { $0.reviews = [] }
+                    model.boardClientOnly = false; model.boardReviewer = nil
+                }
+            }
+        } label: {
+            if model.boardClientOnly {
+                Label(compact ? "Picked" : "Picked by Client", systemImage: "heart.fill").foregroundStyle(ClientPinBadge.pink)
+            } else {
+                Image(systemName: board.reviews.isEmpty ? "person.2" : "person.2.fill")
+            }
+        }
+        .fixedSize().help(board.reviews.isEmpty ? "Client review: share a gallery, import the feedback" : "Client picks and comments on this board")
+    }
+
+    private var versionsButton: some View {
+        Button { model.boardVersionsOpen.toggle() } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "clock.arrow.circlepath")
+                if !board.versions.isEmpty { Text("\(board.versions.count)").font(.caption2.monospacedDigit()) }
+            }
+        }
+        .help("Board versions")
     }
 
     private func headerRow(compact: Bool) -> some View {
@@ -2482,7 +2625,7 @@ struct BoardCanvas: View {
             Image(systemName: "rectangle.3.group").foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(board.name).font(.system(size: 15, weight: .bold)).lineLimit(1)
-                Text("\(board.items.count) item\(board.items.count == 1 ? "" : "s")").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             .fixedSize(horizontal: !compact, vertical: false)
             .layoutPriority(1)
@@ -2498,6 +2641,8 @@ struct BoardCanvas: View {
                 Button { autoFit = true; fit() } label: { Text("\(Int((z * 100).rounded()))%").font(.caption.monospacedDigit()).frame(minWidth: 34) }.help("Fit the board")
                 if !compact { Button { autoFit = false; model.boardZoom = min(2, z * 1.25) } label: { Image(systemName: "plus.magnifyingglass") } }
             }
+            reviewMenu(compact: compact)
+            versionsButton
             Button { model.startPresenting(board.id) } label: { Image(systemName: "play.fill").foregroundStyle(Theme.accent) }.help("Present the board full screen")
             Menu {
                 Button("PNG…") { model.exportBoard(board.id, pdf: false) }
@@ -2533,6 +2678,7 @@ struct BoardCanvas: View {
         let selected = model.boardSelection.contains(item.id)
         BoardItemView(item: item, asset: item.assetID.flatMap { id in model.catalog.assets.first { $0.id == id } }, selected: selected, editing: model.editingNote == item.id)
             .frame(width: r.w, height: r.h)
+            .opacity(dimmed(item) ? 0.2 : 1)
             .overlay(alignment: .bottomTrailing) {
                 if selected && model.boardSelection.count == 1 {
                     RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 12, height: 12)
@@ -6244,6 +6390,145 @@ extension NSColor {
         self.init(srgbRed: CGFloat((v >> 16) & 255) / 255, green: CGFloat((v >> 8) & 255) / 255, blue: CGFloat(v & 255) / 255, alpha: 1)
     }
 }
+
+// MARK: - Client rounds and versions on the board (1.20)
+
+struct ClientPinBadge: View {
+    let pin: BoardPin
+    static let pink = Color(red: 1.0, green: 0.36, blue: 0.56)
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: pin.picked ? "heart.fill" : "text.bubble.fill").font(.system(size: 10, weight: .bold))
+            if pin.picked {
+                Text(pin.pickedBy.count == 1 ? ClientPinBadge.initials(pin.pickedBy[0]) : "\(pin.pickedBy.count)").font(.system(size: 10, weight: .heavy))
+            }
+            if !pin.comments.isEmpty && pin.picked {
+                Image(systemName: "text.bubble.fill").font(.system(size: 9, weight: .bold)).opacity(0.85)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 7).padding(.vertical, 4)
+        .background(pin.picked ? ClientPinBadge.pink : Color(white: 0.22), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.9), lineWidth: 1.2))
+        .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+        .help((pin.picked ? "Picked by " + pin.pickedBy.joined(separator: ", ") : "Commented") +
+              pin.comments.map { "\n\($0.reviewer): \($0.text)" }.joined())
+    }
+
+    static func initials(_ name: String) -> String {
+        let words = name.split { !$0.isLetter }.prefix(2)
+        let s = words.compactMap(\.first).map { String($0).uppercased() }.joined()
+        return s.isEmpty ? "C" : s
+    }
+}
+
+struct ClientCommentCallout: View {
+    let comments: [BoardPin.Comment]
+    let width: Double
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(Array(comments.prefix(2).enumerated()), id: \.offset) { _, c in
+                HStack(alignment: .top, spacing: 6) {
+                    Text(ClientPinBadge.initials(c.reviewer)).font(.system(size: 8, weight: .heavy)).foregroundStyle(.white)
+                        .frame(width: 17, height: 17).background(ClientPinBadge.pink.opacity(0.85), in: Circle())
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(c.reviewer).font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                        Text(c.text).font(.system(size: 11, weight: .medium)).foregroundStyle(.white).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if comments.count > 2 { Text("+\(comments.count - 2) more").font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.6)) }
+        }
+        .padding(8)
+        .frame(width: width, alignment: .leading)
+        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+}
+
+struct BoardVersionsPanel: View {
+    @EnvironmentObject var model: StudioLibrary
+    let board: Moodboard
+    @State private var name = ""
+    @State private var renaming: UUID?
+    @State private var draft = ""
+
+    static func nowStamp() -> String { ISO8601DateFormatter().string(from: Date()) }
+    static func display(_ iso: String) -> String {
+        guard let d = ISO8601DateFormatter().date(from: iso) else { return iso }
+        let f = DateFormatter(); f.dateFormat = "MMM d, h:mm a"; return f.string(from: d)
+    }
+    static func describe(_ c: (added: Int, removed: Int, changed: Int)?) -> String {
+        guard let c else { return "" }
+        var parts: [String] = []
+        if c.added > 0 { parts.append("\(c.added) added since") }
+        if c.removed > 0 { parts.append("\(c.removed) removed") }
+        if c.changed > 0 { parts.append("\(c.changed) moved or edited") }
+        return parts.isEmpty ? "Same as the board now" : parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Versions").font(.headline)
+            HStack(spacing: 6) {
+                TextField("Version \(board.versions.count + 1)", text: $name).textFieldStyle(.roundedBorder)
+                    .onSubmit(save)
+                Button("Save Version", action: save).buttonStyle(.borderedProminent).tint(Theme.accent)
+            }
+            Divider()
+            if board.versions.isEmpty {
+                Text("Save a version before a client round or a big rework. Restoring keeps the current layout as its own version first.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(board.versions.reversed()) { v in row(v) }
+                    }
+                }.frame(maxHeight: 330)
+            }
+        }
+        .padding(14).frame(width: 340)
+    }
+
+    private func save() {
+        let n = name
+        var made = UUID()
+        model.updateBoard(board.id, "Save Version") { made = $0.saveVersion(named: n, saved: Self.nowStamp()) }
+        name = ""
+        if let v = model.catalog.board(board.id)?.versions.first(where: { $0.id == made }) { model.flash("Saved \(v.name)") }
+    }
+
+    private func row(_ v: BoardVersion) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock").foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                if renaming == v.id {
+                    TextField("Name", text: $draft).textFieldStyle(.roundedBorder).onSubmit {
+                        model.updateBoard(board.id, "Rename Version") { $0.renameVersion(v.id, to: draft) }; renaming = nil
+                    }
+                } else {
+                    Text(v.name).font(.callout.weight(.semibold)).lineLimit(1)
+                }
+                Text("\(Self.display(v.saved)) · \(v.items.count) cards").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(Self.describe(board.changes(since: v.id))).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Button("Restore") {
+                model.updateBoard(board.id, "Restore Version") { _ = $0.restoreVersion(v.id, saved: Self.nowStamp()) }
+                model.flash("Restored \(v.name)")
+            }.controlSize(.small)
+        }
+        .padding(8)
+        .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+        .contextMenu {
+            Button("Rename…") { draft = v.name; renaming = v.id }
+            Button("Delete Version", role: .destructive) { model.updateBoard(board.id, "Delete Version") { $0.deleteVersion(v.id) } }
+        }
+    }
+}
+
+
 #else
 @main struct LinuxBuildStub { static func main() { print("ASSSETS requires macOS 14 or later.") } }
+
 #endif

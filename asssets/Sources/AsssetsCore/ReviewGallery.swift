@@ -196,14 +196,21 @@ extension StudioCatalog {
     public struct FeedbackResult: Equatable, Sendable {
         public var favorites = 0, notes = 0, unknown = 0
         public var smartCollection: UUID?
+        /// The board the gallery was shared from, when the round was pinned onto it (1.20).
+        public var board: UUID?
         public init() {}
     }
 
     /// Applies a client's feedback: favorites get "client-pick", notes are stored per reviewer and gallery.
     /// Re-importing the same reviewer's file for the same gallery replaces their earlier note and picks.
     @discardableResult
-    public mutating func applyFeedback(_ f: ReviewGallery.Feedback) -> FeedbackResult {
+    public mutating func applyFeedback(_ f: ReviewGallery.Feedback, imported: String = "") -> FeedbackResult {
         var r = FeedbackResult()
+        if let b = board(forGallery: f.gallery) {
+            var pinned = false
+            _ = updateBoard(b) { pinned = $0.recordReview(f, imported: imported) }
+            if pinned { r.board = b }
+        }
         let reviewer = f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Client" : f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines)
         let index = Dictionary(uniqueKeysWithValues: assets.enumerated().map { ($1.id.uuidString.uppercased(), $0) })
         for e in f.items {

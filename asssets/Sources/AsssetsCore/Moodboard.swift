@@ -89,6 +89,10 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
     public var snap: Bool
     /// Arrows between cards (1.19).
     public var connectors: [BoardConnector]
+    /// Review galleries shared from this board, client rounds that came back, and saved versions (1.20).
+    public var sharedGalleries: [String]
+    public var reviews: [BoardReview]
+    public var versions: [BoardVersion]
 
     public static let minSize = 40.0
     public static let margin = 40.0
@@ -96,11 +100,13 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
     /// New cards flow left to right and wrap past this width.
     public static let flowWidth = 1400.0
 
-    public init(id: UUID = UUID(), name: String, items: [BoardItem] = [], grid: Double = 20, snap: Bool = true, connectors: [BoardConnector] = []) {
+    public init(id: UUID = UUID(), name: String, items: [BoardItem] = [], grid: Double = 20, snap: Bool = true, connectors: [BoardConnector] = [],
+                sharedGalleries: [String] = [], reviews: [BoardReview] = [], versions: [BoardVersion] = []) {
         self.id = id; self.name = name; self.items = items; self.grid = grid; self.snap = snap; self.connectors = connectors
+        self.sharedGalleries = sharedGalleries; self.reviews = reviews; self.versions = versions
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap, connectors }
+    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap, connectors, sharedGalleries, reviews, versions }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -111,6 +117,9 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         // Arrows whose cards are gone are dropped on load.
         let ids = Set(items.map(\.id))
         connectors = ((try? c.decodeIfPresent([BoardConnector].self, forKey: .connectors)) ?? []).filter { ids.contains($0.from) && ids.contains($0.to) && $0.from != $0.to }
+        sharedGalleries = (try? c.decodeIfPresent([String].self, forKey: .sharedGalleries)) ?? []
+        reviews = (try? c.decodeIfPresent([BoardReview].self, forKey: .reviews)) ?? []
+        versions = (try? c.decodeIfPresent([BoardVersion].self, forKey: .versions)) ?? []
     }
 
     /// Back to front.
@@ -515,6 +524,8 @@ extension StudioCatalog {
         b.id = UUID(); b.name = name
         var map: [UUID: UUID] = [:]
         b.items = src.items.map { var it = $0; it.id = UUID(); map[$0.id] = it.id; return it }
+        // A copy starts its own history: no shared galleries, client rounds or versions.
+        b.sharedGalleries = []; b.reviews = []; b.versions = []
         b.connectors = src.connectors.compactMap { c in
             guard let f = map[c.from], let t = map[c.to] else { return nil }
             return BoardConnector(from: f, to: t, label: c.label)

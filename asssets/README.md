@@ -628,3 +628,27 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   shared review galleries.
 - Logic and tests: connectors, edge geometry, hit testing, headings and
   crop math in `Moodboard.swift`, `MoodboardTests.swift`.
+
+## 1.20.0: client rounds on boards and board versions
+
+- Share a board as a review gallery (Export > Share as Review Gallery…,
+  or the people button in the board header). ASSSETS remembers which
+  board the gallery came from.
+- When the client's feedback file comes back, Import Client Feedback…
+  puts it back on that board: a pink pin with the reviewer's initials on
+  every card they picked, and their comment at the bottom of the card.
+  Several reviewers stack on the same card. Importing a newer file from
+  the same reviewer replaces their earlier round. Assets still get the
+  `client-pick` tag and the Client Picks smart collection as before.
+- The people menu has Picked by Client Only, which fades every card no
+  client picked, plus Show Comments, a reviewer picker and Clear Client
+  Rounds. The header shows how many cards were picked and by whom.
+- Versions: the clock button opens the versions list. Save Version keeps
+  the cards and arrows as they are, with an optional name. Each version
+  shows when it was saved and what has changed since. Restore puts it
+  back and first saves the current layout as "Before restoring ...", so
+  nothing is lost. Right-click a version to rename or delete it. A board
+  keeps its last 30 versions, and Duplicate Board starts a fresh history.
+- Older library files open unchanged; boards without rounds or versions
+  look the same as in 1.19.
+- Logic and tests: `BoardReview.swift`, `BoardReviewTests.swift`.

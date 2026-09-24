@@ -190,6 +190,8 @@ jobs:
           shoot board-gallery 1920x1200 board-gallery-app demo-board-gallery/gallery-done.txt
           BG=$(ls -d "$SUP/demo-board-gallery/"*Review | head -1); test -s "$BG/board.png"; grep -q '"spots"' "$BG/index.html" || { echo "board gallery has no board"; exit 1; }
           unzip -l "$BG.zip" | tee "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"; grep -q 'board.png' "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"
+          shoot board-review 1920x1200 board-review
+          shoot board-versions 1920x1200 board-versions
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"
