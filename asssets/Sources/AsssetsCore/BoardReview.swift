@@ -78,9 +78,11 @@ extension Moodboard {
         for it in items where it.kind == .asset {
             guard let a = it.assetID else { continue }
             var pin = BoardPin(item: it.id, pickedBy: [], comments: [])
+            // Rounds on earlier versions of this card's image still belong to the card (1.24 Update to Newest).
+            let shown = [a] + (earlierAssets[it.id] ?? []).reversed()
             for r in rounds where reviewer == nil || r.reviewer == reviewer {
-                if r.picks.contains(a) && !pin.pickedBy.contains(r.reviewer) { pin.pickedBy.append(r.reviewer) }
-                if let t = r.notes[a] { pin.comments.append(.init(reviewer: r.reviewer, text: t, imported: r.imported)) }
+                if shown.contains(where: r.picks.contains) && !pin.pickedBy.contains(r.reviewer) { pin.pickedBy.append(r.reviewer) }
+                if let t = shown.lazy.compactMap({ r.notes[$0] }).first { pin.comments.append(.init(reviewer: r.reviewer, text: t, imported: r.imported)) }
             }
             if pin.picked || !pin.comments.isEmpty { out[it.id] = pin }
         }

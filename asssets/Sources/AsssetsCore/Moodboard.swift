@@ -96,6 +96,9 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
     /// Card approval and the studio's replies under client comments (1.21), keyed by board item id.
     public var statuses: [UUID: CardStatus]
     public var replies: [BoardReply]
+    /// Assets a card showed before Update to Newest (1.24), oldest first, so client picks and comments on
+    /// earlier versions stay on the card.
+    public var earlierAssets: [UUID: [UUID]]
 
     public static let minSize = 40.0
     public static let margin = 40.0
@@ -107,10 +110,10 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
                 sharedGalleries: [String] = [], reviews: [BoardReview] = [], versions: [BoardVersion] = []) {
         self.id = id; self.name = name; self.items = items; self.grid = grid; self.snap = snap; self.connectors = connectors
         self.sharedGalleries = sharedGalleries; self.reviews = reviews; self.versions = versions
-        self.statuses = [:]; self.replies = []
+        self.statuses = [:]; self.replies = []; self.earlierAssets = [:]
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap, connectors, sharedGalleries, reviews, versions, statuses, replies }
+    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap, connectors, sharedGalleries, reviews, versions, statuses, replies, earlierAssets }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -126,6 +129,7 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         versions = (try? c.decodeIfPresent([BoardVersion].self, forKey: .versions)) ?? []
         statuses = ((try? c.decodeIfPresent([UUID: CardStatus].self, forKey: .statuses)) ?? [:]).filter { $0.value != .open }
         replies = (try? c.decodeIfPresent([BoardReply].self, forKey: .replies)) ?? []
+        earlierAssets = (try? c.decodeIfPresent([UUID: [UUID]].self, forKey: .earlierAssets)) ?? [:]
     }
 
     /// Back to front.
@@ -531,7 +535,7 @@ extension StudioCatalog {
         var map: [UUID: UUID] = [:]
         b.items = src.items.map { var it = $0; it.id = UUID(); map[$0.id] = it.id; return it }
         // A copy starts its own history: no shared galleries, client rounds or versions.
-        b.sharedGalleries = []; b.reviews = []; b.versions = []; b.statuses = [:]; b.replies = []
+        b.sharedGalleries = []; b.reviews = []; b.versions = []; b.statuses = [:]; b.replies = []; b.earlierAssets = [:]
         b.connectors = src.connectors.compactMap { c in
             guard let f = map[c.from], let t = map[c.to] else { return nil }
             return BoardConnector(from: f, to: t, label: c.label)

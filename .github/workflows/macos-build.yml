@@ -210,6 +210,10 @@ jobs:
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
           shoot board-arrange 1920x1200 board-arrange
+          shoot board-versions-follow 1920x1200 board-versions-follow
+          shoot board-updated 1920x1200 board-updated
+          shoot inspector-on-boards 1920x1200 inspector-on-boards
+          shoot board-paste 1920x1200 board-paste
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"

@@ -145,6 +145,8 @@ final class StudioLibrary: ObservableObject {
     @Published var savingTemplate: UUID?
     /// Client feedback read but not applied yet (1.23): the import preview sheet shows it.
     @Published var pendingFeedback: PendingFeedback?
+    /// Cards copied with ⌘C on a board (1.24); ⌘V pastes them on any board.
+    @Published var cardClipboard: BoardClipboard?
     @Published var threadCard: UUID?
     @Published var replyAuthor = UserDefaults.standard.string(forKey: "replyAuthor") ?? (NSFullUserName().isEmpty ? "Studio" : NSFullUserName()) {
         didSet { UserDefaults.standard.set(replyAuthor, forKey: "replyAuthor") }
@@ -503,6 +505,19 @@ final class StudioLibrary: ObservableObject {
             if !boardSelection.isEmpty, e.keyCode == 51 || e.keyCode == 117 { removeFromBoard(boardSelection); return true }   // Delete
             if e.keyCode == 0, e.modifierFlags.contains(.command), let b = currentBoard { boardSelection = Set(b.items.map(\.id)); return true }  // ⌘A
             if e.keyCode == 53, !boardSelection.isEmpty { boardSelection = []; return true }                                    // Esc
+            let cmd = e.modifierFlags.contains(.command)
+            if cmd, e.keyCode == 8, !boardSelection.isEmpty { copyCards(); return true }                                          // ⌘C
+            if cmd, e.keyCode == 9, cardClipboard != nil { pasteCards(); return true }                                            // ⌘V
+            if !cmd, !boardSelection.isEmpty, (123...126).contains(e.keyCode) {                                                   // arrows nudge
+                let step = e.modifierFlags.contains(.shift) ? (currentBoard?.grid ?? 20) : 1
+                switch e.keyCode {
+                case 123: nudgeCards(dx: -step, dy: 0)
+                case 124: nudgeCards(dx: step, dy: 0)
+                case 125: nudgeCards(dx: 0, dy: step)
+                default: nudgeCards(dx: 0, dy: -step)
+                }
+                return true
+            }
         }
         switch e.keyCode {
         case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
@@ -1483,7 +1498,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" && demo != "board-templates" && demo != "board-template" && demo != "share-round" && demo != "feedback-preview" && demo != "feedback-imported" && demo != "board-arrange" && demo != "board-arrange-before" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" && demo != "board-templates" && demo != "board-template" && demo != "share-round" && demo != "feedback-preview" && demo != "feedback-imported" && demo != "board-arrange" && demo != "board-arrange-before" && demo != "board-versions-follow" && demo != "board-updated" && demo != "board-paste" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1917,6 +1932,57 @@ final class StudioLibrary: ObservableObject {
             }
             show(board: id)
             boardSelection = Set(cards)
+        case "board-versions-follow", "board-updated", "inspector-on-boards", "board-paste":
+            // A client drop with three rounds of the lobby floor; the board still shows v1 and v2 (1.24).
+            let fm = FileManager.default
+            let drop = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Client Drops", isDirectory: true)
+            try? fm.removeItem(at: drop)
+            try? fm.createDirectory(at: drop, withIntermediateDirectories: true)
+            for (src, dst) in [("terrazzo-texture.png", "Lobby Floor v1.png"), ("marble-veins-texture.png", "Lobby Floor v2.png"),
+                               ("cork-board-texture.png", "Lobby Floor final.png")] where fm.fileExists(atPath: starterRoot.appendingPathComponent(src).path) {
+                try? fm.copyItem(at: starterRoot.appendingPathComponent(src), to: drop.appendingPathComponent(dst))
+            }
+            watch([drop.path])
+            scanWatchFolders()
+            let all = catalog.assets
+            func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
+            var id = UUID(), second = UUID(), cards: [UUID] = []
+            mutate { c in
+                id = c.createBoard(named: "Lobby Concepts")
+                _ = c.updateBoard(id) { b in
+                    b.addHeading("Lobby concepts · round 2", at: (x: 40, y: 20))
+                    let place: [(String, Double, Double, Double)] = [("Lobby Floor v1.png", 40, 130, 380), ("Lobby Floor v2.png", 470, 130, 380),
+                                                                     ("device-stage-mockup.png", 900, 130, 420)]
+                    for (f, x, y, w) in place { if let a = find(f) { cards.append(b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y))) } }
+                    if cards.count > 2 { _ = b.connect(cards[1], cards[2], label: "floor → stage") }
+                    if let first = cards.first { _ = b.setStatus(.approved, for: [first]) }
+                    b.addNote("Client approved the floor in round 1. The studio has since sent v2 and a final.", at: (x: 40, y: 560))
+                }
+                second = c.createBoard(named: "Client Deck")
+                _ = c.updateBoard(second) { b in
+                    b.addHeading("Client deck · lobby", at: (x: 40, y: 20))
+                    if let a = find("album-gatefold-mockup.png") { _ = b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: 320, at: (x: 40, y: 130)) }
+                    if let a = find("Lobby Floor v2.png") { _ = b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: 240, at: (x: 1100, y: 480)) }
+                }
+            }
+            switch demo {
+            case "board-updated":
+                updateToNewest(id)
+                show(board: id)
+                boardSelection = Set(cards.prefix(2))
+            case "inspector-on-boards":
+                show(collection: StudioCatalog.inboxCollection)
+                if let v2 = find("Lobby Floor v2.png") { selection = [v2.id]; focusID = v2.id }
+            case "board-paste":
+                show(board: id)
+                boardSelection = Set(cards.suffix(2))
+                copyCards()
+                show(board: second)
+                pasteCards()
+            default:
+                show(board: id)
+                boardSelection = []
+            }
         case "board-thread", "board-status":
             let (id, stage) = makeDemoApproval()
             show(board: id)
@@ -2058,6 +2124,35 @@ extension StudioLibrary {
         mutate("Delete Board") { _ = $0.deleteBoard(id) }
         if selectedBoard == id { show(collection: StudioCatalog.allAssets) }
         flash("Deleted \(name) · ⌘Z to undo")
+    }
+
+    /// Swaps outdated cards to the newest version in their stack (1.24): all of them, or just `only`.
+    func updateToNewest(_ boardID: UUID, only: Set<UUID>? = nil) {
+        let saved = ISO8601DateFormatter().string(from: Date()), author = replyAuthor
+        var n = 0
+        mutate("Update to Newest") { n = $0.updateToNewest(board: boardID, only: only, author: author, saved: saved) }
+        flash(n == 0 ? "Everything here is already the newest version" : "Updated \(n) \(n == 1 ? "card" : "cards") to the newest version · the board was saved first in Versions")
+    }
+
+    func copyCards() {
+        guard let b = currentBoard, let clip = b.copyCards(boardSelection) else { return }
+        cardClipboard = clip
+        flash("Copied \(clip.items.count) \(clip.items.count == 1 ? "card" : "cards")")
+    }
+
+    func pasteCards() {
+        guard let id = selectedBoard, let clip = cardClipboard else { return }
+        var made: [UUID] = []
+        updateBoard(id, "Paste") { made = $0.paste(clip) }
+        // Pasting again on the same board steps down and right instead of stacking in one spot.
+        if clip.source == id, let g = currentBoard?.grid { cardClipboard = clip.shifted(by: g * 2) }
+        boardSelection = Set(made)
+    }
+
+    func nudgeCards(dx: Double, dy: Double) {
+        guard let id = selectedBoard, !boardSelection.isEmpty else { return }
+        let sel = boardSelection
+        updateBoard(id, "Nudge") { _ = $0.nudge(sel, dx: dx, dy: dy) }
     }
 
     func removeFromBoard(_ items: Set<UUID>) {
@@ -2578,6 +2673,7 @@ struct BoardCanvas: View {
                         ForEach(board.layered) { item in card(item) }
                         connectorLayer
                         pinLayer
+                        versionLayer
                         linkLine
                         guideLines
                         if let m = marquee {
@@ -2738,7 +2834,9 @@ struct BoardCanvas: View {
         let n = "\(board.items.count) item\(board.items.count == 1 ? "" : "s")"
         let approved = board.statusCounts[.approved] ?? 0
         let empty = board.emptySlots.count
+        let newer = model.catalog.outdatedCards(on: board.id).count
         let tail = (approved > 0 ? " · \(approved) approved" : "") + (empty > 0 ? " · \(empty) empty slot\(empty == 1 ? "" : "s")" : "")
+            + (newer > 0 ? " · \(newer) newer version\(newer == 1 ? "" : "s")" : "")
         guard !board.reviews.isEmpty else { return n + tail }
         let picked = pins.values.filter(\.picked).count
         return n + " · \(picked) picked by " + (model.boardReviewer ?? (board.reviewers.count == 1 ? board.reviewers[0] : "\(board.reviewers.count) reviewers")) + tail
@@ -2751,6 +2849,34 @@ struct BoardCanvas: View {
         if let f = model.boardStatusFilter, item.kind != .asset || board.status(of: item.id) != f { return true }
         guard model.boardClientOnly, !board.reviews.isEmpty else { return false }
         return pins[item.id]?.picked != true
+    }
+
+    /// "Final available" on cards showing an older version (1.24). Clicking it updates that card.
+    @ViewBuilder private var versionLayer: some View {
+        let outdated = model.catalog.outdatedCards(on: board.id)
+        if !outdated.isEmpty {
+            let t = min(2.2, 1 / max(0.1, z))
+            ForEach(board.layered.filter { outdated[$0.id] != nil && !dimmed($0) }) { item in
+                let r = itemRect(item)
+                let label = outdated[item.id].map { VersionStacks.rank($0).1 } ?? "Newer"
+                // Keep it within the left half of the card so it never meets the thread badge on the right.
+                let bt = min(t, max(0.45, (r.w * 0.5 - 8) / (Double(label.count) * 7.5 + 78)))
+                Button { model.updateToNewest(board.id, only: [item.id]) } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.circle.fill")
+                        Text("\(label) available")
+                    }
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.black.opacity(0.85))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Theme.warning, in: Capsule())
+                    .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain).fixedSize().help("Update this card to \(label)")
+                .scaleEffect(CGFloat(bt), anchor: .topLeading)
+                .frame(width: max(1, r.w - 16), alignment: .topLeading)
+                .offset(x: r.x + 8, y: r.y + 8)
+            }
+        }
     }
 
     /// Client picks and comments from imported feedback (1.20), plus status and replies (1.21), drawn on the cards they belong to.
@@ -2795,6 +2921,8 @@ struct BoardCanvas: View {
             Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
             Button(board.versions.isEmpty ? "Versions…" : "Versions (\(board.versions.count))…") { model.boardVersionsOpen = true }
             Button("Export Round Summary PDF…") { model.exportRoundSummary(board.id) }
+            let newer = model.catalog.outdatedCards(on: board.id).count
+            if newer > 0 { Button("Update All to Newest (\(newer))") { model.updateToNewest(board.id) } }
             Button("Share Round (Gallery + Summary)…") { model.shareRound(board.id) }
             Divider()
             Picker("Status", selection: $model.boardStatusFilter) {
@@ -2971,6 +3099,9 @@ struct BoardCanvas: View {
             Button("Put in New Section") { model.addFrame() }
             if sel.count == 2 { Button("Connect with Arrow") { model.connectSelection() } }
             ArrangeMenu(board: board, selection: sel, inContextMenu: true)
+            Button("Copy \(sel.count) Cards") { model.copyCards() }
+            let stale = Set(model.catalog.outdatedCards(on: board.id).keys).intersection(sel)
+            if !stale.isEmpty { Button("Update \(stale.count) to Newest") { model.updateToNewest(board.id, only: stale) } }
             Menu("Mark \(sel.count) as") {
                 ForEach(CardStatus.allCases, id: \.self) { st in Button(st.label) { model.updateBoard(board.id, "Mark \(st.label)") { $0.setStatus(st, for: sel) } } }
             }
@@ -2995,6 +3126,9 @@ struct BoardCanvas: View {
                     }
                 }
                 Button("Comments & Status…") { select(item); model.threadCard = item.id }
+                if let a = item.assetID, let newest = model.catalog.newerVersion(of: a) {
+                    Button("Update to \(VersionStacks.rank(newest).1)") { model.updateToNewest(board.id, only: [item.id]) }
+                }
                 Divider()
                 Button("Add Palette Card") { model.addPaletteCard(for: item) }
                 if let a = item.assetID, let asset = model.catalog.assets.first(where: { $0.id == a }), let hex = asset.palette.first {
@@ -5141,6 +5275,7 @@ struct Inspector: View {
                 ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        OnBoardsSection(asset: asset)
                         if asset.stackID != nil { VersionStrip(asset: asset) }
                         if asset.kind != .audio { SimilarStrip(asset: asset) }
                         if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
@@ -7379,6 +7514,47 @@ struct FeedbackPreviewSheet: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(CardThreadBadge.color(to).opacity(0.1), in: Capsule())
+    }
+}
+
+/// Where this asset (or another version of it) sits on boards (1.24). A click jumps to the card.
+struct OnBoardsSection: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+
+    var body: some View {
+        let uses = model.catalog.boardsUsing(asset.id)
+        if !uses.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    InspectorLabel(text: "ON BOARDS")
+                    Spacer()
+                    let boards = Set(uses.map(\.board)).count
+                    Text("\(boards) board\(boards == 1 ? "" : "s")").font(.caption2).foregroundStyle(.secondary)
+                }
+                ForEach(uses) { u in
+                    Button { model.show(board: u.board); model.boardSelection = [u.item] } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "rectangle.3.group").font(.system(size: 11)).foregroundStyle(Theme.accent)
+                            Text(u.boardName).font(.caption.weight(.semibold)).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(u.label).font(.system(size: 10, weight: .bold))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background((u.asset == asset.id ? Theme.accent : Color.white).opacity(u.asset == asset.id ? 0.3 : 0.1), in: Capsule())
+                            if let n = u.newer, let top = model.catalog.assets.first(where: { $0.id == n }) {
+                                Label(VersionStacks.rank(top).1, systemImage: "arrow.up.circle.fill").font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Theme.warning).help("A newer version is available")
+                            }
+                        }
+                        .padding(.horizontal, 9).padding(.vertical, 7)
+                        .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help("Show this card on \(u.boardName)")
+                }
+            }
+        }
     }
 }
 

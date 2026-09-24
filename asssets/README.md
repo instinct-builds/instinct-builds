@@ -729,3 +729,26 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   gives the same options. Image cards keep their shape when matched,
   frames move as cards, and each action is one undo step.
 - Logic and tests: `BoardFeedback.swift`, `BoardFeedbackTests.swift`.
+
+## 1.24.0: boards follow versions, nudge, copy and paste
+
+- The inspector has an ON BOARDS list: every board card that shows this
+  asset or another version of it, with the version on the card and an
+  arrow when a newer one exists. Click a row to open that board with the
+  card selected.
+- Board cards that show an older version in a stack get a "Final
+  available" (or "v3 available") chip. Click it, or right-click and pick
+  Update to Final, to swap in the newest version. The Review menu has
+  Update All to Newest (N), and the board subtitle counts newer versions.
+- Updating keeps the card's size and position. The crop stays when the
+  new file has the same shape; otherwise it resets to a centered crop.
+  Pins and comments from earlier rounds stay on the card. An approved
+  card goes back to Open with a reply that says what changed. The board
+  is saved in Versions as "Before Update to Newest" first, and one Undo
+  reverts it.
+- Arrow keys nudge the selected cards by 1 pt; Shift moves one grid step.
+  Nudging a section moves what is inside it.
+- ⌘C copies the selected cards, ⌘V pastes them on this board or another
+  one. Arrows between copied cards come along. Pasting on the same board
+  steps down and right each time.
+- Logic and tests: `BoardFollow.swift`, `BoardFollowTests.swift`.
