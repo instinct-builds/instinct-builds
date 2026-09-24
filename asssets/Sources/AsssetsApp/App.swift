@@ -2614,14 +2614,17 @@ struct BoardCanvas: View {
                 let r = itemRect(item), pin = all[item.id]
                 let hidden = dimmed(item)
                 let replies = board.replies(for: item.id)
-                CardThreadBadge(pin: hidden ? nil : pin, status: board.status(of: item.id), replies: hidden ? 0 : replies.count)
+                let badge = CardThreadBadge(pin: hidden ? nil : pin, status: board.status(of: item.id), replies: hidden ? 0 : replies.count)
+                // Never wider than the card, so badges on neighbouring cards can't overlap (1.21 fix).
+                let bt = min(t, max(0.5, (r.w - 16) / badge.estimatedWidth))
+                badge
                     .opacity(hidden ? 0.35 : 1)
                     .onTapGesture { model.threadCard = item.id }
                     .popover(isPresented: Binding(get: { model.threadCard == item.id }, set: { if !$0 && model.threadCard == item.id { model.threadCard = nil } }),
                              arrowEdge: .trailing) {
                         CardThreadPanel(boardID: board.id, itemID: item.id).environmentObject(model)
                     }
-                    .scaleEffect(CGFloat(t), anchor: .topTrailing)
+                    .scaleEffect(CGFloat(bt), anchor: .topTrailing)
                     .frame(width: r.w - 8, alignment: .topTrailing)
                     .offset(x: r.x, y: r.y + 8)
                 if !hidden, model.boardShowComments, let pin, !pin.comments.isEmpty {
@@ -6632,6 +6635,15 @@ struct CardThreadBadge: View {
         }
     }
 
+    /// Rough width in points, for fitting the row inside its card.
+    var estimatedWidth: Double {
+        var w = 0.0, parts = 0
+        if status != .open { w += status == .approved ? 74 : 70; parts += 1 }
+        if let pin, pin.picked || !pin.comments.isEmpty { w += 22 + (pin.picked ? 20 : 0) + (pin.picked && !pin.comments.isEmpty ? 16 : 0); parts += 1 }
+        if replies > 0 { w += 34; parts += 1 }
+        return max(24, w + Double(max(0, parts - 1)) * 4)
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             if status != .open {
@@ -6711,7 +6723,7 @@ struct CardThreadPanel: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     ForEach(Array((pin?.comments ?? []).enumerated()), id: \.offset) { _, c in
-                        bubble(initials: ClientPinBadge.initials(c.reviewer), tint: ClientPinBadge.pink, who: c.reviewer, when: c.imported, text: c.text, indent: false)
+                        bubble(initials: ClientPinBadge.initials(c.reviewer), tint: ClientPinBadge.pink, who: c.reviewer, when: Self.day(c.imported), text: c.text, indent: false)
                     }
                     ForEach(replies) { r in
                         if editing == r.id {
@@ -6744,6 +6756,13 @@ struct CardThreadPanel: View {
             }
         }
         .padding(14).frame(width: 360)
+    }
+
+    /// "2026-09-24" as "Sep 24", matching how replies show their time.
+    static func day(_ ymd: String) -> String {
+        let p = DateFormatter(); p.dateFormat = "yyyy-MM-dd"; p.locale = Locale(identifier: "en_US_POSIX")
+        guard let d = p.date(from: ymd) else { return ymd }
+        let f = DateFormatter(); f.dateFormat = "MMM d"; return f.string(from: d)
     }
 
     private func send() {
