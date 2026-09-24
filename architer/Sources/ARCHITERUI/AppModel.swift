@@ -290,6 +290,9 @@ public final class AppModel: ObservableObject {
         }
         r.reroll = RerollSpec(kind: .incomingDamage)
         record(r)
+        // record() auto-logs the roll to the journal when the 2.45.0
+        // toggle is on; re-read so the write-back below keeps the entry.
+        c = selected?.wrappedValue ?? c
         // Defenses already folded in above; type nil keeps temp-HP absorption.
         c.applyDamage(adjusted, type: nil)
         selected?.wrappedValue = c
@@ -389,6 +392,9 @@ public final class AppModel: ObservableObject {
         if rollHP {
             guard let r = try? roller.rollLabeled("Level up HP (level \(c.level + 1))", c.levelUpRollExpression) else { return }
             record(r)
+            // Keep record()'s auto-logged journal entry (2.45.0) off the
+            // stale copy written back below.
+            c = selected?.wrappedValue ?? c
             gain = max(1, r.total)
         } else {
             gain = c.averageLevelUpHP
@@ -456,6 +462,9 @@ public final class AppModel: ObservableObject {
         guard var c = selected?.wrappedValue else { return }
         let r = roller.check("Death save", bonus: -c.exhaustionRollPenalty)
         record(r)
+        // Re-read so record()'s auto-log journal entry (2.45.0) survives
+        // the write-back below.
+        c = selected?.wrappedValue ?? c
         let natural = r.dice.first?.value ?? 0
         if natural == 20 {
             c.applyHealing(1)
@@ -477,6 +486,9 @@ public final class AppModel: ObservableObject {
         guard var c = selected?.wrappedValue, let expr = c.hitDieRollExpression() else { return }
         guard let r = try? roller.rollLabeled("Hit die healing", expr) else { return }
         record(r)
+        // Re-read so record()'s auto-log journal entry (2.45.0) survives
+        // the write-back below.
+        c = selected?.wrappedValue ?? c
         c.spendHitDie(healingRolled: r.total)
         selected?.wrappedValue = c
     }
