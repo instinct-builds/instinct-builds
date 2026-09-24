@@ -224,6 +224,8 @@ public struct RollSession: Equatable, Sendable {
     /// Stable identity for naming (2.67.0): the session's oldest roll's
     /// stamp, ISO-8601; nil for undated runs, which cannot be named.
     public let key: String?
+    /// The user's free-text session note (2.71.0); nil when unset.
+    public let note: String? = nil
     /// Newest roll first, matching history order.
     public var rolls: [RollResult]
 
@@ -232,7 +234,15 @@ public struct RollSession: Equatable, Sendable {
     public func renamed(_ name: String?) -> RollSession {
         let custom = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !custom.isEmpty else { return self }
-        return RollSession(number: number, title: custom, key: key, rolls: rolls)
+        return RollSession(number: number, title: custom, key: key, note: note, rolls: rolls)
+    }
+
+    /// A copy carrying the user's session note (2.71.0); nil or blank
+    /// clears it.
+    public func noted(_ note: String?) -> RollSession {
+        let custom = note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !custom.isEmpty else { return RollSession(number: number, title: title, key: key, rolls: rolls) }
+        return RollSession(number: number, title: title, key: key, note: custom, rolls: rolls)
     }
 }
 
@@ -310,7 +320,9 @@ public struct SessionStats: Equatable, Sendable {
 /// name included), its stats line (2.69.0), then its rolls oldest first
 /// - a paste-ready session record without filing a journal digest.
 public func sessionShareText(_ session: RollSession) -> String {
-    session.title + "\n" + sessionStats(session).line + "\n\n"
+    var head = session.title + "\n" + sessionStats(session).line
+    if let note = session.note { head += "\n" + note }
+    return head + "\n\n"
         + session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n") + "\n"
 }
 
@@ -331,7 +343,10 @@ public func sessionStats(_ session: RollSession) -> SessionStats {
 /// contributing rolls to that day, oldest session first - so an exported
 /// log reads like the named history pane. Days with no named session
 /// keep their plain title; undated rolls are never annotated.
+/// 2.71.0: pass the user's session notes to append them to their
+/// session's name in the header ("Today - Night watch (wolves)").
 public func namedDayGroups(_ rolls: [RollResult], names: [String: String],
+                           notes: [String: String] = [:],
                            now: Date = Date(),
                            calendar: Calendar = .current) -> [RollDayGroup] {
     let groups = groupRollsByDay(rolls, now: now, calendar: calendar)
@@ -344,7 +359,12 @@ public func namedDayGroups(_ rolls: [RollResult], names: [String: String],
                   let name = names[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !name.isEmpty,
                   let at = session.rolls.last?.rolledAt else { return nil }
-            return (rollDayTitle(at, now: now, calendar: calendar), session.number, name)
+            var label = name
+            if let note = notes[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !note.isEmpty {
+                label += " (\(note))"
+            }
+            return (rollDayTitle(at, now: now, calendar: calendar), session.number, label)
         }
         .sorted { $0.number < $1.number }
     guard !named.isEmpty else { return groups }
@@ -368,9 +388,10 @@ public enum SessionLogRow: Equatable, Sendable {
 /// Undated legacy rolls lead under "Undated".
 /// 2.68.0: pass the user's custom session names to annotate day headers.
 public func sessionLogRows(_ rolls: [RollResult], names: [String: String] = [:],
+                           notes: [String: String] = [:],
                            now: Date = Date(),
                            calendar: Calendar = .current) -> [SessionLogRow] {
-    namedDayGroups(Array(rolls.reversed()), names: names, now: now, calendar: calendar).flatMap { group in
+    namedDayGroups(Array(rolls.reversed()), names: names, notes: notes, now: now, calendar: calendar).flatMap { group in
         [SessionLogRow.dayHeader(group.title)] + group.rolls.map { SessionLogRow.roll($0.historyLine) }
     }
 }

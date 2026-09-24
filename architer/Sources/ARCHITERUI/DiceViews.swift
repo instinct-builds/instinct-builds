@@ -179,19 +179,23 @@ public struct HistoryListView: View {
     /// 2.58.0: divider whose digest is being named, and the draft title.
     @State private var namingSession: Int?
     @State private var digestTitle: String
-    /// 2.67.0: divider whose session is being renamed, and the draft name.
+    /// 2.67.0: divider whose session is being renamed, and the drafts -
+    /// 2.71.0 adds the session note to the same inline form.
     @State private var renamingSession: Int?
     @State private var sessionNameDraft: String
+    @State private var sessionNoteDraft: String
 
     public init(rolls: [RollResult], initialNamingSession: Int? = nil,
                 initialDigestTitle: String = "",
                 initialRenamingSession: Int? = nil,
-                initialSessionNameDraft: String = "") {
+                initialSessionNameDraft: String = "",
+                initialSessionNoteDraft: String = "") {
         self.rolls = rolls
         _namingSession = State(initialValue: initialNamingSession)
         _digestTitle = State(initialValue: initialDigestTitle)
         _renamingSession = State(initialValue: initialRenamingSession)
         _sessionNameDraft = State(initialValue: initialSessionNameDraft)
+        _sessionNoteDraft = State(initialValue: initialSessionNoteDraft)
     }
 
     /// Files the digest with the drafted name and closes the inline form.
@@ -201,10 +205,12 @@ public struct HistoryListView: View {
     }
 
     /// 2.67.0: stores the drafted custom name (blank restores the
-    /// generated title) and closes the inline form.
+    /// generated title) and note (2.71.0; blank clears), then closes
+    /// the inline form.
     private func confirmRename(_ session: RollSession) {
         if let key = session.key {
             model.renameSession(key, to: sessionNameDraft)
+            model.setSessionNote(key, to: sessionNoteDraft)
         }
         renamingSession = nil
     }
@@ -239,6 +245,15 @@ public struct HistoryListView: View {
                                 Text(sessionStats(session).line)
                                     .font(Theme.Typeface.captionSmall)
                                     .foregroundStyle(Theme.inkFaint)
+                                // 2.71.0: the session note rides under
+                                // the stats line, italic to read as prose.
+                                if let note = session.note {
+                                    Text(note)
+                                        .font(Theme.Typeface.captionSmall.italic())
+                                        .foregroundStyle(Theme.inkFaint)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
                             }
                             Spacer()
                             // 2.49.0: digest the whole session into the
@@ -282,10 +297,17 @@ public struct HistoryListView: View {
                                 // custom name replaces the generated
                                 // "Session N - <day>" divider title, and a
                                 // digest filed from it takes the name.
-                                TextField("Session name", text: $sessionNameDraft)
-                                    .textFieldStyle(InsetFieldStyle())
-                                    .frame(width: 180)
-                                    .onSubmit { confirmRename(session) }
+                                // 2.71.0: the same form edits the note.
+                                VStack(alignment: .leading, spacing: 4) {
+                                    TextField("Session name", text: $sessionNameDraft)
+                                        .textFieldStyle(InsetFieldStyle())
+                                        .frame(width: 180)
+                                        .onSubmit { confirmRename(session) }
+                                    TextField("Note (optional)", text: $sessionNoteDraft)
+                                        .textFieldStyle(InsetFieldStyle())
+                                        .frame(width: 180)
+                                        .onSubmit { confirmRename(session) }
+                                }
                                 Button { confirmRename(session) }
                                     label: { Image(systemName: "checkmark") }
                                     .buttonStyle(.plain)
@@ -309,6 +331,7 @@ public struct HistoryListView: View {
                                 if session.key != nil {
                                     Button {
                                         sessionNameDraft = session.title
+                                        sessionNoteDraft = session.note ?? ""
                                         renamingSession = session.number
                                     } label: { Image(systemName: "pencil") }
                                         .buttonStyle(.plain)

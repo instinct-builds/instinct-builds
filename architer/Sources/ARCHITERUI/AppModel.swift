@@ -87,11 +87,33 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let sessionNamesKey = "architer.sessionNames"
+    /// Free-text session notes (2.71.0), keyed like the names above.
+    @Published public var sessionNotes: [String: String] =
+        (UserDefaults.standard.dictionary(forKey: AppModel.sessionNotesKey) as? [String: String]) ?? [:] {
+        didSet {
+            UserDefaults.standard.set(sessionNotes, forKey: AppModel.sessionNotesKey)
+        }
+    }
+    private static let sessionNotesKey = "architer.sessionNotes"
 
-    /// Sessions with the user's custom names applied (2.67.0) - the
-    /// history list, the digest button, and exports read these.
+    /// Sessions with the user's custom names and notes applied
+    /// (2.67.0/2.71.0) - the history list, the digest button, and
+    /// exports read these.
     public func namedSessions(_ rolls: [RollResult]) -> [RollSession] {
-        sessionSegments(rolls).map { $0.renamed($0.key.flatMap { sessionNames[$0] }) }
+        sessionSegments(rolls).map {
+            $0.renamed($0.key.flatMap { sessionNames[$0] })
+              .noted($0.key.flatMap { sessionNotes[$0] })
+        }
+    }
+
+    /// Note a roll session (2.71.0); blank clears the note.
+    public func setSessionNote(_ key: String, to note: String) {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            sessionNotes.removeValue(forKey: key)
+        } else {
+            sessionNotes[key] = trimmed
+        }
     }
 
     /// Name a roll session (2.67.0); blank clears the custom name and
@@ -652,7 +674,7 @@ public final class AppModel: ObservableObject {
     public func exportSessionLog() {
         guard let sel = selected?.wrappedValue else { return }
         let rolls = rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange)
-        let rows = sessionLogRows(rolls, names: sessionNames)
+        let rows = sessionLogRows(rolls, names: sessionNames, notes: sessionNotes)
         savePanel(text: sessionLogText(character: sel.name,
                                        range: compactPDFSessionLogRange, rows: rows),
                   name: "\(sel.name)-session-log.txt")
@@ -663,7 +685,7 @@ public final class AppModel: ObservableObject {
     public func exportSessionLogMarkdown() {
         guard let sel = selected?.wrappedValue else { return }
         let rolls = rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange)
-        let groups = namedDayGroups(Array(rolls.reversed()), names: sessionNames)
+        let groups = namedDayGroups(Array(rolls.reversed()), names: sessionNames, notes: sessionNotes)
         savePanel(text: sessionLogMarkdown(character: sel.name,
                                            range: compactPDFSessionLogRange, groups: groups),
                   name: "\(sel.name)-session-log.md")
@@ -689,7 +711,8 @@ public final class AppModel: ObservableObject {
                                          sessionRolls: compactPDFSessionLog
                                              ? rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange) : [],
                                          journalTimestamps: exportJournalTimestamps,
-                                         sessionNames: sessionNames).write(to: url)
+                                         sessionNames: sessionNames,
+                                         sessionNotes: sessionNotes).write(to: url)
         }
     }
 

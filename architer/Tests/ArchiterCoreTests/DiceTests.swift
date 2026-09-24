@@ -788,4 +788,35 @@ struct SessionSegmentTests {
         #expect(lines[3].contains("2d6: 10"))
         #expect(lines[4].contains("d20: 10"))
     }
+
+    // 2.71.0: noted() carries the session note; blank clears it. The
+    // note rides the copy text under the stats line and follows its
+    // session's name into export headers in parentheses.
+    @Test func sessionNotesRideCopyAndExports() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 17))]
+        let session = sessionSegments(rolls, now: now, calendar: cal)[0]
+        let noted = session.noted("The bridge over the Ember")
+        #expect(noted.note == "The bridge over the Ember")
+        #expect(noted.title == session.title)
+        #expect(session.noted("  ").note == nil)
+        // Copy text: note between the stats line and the rolls.
+        let text = sessionShareText(noted)
+        let lines = text.components(separatedBy: "\n")
+        #expect(lines[1].hasPrefix("2 rolls"))
+        #expect(lines[2] == "The bridge over the Ember")
+        #expect(lines[3].isEmpty)
+        // Export header: the note follows its session's name.
+        let key = session.key!
+        let groups = namedDayGroups(rolls, names: [key: "Night watch"],
+                                    notes: [key: "The bridge over the Ember"],
+                                    now: now, calendar: cal)
+        #expect(groups[0].title == "Today - Night watch (The bridge over the Ember)")
+        // A note without a name annotates nothing (names gate headers).
+        let noteOnly = namedDayGroups(rolls, names: [:], notes: [key: "x"],
+                                      now: now, calendar: cal)
+        #expect(noteOnly[0].title == "Today")
+    }
 }

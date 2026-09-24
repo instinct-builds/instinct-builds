@@ -158,7 +158,8 @@ public enum SheetPDFExporter {
                               collapseEmptyInventory: Bool = false,
                               sessionRolls: [RollResult] = [],
                               journalTimestamps: Bool = true,
-                              sessionNames: [String: String] = [:]) -> Data {
+                              sessionNames: [String: String] = [:],
+                              sessionNotes: [String: String] = [:]) -> Data {
         let compact = style == .compact
         let pageSize: PDFDocument.PageSize = orientation == .landscape
             ? PDFDocument.PageSize(width: PDFDocument.PageSize.letter.height,
@@ -578,7 +579,7 @@ public enum SheetPDFExporter {
         // as a chronological, day-grouped record on its own page, so the
         // sheet and the log file separately at the table.
         if compact && !sessionRolls.isEmpty {
-            let rows = sessionLogRows(sessionRolls, names: sessionNames)
+            let rows = sessionLogRows(sessionRolls, names: sessionNames, notes: sessionNotes)
             if !rows.isEmpty {
                 cursor.newPage()
                 cursor.section("Session Log", margin: margin)
