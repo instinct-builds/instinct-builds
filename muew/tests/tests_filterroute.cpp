@@ -91,6 +91,22 @@ int main() {
         check(same(render(w2), render(only1)), "filter 2 MIX 0% in series equals filter 2 off");
         double r1 = rms(render(b1)), rh = rms(render(dflt)); (void)rh;
         check(r1 > 0 && rms(render(b1)) != rms(render(b0)), "BALANCE 100% plays filter 2 alone (differs from 0%)");
+        { // oversampling latency is lined up: MIX 50% with DRIVE doesn't notch where the 15-sample delay would cancel (~1.47 kHz)
+            VoiceParams sv = base; sv.osc1Shape = 0; sv.filter2Type = 0; sv.filterMode = 0; sv.filterCutoff = 18000; sv.filterDrive = 0.3;
+            auto tone = [&](double mix) { VoiceParams q = sv; q.filter1Mix = mix;
+                Synth s; s.init(44100); s.setParams(q, {}); FXParams fx; s.setFX(fx); s.noteOn(90, 0.5f);
+                std::vector<float> L(12000), R(12000); s.renderPlanar(L.data(), R.data(), 12000); return L; };
+            double dry = rms(tone(0)), half = rms(tone(0.5)), wet = rms(tone(1));
+            printf("1.48 kHz sine through DRIVE 30%%: dry %.4f, MIX 50%% %.4f, wet %.4f\n", dry, half, wet);
+            check(half > 0.9 * std::min(dry, wet), "MIX 50% on an oversampled filter blends without a latency notch");
+            VoiceParams pv = base; pv.filterRouting = 1; pv.filterMode = 5; pv.filter2Type = 1; pv.filter2Cutoff = 18000; pv.filterCutoff = 18000; pv.osc1Shape = 0;
+            auto ptone = [&](int f2t) { VoiceParams q = pv; q.filter2Type = f2t;
+                Synth s; s.init(44100); s.setParams(q, {}); FXParams fx; s.setFX(fx); s.noteOn(90, 0.5f);
+                std::vector<float> L(12000), R(12000); s.renderPlanar(L.data(), R.data(), 12000); return L; };
+            double both = rms(ptone(1)), one = rms(ptone(0));
+            printf("parallel LADDER (2x) + LOW PASS (1x) at 1.48 kHz: %.4f vs filter 1 alone %.4f\n", both, one);
+            check(both > 0.8 * one, "PARALLEL lines a 2x filter up with a 1x filter (no cancellation)");
+        }
         std::vector<ModRoute> mr = {{ModRoute::Source::LFO1, ModRoute::Dest::FilterBalance, 0.5}};
         auto withRoute = render(dflt, mr);
         check(!same(withRoute, render(dflt)), "an F BALANCE route moves the parallel mix");

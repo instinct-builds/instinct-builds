@@ -64,6 +64,7 @@ public:
         if (type_ == Filter2Type::CombNeg) x_.setMode(7);
         if (type_ == Filter2Type::Morph) x_.setMode(8);
     }
+    int latency() const { return type_ == Filter2Type::Ladder ? x_.latency() : 0; } // 0.22.0: LADDER runs at 2x
     void setMorph(double m) { x_.setMorph(m); } // 0.22.0: MORPH type's LP -> BP -> HP position
     Filter2Type type() const { return type_; }
     void reset() {

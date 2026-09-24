@@ -390,9 +390,12 @@ public:
         l = filter_.process(l);
         if (stereo) { filterR_.set(cutoff, resonance); r = filterR_.process(r); }
         else { r = l; filterR_.copyStateFrom(filter_); } // keep the right filter warm for a width change
+        // 0.22.0: an oversampled filter runs d1 samples late; dry paths are delayed to match so MIX / PARALLEL don't comb.
+        const int d1 = filter_.latency();
+        const float dryL1 = alignDry1L_.process(preL, d1), dryR1 = alignDry1R_.process(preR, d1);
         if (params_.filter1Mix != 1.0) { // 0.22.0 filter 1 dry/wet
             const float m1 = (float)std::clamp(params_.filter1Mix, 0.0, 1.0);
-            l = preL + m1 * (l - preL); r = preR + m1 * (r - preR);
+            l = dryL1 + m1 * (l - dryL1); r = dryR1 + m1 * (r - dryR1);
         }
 
         // 0.10.0 filter 2: after filter 1 (serial) or beside it on the dry mix (parallel).
@@ -406,9 +409,16 @@ public:
             float yL = f2L_.process(inL);
             float yR = yL;
             if (stereo) { f2R_.set(c2, params_.filter2Reso); yR = f2R_.process(inR); }
+            const int d2 = f2L_.latency();
+            const float dryL2 = alignDry2L_.process(inL, d2), dryR2 = alignDry2R_.process(stereo ? inR : inL, d2);
             if (params_.filter2Mix != 1.0) { // 0.22.0 filter 2 dry/wet
                 const float m2 = (float)std::clamp(params_.filter2Mix, 0.0, 1.0);
-                yL = inL + m2 * (yL - inL); yR = (stereo ? inR : inL) + m2 * (yR - (stereo ? inR : inL));
+                yL = dryL2 + m2 * (yL - dryL2); yR = dryR2 + m2 * (yR - dryR2);
+            }
+            if (par) { // line the two paths up: the earlier one waits for the later one
+                const int dd = d1 - d2;
+                l = alignParL_.process(l, dd < 0 ? -dd : 0); r = alignParR_.process(r, dd < 0 ? -dd : 0);
+                yL = alignPar2L_.process(yL, dd > 0 ? dd : 0); yR = alignPar2R_.process(yR, dd > 0 ? dd : 0);
             }
             if (par) {
                 if (params_.filterBalance == 0.5 && !usesBalance_) { l = 0.5f * (l + yL); r = 0.5f * (r + yR); } // 0.10.0 mix, unchanged
@@ -537,7 +547,8 @@ private:
     bool remapValid_[2] = {false, false};
     bool usesWarpX_ = false;
     bool usesFilterX_ = false;
-    bool usesF2Morph_ = false, usesBalance_ = false; // 0.22.0 // 0.21.0: a route targets FILTER DRIVE or MORPH
+    bool usesF2Morph_ = false, usesBalance_ = false; // 0.22.0
+    AlignDelay alignDry1L_, alignDry1R_, alignDry2L_, alignDry2R_, alignParL_, alignParR_, alignPar2L_, alignPar2R_; // 0.22.0 // 0.21.0: a route targets FILTER DRIVE or MORPH
     double w2a_ = 0.0, w2b_ = 0.0;
     static bool warp2Prone(int mode) { return mode >= 2 && mode != 5 && mode != 6 ? true : false; }
     void applyLfoExtras() {

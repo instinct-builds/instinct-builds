@@ -333,7 +333,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     double* f[7] = {&v.filterDrive, &v.filterKeytrack, &v.filterMorph, &v.filter1Mix, &v.filter2Mix, &v.filterBalance, &v.filter2Morph};
     return f[std::clamp(id, 0, 6)];
 }
-- (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 186 - i * 20, 48, 15); }
+- (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 190 - i * 19, 48, 15); } // 0.22.0: 4 pt lower, clear of the MIX bars
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 260, 440, 260); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
@@ -672,13 +672,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     auto yOf = [&](std::complex<double> h) { return plot.origin.y + plot.size.height * (std::clamp(20 * std::log10(std::abs(h) + 1e-6), -36.0, 12.0) + 36.0) / 48.0; };
     for (int i = 0; i < pts; ++i) {
         const double hz = lo * std::pow(hi / lo, i / (double)(pts - 1));
+        // Dry paths are delayed to match an oversampled filter (as the voice does), so they carry that phase too.
+        const double w = 2 * M_PI * hz / sr;
+        const int d1 = f1.latency(), d2 = f2.latency();
+        const std::complex<double> dry1 = std::polar(1.0, -w * d1), dry2 = std::polar(1.0, -w * d2);
         const std::complex<double> h1 = MeasureH(f1, hz, 0.25, comb1);
-        const std::complex<double> a1 = 1.0 + m1 * (h1 - 1.0);
+        const std::complex<double> a1 = dry1 + m1 * (h1 - dry1);
         std::complex<double> a2 = 1.0, total = a1;
         if (on) {
             const std::complex<double> h2 = MeasureH(f2, hz, 0.25, comb2);
-            a2 = 1.0 + m2 * (h2 - 1.0);
-            total = v.filterRouting == 1 ? (1.0 - bal) * a1 + bal * a2 : a1 * a2;
+            a2 = dry2 + m2 * (h2 - dry2);
+            const int dd = d1 - d2; // parallel: the earlier path waits for the later one
+            total = v.filterRouting == 1 ? (1.0 - bal) * a1 * std::polar(1.0, -w * std::max(0, -dd)) + bal * a2 * std::polar(1.0, -w * std::max(0, dd)) : a1 * a2;
         }
         const CGFloat x = plot.origin.x + plot.size.width * i / (pts - 1);
         NSPoint q1 = NSMakePoint(x, yOf(a1)), q2 = NSMakePoint(x, yOf(a2)), qt = NSMakePoint(x, yOf(total));

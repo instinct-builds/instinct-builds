@@ -85,7 +85,9 @@ public:
     void reset() { std::fill(up_, up_ + 2 * kTaps, 0.0); std::fill(dn_, dn_ + 2 * kTaps, 0.0); upPos_ = dnPos_ = 0; }
     void copyStateFrom(const Halfband2x& o) { std::copy(o.up_, o.up_ + 2 * kTaps, up_); std::copy(o.dn_, o.dn_ + 2 * kTaps, dn_); upPos_ = o.upPos_; dnPos_ = o.dnPos_; }
     inline void up(double x, double& a, double& b) { push(up_, upPos_, 2.0 * x); a = conv(up_, upPos_); push(up_, upPos_, 0.0); b = conv(up_, upPos_); }
-    inline double down(double a, double b) { push(dn_, dnPos_, a); push(dn_, dnPos_, b); return conv(dn_, dnPos_); }
+    // down() keeps the phase that makes up() + down() a whole-sample delay: exactly kLatency samples at 1x.
+    inline double down(double a, double b) { push(dn_, dnPos_, a); const double y = conv(dn_, dnPos_); push(dn_, dnPos_, b); return y; }
+    static constexpr int kLatency = kTaps / 2; // 15
 private:
     // Each history is stored twice in a row so the convolution reads one contiguous window.
     static inline void push(double* buf, int& pos, double v) { pos = (pos + 1) % kTaps; buf[pos] = v; buf[pos + kTaps] = v; }
@@ -97,6 +99,17 @@ private:
     double h_[kTaps];
     double up_[2 * kTaps] = {}, dn_[2 * kTaps] = {};
     int upPos_ = 0, dnPos_ = 0;
+};
+
+// 0.22.0: short fixed delay used to line dry/parallel paths up with an oversampled filter.
+class AlignDelay {
+public:
+    inline float process(float x, int d) { buf_[pos_] = x; const float y = buf_[(pos_ - d + kN) & (kN - 1)]; pos_ = (pos_ + 1) & (kN - 1); return y; }
+    void reset() { std::fill(buf_, buf_ + kN, 0.0f); pos_ = 0; }
+private:
+    static constexpr int kN = 64;
+    float buf_[kN] = {};
+    int pos_ = 0;
 };
 
 // 0.21.0 filter 1: the SVF modes (0-4, unchanged) plus appended models:
@@ -115,6 +128,7 @@ public:
     // LADDER 24 always runs at 2x. Off, the SVF modes are exactly the 0.21.0 path.
     void setOversample(bool on) { osReq_ = on; updateOs(); }
     bool oversampled() const { return os_; }
+    int latency() const { return os_ ? Halfband2x::kLatency : 0; } // samples at 1x
     void setMorph(double m) { morph_ = std::clamp(m, 0.0, 1.0); }
 
     void set(double cutoffHz, double resonanceQ) {
