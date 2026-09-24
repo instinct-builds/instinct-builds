@@ -1135,6 +1135,19 @@ struct JournalTests {
         #expect(JournalEntry(sessionDigest: session, format: .byActor).text == grouped)
     }
 
+    @Test func journalFilteredShareText() throws {
+        let a = JournalEntry(date: "Session 1", title: "Start", text: "It began.")
+        let b = JournalEntry(date: "Session 2", title: "Fire fight", text: "Burning.")
+        #expect(a.matchesFilter(""))
+        #expect(a.matchesFilter("  "))
+        #expect(a.matchesFilter("START"))
+        #expect(b.matchesFilter("fire"))
+        #expect(!a.matchesFilter("fire"))
+        #expect(JournalEntry.shareText(entries: [a, b]) == a.shareText + "\n\n" + b.shareText)
+        #expect(JournalEntry.shareText(entries: [a]) == a.shareText)
+        #expect(JournalEntry.shareText(entries: []) == "")
+    }
+
     @Test func journalEntrySizeLabel() throws {
         #expect(JournalEntry(text: "").sizeLabel == nil)
         #expect(JournalEntry(text: "   \n  ").sizeLabel == nil)

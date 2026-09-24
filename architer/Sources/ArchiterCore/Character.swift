@@ -433,6 +433,25 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
         return words == 1 ? "1 word" : "\(words) words"
     }
 
+    /// Case-insensitive filter match over date, title, and body (the
+    /// 2.54.0 rule, moved model-side in 2.63.0 so the view, the
+    /// copy-filtered export, and the tests agree). Blank matches all.
+    public func matchesFilter(_ query: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return q.isEmpty
+            || title.lowercased().contains(q)
+            || date.lowercased().contains(q)
+            || text.lowercased().contains(q)
+    }
+
+    /// Filtered-journal share block (2.63.0): every given entry's share
+    /// block in the given order, joined by blank lines - what the
+    /// journal's "Copy filtered" button puts on the pasteboard while
+    /// the header filter is active.
+    public static func shareText(entries: [JournalEntry]) -> String {
+        entries.map { $0.shareText }.joined(separator: "\n\n")
+    }
+
     /// Lines containing the filter query, case-insensitive (2.60.0):
     /// the journal's search-as-you-type highlight shows the first hit
     /// as a snippet plus a count. Blank queries match nothing.

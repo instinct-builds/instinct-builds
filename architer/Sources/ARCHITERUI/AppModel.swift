@@ -403,6 +403,14 @@ public final class AppModel: ObservableObject {
         pb.setString(entry.shareText, forType: .string)
     }
 
+    /// Copy-filtered export (2.63.0): the filter-visible entries as one
+    /// share block, in display order.
+    public func copyFilteredJournalToPasteboard(_ entries: [JournalEntry]) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(JournalEntry.shareText(entries: entries), forType: .string)
+    }
+
     /// One-tap session digest (2.49.0): drop a whole session's rolls into
     /// the journal as one entry, oldest first - the session-divider
     /// button's action, offered while auto-log is off.

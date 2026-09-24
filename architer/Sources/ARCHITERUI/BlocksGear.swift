@@ -216,15 +216,6 @@ public struct JournalBlock: View {
         _filter = State(initialValue: initialFilter)
     }
 
-    /// Case-insensitive match over date, title, and body (2.54.0); an
-    /// empty query keeps every entry visible.
-    private func matches(_ entry: JournalEntry, query: String) -> Bool {
-        query.isEmpty
-            || entry.title.lowercased().contains(query)
-            || entry.date.lowercased().contains(query)
-            || entry.text.lowercased().contains(query)
-    }
-
     /// 2.60.0: the query rendered with a brass wash behind each hit,
     /// so matching text stands out inside the snippet line.
     private func highlighted(_ line: String, query: String) -> Text {
@@ -250,7 +241,7 @@ public struct JournalBlock: View {
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
         BlockCard(title: "Journal") {
             ForEach($character.journal) { $entry in
-                if matches(entry, query: query) {
+                if entry.matchesFilter(query) {
                 let long = entry.isLong
                 let collapsed = (entry.isCollapsed ?? false) && long
                 let pinned = entry.isPinned ?? false
@@ -381,13 +372,23 @@ public struct JournalBlock: View {
                 Button("Copy today") { model.copySessionRecapToPasteboard(character) }
                     .controlSize(.small)
                     .help("Copy today's journal entries and rolls as one shareable recap")
+                // 2.63.0: while the filter is active, copy only the
+                // visible entries as one share block.
+                if !query.isEmpty {
+                    Button("Copy filtered") {
+                        model.copyFilteredJournalToPasteboard(
+                            character.journal.filter { $0.matchesFilter(query) })
+                    }
+                    .controlSize(.small)
+                    .help("Copy the filter-visible entries (head + body) as one text block")
+                }
             }
         } trailing: {
             HStack(spacing: Theme.Gap.sm) {
                 // 2.54.0: filter the journal by date/title/body;
                 // display-only, pairs with collapse-all for scanning.
                 if !query.isEmpty {
-                    let shown = character.journal.filter { matches($0, query: query) }.count
+                    let shown = character.journal.filter { $0.matchesFilter(query) }.count
                     Text("\(shown)/\(character.journal.count)")
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkFaint)

@@ -280,6 +280,11 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: width, name: "journal-highlight", outDir: outDir)
+        // 2.63.0 proof: the filtered journal as one share block -
+        // exactly what "Copy filtered" puts on the pasteboard.
+        try? JournalEntry.shareText(entries: sel.journal.filter { $0.matchesFilter("fire bolt") })
+            .write(to: URL(fileURLWithPath: "\(outDir)/journal-filtered-copy.txt"),
+                   atomically: true, encoding: .utf8)
         // 2.59.0 proof: the From template menu stamps a combat debrief
         // outline in as a new entry - section headers prefilled, stamped
         // today, appended last (the recap below counts 15).
