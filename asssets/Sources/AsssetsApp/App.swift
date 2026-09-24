@@ -2001,20 +2001,24 @@ extension StudioLibrary {
 
     /// Demo: the lobby board arranged in two sections, two loose cards selected and caught mid-drag on a guide.
     func makeDemoSections() -> UUID {
-        let all = catalog.assets
-        func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
+        // Resolved up front: the board closure is nonisolated and can't call back into main-actor helpers.
+        let files = ["cosmetic-plinth-mockup.png", "device-stage-mockup.png", "album-gatefold-mockup.png",
+                     "sandstone-4k.png", "prismatic-foil-4k.png", "paper-grain-4k.png", "motion-loop-01.mp4"]
+        var found: [String: StudioAsset] = [:]
+        for f in files { found[f] = catalog.assets.first { $0.importedPath?.hasSuffix(f) == true } }
+        let byFile = found
         var id = UUID()
         var loose: Set<UUID> = []
         mutate { c in
             id = c.createBoard(named: "Lobby Sections")
             _ = c.updateBoard(id) { b in
                 func put(_ f: String, _ x: Double, _ y: Double, _ w: Double) -> UUID? {
-                    guard let a = find(f) else { return nil }
+                    guard let a = byFile[f] else { return nil }
                     return b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y))
                 }
                 let mock = [put("cosmetic-plinth-mockup.png", 60, 100, 360), put("device-stage-mockup.png", 440, 100, 260), put("album-gatefold-mockup.png", 440, 300, 260)].compactMap { $0 }
                 var mats = [put("sandstone-4k.png", 800, 100, 180), put("prismatic-foil-4k.png", 1000, 100, 180), put("paper-grain-4k.png", 800, 300, 180)].compactMap { $0 }
-                if let a = find("sandstone-4k.png"), let p = b.addPalette(a.palette, from: a.id, at: (x: 1000, y: 300)) { b.resize(p, w: 180, h: 180); mats.append(p) }
+                if let a = byFile["sandstone-4k.png"], let p = b.addPalette(a.palette, from: a.id, at: (x: 1000, y: 300)) { b.resize(p, w: 180, h: 180); mats.append(p) }
                 b.frame(around: Set(mock), label: "Mockups")
                 b.frame(around: Set(mats), label: "Materials")
                 if let clip = put("motion-loop-01.mp4", 300, 580, 220) { loose.insert(clip) }
