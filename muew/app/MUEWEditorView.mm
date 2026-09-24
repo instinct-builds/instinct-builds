@@ -81,7 +81,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
+        wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
@@ -723,7 +723,11 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
 - (NSRect)wtButton:(int)i { return NSMakeRect(40 + i * 51, [self top] - 250, 48, 20); }
-- (NSRect)wtModeTab:(int)i { return NSMakeRect(262 + i * 44, [self top] - 32, 40, 17); } // DRAW, HARM, 3D (0.20.0)
+- (NSRect)wtModeTab:(int)i { return NSMakeRect(258 + i * 35, [self top] - 32, 32, 17); } // DRAW, HARM, 3D (0.20.0), SPEC (0.31.0)
+// 0.31.0 SPECTRAL page geometry (inside the canvas): preview on the left, four bipolar bars and APPLY / RESET on the right.
+- (NSRect)wtSpecPreview { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 8, cv.origin.y + 8, 196, cv.size.height - 16); }
+- (NSRect)wtSpecBar:(int)i { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, NSMaxY(cv) - 22 - i * 22, 88, 6); }
+- (NSRect)wtSpecButton:(int)i { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272 + i * 66, cv.origin.y + 8, 60, 18); }
 - (NSRect)wtDoneRect { return NSMakeRect(400, [self top] - 32, 48, 17); }
 - (NSRect)modField:(int)j {
     int n = [self modFieldCount];
@@ -761,6 +765,16 @@ static NSColor* SourceColor(ModRoute::Source s) {
 static int& OscShape(VoiceParams& v, int o) { return o ? v.osc2Shape : v.osc1Shape; }
 static double& OscWtPos(VoiceParams& v, int o) { return o ? v.osc2WtPos : v.osc1WtPos; }
 static NSColor* OscColor(int o) { return o ? C(0x9d7df2) : C(0x5adac8); }
+// 0.31.0 SPECTRAL bars: FORMANT (st), STRETCH, TILT (dB/oct), ODD/EVEN, each mapped to -1..1 around the centre.
+static double& SpecField(SpectralProcess& sp, int i) { return i == 0 ? sp.formantSt : i == 1 ? sp.stretch : i == 2 ? sp.tiltDb : sp.oddEven; }
+static double SpecRange(int i) { return i == 0 ? 24.0 : i == 1 ? 0.5 : i == 2 ? 12.0 : 1.0; }
+static NSString* SpecValueText(const SpectralProcess& sp, int i) {
+    if (i == 0) return sp.formantSt == 0 ? @"0 st" : [NSString stringWithFormat:@"%+.0f st", sp.formantSt];
+    if (i == 1) return sp.stretch == 0 ? @"0" : [NSString stringWithFormat:@"%+.2f", sp.stretch];
+    if (i == 2) return sp.tiltDb == 0 ? @"0 dB" : [NSString stringWithFormat:@"%+.1f dB", sp.tiltDb];
+    if (sp.oddEven == 0) return @"BOTH";
+    return [NSString stringWithFormat:@"%@ %.0f%%", sp.oddEven < 0 ? @"ODD" : @"EVEN", std::fabs(sp.oddEven) * 100];
+}
 static NSArray<NSString*>* WtButtonLabels() { return @[@"+ ADD", @"DUP", @"DELETE", @"MORPH", @"SMOOTH", @"NORMAL", @"IMPORT", @"EXPORT"]; }
 // 0.20.0: the frame strip has 16 thumbs; tables of up to 64 frames spread them evenly.
 static int ThumbFrame(int i, int n) { return n <= 16 ? i : (int)std::lround(i * (n - 1) / 15.0); }
@@ -915,8 +929,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
          NSMakeRect(40, NSMaxY(P) - 30, 150, 20), 11, col, NSFontWeightSemibold);
     Text([NSString stringWithFormat:@"FRAME %d / %d", wtFrame + 1, (int)t.size()],
          NSMakeRect(170, NSMaxY(P) - 29, 110, 20), 10, C(0x8793a3), NSFontWeightMedium);
-    NSArray* tabs = @[@"DRAW", @"HARM", @"3D"];
-    for (int i = 0; i < 3; ++i) {
+    NSArray* tabs = @[@"DRAW", @"HARM", @"3D", @"SPEC"];
+    for (int i = 0; i < 4; ++i) {
         NSRect r = [self wtModeTab:i];
         FillRound(r, 4, wtMode == i ? [col colorWithAlphaComponent:.28] : C(0x1b222c));
         TextA(tabs[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 11), 8, wtMode == i ? col : C(0x8793a3),
@@ -933,7 +947,46 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     for (int i = -1; i <= 1; ++i)
         FillRound(NSMakeRect(cv.origin.x + 6, NSMidY(cv) + i * cv.size.height * .42 - .5, cv.size.width - 12, 1), 0, i ? C(0x161c25) : C(0x222a36));
     const Frame& f = t[wtFrame];
-    if (wtMode == 2) { // 0.20.0 3D stack, back to front; each frame occludes the ones behind it
+    if (wtMode == 3) { // 0.31.0 SPECTRAL: preview of the processed frame over the original, bars, APPLY / RESET
+        FillRound(cv, 8, C(0x0a0d12)); // no DRAW grid behind the controls
+        const NSRect pv = [self wtSpecPreview];
+        FillRound(pv, 6, C(0x0d1117));
+        for (int i = 1; i < 4; ++i) FillRound(NSMakeRect(pv.origin.x + pv.size.width * i / 4, pv.origin.y + 4, 1, pv.size.height - 8), 0, C(0x161c25));
+        FillRound(NSMakeRect(pv.origin.x + 4, NSMidY(pv) - .5, pv.size.width - 8, 1), 0, C(0x222a36));
+        const Frame pf = processFrame(f, wtSpec);
+        const bool changed = !wtSpec.isIdentity();
+        StrokeFrame(f, NSInsetRect(pv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
+        if (changed) { StrokeFrame(pf, NSInsetRect(pv, 4, 6), .42, [col colorWithAlphaComponent:.22], 5); StrokeFrame(pf, NSInsetRect(pv, 4, 6), .42, col, 1.8); }
+        // Partial strip under the preview: the processed frame's first 24 harmonics.
+        std::vector<double> hs = frameHarmonics(pf, 24);
+        const CGFloat bw = (pv.size.width - 8) / 24.0;
+        for (int k = 0; k < 24; ++k)
+            FillRound(NSMakeRect(pv.origin.x + 4 + k * bw + 1, pv.origin.y + 3, bw - 2, std::max<CGFloat>(1, 14 * std::clamp(hs[k], 0.0, 1.0))), 1,
+                      [col colorWithAlphaComponent:.3 + .5 * std::clamp(hs[k], 0.0, 1.0)]);
+        TextA(changed ? @"PREVIEW" : @"FRAME", NSMakeRect(pv.origin.x + 6, NSMaxY(pv) - 14, 80, 10), 7, changed ? col : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
+        NSArray* names = @[@"FORMANT", @"STRETCH", @"TILT", @"ODD/EVEN"];
+        for (int i = 0; i < 4; ++i) {
+            const NSRect bar = [self wtSpecBar:i];
+            TextA(names[i], NSMakeRect(cv.origin.x + 214, bar.origin.y - 2, 56, 10), 7.5, C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentLeft);
+            FillRound(bar, 3, C(0x1a212b));
+            const double v = std::clamp(SpecField(wtSpec, i) / SpecRange(i), -1.0, 1.0);
+            const CGFloat mid = NSMidX(bar), x = mid + v * bar.size.width / 2;
+            FillRound(NSMakeRect(std::min(mid, x), bar.origin.y, std::max<CGFloat>(1, std::fabs(x - mid)), bar.size.height), 3, [col colorWithAlphaComponent:wtSpecDrag == i ? .95 : .7]);
+            FillRound(NSMakeRect(mid - .5, bar.origin.y - 2, 1, bar.size.height + 4), 0, C(0x3a4452));
+            FillRound(NSMakeRect(x - 4, NSMidY(bar) - 4, 8, 8), 4, v == 0 ? C(0x5f6b7b) : C(0xeaf1f8));
+            TextA(SpecValueText(wtSpec, i), NSMakeRect(NSMaxX(bar) + 4, bar.origin.y - 2.5, 50, 11), 8, v == 0 ? C(0x5f6b7b) : C(0xe6ebf1), NSFontWeightSemibold, NSTextAlignmentRight);
+        }
+        TextA([NSString stringWithFormat:@"APPLIES TO ALL %d FRAMES", (int)t.size()], NSMakeRect(cv.origin.x + 214, cv.origin.y + 31, 190, 10), 7,
+              C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentLeft);
+        for (int i = 0; i < 2; ++i) {
+            const NSRect b = [self wtSpecButton:i];
+            const bool live = changed;
+            if (i == 0) FillRound(b, 4, live ? col : C(0x1b222c));
+            else { FillRound(b, 4, C(0x1b222c)); }
+            TextA(i == 0 ? @"APPLY" : @"RESET", NSMakeRect(b.origin.x, b.origin.y + 4, b.size.width, 11), 8,
+                  i == 0 ? (live ? C(0x0b0e13) : C(0x5f6b7b)) : (live ? C(0xc9d2dd) : C(0x5f6b7b)), NSFontWeightBold, NSTextAlignmentCenter);
+        }
+    } else if (wtMode == 2) { // 0.20.0 3D stack, back to front; each frame occludes the ones behind it
         const int n = (int)t.size();
         [NSGraphicsContext saveGraphicsState];
         [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(cv, 1, 1) xRadius:7 yRadius:7] addClip];
@@ -2832,7 +2885,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 - (void)importTable {
     NSOpenPanel* op = [NSOpenPanel openPanel];
     op.allowedFileTypes = @[@"wav", @"wave", @"aif", @"aiff", @"aifc"];
-    op.message = @"Choose a WAV or AIFF: a wavetable (2048-sample frames), a single cycle, or any pitched sound to slice into up to 64 frames.";
+    op.message = @"Choose a WAV or AIFF: a wavetable (2048-sample frames), a single cycle, any pitched sound to slice into up to 64 frames, or a longer unpitched texture to resynthesize as a moving table.";
     if ([op runModal] != NSModalResponseOK || !op.URL) return;
     if (![self importTableFile:op.URL.path]) NSBeep();
 }
@@ -2898,11 +2951,37 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     [self setNeedsDisplay:YES];
 }
 
+- (void)specDragTo:(NSPoint)p { // 0.31.0: bipolar bar, centre = 0; snaps to 0 near the centre
+    const NSRect bar = [self wtSpecBar:wtSpecDrag];
+    double v = std::clamp((p.x - NSMidX(bar)) / (bar.size.width / 2), -1.0, 1.0);
+    if (std::fabs(v) < 0.04) v = 0;
+    double val = v * SpecRange(wtSpecDrag);
+    if (wtSpecDrag == 0) val = std::round(val); // whole semitones
+    else if (wtSpecDrag == 2) val = std::round(val * 2) / 2;
+    else val = std::round(val * 100) / 100;
+    SpecField(wtSpec, wtSpecDrag) = val;
+    [self setNeedsDisplay:YES];
+}
+- (NSString*)muewSpecText {
+    const int n = (wtEdit >= 0 && wtEdit <= 1) ? (int)current.tables[wtEdit].size() : 0;
+    const double c = n ? frameCentroid(current.tables[wtEdit][std::clamp(wtFrame, 0, n - 1)]) : 0;
+    return [NSString stringWithFormat:@"mode=%d formant=%.1f stretch=%.2f tilt=%.1f oddeven=%.2f frames=%d centroid=%.3f", wtMode, wtSpec.formantSt, wtSpec.stretch, wtSpec.tiltDb, wtSpec.oddEven, n, c];
+}
 - (void)tableMouseDown:(NSPoint)p {
     TableFrames& t = current.tables[wtEdit];
     if (NSPointInRect(p, [self wtDoneRect])) { wtEdit = -1; [self setNeedsDisplay:YES]; return; }
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }
+    if (wtMode == 3 && NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { // 0.31.0 SPECTRAL page
+        for (int i = 0; i < 4; ++i)
+            if (NSPointInRect(p, NSInsetRect([self wtSpecBar:i], -6, -7))) { wtSpecDrag = i; [self specDragTo:p]; return; }
+        if (NSPointInRect(p, [self wtSpecButton:0]) && !wtSpec.isIdentity()) {
+            t = processTable(t, wtSpec); wtSpec = SpectralProcess{};
+            edited = true; [self applySound]; [self setNeedsDisplay:YES]; return;
+        }
+        if (NSPointInRect(p, [self wtSpecButton:1])) { wtSpec = SpectralProcess{}; [self setNeedsDisplay:YES]; return; }
+        return; // the SPECTRAL page never draws into the frame
+    }
     for (int i = 0; i < std::min((int)t.size(), 16); ++i)
         if (NSPointInRect(p, [self wtThumb:i])) { [self selectTableFrame:ThumbFrame(i, (int)t.size())]; return; }
     if (wtMode == 2 && NSPointInRect(p, [self wtCanvas])) { // 3D: pick the frame whose wave row is under the pointer
@@ -3419,6 +3498,7 @@ static int SortForColumn(int c) {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
     if (wtDrawing && wtEdit >= 0) { [self tableStrokeTo:p first:NO]; return; }
+    if (wtSpecDrag >= 0 && wtEdit >= 0) { [self specDragTo:p]; return; } // 0.31.0
     if (wtPosDrag >= 0) { // WT POS bar: the full bar width is 0..100%
         OscWtPos(current.voice, wtPosDrag) = std::clamp(dragValue + (p.x - dragStart.x) / ([self wtPosBar:wtPosDrag].size.width * scale / 150.0), 0.0, 1.0);
         edited = true;
@@ -3527,6 +3607,7 @@ static int SortForColumn(int c) {
 
 - (void)mouseUp:(NSEvent*)e {
     if (wtDrawing) { wtDrawing = false; [self applySound]; } // one engine update per stroke
+    if (wtSpecDrag >= 0) { wtSpecDrag = -1; [self setNeedsDisplay:YES]; } // 0.31.0
     if (wtPosDrag >= 0 && host) host->parameterGesture(wtPosDrag ? params::WtPosB : params::WtPosA, false);
     wtPosDrag = -1;
     if (dragSource >= 0 && dropKnob >= 0) { // drop a source on a knob: new route (or reuse)

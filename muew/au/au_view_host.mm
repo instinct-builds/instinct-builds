@@ -33,6 +33,7 @@
 #include "preset.h"
 #include "au_params.h"
 #include "ui_model.h"
+#include "spectral_process.h"
 #include <cstdio>
 #include <cmath>
 #include <string>
@@ -360,7 +361,7 @@ int main() {
             NSPoint dup = NSMakePoint(40 + 51 + 24, t - 250 + 10);        // DUP
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, dup, w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, dup, w)];
-            NSPoint harm = NSMakePoint(262 + 44 + 20, t - 32 + 8);        // HARM tab (tabs moved left for 3D in 0.20.0)
+            NSPoint harm = NSMakePoint(258 + 35 + 16, t - 32 + 8);        // HARM tab (0.31.0: four tabs, 35 pt pitch)
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, harm, w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, harm, w)];
             NSPoint h5 = NSMakePoint(40 + 4.5 * (408 / 32.0), t - 184 + 16 + (138 - 26) * .9); // harmonic 5 at 90%
@@ -725,7 +726,7 @@ int main() {
             printf("import: %d, OSC A shape %d, %zu frames, WT POS %.3f\n", (int)imported, im.voice.osc1Shape, im.tables[0].size(), im.voice.osc1WtPos);
             Check(imported && ok2 && im.tables[0].size() == 64 && im.voice.osc1Shape == muew::kCustomShape && im.voice.osc1WtPos == 0,
                   "IMPORT sliced the pitched AIFF into 64 frames of OSC A's table in the AU");
-            Click(view, w, NSMakePoint(262 + 2 * 44 + 20, t - 32 + 8.5));  // 3D tab
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));  // 3D tab (0.31.0 geometry)
             const double d = 40.0 / 63, rw = 408 * .6, rh = 138 * .34;       // frame 41's row in the stack
             NSPoint row = NSMakePoint(40 + 14 + d * (408 - rw - 28) + rw / 2, t - 184 + 18 + d * (138 - rh - 30) + rh / 2);
             Click(view, w, row);
@@ -737,6 +738,34 @@ int main() {
             muew::Preset back;
             std::string txt = ok ? st.serialize() : "";
             Check(ok && back.parse(txt) && back == st && txt.find("\nwt1 64 ") != std::string::npos, "the AU state saves the 64-frame table");
+            fflush(stdout);
+        });
+        After(6.9992, ^{ // 0.31.0 SPECTRAL page: FORMANT +12 and TILT -6 on the imported 64-frame table, preview, APPLY
+            CGFloat t = view.bounds.size.height - 100;
+            const CGFloat top = t - 46; // canvas top edge
+            muew::Preset st0; const bool ok0 = State(st0);
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, t - 32 + 8.5));      // SPEC tab
+            Click(view, w, NSMakePoint(40 + 272 + 44 + 22, top - 22 + 3));      // FORMANT bar at +50%: +12 st
+            Click(view, w, NSMakePoint(40 + 272 + 44 - 22, top - 22 - 44 + 3)); // TILT bar at -50%: -6 dB/oct
+            auto specText = [&]() -> std::string {
+                NSString* s2 = [view respondsToSelector:NSSelectorFromString(@"muewSpecText")] ? [view valueForKey:@"muewSpecText"] : @"";
+                return s2.UTF8String ?: "";
+            };
+            const std::string before = specText();
+            Snapshot(view, "MUEW_SPEC_PNG", "SPECTRAL page snapshot written");
+            Check(before.find("mode=3 formant=12.0 stretch=0.00 tilt=-6.0 oddeven=0.00 frames=64") != std::string::npos, "SPECTRAL bars set FORMANT +12 st and TILT -6 dB");
+            muew::Preset mid; const bool ok1 = State(mid);
+            Check(ok0 && ok1 && mid.tables[0] == st0.tables[0], "the preview leaves the AU's table untouched until APPLY");
+            Click(view, w, NSMakePoint(40 + 272 + 30, t - 184 + 8 + 9));       // APPLY
+            muew::Preset st; const bool ok2 = State(st);
+            muew::SpectralProcess sp; sp.formantSt = 12; sp.tiltDb = -6;
+            const double want = ok0 && st0.tables[0].size() > 32 ? muew::frameCentroid(muew::processFrame(st0.tables[0][32], sp)) : 0;
+            const double got = ok2 && st.tables[0].size() > 32 ? muew::frameCentroid(st.tables[0][32]) : -1;
+            const std::string after = specText();
+            printf("spectral31: %s -> %s; frame 33 centroid %.3f (expected %.3f)\n", before.c_str(), after.c_str(), got, want);
+            Check(ok2 && st.tables[0].size() == 64 && std::fabs(got - want) < 0.02 * want + 0.01, "APPLY processed all 64 frames in the AU's table");
+            Check(after.find("formant=0.0 stretch=0.00 tilt=0.0 oddeven=0.00") != std::string::npos, "APPLY clears the pending process");
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab for the steps that follow
             fflush(stdout);
         });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars

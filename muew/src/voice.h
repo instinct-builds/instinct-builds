@@ -208,7 +208,7 @@ public:
         lfo1_.setSampleRate(sr); lfo2_.setSampleRate(sr);
         lfo3_.setSampleRate(sr); lfo4_.setSampleRate(sr); env3_.setSampleRate(sr);
         mseg1_.setSampleRate(sr);
-        sub_.setSampleRate(sr); sub_.setTable(table);
+        sub_.setSampleRate(hq_ ? 2 * sr : sr); sub_.setTable(table);
         noise_.setSampleRate(sr);
         dcL_.setSampleRate(sr); dcR_.setSampleRate(sr);
         f2L_.setSampleRate(sr); f2R_.setSampleRate(sr);
@@ -355,7 +355,7 @@ public:
         filter_.reset(); filterR_.reset(); f2L_.reset(); f2R_.reset();
         dcL_.reset(); dcR_.reset();
         glideLeft_ = 0; glideSemi_ = 0.0;
-        hbL_.reset(); hbR_.reset(); // 0.30.0
+        hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset(); // 0.30.0 / 0.31.0
     }
     // 0.30.0: oscillator oversampling on/off (the synth passes the effective QUALITY).
     void setHQ(bool on) {
@@ -363,7 +363,8 @@ public:
         hq_ = on;
         const double osr = on ? 2.0 * sr_ : sr_;
         for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setSampleRate(osr); osc2_[i].setSampleRate(osr); }
-        hbL_.reset(); hbR_.reset();
+        sub_.setSampleRate(osr); // 0.31.0
+        hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset();
     }
     bool hq() const { return hq_; }
     static constexpr double kHQLatency = Halfband2x::kLatency * 0.5; // 7.5 samples at 1x
@@ -488,12 +489,16 @@ public:
             const float lv = (float)std::clamp(params_.subLevel + modSum(ModRoute::Dest::SubLevel), 0.0, 1.0);
             sub_.setFrequency(baseFreq_ * (params_.subOctave >= 2 ? 0.25 : 0.5));
             sub_.setDetuneSemitones(pitch1);
-            const float sv = sub_.process() * lv * 0.8f;
+            // 0.31.0: in HQ the sub runs at 2x through its own halfband, so it lines up with the oscillators (7.5 samples).
+            float sub = sub_.process();
+            if (hq_) { const float sub2 = sub_.process(); sub = (float)hbSub_.down(sub, sub2); }
+            const float sv = sub * lv * 0.8f;
             l += sv; r += sv;
         }
         if (usesNoise_) {
             const float lv = (float)std::clamp(params_.noiseLevel + modSum(ModRoute::Dest::NoiseLevel), 0.0, 1.0);
-            const float nv = noise_.process() * lv;
+            float nv = noise_.process() * lv;
+            if (hq_) nv = (float)hbNoise_.down(nv, nv); // 0.31.0: same 7.5-sample alignment as the oscillators
             l += nv; r += nv;
         }
         const float preL = l, preR = r;
@@ -562,6 +567,7 @@ private:
     double sr_ = 44100.0;
     bool hq_ = false;          // 0.30.0
     Halfband2x hbL_, hbR_;
+    Halfband2x hbSub_, hbNoise_; // 0.31.0 sub / noise alignment in HQ
     int note_ = -1;
     float velocity_ = 0.0f;
     double baseFreq_ = 440.0;

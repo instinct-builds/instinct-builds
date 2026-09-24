@@ -5,6 +5,7 @@
 #pragma once
 #import <AppKit/AppKit.h>
 #include "ui_model.h"
+#include "spectral_process.h"
 #include <set>
 #include <string>
 #include <vector>
@@ -107,6 +108,9 @@ struct MUEWEditorHost {
     double wtLastVal;
     bool wtDrawing;
     int wtPosDrag;
+    // 0.31.0 SPECTRAL page: pending whole-table process (APPLY writes it into the table) and the bar being dragged.
+    muew::SpectralProcess wtSpec;
+    int wtSpecDrag;
     // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE, 2 = ARP since 0.25.0).
     int filterPage;
     // 0.11.0 full browser: open flag, sort order (ui::SortMode), star

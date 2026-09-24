@@ -148,7 +148,43 @@ inline void alignFundamental(Frame& f, double phi = -M_PI / 2) {
     normalizeFrame(f);
 }
 
-struct ImportInfo { int frames = 0; double period = 0; bool pitched = false; bool layout2048 = false; };
+struct ImportInfo { int frames = 0; double period = 0; bool pitched = false; bool layout2048 = false; bool texture = false; };
+
+// 0.31.0 texture resynthesis: unpitched audio (noise, drums, pads, speech
+// without a steady pitch) becomes a moving table instead of one cycle. Each
+// frame takes a Hann-windowed 4096-point spectrum at its point in the file
+// and folds it onto the harmonic series of kTextureRefHz: partial k carries
+// the energy found between (k - 0.5) and (k + 0.5) x kTextureRefHz. Phases
+// are one fixed pseudo-random set shared by every frame, so WT POS sweeps
+// morph smoothly instead of flickering.
+constexpr double kTextureRefHz = 100.0;
+inline Frame textureFrame(const std::vector<float>& x, size_t at, double rate) {
+    constexpr int N = 4096, H = kFrameSize / 2;
+    std::vector<std::complex<double>> b(N);
+    for (int i = 0; i < N; ++i) {
+        const size_t j = at + i; const double w = 0.5 - 0.5 * std::cos(2 * M_PI * i / (N - 1));
+        b[i] = {j < x.size() ? w * x[j] : 0.0, 0.0};
+    }
+    fft(b, false);
+    std::vector<double> pw(H, 0.0);
+    const double binHz = rate / N;
+    for (int i = 1; i < N / 2; ++i) {
+        const int k = (int)std::lround(i * binHz / kTextureRefHz);
+        if (k >= 1 && k < H) pw[k] += std::norm(b[i]);
+    }
+    uint32_t r = 0x9e3779b9u; // fixed phase set
+    std::vector<std::complex<double>> s(kFrameSize);
+    for (int k = 1; k < H; ++k) {
+        r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+        const double ph = (r >> 8) * (2 * M_PI / 16777216.0);
+        s[k] = std::polar(std::sqrt(pw[k]), ph); s[kFrameSize - k] = std::conj(s[k]);
+    }
+    fft(s, true);
+    Frame f(kFrameSize);
+    for (int i = 0; i < kFrameSize; ++i) f[i] = (float)s[i].real();
+    normalizeFrame(f);
+    return f;
+}
 
 inline TableFrames importAudio(const std::vector<unsigned char>& d, ImportInfo* info = nullptr, int maxFrames = kMaxFrames) {
     std::vector<float> x; double rate = 44100;
@@ -187,6 +223,11 @@ inline TableFrames importAudio(const std::vector<unsigned char>& d, ImportInfo* 
                 alignFundamental(f);
                 out.push_back(f);
             }
+        } else if (x.size() >= 8192) { // 0.31.0: long unpitched audio resynthesizes as a texture table
+            inf.texture = true;
+            const int keep = std::min(maxFrames, std::max(2, (int)((x.size() - 4096) / 2048) + 1));
+            const double span = (double)(x.size() - 4096);
+            for (int k = 0; k < keep; ++k) out.push_back(textureFrame(x, (size_t)std::llround(keep == 1 ? 0 : span * k / (keep - 1)), rate));
         } else {
             out.push_back(frameFromCycle(x, 0, (double)std::min<size_t>(x.size(), 8192)));
         }
