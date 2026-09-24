@@ -1493,12 +1493,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     if (nf == 0) {
         using S = ModRoute::Source;
         NSString* note = sel == S::Velocity ? @"How hard each note is played."
-                       : sel == S::ModWheel ? @"The mod wheel (MIDI CC 1)."
-                       : sel == S::Aftertouch ? @"Key pressure: per note or channel."
-                       : sel == S::PitchBend ? @"Bend lever. Pitch follows BEND \u00B1 st."
-                       : sel == S::Keytrack ? @"Note position: 0 at C3, \u00B1 over 5 octaves."
+                       : sel == S::ModWheel ? @"Mod wheel, MIDI CC 1."
+                       : sel == S::Aftertouch ? @"Key pressure, note or channel."
+                       : sel == S::PitchBend ? @"Pitch lever, range set by BEND."
+                       : sel == S::Keytrack ? @"Note pitch, centred at C3."
                        : @"Follows its macro knob.";
-        TextA(note, NSMakeRect(304, 80, 148, 24), 9, C(0x6f7b8b), NSFontWeightMedium, NSTextAlignmentCenter);
+        TextFit(note, NSMakeRect(304, 92, 148, 12), 9, 7, C(0x6f7b8b), NSFontWeightMedium, NSTextAlignmentCenter); // 0.24.0: shrink, never "..."
     }
 }
 - (void)drawDragBadge {
