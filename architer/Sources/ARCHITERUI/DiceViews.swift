@@ -297,6 +297,13 @@ public struct HistoryListView: View {
                                     .foregroundStyle(Theme.inkFaint)
                                     .help("Cancel")
                             } else {
+                                // 2.70.0: copy the session as plain
+                                // text - title, stats line, rolls.
+                                Button { model.copySessionToPasteboard(session) }
+                                    label: { Image(systemName: "doc.on.doc") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.inkFaint)
+                                    .help("Copy this session's rolls as text")
                                 // 2.67.0: rename pencil - only datable
                                 // sessions carry a stable key to name.
                                 if session.key != nil {

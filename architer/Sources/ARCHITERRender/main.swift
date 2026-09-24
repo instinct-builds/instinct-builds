@@ -205,6 +205,11 @@ func run(model: AppModel, character: Character, outDir: String) {
             try? (namedDigest.title + "\n\n" + namedDigest.text)
                 .write(to: URL(fileURLWithPath: "\(outDir)/history-session-named-digest.md"),
                        atomically: true, encoding: .utf8)
+            // 2.70.0 proof: the divider's copy button text - title,
+            // stats line, rolls oldest first.
+            try? sessionShareText(model.namedSessions(crafted)[0])
+                .write(to: URL(fileURLWithPath: "\(outDir)/session-copy.txt"),
+                       atomically: true, encoding: .utf8)
         }
         model.autoLogRollsToJournal = true
     }

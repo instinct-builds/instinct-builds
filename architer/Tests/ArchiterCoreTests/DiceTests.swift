@@ -770,4 +770,20 @@ struct SessionSegmentTests {
         let quiet = sessionStats(RollSession(number: 1, title: "t", key: nil, rolls: [plain]))
         #expect(quiet.line == "1 roll \u{00B7} high 10 \u{00B7} low 10")
     }
+
+    // 2.70.0: share text = title (custom name included) + stats line +
+    // rolls oldest first, one history line each.
+    @Test func sessionShareTextCarriesStatsAndRolls() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 17))]
+        let session = sessionSegments(rolls, now: now, calendar: cal)[0]
+            .renamed("Night watch")
+        let text = sessionShareText(session)
+        #expect(text.hasPrefix("Night watch\n2 rolls \u{00B7} high 10 \u{00B7} low 10\n\n"))
+        let lines = text.components(separatedBy: "\n")
+        #expect(lines[2].contains("2d6: 10"))
+        #expect(lines[3].contains("d20: 10"))
+    }
 }

@@ -306,6 +306,14 @@ public struct SessionStats: Equatable, Sendable {
     }
 }
 
+/// Share text for one session (2.70.0): the session's title (custom
+/// name included), its stats line (2.69.0), then its rolls oldest first
+/// - a paste-ready session record without filing a journal digest.
+public func sessionShareText(_ session: RollSession) -> String {
+    session.title + "\n" + sessionStats(session).line + "\n\n"
+        + session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n") + "\n"
+}
+
 /// The stats line for one session segment (2.69.0). Totals read
 /// RollResult.total (modifier included); crits count kept d20 faces.
 public func sessionStats(_ session: RollSession) -> SessionStats {
