@@ -29,8 +29,8 @@ static std::vector<double> runMseg(MSEG& m, int n, int releaseAt = -1) {
 }
 
 int main() {
-    check((int)S::MSEG2 == 14 && kModSources == 15, "MSEG 2 is appended as source 14");
-    check(ui::matrixSources().size() == 15 && ui::matrixSources()[7] == S::MSEG2 && std::string(ui::sourceBadge(S::MSEG2)) == "MS2"
+    check((int)S::MSEG2 == 14 && kModSources >= 15, "MSEG 2 is appended as source 14");
+    check(ui::matrixSources().size() == 19 && ui::matrixSources()[7] == S::MSEG2 && std::string(ui::sourceBadge(S::MSEG2)) == "MS2"
           && std::string(ui::sourceName(S::MSEG2)) == "MSEG 2", "MSEG 2 badge sits next to MSEG 1");
 
     // Segment curves.

@@ -31,7 +31,7 @@ struct Listener {
     void* userData;
 };
 
-enum class EventKind { NoteOn, NoteOff };
+enum class EventKind { NoteOn, NoteOff, Wheel, Aftertouch, PolyAftertouch, Bend, Sustain, AllNotesOff }; // 0.24.0 performance events
 struct ScheduledEvent {
     UInt32 offset;
     EventKind kind;
@@ -91,6 +91,10 @@ struct MUEWInstance {
     // set them without locking, including a host's render thread; they are
     // folded into `state` under stateLock at the next block or state read.
     std::atomic<float> paramValues[muew::params::Count];
+    // 0.24.0: performance controls as last applied on the render thread (editor meters).
+    std::atomic<float> perfWheel{0}, perfAT{0}, perfBend{0};
+    std::atomic<int> perfNote{-1};
+    std::atomic<unsigned> perfSustain{0};
     std::atomic<bool> paramsDirty{false};
 
     MUEWInstance() { syncParamsFromState(); }
@@ -321,6 +325,11 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
                 *outDataSize = sizeof(UInt32); if (outWritable) *outWritable = false; return noErr;
             }
             break;
+        case kMUEWProperty_Performance: // 0.24.0
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(MUEWPerformance); if (outWritable) *outWritable = false; return noErr;
+            }
+            break;
         case kAudioUnitProperty_HostCallbacks:
             if (inScope == kAudioUnitScope_Global) {
                 *outDataSize = sizeof(HostCallbackInfo); if (outWritable) *outWritable = true; return noErr;
@@ -497,6 +506,14 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 return noErr;
             }
             break;
+        case kMUEWProperty_Performance: // 0.24.0
+            if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(MUEWPerformance)) {
+                MUEWPerformance pf{u->perfWheel.load(), u->perfAT.load(), u->perfBend.load(), u->perfNote.load(), u->perfSustain.load()};
+                *static_cast<MUEWPerformance*>(outData) = pf;
+                *ioDataSize = sizeof(MUEWPerformance);
+                return noErr;
+            }
+            break;
         case kAudioUnitProperty_HostCallbacks:
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(HostCallbackInfo)) {
                 std::memcpy(outData, &u->hostCallbacks, sizeof(HostCallbackInfo));
@@ -657,14 +674,27 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         if (at > cursor) u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(at - cursor));
         do {
             const auto& e = u->events[consumed];
-            if (e.kind == EventKind::NoteOn) u->synth.noteOn(e.note, e.velocity);
-            else u->synth.noteOff(e.note);
+            switch (e.kind) {
+            case EventKind::NoteOn: u->synth.noteOn(e.note, e.velocity); break;
+            case EventKind::NoteOff: u->synth.noteOff(e.note); break;
+            case EventKind::Wheel: u->synth.setModWheel(e.velocity); break;
+            case EventKind::Aftertouch: u->synth.setAftertouch(e.velocity); break;
+            case EventKind::PolyAftertouch: u->synth.setPolyAftertouch(e.note, e.velocity); break;
+            case EventKind::Bend: u->synth.setPitchBend(e.velocity); break;
+            case EventKind::Sustain: u->synth.setSustain(e.velocity > 0.5f); break;
+            case EventKind::AllNotesOff: u->synth.allNotesOff(); break;
+            }
             ++consumed;
         } while (consumed < u->events.size() && u->events[consumed].offset == at);
         cursor = at;
     }
     if (cursor < inNumberFrames)
         u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(inNumberFrames - cursor));
+    if (consumed > 0) { // 0.24.0 meters
+        const auto& pf = u->synth.performance();
+        u->perfWheel = (float)pf.wheel; u->perfAT = (float)pf.aftertouch; u->perfBend = (float)pf.bend;
+        u->perfNote = u->synth.lastNote(); u->perfSustain = u->synth.sustain() ? 1u : 0u;
+    }
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));
     for (auto& e : u->events) e.offset -= inNumberFrames;
     notifyFlags = (ioActionFlags ? *ioActionFlags : 0) | kAudioUnitRenderAction_PostRender;
@@ -716,6 +746,18 @@ OSStatus MUEWMIDIEvent(void* self, UInt32 inStatus, UInt32 inData1, UInt32 inDat
         u->events.push_back({inOffsetSampleFrame, EventKind::NoteOn, static_cast<int>(inData1), static_cast<float>(inData2) / 127.0f});
     } else if (type == 0x80 || (type == 0x90 && inData2 == 0)) {
         u->events.push_back({inOffsetSampleFrame, EventKind::NoteOff, static_cast<int>(inData1), 0.0f});
+    } else if (type == 0xB0) { // 0.24.0 controllers: mod wheel, sustain, all notes / sound off
+        if (inData1 == 1) u->events.push_back({inOffsetSampleFrame, EventKind::Wheel, 0, static_cast<float>(inData2 & 0x7F) / 127.0f});
+        else if (inData1 == 64) u->events.push_back({inOffsetSampleFrame, EventKind::Sustain, 0, inData2 >= 64 ? 1.0f : 0.0f});
+        else if (inData1 == 120 || inData1 == 123) u->events.push_back({inOffsetSampleFrame, EventKind::AllNotesOff, 0, 0.0f});
+    } else if (type == 0xD0) { // channel pressure
+        u->events.push_back({inOffsetSampleFrame, EventKind::Aftertouch, 0, static_cast<float>(inData1 & 0x7F) / 127.0f});
+    } else if (type == 0xA0) { // polyphonic key pressure
+        u->events.push_back({inOffsetSampleFrame, EventKind::PolyAftertouch, static_cast<int>(inData1 & 0x7F), static_cast<float>(inData2 & 0x7F) / 127.0f});
+    } else if (type == 0xE0) { // pitch bend, 14 bit, 8192 = center
+        const int raw = (static_cast<int>(inData2 & 0x7F) << 7) | static_cast<int>(inData1 & 0x7F);
+        const float b = raw >= 8192 ? (raw - 8192) / 8191.0f : (raw - 8192) / 8192.0f;
+        u->events.push_back({inOffsetSampleFrame, EventKind::Bend, 0, b});
     }
     return noErr;
 }

@@ -20,7 +20,7 @@ static std::vector<float> render(const Preset& p, int n, double bpm = 120) {
 
 int main() {
     check((int)S::FxLfo1 == 12 && (int)S::FxLfo2 == 13, "rack LFO sources are appended (12, 13)");
-    check(ui::matrixSources().size() == 15 && std::string(ui::sourceBadge(S::FxLfo1)) == "FXL1" && std::string(ui::sourceName(S::FxLfo2)) == "FX LFO 2",
+    check(ui::matrixSources().size() == 19 && std::string(ui::sourceBadge(S::FxLfo1)) == "FXL1" && std::string(ui::sourceName(S::FxLfo2)) == "FX LFO 2",
           "both rack LFOs are in the source badges");
 
     // Readouts: where a route does something.

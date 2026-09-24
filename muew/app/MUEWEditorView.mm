@@ -78,7 +78,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -378,7 +378,12 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)routeAux:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 174, r.origin.y + 4, 26, 14); }
 - (NSRect)pageTab:(int)i { return NSMakeRect(172 + i * 30, 234, 28, 14); }
 // Right: 15 source badges (2 x 8), preview, and the selected modulator's controls.
-- (NSRect)sourceBadge:(int)i { return NSMakeRect(304 + (i % 8) * 19, i < 8 ? 216 : 198, 17, 15); } // 2 pt gaps (0.18.0)
+- (NSRect)sourceBadge:(int)i { // 2 pt gaps (0.18.0); 0.24.0 performance badges (15-18) on a third row
+    if (i >= 15) return NSMakeRect(304 + (i - 15) * 19, 180, 17, 15);
+    return NSMakeRect(304 + (i % 8) * 19, i < 8 ? 216 : 198, 17, 15);
+}
+- (NSRect)bendChip { return NSMakeRect(384, 180, 68, 15); } // 0.24.0 pitch bend RANGE stepper
+- (NSRect)bendArrow:(int)d { NSRect c = [self bendChip]; return d < 0 ? NSMakeRect(c.origin.x, c.origin.y, 14, 15) : NSMakeRect(NSMaxX(c) - 14, c.origin.y, 14, 15); }
 // 0.17.0 MSEG editor: opens over the matrix like the FX detail panel.
 - (NSRect)msegPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)msegClose { NSRect r = [self msegPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
@@ -397,7 +402,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)lfoXPill:(int)j { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 104 + j * 48, r.origin.y + 10, 46, 17); }
 - (NSRect)msegLenPill { NSRect r = [self msegPanel]; return msegEdit >= 2 ? NSMakeRect(r.origin.x + 334, r.origin.y + 10, 44, 17) : NSMakeRect(r.origin.x + 328, r.origin.y + 10, 50, 17); }
 - (NSRect)msegSyncPill { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 381, r.origin.y + 10, 31, 17); }
-- (NSRect)modPreview { return NSMakeRect(304, 122, 148, 58); }
+- (NSRect)modPreview { return NSMakeRect(304, 122, 148, 44); } // 0.24.0: 14 pt shorter for the performance row
 // 0.9.0 oscillator displays and the wavetable editor that opens over the
 // OSCILLATORS panel.
 - (NSRect)oscDisplay:(int)o { return NSMakeRect(o ? 252 : 46, [self top] - 111, 190, 62); }
@@ -461,6 +466,7 @@ static NSColor* SourceColor(ModRoute::Source s) {
     if (s == ModRoute::Source::ModEnv || s == ModRoute::Source::Env3) return C(0xf2ab55);
     if (s == ModRoute::Source::MSEG1) return C(0x66e2d0);
     if (s == ModRoute::Source::Velocity) return C(0xc792ea);
+    if ((int)s >= (int)ModRoute::Source::ModWheel) return C(0xffd166); // 0.24.0 performance sources
     return C(0xf27a55); // macros
 }
 // Envelope stage fields for ENV 2 (0) / ENV 3 (1): A, D, S, R.
@@ -910,6 +916,51 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 }
 
 // Shape of a modulation source, drawn in its matrix slot.
+// 0.24.0 performance preview: a meter for WHL / AT / PB and the keyboard ramp for KEY, with the live value.
+- (void)perfPreview:(ModRoute::Source)src in:(NSRect)r color:(NSColor*)col {
+    using S = ModRoute::Source;
+    NSString* ro = @"";
+    if (src == S::Keytrack) {
+        const int keys = 21; // three octaves of white keys, C1..B3 style strip under the ramp
+        const CGFloat kw = r.size.width / keys;
+        for (int k = 0; k < keys; ++k) FillRound(NSMakeRect(r.origin.x + k * kw + .5, r.origin.y, kw - 1, 9), 1, C(0x2a323e));
+        NSBezierPath* ramp = [NSBezierPath bezierPath];
+        [ramp moveToPoint:NSMakePoint(r.origin.x, r.origin.y + 12)];
+        [ramp lineToPoint:NSMakePoint(NSMaxX(r), NSMaxY(r) - 2)];
+        [col setStroke]; ramp.lineWidth = 1.5; [ramp stroke];
+        const CGFloat cx = NSMidX(r); // C3 = 0
+        [[col colorWithAlphaComponent:.35] setStroke];
+        NSBezierPath* c3 = [NSBezierPath bezierPath]; [c3 moveToPoint:NSMakePoint(cx, r.origin.y)]; [c3 lineToPoint:NSMakePoint(cx, NSMaxY(r))]; c3.lineWidth = 1; [c3 stroke];
+        if (perfNote >= 0) {
+            const double k = std::clamp((perfNote - 60) / 60.0, -1.0, 1.0);
+            const CGFloat x = r.origin.x + (k + 1) * 0.5 * r.size.width, y = r.origin.y + 12 + (k + 1) * 0.5 * (r.size.height - 14);
+            [col setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(x - 3, y - 3, 6, 6)] fill];
+            ro = [NSString stringWithFormat:@"NOTE %d  %+.0f%%", perfNote, k * 100];
+        } else ro = @"0 AT C3";
+    } else {
+        const bool bip = src == S::PitchBend;
+        const double v = src == S::ModWheel ? perfShown.wheel : src == S::Aftertouch ? perfShown.aftertouch : perfShown.bend;
+        const NSRect bar = NSMakeRect(r.origin.x + 4, NSMidY(r) - 5, r.size.width - 8, 10);
+        FillRound(bar, 3, C(0x1c232d));
+        const CGFloat zero = bip ? NSMidX(bar) : bar.origin.x;
+        const CGFloat to = bip ? NSMidX(bar) + v * bar.size.width / 2 : bar.origin.x + v * bar.size.width;
+        if (std::fabs(to - zero) > 0.5) FillRound(NSMakeRect(std::min(zero, to), bar.origin.y, std::fabs(to - zero), bar.size.height), 3, col);
+        if (bip) FillRound(NSMakeRect(NSMidX(bar) - .5, bar.origin.y - 3, 1, bar.size.height + 6), .5, C(0x8793a3));
+        if (src == S::PitchBend) ro = [NSString stringWithFormat:@"%+.2f  (%+.1f ST)", v, v * current.voice.bendRange];
+        else ro = [NSString stringWithFormat:@"%.0f%%", v * 100];
+    }
+    TextA(ro, NSMakeRect(r.origin.x, NSMaxY(r) - 9, r.size.width, 10), 7, C(0xd5dce5), NSFontWeightBold, NSTextAlignmentRight);
+}
+- (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus {
+    if (p.wheel == perfShown.wheel && p.aftertouch == perfShown.aftertouch && p.bend == perfShown.bend && note == perfNote && sus == perfSustain) return;
+    perfShown = p; perfNote = note; perfSustain = sus;
+    [self setNeedsDisplay:YES];
+}
+// Read by the CI harness through KVC: the performance the editor is showing.
+- (NSString*)muewPerformanceText {
+    return [NSString stringWithFormat:@"sel=%s wheel=%.3f at=%.3f bend=%.3f note=%d sustain=%d range=%d", ui::sourceBadge(ui::matrixSources()[modSel]),
+            perfShown.wheel, perfShown.aftertouch, perfShown.bend, perfNote, perfSustain ? 1 : 0, current.voice.bendRange];
+}
 - (void)sourcePreview:(ModRoute::Source)src in:(NSRect)r color:(NSColor*)col {
     FillRound(NSInsetRect(r, -4, -4), 5, C(0x0f141b));
     const VoiceParams& v = current.voice;
@@ -924,6 +975,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         double t1 = a / total, t2 = (a + d) / total, t3 = 1.0 - rel / total;
         double sus = std::clamp(e3 ? v.env3S : v.modS, 0.0, 1.0) * 2 - 1;
         pts = {{0, -1}, {t1, 1}, {t2, sus}, {t3, sus}, {1, -1}};
+    } else if ((int)src >= (int)ModRoute::Source::ModWheel) { // 0.24.0: live value (WHL / AT 0..1, PB -1..1), KEY a ramp over the keys
+        [self perfPreview:src in:r color:col];
+        return;
     } else if (src == ModRoute::Source::Velocity) {
         pts = {{0, -1}, {1, 1}};
     } else if ((int)src >= (int)ModRoute::Source::Macro1 && (int)src <= (int)ModRoute::Source::Macro4) {
@@ -1374,11 +1428,25 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextFit(S(ui::sourceBadge(srcs[i])), NSMakeRect(bdg.origin.x + 1, bdg.origin.y + 2.5, bdg.size.width - 2, 10), 6.5, 4.75,
                 i == modSel ? C(0x0b0e13) : col, NSFontWeightBold, NSTextAlignmentCenter);
     }
+    { // 0.24.0 pitch bend RANGE stepper and the sustain pedal light
+        NSRect bc = [self bendChip];
+        NSColor* pc = SourceColor(ModRoute::Source::PitchBend);
+        FillRound(bc, 3, C(0x202630));
+        TextA(@"\u2039", NSMakeRect(bc.origin.x + 1, bc.origin.y + 1, 12, 13), 10, C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+        TextA(@"\u203A", NSMakeRect(NSMaxX(bc) - 13, bc.origin.y + 1, 12, 13), 10, C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+        TextA([NSString stringWithFormat:@"BEND \u00B1%d", std::clamp(current.voice.bendRange, 0, 24)], NSMakeRect(bc.origin.x + 12, bc.origin.y + 3.5, bc.size.width - 24, 10), 7,
+              pc, NSFontWeightBold, NSTextAlignmentCenter);
+    }
     ModRoute::Source sel = srcs[modSel];
     NSColor* scol = SourceColor(sel);
     NSRect pv = [self modPreview];
     [self sourcePreview:sel in:NSInsetRect(pv, 4, 4) color:scol];
     Text(S(ui::sourceName(sel)), NSMakeRect(pv.origin.x + 2, NSMaxY(pv) + 2, 90, 11), 8, C(0x8793a3), NSFontWeightSemibold);
+    if ((int)sel >= (int)ModRoute::Source::ModWheel && perfSustain) { // 0.24.0: sustain pedal down
+        NSRect pd = NSMakeRect(NSMaxX(pv) - 34, NSMaxY(pv) + 1, 34, 12);
+        FillRound(pd, 3, [scol colorWithAlphaComponent:.85]);
+        TextA(@"PEDAL", NSMakeRect(pd.origin.x, pd.origin.y + 2, pd.size.width, 9), 6.5, C(0x0b0e13), NSFontWeightBold, NSTextAlignmentCenter);
+    }
     if (IsMseg(sel) || IsLfo(sel)) { // the preview opens the MSEG / LFO editor
         bool open = msegEdit == EditIndex(sel);
         NSRect ed = NSMakeRect(NSMaxX(pv) - 34, NSMaxY(pv) + 1, 34, 12);
@@ -1423,7 +1491,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                 modFieldDrag == j ? scol : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentCenter);
     }
     if (nf == 0) {
-        NSString* note = sel == ModRoute::Source::Velocity ? @"How hard each note is played."
+        using S = ModRoute::Source;
+        NSString* note = sel == S::Velocity ? @"How hard each note is played."
+                       : sel == S::ModWheel ? @"The mod wheel (MIDI CC 1)."
+                       : sel == S::Aftertouch ? @"Key pressure: per note or channel."
+                       : sel == S::PitchBend ? @"Bend lever. Pitch follows BEND \u00B1 st."
+                       : sel == S::Keytrack ? @"Note position: 0 at C3, \u00B1 over 5 octaves."
                        : @"Follows its macro knob.";
         TextA(note, NSMakeRect(304, 80, 148, 24), 9, C(0x6f7b8b), NSFontWeightMedium, NSTextAlignmentCenter);
     }
@@ -1942,6 +2015,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         msegEdit = msegEdit == k ? -1 : k;
         if (msegEdit >= 0) fxDetail = -1;
         [self setNeedsDisplay:YES];
+        return YES;
+    }
+    if (NSPointInRect(p, [self bendChip])) { // 0.24.0 BEND RANGE: left third steps down, the rest up
+        const int d = p.x < [self bendChip].origin.x + 24 ? -1 : 1;
+        current.voice.bendRange = std::clamp(current.voice.bendRange + d, 0, 24);
+        for (int i = 0; i < (int)srcs.size(); ++i) if (srcs[i] == ModRoute::Source::PitchBend) modSel = i;
+        edited = true; [self applySound]; [self setNeedsDisplay:YES];
         return YES;
     }
     for (int i = 0; i < (int)srcs.size(); ++i)

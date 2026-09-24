@@ -70,6 +70,9 @@ struct MUEWEditorHost {
     int msegLoopEdge;
     int warpAmtDrag;  // 0.19.0: oscillator whose WARP 2 amount bar is being dragged, -1 none
     int filterXDrag;  // 0.21.0: FILTER 1 DRIVE / KEYTRACK / MORPH (0-2) or 0.22.0 F1 MIX / F2 MIX / BALANCE / F2 MORPH (3-6) bar being dragged, -1 none
+    muew::Performance perfShown; // 0.24.0 live MIDI performance (AU meters)
+    int perfNote;
+    bool perfSustain;
     int voiceDrag;   // 0.23.0 voice strip: GLIDE (0) or BLEND (1) bar being dragged, -1 none
     int lfoXDrag;    // 0.18.0 LFO editor: PHASE/DELAY/RISE pill being dragged (0-2), -1 none
     int routeDrag;
@@ -112,4 +115,6 @@ struct MUEWEditorHost {
 // the Imported bank (the browser's Import button after its file panel).
 - (void)setBrowserOpen:(bool)open;
 - (BOOL)importPresetFile:(NSString*)path;
+// 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
+- (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus;
 @end

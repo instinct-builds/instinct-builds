@@ -22,7 +22,8 @@ struct ModRoute {
                         Macro1 = 5, Macro2 = 6, Macro3 = 7, Macro4 = 8,
                         LFO3 = 9, LFO4 = 10, Env3 = 11, // 0.8.0: LFO 3/4, ENV 3
                         FxLfo1 = 12, FxLfo2 = 13,  // 0.15.0: rack LFOs (FX destinations only)
-                        MSEG2 = 14 } source;         // 0.17.0
+                        MSEG2 = 14,                  // 0.17.0
+                        ModWheel = 15, Aftertouch = 16, PitchBend = 17, Keytrack = 18 } source; // 0.24.0 MIDI performance
     enum class Dest { Osc1Pitch = 0, Osc2Pitch = 1, FilterCutoff = 2, Osc2Level = 3, FilterResonance = 4, Osc1Warp = 5, Osc2Warp = 6,
                       Osc1Unison = 7, Osc2Unison = 8, UnisonWidth = 9, // 0.7.0: unison detune A/B, stereo width (0..1 units)
                       DistDrive = 10,                                   // 0.7.0: FX-rack drive, macro sources only (global FX)
@@ -43,15 +44,19 @@ struct ModRoute {
     int aux = -1;
 };
 
-constexpr int kModSources = 15; // Source values 0..14
+constexpr int kModSources = 19; // Source values 0..18
 // Bipolar sources run -1..1; the rest 0..1.
 inline bool sourceBipolar(int s) {
     using S = ModRoute::Source;
     switch ((S)s) {
-    case S::LFO1: case S::LFO2: case S::LFO3: case S::LFO4: case S::MSEG1: case S::MSEG2: case S::FxLfo1: case S::FxLfo2: return true;
+    case S::LFO1: case S::LFO2: case S::LFO3: case S::LFO4: case S::MSEG1: case S::MSEG2: case S::FxLfo1: case S::FxLfo2:
+    case S::PitchBend: case S::Keytrack: return true; // 0.24.0
     default: return false;
     }
 }
+// 0.24.0 MIDI performance state shared by every voice (the synth owns it):
+// mod wheel and channel aftertouch 0..1, pitch bend -1..1.
+struct Performance { double wheel = 0.0, aftertouch = 0.0, bend = 0.0; };
 inline bool sourceIsRack(int s) { return s == (int)ModRoute::Source::FxLfo1 || s == (int)ModRoute::Source::FxLfo2; }
 // Aux level 0..1 from a source value.
 inline double auxLevel(int s, double v) { return sourceBipolar(s) ? std::clamp(0.5 * (v + 1.0), 0.0, 1.0) : std::clamp(v, 0.0, 1.0); }
@@ -137,6 +142,8 @@ struct VoiceParams {
     double glideTime = 0.0;     // seconds for a full glide, 0 = off
     bool glideLegato = false;   // glide only between overlapping notes
     int uniPhase = 0;           // 0 spread (fixed phases, retriggered), 1 random per note
+    // 0.24.0: pitch bend range in semitones (both directions).
+    int bendRange = 2;
 };
 
 constexpr int kMaxUnison = 8;
@@ -255,6 +262,7 @@ public:
         velocity_ = velocity;
         baseFreq_ = midiToFreq(note);
         glideLeft_ = 0; glideSemi_ = 0.0;
+        polyAT_ = -1.0;
         ampEnv_.noteOn();
         modEnv_.noteOn();
         resetLfos();
@@ -298,6 +306,10 @@ public:
         glideFrom(from);
     }
     double currentFreq() const { return baseFreq_; }
+    // 0.24.0: shared MIDI performance state and this voice's poly aftertouch (-1 = none, use channel pressure).
+    void setPerformance(const Performance* p) { perf_ = p; }
+    void setPolyAftertouch(double v) { polyAT_ = v; }
+    double polyAftertouch() const { return polyAT_; }
     bool gliding() const { return glideLeft_ > 0; }
 
     void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); mseg2_.release(); }
@@ -326,9 +338,12 @@ public:
         float mseg2 = usesMseg2_ ? mseg2_.process() : 0.0f;
 
         // Source values in Source order; the rack LFOs (12, 13) live in the FX rack.
+        const Performance& pf = perf_ ? *perf_ : kNoPerf;
         const double sv[kModSources] = {lfo, modEnv, velocity_, lfo2, mseg1,
                                         params_.macros[0], params_.macros[1], params_.macros[2], params_.macros[3],
-                                        lfo3, lfo4, env3, 0.0, 0.0, mseg2};
+                                        lfo3, lfo4, env3, 0.0, 0.0, mseg2,
+                                        pf.wheel, polyAT_ >= 0 ? polyAT_ : pf.aftertouch, pf.bend, // 0.24.0
+                                        note_ >= 0 ? std::clamp((note_ - 60) / 60.0, -1.0, 1.0) : 0.0};
         auto modSum = [&](ModRoute::Dest d) {
             double sum = 0.0;
             for (const auto& r : routes_) {
@@ -342,8 +357,12 @@ public:
             return sum;
         };
 
-        const double pitch1 = modSum(ModRoute::Dest::Osc1Pitch);
-        const double pitch2 = params_.osc2Detune + modSum(ModRoute::Dest::Osc2Pitch);
+        double pitch1 = modSum(ModRoute::Dest::Osc1Pitch);
+        double pitch2 = params_.osc2Detune + modSum(ModRoute::Dest::Osc2Pitch);
+        if (pf.bend != 0.0) { // 0.24.0 pitch bend moves both oscillators (and the sub, which follows A)
+            const double b = pf.bend * std::clamp(params_.bendRange, 0, 24);
+            pitch1 += b; pitch2 += b;
+        }
         const auto wm1 = static_cast<Oscillator::WarpMode>(params_.osc1WarpMode);
         const auto wm2 = static_cast<Oscillator::WarpMode>(params_.osc2WarpMode);
         const double warp1 = std::clamp(params_.osc1Warp + modSum(ModRoute::Dest::Osc1Warp), 0.0, 1.0);
@@ -487,6 +506,9 @@ private:
     // 0.23.0 glide state and the RANDOM unison phase generator.
     double glideTarget_ = 440.0, glideSemi_ = 0.0, glideStep_ = 0.0;
     int64_t glideLeft_ = 0;
+    const Performance* perf_ = nullptr; // 0.24.0
+    double polyAT_ = -1.0;
+    static inline const Performance kNoPerf{};
     uint32_t rng_ = 0x6d2b79f5u;
     double nextRand() { rng_ ^= rng_ << 13; rng_ ^= rng_ >> 17; rng_ ^= rng_ << 5; return (rng_ >> 8) * (1.0 / 16777216.0); }
 public:

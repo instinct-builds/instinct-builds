@@ -469,6 +469,61 @@ int main() {
         printf("sub level parameter, filter 2 via state and recall: ok\n");
     }
 
+    // 0.24.0 MIDI performance: pitch bend (RANGE 12) moves the pitch an
+    // octave, CC 1 / pressure / sustain reach the synth, the pedal holds a
+    // released key, CC 123 silences, and the performance property reports it.
+    {
+        muew::Preset p = muew::factoryPresets()[0];
+        p.voice.osc2Level = 0; p.voice.osc1Shape = 0; p.voice.filterCutoff = 16000; p.voice.ampR = 0.05; p.routes.clear(); p.fx = muew::FXParams{};
+        p.voice.bendRange = 12; p.voice.ampA = 0.005; p.voice.ampD = 0.2; p.voice.ampS = 0.8;
+        p.voice.osc1Unison = 1; p.voice.osc2Unison = 1; p.voice.subLevel = 0; p.voice.noiseLevel = 0; p.voice.filter2Type = 0;
+        auto cycles = [](const std::vector<float>& x) { int c = 0; for (size_t i = 1; i < x.size(); ++i) if (x[i - 1] <= 0 && x[i] > 0) ++c; return c; };
+        auto play = [&](bool bend, std::vector<float>& out, int note) -> bool {
+            AudioUnit t = openUnit();
+            if (!t) return false;
+            std::vector<float> bl(512), br(512);
+            bool ok = setState(t, p) && render(t, bl, br);
+            if (bend) ok = ok && MusicDeviceMIDIEvent(t, 0xE0, 0x7F, 0x7F, 0) == noErr; // full bend up
+            ok = ok && MusicDeviceMIDIEvent(t, 0x90, note, 110, 0) == noErr;
+            out.clear();
+            for (int i = 0; ok && i < 86; ++i) { ok = render(t, bl, br); if (i >= 8) out.insert(out.end(), bl.begin(), bl.end()); }
+            AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+            return ok;
+        };
+        std::vector<float> bent, octave;
+        if (!play(true, bent, 48) || !play(false, octave, 60)) { printf("FAIL: bend renders\n"); return 1; }
+        const int cb = cycles(bent), co = cycles(octave);
+        printf("pitch bend: note 48 bent +12 st = %d cycles, note 60 = %d cycles\n", cb, co);
+        if (std::abs(cb - co) > 1 || co < 100) { printf("FAIL: pitch bend range\n"); return 1; }
+
+        AudioUnit t = openUnit();
+        std::vector<float> bl(512), br(512);
+        bool ok = t && setState(t, p) && render(t, bl, br);
+        ok = ok && MusicDeviceMIDIEvent(t, 0xB0, 1, 64, 0) == noErr && MusicDeviceMIDIEvent(t, 0xD0, 100, 0, 0) == noErr
+                && MusicDeviceMIDIEvent(t, 0xE0, 0x00, 0x20, 0) == noErr && MusicDeviceMIDIEvent(t, 0xB0, 64, 127, 0) == noErr
+                && MusicDeviceMIDIEvent(t, 0x90, 57, 110, 0) == noErr && render(t, bl, br);
+        MUEWPerformance pf{}; UInt32 sz = sizeof(pf);
+        ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+        printf("performance: wheel %.3f, pressure %.3f, bend %.3f, note %d, sustain %u\n", pf.wheel, pf.aftertouch, pf.bend, (int)pf.lastNote, (unsigned)pf.sustain);
+        if (!ok || std::fabs(pf.wheel - 64 / 127.0f) > 1e-4 || std::fabs(pf.aftertouch - 100 / 127.0f) > 1e-4 || std::fabs(pf.bend + 0.5f) > 1e-3
+            || pf.lastNote != 57 || pf.sustain != 1) { printf("FAIL: performance controls\n"); return 1; }
+        ok = MusicDeviceMIDIEvent(t, 0x80, 57, 0, 0) == noErr;
+        for (int i = 0; ok && i < 100; ++i) ok = render(t, bl, br); // 1.2 s after key up, pedal down
+        const double held = energy(bl, 0, bl.size());
+        ok = ok && MusicDeviceMIDIEvent(t, 0xB0, 64, 0, 0) == noErr;
+        for (int i = 0; ok && i < 100; ++i) ok = render(t, bl, br);
+        const double released = energy(bl, 0, bl.size());
+        ok = ok && MusicDeviceMIDIEvent(t, 0x90, 60, 110, 0) == noErr && render(t, bl, br) && render(t, bl, br);
+        const double playing = energy(bl, 0, bl.size());
+        ok = ok && MusicDeviceMIDIEvent(t, 0xB0, 123, 0, 0) == noErr;
+        for (int i = 0; ok && i < 100; ++i) ok = render(t, bl, br);
+        const double off = energy(bl, 0, bl.size());
+        printf("sustain: held %.4f, after pedal up %.6f, new note %.4f, after CC123 %.6f\n", held, released, playing, off);
+        if (!ok || held < 1e-3 || released > 1e-7 || playing < 1e-3 || off > 1e-7) { printf("FAIL: sustain pedal / all notes off\n"); return 1; }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("MIDI performance (bend, wheel, pressure, sustain, CC123): ok\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;

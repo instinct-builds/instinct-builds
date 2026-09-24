@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <cmath>
 #include <string>
+#include <vector>
 
 static AudioUnit gUnit = nullptr;
 static int gFailures = 0;
@@ -93,6 +94,25 @@ static void Snapshot(NSView* view, const char* env, const char* what) {
     NSData* d = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
     Check(d.length > 10000 && [d writeToFile:[NSString stringWithUTF8String:png] atomically:YES], what);
     fflush(stdout);
+}
+
+// 0.24.0: render a block so the AU applies queued MIDI and publishes its performance values.
+static bool RenderBlock(UInt32 frames = 512) {
+    static Float64 sampleTime = 0;
+    std::vector<float> l(frames), r(frames);
+    AudioBufferList* b = (AudioBufferList*)calloc(1, sizeof(AudioBufferList) + sizeof(AudioBuffer));
+    b->mNumberBuffers = 2;
+    b->mBuffers[0] = {1, static_cast<UInt32>(frames * sizeof(float)), l.data()};
+    b->mBuffers[1] = {1, static_cast<UInt32>(frames * sizeof(float)), r.data()};
+    AudioUnitRenderActionFlags flags = 0; AudioTimeStamp ts{}; ts.mFlags = kAudioTimeStampSampleTimeValid; ts.mSampleTime = sampleTime;
+    const bool ok = AudioUnitRender(gUnit, &flags, &ts, 0, frames, b) == noErr;
+    sampleTime += frames; free(b); return ok;
+}
+static std::string PerfText(NSView* view) {
+    SEL sel = NSSelectorFromString(@"muewPerformanceText");
+    if (![view respondsToSelector:sel]) return "";
+    NSString* s = [view valueForKey:@"muewPerformanceText"];
+    return s.UTF8String ?: "";
 }
 
 static void After(double seconds, dispatch_block_t block) {
@@ -817,6 +837,50 @@ int main() {
                   "the strip returns to the defaults and the voice line disappears");
             fflush(stdout);
         });
+        __block bool perfRendered = false;
+        After(7.02, ^{ // 0.24.0 MIDI performance: wheel, channel aftertouch, bend up and a held C4 with the pedal down
+            MusicDeviceMIDIEvent(gUnit, 0xB0, 64, 127, 0);      // sustain down
+            MusicDeviceMIDIEvent(gUnit, 0x90, 72, 100, 0);      // C4 (note 72)
+            MusicDeviceMIDIEvent(gUnit, 0xB0, 1, 90, 0);        // mod wheel 90
+            MusicDeviceMIDIEvent(gUnit, 0xD0, 70, 0, 0);        // channel aftertouch 70
+            MusicDeviceMIDIEvent(gUnit, 0xE0, 0x00, 0x60, 0);   // bend 0x3000 of 0x3fff: +0.5
+            MusicDeviceMIDIEvent(gUnit, 0x80, 72, 0, 0);        // key up: the pedal holds it
+            perfRendered = RenderBlock() && RenderBlock();
+            // Let the editor's 30 Hz timer read the performance property (timers fire inside this wait).
+            for (int i = 0; i < 50 && PerfText(view).find("note=72") == std::string::npos; ++i)
+                [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+            MUEWPerformance pf{}; UInt32 size = sizeof(pf);
+            const bool got = AudioUnitGetProperty(gUnit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &size) == noErr;
+            printf("perf: AU wheel %.3f at %.3f bend %.3f note %d sustain %d\n", pf.wheel, pf.aftertouch, pf.bend, (int)pf.lastNote, (int)pf.sustain);
+            Check(perfRendered && got && std::fabs(pf.wheel - 90 / 127.0f) < 0.01f && std::fabs(pf.aftertouch - 70 / 127.0f) < 0.01f
+                  && std::fabs(pf.bend - 0.5f) < 0.01f && pf.lastNote == 72 && pf.sustain == 1,
+                  "the AU reports wheel 90, aftertouch 70, bend +0.5, note 72 and the pedal from MIDI");
+            Click(view, w, NSMakePoint(304 + 2 * 19 + 8.75, 180 + 7.5));                 // PB badge (third row)
+            for (int i = 0; i < 10; ++i) Click(view, w, NSMakePoint(384 + 58, 180 + 7.5)); // BEND > x10: +-12
+            std::string txt = PerfText(view);
+            printf("perf: editor %s\n", txt.c_str());
+            Check(txt.find("sel=PB wheel=0.709 at=0.551 bend=0.500 note=72 sustain=1 range=12") == 0,
+                  "the editor shows the live wheel, aftertouch, bend, note and pedal with PB selected and BEND +-12");
+            muew::Preset st;
+            Check(State(st) && st.voice.bendRange == 12 && st.serialize().find("\nperf 12\n") != std::string::npos,
+                  "BEND +-12 reached the AU and its saved state");
+            Snapshot(view, "MUEW_PERF_PNG", "performance snapshot written");
+            // Back to rest: range 2, controls centred, pedal up, notes off.
+            for (int i = 0; i < 10; ++i) Click(view, w, NSMakePoint(384 + 4, 180 + 7.5));
+            MusicDeviceMIDIEvent(gUnit, 0xB0, 1, 0, 0);
+            MusicDeviceMIDIEvent(gUnit, 0xD0, 0, 0, 0);
+            MusicDeviceMIDIEvent(gUnit, 0xE0, 0x00, 0x40, 0);
+            MusicDeviceMIDIEvent(gUnit, 0xB0, 64, 0, 0);
+            MusicDeviceMIDIEvent(gUnit, 0xB0, 123, 0, 0);
+            RenderBlock();
+            MUEWPerformance rest{}; size = sizeof(rest);
+            muew::Preset st2;
+            Check(AudioUnitGetProperty(gUnit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &rest, &size) == noErr
+                  && rest.wheel == 0 && rest.aftertouch == 0 && rest.bend == 0 && rest.sustain == 0
+                  && State(st2) && st2.voice.bendRange == 2 && st2.serialize().find("\nperf ") == std::string::npos,
+                  "controls return to rest and BEND +-2 drops the perf line");
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });
@@ -856,7 +920,7 @@ int main() {
             Snapshot(view, "MUEW_BROWSER_PNG", "full browser snapshot written");
         });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack + chain reorder + detail editor, mod matrix, wavetable editor, filter 2 + sub page and full browser\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack + chain reorder + detail editor, mod matrix, wavetable editor, filter 2 + sub page, MIDI performance and full browser\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

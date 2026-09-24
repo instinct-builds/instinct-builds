@@ -14,7 +14,10 @@ public:
     explicit Synth(int maxVoices = 16) {
         voices_.resize(maxVoices); polyVoices_ = maxVoices;
         for (int i = 0; i < maxVoices; ++i) voices_[i].seedPhases(0x9e3779b9u * (uint32_t)(i + 1)); // 0.23.0 RANDOM phase streams
+        linkPerformance();
     }
+    Synth(const Synth&) = delete;             // voices point at this synth's performance state
+    Synth& operator=(const Synth&) = delete;
 
     void init(double sampleRate) {
         sr_ = sampleRate;
@@ -104,7 +107,46 @@ public:
     // Host tempo (BPM) for tempo-synced LFOs; 120 until a host reports one.
     void setTempo(double bpm) { for (auto& v : voices_) v.setTempo(bpm); fx_.setTempo(bpm); }
 
+    // ---- 0.24.0 MIDI performance ----
+    void setModWheel(double v) { perf_.wheel = std::clamp(v, 0.0, 1.0); }
+    void setAftertouch(double v) { perf_.aftertouch = std::clamp(v, 0.0, 1.0); }
+    void setPitchBend(double v) { perf_.bend = std::clamp(v, -1.0, 1.0); }
+    void setPolyAftertouch(int note, double v) {
+        for (auto& vc : voices_) if (vc.isActive() && vc.note() == note) vc.setPolyAftertouch(std::clamp(v, 0.0, 1.0));
+    }
+    // Sustain pedal: key releases wait until the pedal comes up.
+    void setSustain(bool down) {
+        if (down == sustain_) return;
+        sustain_ = down;
+        if (down) return;
+        for (int n = 0; n < 128; ++n) if (sustained_[n]) { sustained_[n] = false; if (!keyDown_[n]) release(n); }
+    }
+    bool sustain() const { return sustain_; }
+    // All notes off (CC 123 / 120): releases every voice, pedal included.
+    void allNotesOff() {
+        sustain_ = false;
+        for (int n = 0; n < 128; ++n) { sustained_[n] = false; keyDown_[n] = false; }
+        held_ = 0;
+        for (auto& v : voices_) if (v.isActive()) v.noteOff();
+    }
+    const Performance& performance() const { return perf_; }
+    int lastNote() const { return lastNote_; }
+
     void noteOn(int note, float velocity) {
+        if (note >= 0 && note < 128) { keyDown_[note] = true; sustained_[note] = false; }
+        noteOnImpl(note, velocity);
+    }
+    void noteOff(int note) {
+        if (note >= 0 && note < 128) {
+            keyDown_[note] = false;
+            if (sustain_) { sustained_[note] = true; return; }
+        }
+        release(note);
+    }
+
+private:
+    void linkPerformance() { for (auto& v : voices_) v.setPerformance(&perf_); }
+    void noteOnImpl(int note, float velocity) {
         if (voiceMode_ != 0) { monoNoteOn(note, velocity); return; }
         // Poly: reuse a voice already playing this note, else a free one, else
         // steal the oldest, among the first polyVoices voices.
@@ -126,12 +168,13 @@ public:
         push(note, velocity);
     }
 
-    void noteOff(int note) {
+    void release(int note) {
         if (voiceMode_ != 0) { monoNoteOff(note); return; }
         remove(note);
         for (auto& v : voices_) if (v.isActive() && v.note() == note) v.noteOff();
     }
 
+public:
     // 0.23.0 inspection (tests, UI).
     int voiceMode() const { return voiceMode_; }
     int heldCount() const { return held_; }
@@ -241,6 +284,8 @@ private:
         for (int i = 0; i < held_; ++i) if (heldNote_[i] != note) { heldNote_[w] = heldNote_[i]; heldVel_[w] = heldVel_[i]; ++w; }
         held_ = w;
     }
+    Performance perf_;                              // 0.24.0
+    bool sustain_ = false, sustained_[128] = {}, keyDown_[128] = {};
     static constexpr int kHeld = 32;
     int heldNote_[kHeld] = {};
     float heldVel_[kHeld] = {};

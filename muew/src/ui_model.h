@@ -41,6 +41,10 @@ inline const char* sourceName(ModRoute::Source s) {
     case ModRoute::Source::FxLfo1: return "FX LFO 1";
     case ModRoute::Source::FxLfo2: return "FX LFO 2";
     case ModRoute::Source::MSEG2: return "MSEG 2";
+    case ModRoute::Source::ModWheel: return "MOD WHEEL";
+    case ModRoute::Source::Aftertouch: return "AFTERTOUCH";
+    case ModRoute::Source::PitchBend: return "PITCH BEND";
+    case ModRoute::Source::Keytrack: return "KEYTRACK";
     }
     return "?";
 }
@@ -149,7 +153,8 @@ inline std::vector<std::pair<double, double>> curvePoints(double c, int n = 16) 
 inline const std::vector<ModRoute::Source>& matrixSources() {
     using S = ModRoute::Source;
     static const std::vector<S> v{S::LFO1, S::LFO2, S::LFO3, S::LFO4, S::ModEnv, S::Env3, S::MSEG1, S::MSEG2, S::Velocity,
-                                  S::Macro1, S::Macro2, S::Macro3, S::Macro4, S::FxLfo1, S::FxLfo2};
+                                  S::Macro1, S::Macro2, S::Macro3, S::Macro4, S::FxLfo1, S::FxLfo2,
+                                  S::ModWheel, S::Aftertouch, S::PitchBend, S::Keytrack}; // 0.24.0 appended
     return v;
 }
 inline const char* sourceBadge(ModRoute::Source s) {
@@ -169,6 +174,10 @@ inline const char* sourceBadge(ModRoute::Source s) {
     case ModRoute::Source::FxLfo1: return "FXL1";
     case ModRoute::Source::FxLfo2: return "FXL2";
     case ModRoute::Source::MSEG2: return "MS2";
+    case ModRoute::Source::ModWheel: return "WHL";
+    case ModRoute::Source::Aftertouch: return "AT";
+    case ModRoute::Source::PitchBend: return "PB";
+    case ModRoute::Source::Keytrack: return "KEY";
     }
     return "?";
 }
