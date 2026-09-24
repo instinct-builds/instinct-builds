@@ -855,11 +855,14 @@ int main() {
             Check(perfRendered && got && std::fabs(pf.wheel - 90 / 127.0f) < 0.01f && std::fabs(pf.aftertouch - 70 / 127.0f) < 0.01f
                   && std::fabs(pf.bend - 0.5f) < 0.01f && pf.lastNote == 72 && pf.sustain == 1,
                   "the AU reports wheel 90, aftertouch 70, bend +0.5, note 72 and the pedal from MIDI");
+            // An LFO / MSEG editor or FX detail panel left open by earlier steps covers the matrix: close it (both share the close box).
+            printf("perf: overlays before %s\n", PerfText(view).c_str());
+            for (int i = 0; i < 2 && PerfText(view).find("overlay=-1/-1") == std::string::npos; ++i) Click(view, w, NSMakePoint(440, 231));
             Click(view, w, NSMakePoint(304 + 2 * 19 + 8.75, 180 + 7.5));                 // PB badge (third row)
             for (int i = 0; i < 10; ++i) Click(view, w, NSMakePoint(384 + 58, 180 + 7.5)); // BEND > x10: +-12
             std::string txt = PerfText(view);
             printf("perf: editor %s\n", txt.c_str());
-            Check(txt.find("sel=PB wheel=0.709 at=0.551 bend=0.500 note=72 sustain=1 range=12") == 0,
+            Check(txt.find("sel=PB wheel=0.709 at=0.551 bend=0.500 note=72 sustain=1 range=12 overlay=-1/-1") == 0,
                   "the editor shows the live wheel, aftertouch, bend, note and pedal with PB selected and BEND +-12");
             muew::Preset st;
             Check(State(st) && st.voice.bendRange == 12 && st.serialize().find("\nperf 12\n") != std::string::npos,

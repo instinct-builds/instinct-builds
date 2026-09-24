@@ -958,8 +958,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 }
 // Read by the CI harness through KVC: the performance the editor is showing.
 - (NSString*)muewPerformanceText {
-    return [NSString stringWithFormat:@"sel=%s wheel=%.3f at=%.3f bend=%.3f note=%d sustain=%d range=%d", ui::sourceBadge(ui::matrixSources()[modSel]),
-            perfShown.wheel, perfShown.aftertouch, perfShown.bend, perfNote, perfSustain ? 1 : 0, current.voice.bendRange];
+    return [NSString stringWithFormat:@"sel=%s wheel=%.3f at=%.3f bend=%.3f note=%d sustain=%d range=%d overlay=%d/%d", ui::sourceBadge(ui::matrixSources()[modSel]),
+            perfShown.wheel, perfShown.aftertouch, perfShown.bend, perfNote, perfSustain ? 1 : 0, current.voice.bendRange, msegEdit, fxDetail];
 }
 - (void)sourcePreview:(ModRoute::Source)src in:(NSRect)r color:(NSColor*)col {
     FillRound(NSInsetRect(r, -4, -4), 5, C(0x0f141b));
