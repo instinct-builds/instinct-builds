@@ -223,6 +223,18 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: width, name: "journal-collapse-all", outDir: outDir)
+        // 2.54.0 proof: the header filter narrows the journal by
+        // title/body text - "fire bolt" keeps the attack, both damage
+        // entries, and the digest (whose body mentions them), with the
+        // match count in the header.
+        sel.setAllJournalCollapsed(false)
+        model.selected?.wrappedValue = sel
+        renderPNG(
+            JournalBlock(character: .constant(sel), initialFilter: "fire bolt")
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "journal-filter", outDir: outDir)
     }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.

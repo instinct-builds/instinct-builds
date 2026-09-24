@@ -205,13 +205,31 @@ struct NotesBlock: View {
     }
 }
 
-struct JournalBlock: View {
+public struct JournalBlock: View {
     @Binding var character: Character
     @EnvironmentObject var model: AppModel
+    /// 2.54.0: header filter text; display-only, never persisted.
+    @State private var filter: String
 
-    var body: some View {
+    public init(character: Binding<Character>, initialFilter: String = "") {
+        _character = character
+        _filter = State(initialValue: initialFilter)
+    }
+
+    /// Case-insensitive match over date, title, and body (2.54.0); an
+    /// empty query keeps every entry visible.
+    private func matches(_ entry: JournalEntry, query: String) -> Bool {
+        query.isEmpty
+            || entry.title.lowercased().contains(query)
+            || entry.date.lowercased().contains(query)
+            || entry.text.lowercased().contains(query)
+    }
+
+    public var body: some View {
+        let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
         BlockCard(title: "Journal") {
             ForEach($character.journal) { $entry in
+                if matches(entry, query: query) {
                 let long = entry.isLong
                 let collapsed = (entry.isCollapsed ?? false) && long
                 VStack(alignment: .leading, spacing: 4) {
@@ -262,6 +280,7 @@ struct JournalBlock: View {
                     }
                 }
                 .padding(.vertical, 2)
+                }
             }
             HStack {
                 Button("Add entry") {
@@ -278,18 +297,31 @@ struct JournalBlock: View {
                     .help("Copy today's journal entries and rolls as one shareable recap")
             }
         } trailing: {
-            // 2.53.0: one-tap scan - collapse every long entry at once,
-            // or expand them all back. Persisted per entry.
-            let anyLong = character.journal.contains { $0.isLong }
-            let anyExpanded = character.journal.contains { $0.isLong && !($0.isCollapsed ?? false) }
-            if anyLong {
-                Button { character.setAllJournalCollapsed(anyExpanded) } label: {
-                    Image(systemName: anyExpanded
-                          ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+            HStack(spacing: Theme.Gap.sm) {
+                // 2.54.0: filter the journal by date/title/body;
+                // display-only, pairs with collapse-all for scanning.
+                if !query.isEmpty {
+                    let shown = character.journal.filter { matches($0, query: query) }.count
+                    Text("\(shown)/\(character.journal.count)")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.inkFaint)
-                .help(anyExpanded ? "Collapse all long entries" : "Expand all entries")
+                TextField("Filter", text: $filter)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 130)
+                // 2.53.0: one-tap scan - collapse every long entry at
+                // once, or expand them all back. Persisted per entry.
+                let anyLong = character.journal.contains { $0.isLong }
+                let anyExpanded = character.journal.contains { $0.isLong && !($0.isCollapsed ?? false) }
+                if anyLong {
+                    Button { character.setAllJournalCollapsed(anyExpanded) } label: {
+                        Image(systemName: anyExpanded
+                              ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.inkFaint)
+                    .help(anyExpanded ? "Collapse all long entries" : "Expand all entries")
+                }
             }
         }
     }
