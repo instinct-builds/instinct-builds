@@ -179,18 +179,34 @@ public struct HistoryListView: View {
     /// 2.58.0: divider whose digest is being named, and the draft title.
     @State private var namingSession: Int?
     @State private var digestTitle: String
+    /// 2.67.0: divider whose session is being renamed, and the draft name.
+    @State private var renamingSession: Int?
+    @State private var sessionNameDraft: String
 
     public init(rolls: [RollResult], initialNamingSession: Int? = nil,
-                initialDigestTitle: String = "") {
+                initialDigestTitle: String = "",
+                initialRenamingSession: Int? = nil,
+                initialSessionNameDraft: String = "") {
         self.rolls = rolls
         _namingSession = State(initialValue: initialNamingSession)
         _digestTitle = State(initialValue: initialDigestTitle)
+        _renamingSession = State(initialValue: initialRenamingSession)
+        _sessionNameDraft = State(initialValue: initialSessionNameDraft)
     }
 
     /// Files the digest with the drafted name and closes the inline form.
     private func confirmDigest(_ session: RollSession) {
         model.addSessionToJournal(session, title: digestTitle)
         namingSession = nil
+    }
+
+    /// 2.67.0: stores the drafted custom name (blank restores the
+    /// generated title) and closes the inline form.
+    private func confirmRename(_ session: RollSession) {
+        if let key = session.key {
+            model.renameSession(key, to: sessionNameDraft)
+        }
+        renamingSession = nil
     }
 
     /// Row identity namespaced by group: bare per-section offsets collide
@@ -205,7 +221,7 @@ public struct HistoryListView: View {
     public var body: some View {
         ScrollView {
             LazyVStack(spacing: Theme.Gap.sm, pinnedViews: [.sectionHeaders]) {
-                ForEach(Array(sessionSegments(rolls).enumerated()), id: \.offset) { _, session in
+                ForEach(Array(model.namedSessions(rolls).enumerated()), id: \.offset) { _, session in
                     Section {
                         ForEach(session.rolls.enumerated().map {
                             IndexedRoll(id: "\(session.title)|\($0.offset)", roll: $0.element)
@@ -254,15 +270,47 @@ public struct HistoryListView: View {
                                     .buttonStyle(.plain)
                                     .foregroundStyle(Theme.inkFaint)
                                     .help("Cancel")
-                            } else if session.number > 0, !model.autoLogRollsToJournal {
-                                Button {
-                                    digestTitle = session.title
-                                    namingSession = session.number
-                                } label: { Image(systemName: "text.book.closed") }
+                            } else if renamingSession == session.number {
+                                // 2.67.0: rename the session itself - the
+                                // custom name replaces the generated
+                                // "Session N - <day>" divider title, and a
+                                // digest filed from it takes the name.
+                                TextField("Session name", text: $sessionNameDraft)
+                                    .textFieldStyle(InsetFieldStyle())
+                                    .frame(width: 180)
+                                    .onSubmit { confirmRename(session) }
+                                Button { confirmRename(session) }
+                                    label: { Image(systemName: "checkmark") }
                                     .buttonStyle(.plain)
                                     .foregroundStyle(Theme.inkFaint)
-                                    .help("Add this session's rolls to the journal as one entry")
-                                    .disabled(model.selected == nil)
+                                    .help("Rename this session")
+                                Button { renamingSession = nil }
+                                    label: { Image(systemName: "xmark") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.inkFaint)
+                                    .help("Cancel")
+                            } else {
+                                // 2.67.0: rename pencil - only datable
+                                // sessions carry a stable key to name.
+                                if session.key != nil {
+                                    Button {
+                                        sessionNameDraft = session.title
+                                        renamingSession = session.number
+                                    } label: { Image(systemName: "pencil") }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(Theme.inkFaint)
+                                        .help("Rename this session")
+                                }
+                                if session.number > 0, !model.autoLogRollsToJournal {
+                                    Button {
+                                        digestTitle = session.title
+                                        namingSession = session.number
+                                    } label: { Image(systemName: "text.book.closed") }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(Theme.inkFaint)
+                                        .help("Add this session's rolls to the journal as one entry")
+                                        .disabled(model.selected == nil)
+                                }
                             }
                         }
                         .padding(.vertical, 4)

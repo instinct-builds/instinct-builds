@@ -164,6 +164,31 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: 800, name: "history-digest-name", outDir: outDir, minHeight: 620, maxHeight: 620)
+        // 2.67.0 proof: rename the newest session - the divider carries
+        // the custom name (and the pencil opens the same inline field),
+        // while a digest filed from it takes the name as its title.
+        let crafted = [h1, h2, y2, y1]
+        if let session = model.namedSessions(crafted).first, let key = session.key {
+            model.renameSession(key, to: "Ember Warrens delve")
+            renderPNG(
+                HistoryListView(rolls: crafted)
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: 800, name: "history-session-named", outDir: outDir, minHeight: 620, maxHeight: 620)
+            renderPNG(
+                HistoryListView(rolls: crafted,
+                                initialRenamingSession: session.number,
+                                initialSessionNameDraft: "Ember Warrens delve")
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: 800, name: "history-session-rename", outDir: outDir, minHeight: 620, maxHeight: 620)
+            let namedDigest = JournalEntry(sessionDigest: model.namedSessions(crafted)[0])
+            try? (namedDigest.title + "\n\n" + namedDigest.text)
+                .write(to: URL(fileURLWithPath: "\(outDir)/history-session-named-digest.md"),
+                       atomically: true, encoding: .utf8)
+        }
         model.autoLogRollsToJournal = true
     }
     // Proof render for 2.23.0: a macro row mid edit-in-place.

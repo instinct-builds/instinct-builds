@@ -1120,7 +1120,7 @@ struct JournalTests {
         let r3 = RollResult(expression: "1d8", dice: [DieResult(sides: 8, value: 5, kept: true)],
                             modifier: 0, total: 5, alternateTotal: nil)
         // r3 has no character - filed under Table.
-        let session = RollSession(number: 2, title: "Session 2 - Today", rolls: [r3, r2, r1])
+        let session = RollSession(number: 2, title: "Session 2 - Today", key: nil, rolls: [r3, r2, r1])
         let condensed = JournalEntry.digestBody(session: session, format: .condensed)
         #expect(condensed.components(separatedBy: "\n").count == 3)
         #expect(!condensed.contains("Wren:"))

@@ -218,10 +218,22 @@ public func groupRollsByDay(_ rolls: [RollResult], now: Date = Date(),
 public struct RollSession: Equatable, Sendable {
     /// 1-based session number, oldest session first; 0 for undated runs.
     public let number: Int
-    /// "Session 3 - Today", "Session 1 - Sep 21, 2026", or "Undated".
+    /// "Session 3 - Today", "Session 1 - Sep 21, 2026", or "Undated" -
+    /// replaced by the user's custom name once renamed (2.67.0).
     public let title: String
+    /// Stable identity for naming (2.67.0): the session's oldest roll's
+    /// stamp, ISO-8601; nil for undated runs, which cannot be named.
+    public let key: String?
     /// Newest roll first, matching history order.
     public var rolls: [RollResult]
+
+    /// A copy carrying the user's custom session name (2.67.0); nil or
+    /// blank keeps the generated title.
+    public func renamed(_ name: String?) -> RollSession {
+        let custom = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !custom.isEmpty else { return self }
+        return RollSession(number: number, title: custom, key: key, rolls: rolls)
+    }
 }
 
 /// Splits a newest-first history list into session segments (2.48.0): a
@@ -262,9 +274,10 @@ public func sessionSegments(_ rolls: [RollResult], now: Date = Date(),
             number += 1
             result.append(RollSession(number: number,
                                       title: "Session \(number) - \(rollDayTitle(at, now: now, calendar: calendar))",
+                                      key: ISO8601DateFormatter().string(from: at),
                                       rolls: Array(segment.reversed())))
         } else {
-            result.append(RollSession(number: 0, title: "Undated",
+            result.append(RollSession(number: 0, title: "Undated", key: nil,
                                       rolls: Array(segment.reversed())))
         }
     }

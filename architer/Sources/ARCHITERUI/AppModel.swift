@@ -78,6 +78,32 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let exportJournalTimestampsKey = "architer.exportJournalTimestamps"
+    /// Custom roll-session names (2.67.0), keyed by the session's stable
+    /// key (its oldest roll's stamp); persisted like the maps above.
+    @Published public var sessionNames: [String: String] =
+        (UserDefaults.standard.dictionary(forKey: AppModel.sessionNamesKey) as? [String: String]) ?? [:] {
+        didSet {
+            UserDefaults.standard.set(sessionNames, forKey: AppModel.sessionNamesKey)
+        }
+    }
+    private static let sessionNamesKey = "architer.sessionNames"
+
+    /// Sessions with the user's custom names applied (2.67.0) - the
+    /// history list, the digest button, and exports read these.
+    public func namedSessions(_ rolls: [RollResult]) -> [RollSession] {
+        sessionSegments(rolls).map { $0.renamed($0.key.flatMap { sessionNames[$0] }) }
+    }
+
+    /// Name a roll session (2.67.0); blank clears the custom name and
+    /// the generated title returns.
+    public func renameSession(_ key: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            sessionNames.removeValue(forKey: key)
+        } else {
+            sessionNames[key] = trimmed
+        }
+    }
     /// Compact-PDF option (2.39.0): append the exported character's roll
     /// history as a day-grouped session-log appendix. Off by default - the
     /// compact layout is for cheap printing, so extra pages are opt-in.

@@ -139,7 +139,7 @@ struct SessionRecapTests {
         let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
         let morning = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 9)))
         // Newest first, matching history order.
-        let session = RollSession(number: 2, title: "Session 2 - Today",
+        let session = RollSession(number: 2, title: "Session 2 - Today", key: nil,
                                   rolls: [roll("2d6+3", at: now), roll("8d6", at: morning)])
         let entry = JournalEntry(sessionDigest: session, now: now)
         #expect(entry.isCollapsed == true)
@@ -151,7 +151,7 @@ struct SessionRecapTests {
     @Test func sessionDigestHonorsCustomTitle() throws {
         let cal = utc
         let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
-        let session = RollSession(number: 2, title: "Session 2 - Today",
+        let session = RollSession(number: 2, title: "Session 2 - Today", key: nil,
                                   rolls: [roll("2d6+3", at: now)])
         // A custom title replaces the generated one.
         let named = JournalEntry(sessionDigest: session, title: "Lantern Street heist", now: now)

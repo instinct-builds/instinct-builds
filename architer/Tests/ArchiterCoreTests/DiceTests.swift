@@ -661,4 +661,49 @@ struct SessionSegmentTests {
         #expect(segments[1].rolls.map(\.expression) == ["2d6", "1d6"])
         #expect(sessionSegments([], now: now, calendar: cal).isEmpty)
     }
+
+    // 2.67.0: a session's key is its oldest roll's stamp - stable as new
+    // rolls land on top; undated runs have no key and cannot be named.
+    @Test func sessionKeyIsTheOldestRollsStamp() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 17)),
+                     stamped("1d6", at: at(cal, 23, 18))]
+        let segments = sessionSegments(rolls, now: now, calendar: cal)
+        #expect(segments[0].key == ISO8601DateFormatter().string(from: at(cal, 24, 17)))
+        #expect(segments[1].key == ISO8601DateFormatter().string(from: at(cal, 23, 18)))
+        let undated = sessionSegments([stamped("d20", at: nil)], now: now, calendar: cal)
+        #expect(undated[0].key == nil)
+    }
+
+    // 2.67.0: renamed() swaps the divider title for the custom name;
+    // blank or nil restores the generated one. Number, key, and rolls
+    // ride through unchanged.
+    @Test func renamedSessionCarriesTheCustomName() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 17))]
+        let session = sessionSegments(rolls, now: now, calendar: cal)[0]
+        let named = session.renamed("Ember Warrens delve")
+        #expect(named.title == "Ember Warrens delve")
+        #expect(named.number == session.number)
+        #expect(named.key == session.key)
+        #expect(named.rolls == session.rolls)
+        #expect(session.renamed(nil) == session)
+        #expect(session.renamed("   ") == session)
+    }
+
+    // 2.67.0: a digest filed from a renamed session takes the custom
+    // name as its title - no separate naming step needed.
+    @Test func digestOfRenamedSessionTakesItsName() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18))]
+        let session = sessionSegments(rolls, now: now, calendar: cal)[0]
+            .renamed("Ember Warrens delve")
+        let digest = JournalEntry(sessionDigest: session, now: now)
+        #expect(digest.title == "Ember Warrens delve")
+    }
 }
