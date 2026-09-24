@@ -191,6 +191,20 @@ func run(model: AppModel, character: Character, outDir: String) {
     if let session = sessionSegments(model.rollHistory).first {
         model.addSessionToJournal(session)
     }
+    // 2.50.0 proof: nudge the digest entry up two spots - the re-rendered
+    // sheet's journal block (chevrons on every entry) and the recap below
+    // follow the user's explicit order.
+    if var sel = model.selected?.wrappedValue,
+       let digest = sel.journal.last(where: { $0.title.hasPrefix("Session ") }) {
+        sel.moveJournalEntry(digest.id, by: -2)
+        model.selected?.wrappedValue = sel
+        renderPNG(
+            SheetColumnView(character: .constant(sel))
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "journal-reorder", outDir: outDir)
+    }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.
     let recap = sessionRecap(character: model.selected?.wrappedValue ?? character,

@@ -21,9 +21,10 @@ public enum JournalStamp {
 /// sit out - an unplaceable line inside a "today" recap would mislead.
 public func sessionRecap(character: Character, rolls: [RollResult],
                          now: Date = Date(), calendar: Calendar = .current) -> String {
+    // 2.50.0: the recap follows the journal's own order (the user's
+    // explicit order once they nudge entries), not creation time.
     let todayEntries = character.journal
         .filter { entry in entry.createdAt.map { calendar.isDate($0, inSameDayAs: now) } ?? false }
-        .sorted { ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast) }
     let todayRolls = rolls.forCharacter(character.name).within(.today, now: now, calendar: calendar)
 
     var lines: [String] = ["\(character.name) - session recap (\(RollResult.historyDateFormatter.string(from: now)))", ""]

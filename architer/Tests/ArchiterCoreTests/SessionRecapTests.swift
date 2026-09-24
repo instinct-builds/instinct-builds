@@ -49,14 +49,16 @@ struct SessionRecapTests {
         let t8 = RollResult.historyTimeFormatter.string(from: earlier)
         let t9 = RollResult.historyTimeFormatter.string(from: morning)
         let t18 = RollResult.historyTimeFormatter.string(from: now)
+        // 2.50.0: the recap follows the journal's array order (the user's
+        // explicit order), not creation time - Lantern precedes the vault.
         #expect(text == """
         Wren Halloway - session recap (\(day))
 
         JOURNAL - Today (2)
-        - [\(t8)] The singing vault
-          It sang.
         - [\(t9)] Lantern Street
           Bressa says the key predates the Athenaeum.
+        - [\(t8)] The singing vault
+          It sang.
 
         ROLLS - Today (2)
         [\(t9)] Fireball: 10 (8d6)
@@ -91,6 +93,25 @@ struct SessionRecapTests {
         let text = sessionRecap(character: c, rolls: [], now: now, calendar: cal)
         let t9 = RollResult.historyTimeFormatter.string(from: morning)
         #expect(text.contains("- [\(t9)] Notes\n  line one\n  line two\n"))
+    }
+
+    @Test func recapFollowsNudgedJournalOrder() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
+        let morning = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 9)))
+        let earlier = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 8)))
+        var c = Character(name: "Wren Halloway")
+        c.journal = [
+            entry("Lantern Street", at: morning),
+            entry("The singing vault", at: earlier),
+        ]
+        // Nudge the later-stamped entry below the earlier-stamped one:
+        // the recap keeps the user's order even though createdAt disagrees.
+        c.moveJournalEntry(c.journal[0].id, by: 1)
+        let text = sessionRecap(character: c, rolls: [], now: now, calendar: cal)
+        let vault = text.range(of: "The singing vault")!
+        let lantern = text.range(of: "Lantern Street")!
+        #expect(vault.lowerBound < lantern.lowerBound)
     }
 
     @Test func createdAtDecoding() throws {

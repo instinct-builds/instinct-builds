@@ -219,6 +219,20 @@ struct JournalBlock: View {
                             .frame(width: 110)
                         TextField("Title", text: $entry.title)
                             .textFieldStyle(InsetFieldStyle())
+                        // 2.50.0: nudge entries into the user's order;
+                        // exports and the session recap follow it.
+                        Button { character.moveJournalEntry(entry.id, by: -1) }
+                            label: { Image(systemName: "chevron.up") }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.inkFaint)
+                            .help("Move entry up")
+                            .disabled(character.journal.first?.id == entry.id)
+                        Button { character.moveJournalEntry(entry.id, by: 1) }
+                            label: { Image(systemName: "chevron.down") }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.inkFaint)
+                            .help("Move entry down")
+                            .disabled(character.journal.last?.id == entry.id)
                         Button(role: .destructive) {
                             character.journal.removeAll { $0.id == entry.id }
                         } label: { Image(systemName: "minus.circle") }

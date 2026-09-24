@@ -964,6 +964,25 @@ struct EquipmentTests {
 @Suite("Journal")
 struct JournalTests {
 
+    @Test func moveJournalEntryNudgesAndClamps() throws {
+        var c = Character(name: "Wren Halloway")
+        c.journal = [JournalEntry(title: "A"), JournalEntry(title: "B"), JournalEntry(title: "C")]
+        let a = c.journal[0].id, b = c.journal[1].id
+        // Middle entry moves up.
+        c.moveJournalEntry(b, by: -1)
+        #expect(c.journal.map(\.title) == ["B", "A", "C"])
+        // Edge moves clamp to a no-op.
+        c.moveJournalEntry(b, by: -1)
+        #expect(c.journal.map(\.title) == ["B", "A", "C"])
+        // Large offsets clamp to the far edge.
+        c.moveJournalEntry(b, by: 99)
+        #expect(c.journal.map(\.title) == ["A", "C", "B"])
+        // Unknown ids and zero offsets change nothing.
+        c.moveJournalEntry(UUID(), by: 1)
+        c.moveJournalEntry(a, by: 0)
+        #expect(c.journal.map(\.title) == ["A", "C", "B"])
+    }
+
     @Test func journalRoundTripsAndDefaults() throws {
         var c = Character(name: "Test")
         #expect(c.journal.isEmpty)

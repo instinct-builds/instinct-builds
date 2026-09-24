@@ -509,6 +509,18 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var toolProficiencies: [ToolProficiency]
     /// Dated session-log entries shown in the journal block.
     public var journal: [JournalEntry]
+
+    /// Move a journal entry by a relative offset (2.50.0), clamped to the
+    /// array bounds; unknown ids and zero/edge moves are no-ops. Journal
+    /// order is the user's explicit order: the sheet, the sheet exports,
+    /// and the session recap all follow it.
+    public mutating func moveJournalEntry(_ id: UUID, by offset: Int) {
+        guard offset != 0, let from = journal.firstIndex(where: { $0.id == id }) else { return }
+        let to = max(0, min(journal.count - 1, from + offset))
+        guard to != from else { return }
+        let entry = journal.remove(at: from)
+        journal.insert(entry, at: to)
+    }
     public var features: [Feature]
     public var personality: Personality
     public var notes: String
