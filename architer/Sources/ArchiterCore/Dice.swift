@@ -181,6 +181,26 @@ public enum SessionLogRange: String, CaseIterable, Sendable {
     }
 }
 
+/// Plain-text session log (2.42.0): the appendix's day-grouped rows as a
+/// shareable text file - same rolls, same order, no PDF. Day headers flush
+/// left, rolls indented two spaces, trailing newline so the file drops
+/// cleanly into notes apps and chat.
+public func sessionLogText(character: String, range: SessionLogRange,
+                           rows: [SessionLogRow]) -> String {
+    var lines = ["\(character) - Session Log (\(range.displayName))", ""]
+    if rows.isEmpty {
+        lines.append("No rolls in range.")
+    } else {
+        for row in rows {
+            switch row {
+            case .dayHeader(let title): lines.append(title)
+            case .roll(let text): lines.append("  " + text)
+            }
+        }
+    }
+    return lines.joined(separator: "\n") + "\n"
+}
+
 public extension Array where Element == RollResult {
     /// Rolls inside a session-log range (2.41.0), measured against now in
     /// the given calendar. .all keeps everything, including unstamped

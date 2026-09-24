@@ -521,6 +521,18 @@ public final class AppModel: ObservableObject {
         savePanel(text: SheetExporter.exportHTML(sel), name: "\(sel.name).html")
     }
 
+    /// Session-log text export (2.42.0): the character's rolls as a
+    /// day-grouped plain-text file, honoring the configured appendix range
+    /// - the same rolls the compact-PDF appendix would print.
+    public func exportSessionLog() {
+        guard let sel = selected?.wrappedValue else { return }
+        let rolls = rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange)
+        let rows = sessionLogRows(rolls)
+        savePanel(text: sessionLogText(character: sel.name,
+                                       range: compactPDFSessionLogRange, rows: rows),
+                  name: "\(sel.name)-session-log.txt")
+    }
+
     public func exportPDF() {
         guard let sel = selected?.wrappedValue else { return }
         let panel = NSSavePanel()

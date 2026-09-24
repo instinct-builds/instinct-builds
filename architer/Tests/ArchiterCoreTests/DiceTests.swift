@@ -256,6 +256,40 @@ struct RerollSpecTests {
     }
 }
 
+@Suite("Session-log text export")
+struct SessionLogTextTests {
+    @Test func dayGroupedLayoutWithIndentedRolls() {
+        let rows: [SessionLogRow] = [
+            .dayHeader("Yesterday"),
+            .roll("[04:01] 4d6kh3: 14"),
+            .dayHeader("Today"),
+            .roll("[04:25] d20: 7"),
+            .roll("[04:27] 4d6kh3: 6"),
+        ]
+        let text = sessionLogText(character: "Wren Halloway", range: .today, rows: rows)
+        #expect(text == """
+        Wren Halloway - Session Log (Today)
+
+        Yesterday
+          [04:01] 4d6kh3: 14
+        Today
+          [04:25] d20: 7
+          [04:27] 4d6kh3: 6
+
+        """)
+    }
+
+    @Test func emptyRangeSaysSo() {
+        let text = sessionLogText(character: "Wren Halloway", range: .last7Days, rows: [])
+        #expect(text == """
+        Wren Halloway - Session Log (Last 7 days)
+
+        No rolls in range.
+
+        """)
+    }
+}
+
 @Suite("Session-log appendix date range")
 struct SessionLogRangeTests {
     private func stamped(_ expression: String, at: Date?) -> RollResult {

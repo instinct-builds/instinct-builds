@@ -149,6 +149,13 @@ func run(model: AppModel, character: Character, outDir: String) {
     let compactPdf = SheetPDFExporter.export(character, style: .compact,
                                              sessionRolls: model.rollHistory.forCharacter(character.name).within(.today))
     try? compactPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact.pdf"))
+    // 2.42.0 proof: the same rolls as a plain-text session log, honoring
+    // the same range - Today only, day-grouped, no PDF.
+    let logRolls = model.rollHistory.forCharacter(character.name).within(.today)
+    let logText = sessionLogText(character: character.name, range: .today,
+                                 rows: sessionLogRows(logRolls))
+    try? logText.write(to: URL(fileURLWithPath: "\(outDir)/session-log.txt"),
+                       atomically: true, encoding: .utf8)
     let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
     try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))
     // 2.34.0 proof: compact export with zero-quantity rows collapsed.

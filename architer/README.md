@@ -4,6 +4,12 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.42.0
+
+- **Session-log text export**: File > Export Session Log saves the
+  character's rolls as a day-grouped plain-text file - the same rolls and
+  range the compact-PDF appendix would print, no PDF required.
+
 ## What's in 2.41.0
 
 - **Session-log appendix date range**: the compact-PDF appendix can now print
