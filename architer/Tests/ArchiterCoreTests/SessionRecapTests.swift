@@ -114,6 +114,22 @@ struct SessionRecapTests {
         #expect(vault.lowerBound < lantern.lowerBound)
     }
 
+    @Test func sessionDigestLandsCollapsed() throws {
+        // 2.52.0: a digest entry holds the session's rolls oldest first
+        // and arrives collapsed so the journal block stays scannable.
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
+        let morning = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 9)))
+        // Newest first, matching history order.
+        let session = RollSession(number: 2, title: "Session 2 - Today",
+                                  rolls: [roll("2d6+3", at: now), roll("8d6", at: morning)])
+        let entry = JournalEntry(sessionDigest: session, now: now)
+        #expect(entry.isCollapsed == true)
+        #expect(entry.title == "Session 2 - Today")
+        #expect(entry.createdAt == now)
+        #expect(entry.text.hasPrefix("[" + RollResult.historyTimeFormatter.string(from: morning)))
+    }
+
     @Test func createdAtDecoding() throws {
         // The pre-2.46.0 saved shape: no createdAt key at all.
         let json = #"{"date":"Session 1","title":"Start","text":"It began."}"#

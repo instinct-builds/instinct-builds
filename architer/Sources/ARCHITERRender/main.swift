@@ -204,19 +204,15 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: width, name: "journal-reorder", outDir: outDir)
-        // 2.51.0 proof: collapse the long digest entry - the re-render
-        // shows it as a one-line preview while the recap below keeps the
-        // full text.
-        if let idx = sel.journal.firstIndex(where: { $0.id == digest.id }) {
-            sel.journal[idx].isCollapsed = true
-            model.selected?.wrappedValue = sel
-            renderPNG(
-                SheetColumnView(character: .constant(sel))
-                    .padding()
-                    .background(Theme.surface)
-                    .environmentObject(model),
-                width: width, name: "journal-collapse", outDir: outDir)
-        }
+        // 2.51.0/2.52.0 proof: the digest lands collapsed on its own -
+        // the re-render shows it as a one-line preview while the recap
+        // below keeps the full text.
+        renderPNG(
+            SheetColumnView(character: .constant(sel))
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "journal-collapse", outDir: outDir)
     }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.

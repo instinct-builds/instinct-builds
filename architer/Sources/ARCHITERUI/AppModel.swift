@@ -390,11 +390,7 @@ public final class AppModel: ObservableObject {
     /// button's action, offered while auto-log is off.
     public func addSessionToJournal(_ session: RollSession) {
         guard var c = selected?.wrappedValue else { return }
-        let body = session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n")
-        c.journal.append(JournalEntry(date: JournalStamp.day(Date()),
-                                      title: session.title,
-                                      text: body,
-                                      createdAt: Date()))
+        c.journal.append(JournalEntry(sessionDigest: session))
         selected?.wrappedValue = c
     }
 

@@ -309,6 +309,17 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
         isCollapsed = try c.decodeIfPresent(Bool.self, forKey: .isCollapsed)
     }
+
+    /// Digest entry for a roll session (2.49.0): one entry holding the
+    /// session's rolls oldest first. Lands collapsed (2.52.0) - the long
+    /// body stays one tap away without crowding the journal block.
+    public init(sessionDigest session: RollSession, now: Date = Date()) {
+        self.init(date: JournalStamp.day(now),
+                  title: session.title,
+                  text: session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n"),
+                  createdAt: now,
+                  isCollapsed: true)
+    }
 }
 
 public extension JournalEntry {
