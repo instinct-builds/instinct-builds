@@ -9,12 +9,13 @@ import ArchiterCore
 // PDF/HTML/Markdown exports, so CI can attach visual proof to each build.
 // Usage: architer-render <output-directory>
 
-func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String, minHeight: CGFloat = 120) {
+func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String,
+                        minHeight: CGFloat = 120, maxHeight: CGFloat = .infinity) {
     let hosting = NSHostingView(rootView: view)
     hosting.frame = NSRect(x: 0, y: 0, width: width, height: 100)
     hosting.layoutSubtreeIfNeeded()
     let fitting = hosting.fittingSize
-    let size = NSSize(width: width, height: max(fitting.height, minHeight))
+    let size = NSSize(width: width, height: min(max(fitting.height, minHeight), maxHeight))
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                           styleMask: [.titled], backing: .buffered, defer: false)
     window.title = name
@@ -103,7 +104,27 @@ func run(model: AppModel, character: Character, outDir: String) {
             .padding()
             .background(Theme.surface)
             .environmentObject(model),
-        width: width, name: "dice", outDir: outDir, minHeight: 420)
+        width: width, name: "dice", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.38.0 proof: the grouped history list in a fixed frame, with a
+    // crafted roll set spanning Today and Yesterday.
+    var h1 = DiceRoller(seed: 11).rollD20(mode: .normal)
+    h1.label = "Stealth check"
+    var h2 = DiceRoller(seed: 12).rollD20(mode: .advantage)
+    h2.label = "Perception check"
+    var y1 = DiceRoller(seed: 13).rollD20(mode: .normal)
+    y1.label = "Arcana check"
+    var y2 = DiceRoller(seed: 14).rollD20(mode: .disadvantage)
+    y2.label = "Athletics check"
+    if let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) {
+        y1.rolledAt = yesterday
+        y2.rolledAt = yesterday.addingTimeInterval(3600)
+        renderPNG(
+            HistoryListView(rolls: [h1, h2, y2, y1])
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 800, name: "history-groups", outDir: outDir, minHeight: 620, maxHeight: 620)
+    }
     // Proof render for 2.23.0: a macro row mid edit-in-place.
     renderPNG(
         MacroRowView(macro: DiceMacro(name: "Fireball", expression: "8d6", damageType: "fire"),

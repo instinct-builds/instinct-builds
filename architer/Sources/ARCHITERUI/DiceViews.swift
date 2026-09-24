@@ -148,28 +148,7 @@ public struct DiceRollerView: View {
                     .help("Copy the shown rolls (scope and filter applied) as text, oldest first")
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }
-            ScrollView {
-                // 2.38.0: day-grouped history with sticky date headers.
-                LazyVStack(spacing: Theme.Gap.sm, pinnedViews: [.sectionHeaders]) {
-                    ForEach(Array(groupRollsByDay(visibleHistory).enumerated()), id: \.offset) { _, group in
-                        Section {
-                            ForEach(Array(group.rolls.enumerated()), id: \.offset) { _, roll in
-                                RollCard(roll: roll)
-                            }
-                        } header: {
-                            HStack {
-                                Text(group.title)
-                                    .font(Theme.Typeface.caption.bold())
-                                    .foregroundStyle(Theme.inkMuted)
-                                Spacer()
-                            }
-                            .padding(.vertical, 4)
-                            .frame(maxWidth: .infinity)
-                            .background(Theme.surface)
-                        }
-                    }
-                }
-            }
+            HistoryListView(rolls: visibleHistory)
         }
         .padding(Theme.Gap.lg)
         .background(Theme.surface)
@@ -181,6 +160,41 @@ extension DiceRollerView {
     /// One macro row (view wrapper keeps per-row edit state).
     @ViewBuilder func macroRow(_ macro: DiceMacro) -> some View {
         MacroRowView(macro: macro)
+    }
+}
+
+/// The day-grouped history list with sticky date headers (2.38.0). Public
+/// so the render harness can snapshot it with a crafted roll set: rendering
+/// the full DiceRollerView at fitting size mis-measures the pinned
+/// sections (a nearly-10k-px window with the second group's rows clipped),
+/// so the group proof renders this list in a fixed frame instead.
+public struct HistoryListView: View {
+    let rolls: [RollResult]
+
+    public init(rolls: [RollResult]) { self.rolls = rolls }
+
+    public var body: some View {
+        ScrollView {
+            LazyVStack(spacing: Theme.Gap.sm, pinnedViews: [.sectionHeaders]) {
+                ForEach(Array(groupRollsByDay(rolls).enumerated()), id: \.offset) { _, group in
+                    Section {
+                        ForEach(Array(group.rolls.enumerated()), id: \.offset) { _, roll in
+                            RollCard(roll: roll)
+                        }
+                    } header: {
+                        HStack {
+                            Text(group.title)
+                                .font(Theme.Typeface.caption.bold())
+                                .foregroundStyle(Theme.inkMuted)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity)
+                        .background(Theme.surface)
+                    }
+                }
+            }
+        }
     }
 }
 
