@@ -2038,8 +2038,8 @@ final class StudioLibrary: ObservableObject {
                 _ = c.updateBoard(id) { b in
                     b.addHeading("Hotel pitch · lobby and atrium", at: (x: 40, y: 20))
                     let place: [(String, Double, Double, Double)] = [("Northlight Lobby.png", 40, 130, 330), ("Harbor Night.png", 410, 130, 430),
-                                                                     ("Wire Terrazzo.png", 880, 130, 300), ("Plinth Campaign.png", 40, 520, 330),
-                                                                     ("Atrium Cork Wall.png", 410, 520, 300)]
+                                                                     ("Wire Terrazzo.png", 880, 130, 300), ("Plinth Campaign.png", 40, 620, 330),
+                                                                     ("Atrium Cork Wall.png", 410, 620, 300)]
                     for (f, x, y, w) in place { if let a = find(f) { _ = b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y)) } }
                 }
             }
@@ -2957,14 +2957,16 @@ struct BoardCanvas: View {
     @ViewBuilder private var versionLayer: some View {
         let outdated = model.catalog.outdatedCards(on: board.id)
         let rights = model.catalog.rightsProblems(on: board.id)
+        let threaded = board.threadedCards()
         if !outdated.isEmpty || !rights.isEmpty {
             let t = min(2.2, 1 / max(0.1, z))
             ForEach(board.layered.filter { (outdated[$0.id] != nil || rights[$0.id] != nil) && !dimmed($0) }) { item in
                 let r = itemRect(item)
                 let label = outdated[item.id].map { VersionStacks.rank($0).1 }
                 let longest = max(label.map { $0.count + 10 } ?? 0, rights[item.id].map { $0.label.count } ?? 0)
-                // Keep it within the left half of the card so it never meets the thread badge on the right.
-                let bt = min(t, max(0.45, (r.w * 0.5 - 8) / (Double(longest) * 7.5 + 40)))
+                // Within the left half when the card has a thread badge on the right; otherwise most of the width.
+                let room = r.w * (threaded.contains(item.id) ? 0.5 : 0.85) - 8
+                let bt = min(t, max(0.45, room / (Double(longest) * 6.6 + 34)))
                 VStack(alignment: .leading, spacing: 5) {
                     if let label {
                         Button { model.updateToNewest(board.id, only: [item.id]) } label: {
