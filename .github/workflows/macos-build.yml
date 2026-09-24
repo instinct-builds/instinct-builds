@@ -370,6 +370,7 @@ jobs:
             muew/out/MUEW-0.30.0-voice-*.png
             muew/out/MUEW-0.30.0-performance.png
             muew/out/MUEW-0.30.0-arp.png
+            muew/out/MUEW-0.30.0-engine-*.png
             muew/out/au_view_host.log
             muew/out/auval.log
             muew/out/au_host_test.log
