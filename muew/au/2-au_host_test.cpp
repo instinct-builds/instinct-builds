@@ -372,12 +372,29 @@ int main() {
             }
             sp.fx = muew::FXParams{};
             sp.fx.comp.enabled = true; sp.fx.comp.mode = 1; sp.fx.comp.amount = 0.9; sp.fx.comp.upward = 0.0;
-            double cs0 = 0, cm0 = 0, cs1 = 0, cm1 = 0;
-            if (!setState(unit, sp) || !measureLR(cs0, cm0)) { printf("FAIL: render MULTIBAND base\n"); return 1; }
+            // UPWARD only lifts quiet material (loud bands sit above the threshold), so play softly: velocity 16.
+            auto quiet = [&]() -> double {
+                double e = 0;
+                for (int pass = 0; pass < 2; ++pass) { // the second pass is measured
+                    AudioUnitReset(unit, kAudioUnitScope_Global, 0);
+                    MusicDeviceMIDIEvent(unit, 0x90, 60, 16, 0);
+                    e = 0;
+                    for (int blk = 0; blk < 24; ++blk) {
+                        if (!render(unit, l, r)) return -1;
+                        if (blk < 4) continue;
+                        for (UInt32 i = 0; i < frames; ++i) { double m = l[i] + r[i]; e += m * m; }
+                    }
+                    MusicDeviceMIDIEvent(unit, 0x80, 60, 0, 0);
+                }
+                return e;
+            };
+            if (!setState(unit, sp)) { printf("FAIL: set MULTIBAND state\n"); return 1; }
+            const double cm0 = quiet();
             AudioUnitSetParameter(unit, mp::CompUpward, kAudioUnitScope_Global, 0, 100.0f, 0);
-            if (!measureLR(cs1, cm1)) { printf("FAIL: render MULTIBAND upward 100\n"); return 1; }
-            printf("dynamics: MULTIBAND level %.1f at UPWARD 0, %.1f at 100\n", cm0, cm1);
-            if (cm1 < cm0 * 1.03 || !getState(unit, sq) || sq.fx.comp.upward != 1.0 || sq.fx.comp.mode != 1) {
+            const double cm1 = quiet();
+            if (cm0 <= 0 || cm1 <= 0) { printf("FAIL: render MULTIBAND at velocity 16\n"); return 1; }
+            printf("dynamics: MULTIBAND level %.2f at UPWARD 0, %.2f at 100 (velocity 16)\n", cm0, cm1);
+            if (cm1 < cm0 * 1.15 || !getState(unit, sq) || sq.fx.comp.upward != 1.0 || sq.fx.comp.mode != 1) {
                 printf("FAIL: MULTIBAND UPWARD not audible or not stored\n"); return 1;
             }
         }

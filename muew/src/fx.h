@@ -425,6 +425,7 @@ class MultibandComp {
     struct BQ {
         double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
         void design(int kind, double sr, double hz) { // 0 low pass, 1 high pass, 2 all pass; Q = 1/sqrt(2)
+            z1 = z2 = 0.0;
             const double w = 2.0 * M_PI * hz / sr, cw = std::cos(w), al = std::sin(w) / (2.0 * M_SQRT1_2), a0 = 1.0 + al;
             if (kind == 0) { b0 = (1 - cw) / 2; b1 = 1 - cw; b2 = (1 - cw) / 2; }
             else if (kind == 1) { b0 = (1 + cw) / 2; b1 = -(1 + cw); b2 = (1 + cw) / 2; }
@@ -439,6 +440,8 @@ public:
     // one never cancels its neighbours; the low band passes the 2.5 kHz split's all-pass to stay aligned.
     void init(double sr) {
         sr_ = sr;
+        // Reset clears the detectors, gains and crossover memories (a host Reset must not carry the last note's state).
+        for (int b = 0; b < kBands; ++b) { env_[b] = 0.0; gDb_[b] = 0.0; }
         for (int c = 0; c < 2; ++c) {
             for (int k = 0; k < 2; ++k) { lp1_[c][k].design(0, sr, 120.0); hp1_[c][k].design(1, sr, 120.0);
                                           lp2_[c][k].design(0, sr, 2500.0); hp2_[c][k].design(1, sr, 2500.0); }
