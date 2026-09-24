@@ -591,7 +591,7 @@ int main() {
         ok = ok && MusicDeviceMIDIEvent(t, 0x90, 60, 100, 0) == noErr && step();
         ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
         const int waitNote = pf.arpNote; const unsigned locked = pf.hostLocked;
-        ok = ok && step(); sz = sizeof(pf);
+        ok = ok && step() && step(); sz = sizeof(pf); // beats 0.2232 -> 0.2697: crosses the 0.25 grid line
         ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
         const int gridNote = pf.arpNote, gridStep = pf.arpStep;
         bool evenOnly = true; int sounded = 0;
