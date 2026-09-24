@@ -78,6 +78,8 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::Filter2Morph: return "F2 MORPH";
     case ModRoute::Dest::FilterBalance: return "F BALANCE";
     case ModRoute::Dest::UnisonBlend: return "UNI BLEND";
+    case ModRoute::Dest::FxHyperDetune: return "HY DETUNE";   // 0.27.0
+    case ModRoute::Dest::FxFilterCutoff: return "FX CUTOFF";  // 0.27.0
     }
     return "?";
 }
@@ -108,7 +110,8 @@ inline double routeDisplayAmount(const ModRoute& r) { return std::clamp(r.amount
 inline void setRouteDisplayAmount(ModRoute& r, double n) { r.amount = std::clamp(n, -1.0, 1.0) * routeScale(r.dest); }
 // The FX rack is shared by every voice, so FX destinations follow only the
 // macro knobs (global sources); other sources show that instead of an amount.
-inline bool isFxDest(ModRoute::Dest d) { return d == ModRoute::Dest::DistDrive || ((int)d >= (int)ModRoute::Dest::FxDelayFeedback && (int)d <= (int)ModRoute::Dest::FxChorusDepth); }
+inline bool isFxDest(ModRoute::Dest d) { return d == ModRoute::Dest::DistDrive || ((int)d >= (int)ModRoute::Dest::FxDelayFeedback && (int)d <= (int)ModRoute::Dest::FxChorusDepth)
+                                                 || d == ModRoute::Dest::FxHyperDetune || d == ModRoute::Dest::FxFilterCutoff; }
 inline bool isMacroSource(ModRoute::Source s) { return (int)s >= (int)ModRoute::Source::Macro1 && (int)s <= (int)ModRoute::Source::Macro4; }
 inline bool isRackLfo(ModRoute::Source s) { return s == ModRoute::Source::FxLfo1 || s == ModRoute::Source::FxLfo2; }
 // Global sources (macros, rack LFOs) can drive the FX rack; the rack LFOs
@@ -192,6 +195,8 @@ inline int fxUnitDest(int unit) {
     case FxReverb: return (int)D::FxReverbDecay;
     case FxPhaser: return (int)D::FxPhaserDepth;
     case FxFlanger: return (int)D::FxFlangerDepth;
+    case FxHyper: return (int)D::FxHyperDetune;   // 0.27.0
+    case FxFilter: return (int)D::FxFilterCutoff; // 0.27.0
     default: return -1;
     }
 }
@@ -204,7 +209,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::Osc1Warp2, D::Osc2Warp2, // 0.19.0 appended
                                   D::FilterDrive, D::FilterMorph, // 0.21.0 appended
                                   D::Filter2Morph, D::FilterBalance, // 0.22.0 appended
-                                  D::UnisonBlend}; // 0.23.0 appended
+                                  D::UnisonBlend, // 0.23.0 appended
+                                  D::FxHyperDetune, D::FxFilterCutoff}; // 0.27.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.
@@ -416,6 +422,10 @@ inline std::vector<double> unisonOffsets(const VoiceParams& p, int osc) {
     for (int i = 0; i < n; ++i) o.push_back(n == 1 ? 0.0 : (2.0 * i / (n - 1) - 1.0) * det);
     return o;
 }
+inline const char* filterFxModeName(int m) { // 0.27.0
+    static const char* n[] = {"LOW PASS", "BAND PASS", "HIGH PASS", "NOTCH", "PEAK"};
+    return n[std::clamp(m, 0, 4)];
+}
 inline const char* distModeName(int m) {
     static const char* n[] = {"SOFT CLIP", "FOLD", "BITCRUSH"};
     return (m >= 0 && m < 3) ? n[m] : "?";
@@ -449,13 +459,21 @@ inline const std::vector<FxControl>& fxControls(int unit) {
          {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
         {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxFlangerDepth},
          {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
+        // 0.27.0 HYPER / DIMENSION
+        {{"RATE", FmtHz, 0.05, 5, true, -1}, {"DETUNE", FmtPercent, 0, 1, false, (int)D::FxHyperDetune},
+         {"DIMENSION", FmtPercent, 0, 1, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
+        // 0.27.0 FILTER FX
+        {{"MODE", FmtChoice, 0, 4, false, -1}, {"CUTOFF", FmtHz, 40, 18000, true, (int)D::FxFilterCutoff},
+         {"RESONANCE", FmtPercent, 0, 1, false, -1}, {"DRIVE", FmtPercent, 0, 1, false, -1},
+         {"SWEEP", FmtPercent, 0, 1, false, -1}, {"RATE", FmtHz, 0.02, 20, true, -1},
+         {"SYNC", FmtChoice, 0, kSyncCount - 1, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
     };
     static const std::vector<FxControl> none;
     return (unit >= 0 && unit < kFxUnits) ? c[unit] : none;
 }
 inline int fxControlCount(int unit) { return (int)fxControls(unit).size(); }
 inline const char* fxUnitTitle(int unit) {
-    static const char* n[kFxUnits] = {"DISTORTION", "CHORUS", "DELAY", "COMPRESSOR", "REVERB", "EQ", "PHASER", "FLANGER"};
+    static const char* n[kFxUnits] = {"DISTORTION", "CHORUS", "DELAY", "COMPRESSOR", "REVERB", "EQ", "PHASER", "FLANGER", "HYPER / DIMENSION", "FILTER FX"};
     return (unit >= 0 && unit < kFxUnits) ? n[unit] : "";
 }
 // Raw value of a control (choice rows: the index as a double).
@@ -470,6 +488,9 @@ inline double fxGet(const FXParams& f, int unit, int i) {
     case FxEQ: return i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb;
     case FxPhaser: return i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix;
     case FxFlanger: return i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix;
+    case FxHyper: return i == 0 ? f.hyper.rateHz : i == 1 ? f.hyper.detune : i == 2 ? f.hyper.dimension : f.hyper.mix;
+    case FxFilter: return i == 0 ? f.filter.mode : i == 1 ? f.filter.cutoffHz : i == 2 ? f.filter.reso : i == 3 ? f.filter.drive
+                        : i == 4 ? f.filter.lfoDepth : i == 5 ? f.filter.lfoRateHz : i == 6 ? f.filter.lfoSync : f.filter.mix;
     }
     return 0.0;
 }
@@ -492,6 +513,11 @@ inline void fxSet(FXParams& f, int unit, int i, double v) {
     case FxEQ: (i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb) = v; break;
     case FxPhaser: (i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix) = v; break;
     case FxFlanger: (i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix) = v; break;
+    case FxHyper: (i == 0 ? f.hyper.rateHz : i == 1 ? f.hyper.detune : i == 2 ? f.hyper.dimension : f.hyper.mix) = v; break;
+    case FxFilter:
+        if (i == 0) f.filter.mode = k; else if (i == 6) f.filter.lfoSync = k;
+        else (i == 1 ? f.filter.cutoffHz : i == 2 ? f.filter.reso : i == 3 ? f.filter.drive : i == 4 ? f.filter.lfoDepth : i == 5 ? f.filter.lfoRateHz : f.filter.mix) = v;
+        break;
     }
 }
 // Slider position 0..1 <-> value (log rows sweep geometrically).
@@ -506,7 +532,8 @@ inline double fxFromNorm(const FxControl& c, double n) {
 }
 // A delay side follows the host tempo while its SYNC row is not FREE.
 inline bool fxRowInactive(const FXParams& f, int unit, int i) {
-    return unit == FxDelay && ((i == 0 && f.delay.syncL > 0) || (i == 2 && f.delay.syncR > 0));
+    return (unit == FxDelay && ((i == 0 && f.delay.syncL > 0) || (i == 2 && f.delay.syncR > 0)))
+        || (unit == FxFilter && i == 5 && f.filter.lfoSync > 0); // 0.27.0: a synced FILTER FX sweep ignores RATE
 }
 inline std::string fxValueText(const FXParams& f, int unit, int i) {
     const auto& cs = fxControls(unit);
@@ -516,9 +543,14 @@ inline std::string fxValueText(const FXParams& f, int unit, int i) {
     switch (cs[i].fmt) {
     case FmtChoice:
         if (unit == FxDist) return distModeName((int)v);
+        if (unit == FxFilter && i == 0) return filterFxModeName((int)v);
         return syncName((int)v);
     case FmtPercent: snprintf(b, sizeof b, "%.0f%%", v * 100); break;
-    case FmtHz: snprintf(b, sizeof b, v < 1 ? "%.2f Hz" : "%.1f Hz", v); break;
+    case FmtHz:
+        if (fxRowInactive(f, unit, i)) return "TEMPO";
+        if (v >= 1000) snprintf(b, sizeof b, "%.2f kHz", v / 1000); else if (v >= 100) snprintf(b, sizeof b, "%.0f Hz", v);
+        else snprintf(b, sizeof b, v < 1 ? "%.2f Hz" : "%.1f Hz", v);
+        break;
     case FmtMs: snprintf(b, sizeof b, "%.1f ms", v); break;
     case FmtSec:
         if (fxRowInactive(f, unit, i)) return "TEMPO";

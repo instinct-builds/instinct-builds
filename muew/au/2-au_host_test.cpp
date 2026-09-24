@@ -273,7 +273,7 @@ int main() {
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
-        static_assert(mp::Count == 34, "0.25.0 publishes 34 parameters");
+        static_assert(mp::Count == 36, "0.27.0 publishes 36 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
             printf("FAIL: reselect Init Saw\n"); return 1;
         }
@@ -335,7 +335,26 @@ int main() {
         if (std::fabs(dmid2 - dmid) < dmid * 0.02 || !getState(unit, fs) || fs.fx.dist.drive != 1.0) {
             printf("FAIL: distortion drive not audible or not stored\n"); return 1;
         }
-        printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros, unison width, drive and recall: ok\n", (int)mp::Count);
+        // 0.27.0: HYPER MIX (param 34) widens a mono sound; FILTER FX CUTOFF (param 35) darkens it.
+        {
+            muew::Preset hp;
+            if (!selectPreset(0) || !getState(unit, hp)) { printf("FAIL: select Airy Strings for FX depth\n"); return 1; }
+            hp.voice.osc1Unison = 1; hp.voice.osc2Unison = 1; hp.fx = muew::FXParams{};
+            hp.fx.hyper.enabled = true; hp.fx.hyper.mix = 0.0;
+            hp.fx.filter.enabled = true; hp.fx.filter.cutoffHz = 18000; hp.fx.filter.reso = 0.0; hp.fx.filter.mix = 1.0;
+            double hs0 = 0, hm0 = 0, hs1 = 0, hm1 = 0, hs2 = 0, hm2 = 0;
+            if (!setState(unit, hp) || !measureLR(hs0, hm0)) { printf("FAIL: render FX depth base\n"); return 1; }
+            AudioUnitSetParameter(unit, mp::HyperMix, kAudioUnitScope_Global, 0, 100.0f, 0);
+            if (!measureLR(hs1, hm1)) { printf("FAIL: render HYPER mix 100\n"); return 1; }
+            AudioUnitSetParameter(unit, mp::FilterFxCutoff, kAudioUnitScope_Global, 0, 80.0f, 0);
+            if (!measureLR(hs2, hm2)) { printf("FAIL: render FILTER FX at 80 Hz\n"); return 1; }
+            muew::Preset hq;
+            printf("fx depth: side/mid %.4f at HYPER mix 0, %.4f at 100; level %.1f -> %.1f with FILTER FX at 80 Hz\n", hs0 / hm0, hs1 / hm1, hm1, hm2);
+            if (hs1 / hm1 < hs0 / hm0 + 0.05 || hm2 > hm1 * 0.5 || !getState(unit, hq) || hq.fx.hyper.mix != 1.0 || std::fabs(hq.fx.filter.cutoffHz - 80.0) > 1e-3) {
+                printf("FAIL: HYPER mix / FILTER FX cutoff not audible or not stored\n"); return 1;
+            }
+        }
+        printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros, unison width, drive, HYPER / FILTER FX and recall: ok\n", (int)mp::Count);
     }
 
     // Render notifications fire before and after each render (auval checks this).

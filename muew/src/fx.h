@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "tempo_sync.h"
 #include "mod_curve.h"
+#include "filter.h"
 
 namespace muew {
 
@@ -445,19 +446,151 @@ private:
     DelayLine dl_, dr_;
 };
 
+// ---- 0.27.0 HYPER / DIMENSION ----
+struct HyperParams {
+    bool enabled = false;
+    double rateHz = 0.35;  // 0.05..5: drift speed of the detuned copies
+    double detune = 0.5;   // 0..1: pitch spread (full = about +-18 cents)
+    double dimension = 0.4;// 0..1: cross-fed early taps that widen the image
+    double mix = 0.5;      // 0..1
+};
+
+// Six detuned copies of the signal (short delay lines, each swept by its own
+// slow sine at a different rate and phase, panned alternately left/right) plus
+// a dimension stage: four short cross-fed taps with alternating polarity and a
+// gentle lowpass, which spread the image without a comb-y tone. 0.27.0.
+class Hyper {
+public:
+    void init(double sr) {
+        sr_ = sr;
+        const int maxD = (int)(sr * 0.06) + 4;
+        dl_.resize(maxD); dr_.resize(maxD);
+    }
+    void set(const HyperParams& p) { p_ = p; }
+    // Mod routes into the detune (Dest::FxHyperDetune). 0 = untouched.
+    void setDetuneOffset(double d) { detOff_ = d; }
+    inline void process(float& l, float& r) {
+        const double mix = std::clamp(p_.mix, 0.0, 1.0), det = std::clamp(p_.detune + detOff_, 0.0, 1.0);
+        const double dim = std::clamp(p_.dimension, 0.0, 1.0), rate = std::clamp(p_.rateHz, 0.05, 5.0);
+        dl_.push(l); dr_.push(r);
+        // Sweep amplitude so the peak pitch change is ~18 cents at full detune
+        // regardless of rate (Doppler: ratio = 2 pi f A).
+        const double amp = det * 0.0104 / (2.0 * M_PI * rate);
+        double wl = 0.0, wr = 0.0;
+        for (int v = 0; v < kVoices; ++v) {
+            const double ph = phase_[v];
+            const double d = (kBaseMs[v] * 0.001 + std::min(amp, 0.012) * (0.5 + 0.5 * std::sin(2.0 * M_PI * ph))) * sr_;
+            const float x = (v & 1) ? dr_.read(d) : dl_.read(d);
+            const double pan = kPan[v];
+            wl += x * (1.0 - pan); wr += x * (1.0 + pan);
+            phase_[v] += rate * kRateMul[v] / sr_;
+            phase_[v] -= std::floor(phase_[v]);
+        }
+        wl *= kGain; wr *= kGain;
+        // Dimension: cross-fed taps, low-passed at ~6 kHz.
+        const double tl = (dr_.read(kTap[0] * sr_) - dr_.read(kTap[2] * sr_)) * 0.5;
+        const double tr = (dl_.read(kTap[1] * sr_) - dl_.read(kTap[3] * sr_)) * 0.5;
+        lpL_ += kLp * (tl - lpL_); lpR_ += kLp * (tr - lpR_);
+        wl += dim * 0.7 * lpL_; wr += dim * 0.7 * lpR_;
+        const double comp = 1.0 / std::sqrt((1.0 - mix) * (1.0 - mix) + mix * mix);
+        l = (float)(((1.0 - mix) * l + mix * wl) * comp);
+        r = (float)(((1.0 - mix) * r + mix * wr) * comp);
+    }
+    const HyperParams& params() const { return p_; }
+    // Panel display: voice layout and the peak pitch swing (cents) of voice v.
+    static constexpr int kVoices = 6;
+    static double voicePan(int v) { return kPan[std::clamp(v, 0, kVoices - 1)]; }
+    static double voiceBaseMs(int v) { return kBaseMs[std::clamp(v, 0, kVoices - 1)]; }
+    static double peakCents(int v, double rateHz, double detune) {
+        const double rate = std::clamp(rateHz, 0.05, 5.0), det = std::clamp(detune, 0.0, 1.0);
+        const double a = std::min(det * 0.0104 / (2.0 * M_PI * rate), 0.012);
+        return 1200.0 * std::log2(1.0 + 2.0 * M_PI * rate * kRateMul[std::clamp(v, 0, kVoices - 1)] * a);
+    }
+private:
+    static constexpr double kBaseMs[kVoices] = {9.0, 11.3, 13.7, 16.1, 19.3, 22.9};
+    static constexpr double kRateMul[kVoices] = {1.0, 1.17, 0.83, 1.31, 0.71, 1.07};
+    static constexpr double kPan[kVoices] = {-0.9, 0.9, -0.5, 0.5, -0.2, 0.2};
+    static constexpr double kTap[4] = {0.0131, 0.0173, 0.0229, 0.0293};
+    static constexpr double kGain = 0.42;  // six copies summed back near unity
+    static constexpr double kLp = 0.58;    // one-pole ~6 kHz at 44.1 kHz
+    double sr_ = 44100.0, detOff_ = 0.0, lpL_ = 0.0, lpR_ = 0.0;
+    double phase_[kVoices] = {0.0, 0.17, 0.33, 0.5, 0.67, 0.83};
+    HyperParams p_;
+    DelayLine dl_, dr_;
+};
+
+// ---- 0.27.0 FILTER FX ----
+struct FilterFxParams {
+    bool enabled = false;
+    int mode = 0;          // 0 LP, 1 BP, 2 HP, 3 NOTCH, 4 PEAK (SVFilter modes). Append only.
+    double cutoffHz = 1200;// 40..18000
+    double reso = 0.3;     // 0..1 -> Q 0.5..14
+    double drive = 0.0;    // 0..1 pre-filter saturation
+    double lfoRateHz = 0.5;// 0.02..20 cutoff sweep
+    int lfoSync = 0;       // syncBeats index, 0 = free
+    double lfoDepth = 0.0; // 0..1 -> +-4 octaves
+    double mix = 1.0;      // 0..1
+};
+
+// A stereo state-variable filter as an effect: optional drive, a cutoff that
+// can sweep with its own LFO (free or tempo-synced; the right side runs a
+// little ahead for motion) and a dry/wet mix. 0.27.0.
+class FilterFx {
+public:
+    void init(double sr) { sr_ = sr; fl_.setSampleRate(sr); fr_.setSampleRate(sr); tick_ = 0; }
+    void set(const FilterFxParams& p) {
+        p_ = p;
+        const auto m = static_cast<SVFilter::Mode>(std::clamp(p.mode, 0, 4));
+        fl_.setMode(m); fr_.setMode(m);
+        tick_ = 0;
+    }
+    void setTempo(double bpm) { if (bpm > 20.0 && bpm < 999.0) bpm_ = bpm; }
+    // Mod routes into the cutoff, in octaves (Dest::FxFilterCutoff). 0 = untouched.
+    void setCutoffOffset(double oct) { cutOff_ = oct; }
+    double lfoHz() const { const double b = syncBeats(p_.lfoSync); return b > 0.0 ? (bpm_ / 60.0) / b : std::clamp(p_.lfoRateHz, 0.02, 20.0); }
+    double lfoPhase() const { return phase_; }
+    void lockPhase(double beat) { const double b = syncBeats(p_.lfoSync); if (b > 0.0) { const double ph = beat / b; phase_ = ph - std::floor(ph); } }
+    // Cutoff (Hz) the filter is at now, for the detail page.
+    double cutoffNow(int ch = 0) const {
+        const double lfo = std::sin(2.0 * M_PI * (phase_ + ch * 0.08));
+        return std::clamp(std::clamp(p_.cutoffHz, 40.0, 18000.0) * std::pow(2.0, cutOff_ + 4.0 * std::clamp(p_.lfoDepth, 0.0, 1.0) * lfo), 20.0, sr_ * 0.45);
+    }
+    inline void process(float& l, float& r) {
+        if (--tick_ < 0) { // recompute coefficients every 16 samples
+            tick_ = 15;
+            const double q = 0.5 * std::pow(28.0, std::clamp(p_.reso, 0.0, 1.0));
+            fl_.set(cutoffNow(0), q); fr_.set(cutoffNow(1), q);
+        }
+        const double mix = std::clamp(p_.mix, 0.0, 1.0), drv = std::clamp(p_.drive, 0.0, 1.0);
+        double xl = l, xr = r;
+        if (drv > 0.0) { const double g = 1.0 + 7.0 * drv, n = 1.0 / std::tanh(g); xl = std::tanh(xl * g) * n; xr = std::tanh(xr * g) * n; }
+        const double yl = fl_.process((float)xl), yr = fr_.process((float)xr);
+        l = (float)((1.0 - mix) * l + mix * yl);
+        r = (float)((1.0 - mix) * r + mix * yr);
+        phase_ += lfoHz() / sr_;
+        phase_ -= std::floor(phase_);
+    }
+    const FilterFxParams& params() const { return p_; }
+private:
+    double sr_ = 44100.0, bpm_ = 120.0, phase_ = 0.0, cutOff_ = 0.0;
+    int tick_ = 0;
+    SVFilter fl_, fr_;
+    FilterFxParams p_;
+};
+
 // FX units by stable id. The ids are the serialized chain-order values:
 // append-only, never renumber.
-enum FxUnit { FxDist, FxChorus, FxDelay, FxComp, FxReverb, FxEQ, FxPhaser, FxFlanger, kFxUnits };
+enum FxUnit { FxDist, FxChorus, FxDelay, FxComp, FxReverb, FxEQ, FxPhaser, FxFlanger, FxHyper, FxFilter, kFxUnits }; // 0.27.0: HYPER, FILTER appended
 
 inline const char* fxUnitName(int u) {
-    static const char* n[kFxUnits] = {"dist", "chorus", "delay", "comp", "reverb", "eq", "phaser", "flanger"};
+    static const char* n[kFxUnits] = {"dist", "chorus", "delay", "comp", "reverb", "eq", "phaser", "flanger", "hyper", "filterfx"};
     return (u >= 0 && u < kFxUnits) ? n[u] : "";
 }
 
 // Chain order: slot -> unit id. The default is the 0.7.0 signal order with
 // the 0.13.0 units appended, so older presets render exactly as before.
 struct FxOrder {
-    int slot[kFxUnits] = {FxDist, FxChorus, FxDelay, FxComp, FxReverb, FxEQ, FxPhaser, FxFlanger};
+    int slot[kFxUnits] = {FxDist, FxChorus, FxDelay, FxComp, FxReverb, FxEQ, FxPhaser, FxFlanger, FxHyper, FxFilter};
     bool isDefault() const { for (int i = 0; i < kFxUnits; ++i) if (slot[i] != i) return false; return true; }
     bool operator==(const FxOrder& o) const { for (int i = 0; i < kFxUnits; ++i) if (slot[i] != o.slot[i]) return false; return true; }
     bool operator!=(const FxOrder& o) const { return !(*this == o); }
@@ -514,6 +647,9 @@ struct FXParams {
     FlangerParams flanger;
     FxOrder order;
     RackLfoParams lfo[2]; // 0.15.0
+    // 0.27.0 (off by default; appended to the chain)
+    HyperParams hyper;
+    FilterFxParams filter;
 };
 
 // Rack order comes from FXParams::order (default: distortion -> chorus ->
@@ -521,22 +657,28 @@ struct FXParams {
 // passes through untouched when off.
 class FXChain {
 public:
-    void init(double sr) { sr_ = sr; chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); phaser_.init(sr); flanger_.init(sr); }
+    void init(double sr) { sr_ = sr; chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); phaser_.init(sr); flanger_.init(sr); hyper_.init(sr); filter_.init(sr); }
     void set(const FXParams& p) {
         chorus_.set(p.chorus); delay_.set(p.delay); reverb_.set(p.reverb);
         dist_.set(p.dist); eq_.set(p.eq); comp_.set(p.comp);
         phaser_.set(p.phaser); flanger_.set(p.flanger);
+        hyper_.set(p.hyper);
+        filter_.set(p.filter);
         p_ = p;
     }
     // Macro routes into the distortion drive (Dest::DistDrive).
     void setDriveOffset(double d) { dist_.setDriveOffset(d); }
     // 0.14.0: macro routes into the detail controls (global FX, macro sources).
-    struct Mod { double drive = 0, delayFeedback = 0, reverbDecay = 0, phaserDepth = 0, flangerDepth = 0, chorusDepth = 0; };
+    struct Mod { double drive = 0, delayFeedback = 0, reverbDecay = 0, phaserDepth = 0, flangerDepth = 0, chorusDepth = 0;
+                 double hyperDetune = 0, filterCutoff = 0; }; // 0.27.0 (filterCutoff: 1 = +4 octaves)
     void setMod(const Mod& m) {
         dist_.setDriveOffset(m.drive); delay_.setFeedbackOffset(m.delayFeedback); reverb_.setDecayOffset(m.reverbDecay);
         phaser_.setDepthOffset(m.phaserDepth); flanger_.setDepthOffset(m.flangerDepth); chorus_.setDepthOffset(m.chorusDepth);
+        hyper_.setDetuneOffset(m.hyperDetune); filter_.setCutoffOffset(4.0 * m.filterCutoff);
     }
-    void setTempo(double bpm) { delay_.setTempo(bpm); if (bpm > 20.0 && bpm < 999.0) bpm_ = bpm; }
+    void setTempo(double bpm) { delay_.setTempo(bpm); filter_.setTempo(bpm); if (bpm > 20.0 && bpm < 999.0) bpm_ = bpm; }
+    const Hyper& hyper() const { return hyper_; }
+    const FilterFx& filterFx() const { return filter_; }
     // 0.15.0: routes from the rack LFOs. The static (macro) part is `base`;
     // every kLfoBlock samples the LFO part is added on top. No LFO routes
     // leaves the rack exactly as setMod left it.
@@ -544,7 +686,7 @@ public:
     // LFO aux; curve shapes the LFO; auxLfo (-1 none) scales by its 0..1 level;
     // auxScale is a static aux factor (a macro aux), 1 = none.
     struct LfoRoute { int lfo; int dest; double amount; double curve = 0.0; int auxLfo = -1; double auxScale = 1.0; double value = 0.0; };
-    enum { kDrive, kDelayFb, kRevDecay, kPhDepth, kFlDepth, kChDepth };
+    enum { kDrive, kDelayFb, kRevDecay, kPhDepth, kFlDepth, kChDepth, kHyDetune, kFiCutoff };
     void setLfoRoutes(const Mod& base, const std::vector<LfoRoute>& routes) {
         base_ = base; lfoRoutes_ = routes;
         if (routes.empty()) setMod(base); else lfoTick_ = 0;
@@ -561,6 +703,7 @@ public:
             const double b = syncBeats(p_.lfo[k].sync);
             if (b > 0.0) { const double ph = beat / b; lfoPhase_[k] = ph - std::floor(ph); }
         }
+        filter_.lockPhase(beat); // 0.27.0: a synced FILTER FX sweep follows the bar too
     }
     const StereoDelay& delay() const { return delay_; }
     const Reverb& reverb() const { return reverb_; }
@@ -576,6 +719,8 @@ public:
             case FxEQ: if (p_.eq.enabled) eq_.process(l, r); break;
             case FxPhaser: if (p_.phaser.enabled) phaser_.process(l, r); break;
             case FxFlanger: if (p_.flanger.enabled) flanger_.process(l, r); break;
+            case FxHyper: if (p_.hyper.enabled) hyper_.process(l, r); break;
+            case FxFilter: if (p_.filter.enabled) filter_.process(l, r); break;
             default: break;
             }
         }
@@ -592,6 +737,8 @@ private:
     Compressor comp_;
     Phaser phaser_;
     Flanger flanger_;
+    Hyper hyper_;      // 0.27.0
+    FilterFx filter_;  // 0.27.0
     static const int kLfoBlock = 32;
     double sr_ = 44100.0, bpm_ = 120.0, lfoPhase_[2] = {0, 0};
     int lfoTick_ = 0;
@@ -618,6 +765,8 @@ private:
             case kRevDecay: m.reverbDecay += x; break;
             case kPhDepth: m.phaserDepth += x; break;
             case kFlDepth: m.flangerDepth += x; break;
+            case kHyDetune: m.hyperDetune += x; break;
+            case kFiCutoff: m.filterCutoff += x; break;
             default: m.chorusDepth += x; break;
             }
         }

@@ -33,12 +33,12 @@ static std::string orderText(const FxOrder& o) { std::string s; for (int i = 0; 
 int main() {
     // Order model.
     FxOrder o;
-    check(o.isDefault() && orderText(o) == "01234567", "default chain is the 0.7.0 order with phaser and flanger appended");
-    check(o.move(4, 0) && orderText(o) == "40123567", "moving REVERB to the front shifts the others right");
-    check(o.move(0, 7) && orderText(o) == "01235674", "moving it to the end shifts the others left");
-    check(!o.move(3, 3) && !o.move(-1, 2) && !o.move(2, 8), "no-op and out-of-range moves are refused");
-    check(o.slotOf(FxReverb) == 7 && o.slotOf(FxDist) == 0, "slotOf finds units");
-    int dup[kFxUnits] = {0, 0, 1, 2, 3, 4, 5, 6};
+    check(o.isDefault() && orderText(o) == "0123456789", "default chain is the 0.7.0 order with the later units appended");
+    check(o.move(4, 0) && orderText(o) == "4012356789", "moving REVERB to the front shifts the others right");
+    check(o.move(0, 9) && orderText(o) == "0123567894", "moving it to the end shifts the others left");
+    check(!o.move(3, 3) && !o.move(-1, 2) && !o.move(2, 10), "no-op and out-of-range moves are refused");
+    check(o.slotOf(FxReverb) == 9 && o.slotOf(FxDist) == 0, "slotOf finds units");
+    int dup[kFxUnits] = {0, 0, 1, 2, 3, 4, 5, 6, 7, 8};
     FxOrder keep; check(!keep.assign(dup, kFxUnits) && keep.isDefault(), "a duplicate unit is rejected");
 
     // Factory sounds: no new lines, round-trip unchanged.

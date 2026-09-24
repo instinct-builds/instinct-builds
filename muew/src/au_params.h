@@ -24,6 +24,7 @@ enum ID {
     PhaserMix, FlangerMix, // 0.13.0
     GlideTime, UnisonBlend, // 0.23.0
     ArpGate, ArpSwing,      // 0.25.0
+    HyperMix, FilterFxCutoff, // 0.27.0
     Count
 };
 
@@ -72,6 +73,8 @@ inline const Def& def(int id) {
         {"Unison Blend", Percent, 0, 100, false},
         {"Arp Gate", Percent, 5, 100, false},
         {"Arp Swing", Percent, 0, 50, false},
+        {"Hyper Mix", Percent, 0, 100, false},
+        {"Filter FX Cutoff", Hertz, 40, 18000, true},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -110,6 +113,8 @@ inline double& field(Preset& p, int id) {
     case UnisonBlend: return p.voice.uniBlend;
     case ArpGate: return p.voice.arpGate;
     case ArpSwing: return p.voice.arpSwing;
+    case HyperMix: return p.fx.hyper.mix;
+    case FilterFxCutoff: return p.fx.filter.cutoffHz;
     default: return p.fx.reverb.mix;
     }
 }

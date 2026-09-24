@@ -508,27 +508,38 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     }
     return NO;
 }
-// FX rack: 4 x 2 cards laid out in chain order (FXParams::order), left to
+// FX rack: 5 x 2 cards (0.27.0; 4 x 2 before) laid out in chain order (FXParams::order), left to
 // right, top to bottom. Card geometry is by slot; the unit in a slot is
 // current.fx.order.slot[s]. Unit ids follow muew::FxUnit.
 - (CGFloat)fxCardH { return ([self top] - 286 - 44 - 58 - 6) / 2; }
 - (NSRect)fxCard:(int)slot {
     CGFloat h = [self fxCardH];
-    return NSMakeRect(468 + (slot % 4) * 78, slot < 4 ? 58 + h + 6 : 58, 70, h);
+    return NSMakeRect(468 + (slot % 5) * 62, slot < 5 ? 58 + h + 6 : 58, 56, h);
 }
-- (NSPoint)fxRingCenter:(int)slot { NSRect r = [self fxCard:slot]; return NSMakePoint(r.origin.x + 19, r.origin.y + 24); }
-- (NSRect)fxLed:(int)slot { NSRect r = [self fxCard:slot]; return NSMakeRect(NSMaxX(r) - 20, NSMaxY(r) - 22, 18, 18); }
+- (NSPoint)fxRingCenter:(int)slot { NSRect r = [self fxCard:slot]; return NSMakePoint(NSMidX(r), r.origin.y + 36); }
+- (NSRect)fxLed:(int)slot { NSRect r = [self fxCard:slot]; return NSMakeRect(NSMaxX(r) - 17, NSMaxY(r) - 19, 16, 16); }
 - (int)fxSlotAt:(NSPoint)p {
     for (int s = 0; s < kFxUnits; ++s) if (NSPointInRect(p, NSInsetRect([self fxCard:s], -4, -3))) return s;
     return -1;
 }
 // 0.14.0 FX detail panel: covers the matrix while a unit is open.
-static const int kFxAccent[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff};
+static const int kFxAccent[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff, 0x75ead8, 0xff7fb0};
+// 0.27.0: HYPER and FILTER FX pages put a live picture beside compact rows.
+static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter; }
 - (NSRect)fxDetailPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)fxDetailClose { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)fxDetailToggle { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 25, 46, 16); }
-- (NSRect)fxDetailRow:(int)i { NSRect r = [self fxDetailPanel]; return NSMakeRect(r.origin.x + 12, NSMaxY(r) - 58 - i * 24, r.size.width - 24, 20); }
-- (NSRect)fxDetailBar:(int)i { NSRect r = [self fxDetailRow:i]; return NSMakeRect(r.origin.x + 92, r.origin.y + 3, 196, 14); }
+- (NSRect)fxDetailRow:(int)i {
+    NSRect r = [self fxDetailPanel];
+    if (FxVisualPage(fxDetail)) return NSMakeRect(r.origin.x + 12, NSMaxY(r) - 56 - i * 19, 252, 17);
+    return NSMakeRect(r.origin.x + 12, NSMaxY(r) - 58 - i * 24, r.size.width - 24, 20);
+}
+- (NSRect)fxDetailBar:(int)i {
+    NSRect r = [self fxDetailRow:i];
+    if (FxVisualPage(fxDetail)) return NSMakeRect(r.origin.x + 62, r.origin.y + 2, 100, 13);
+    return NSMakeRect(r.origin.x + 92, r.origin.y + 3, 196, 14);
+}
+- (NSRect)fxDetailVisual { NSRect r = [self fxDetailPanel]; return NSMakeRect(r.origin.x + 274, r.origin.y + 26, r.size.width - 286, r.size.height - 64); }
 // AU parameter behind a detail row (-1: panel-only control, saved with the sound).
 static int FxRowParam(int u, int i) {
     switch (u) {
@@ -539,14 +550,28 @@ static int FxRowParam(int u, int i) {
     case FxReverb: return i == 2 ? params::ReverbMix : -1;
     case FxPhaser: return i == 3 ? params::PhaserMix : -1;
     case FxFlanger: return i == 3 ? params::FlangerMix : -1;
+    case FxHyper: return i == 3 ? params::HyperMix : -1;       // 0.27.0
+    case FxFilter: return i == 1 ? params::FilterFxCutoff : -1; // 0.27.0
     default: return -1;
     }
 }
 // AU parameter behind each unit's ring (-1: the EQ has no ring).
 static int FxParam(int u) {
     static const int id[kFxUnits] = {params::DistDrive, params::ChorusMix, params::DelayMix, params::CompAmount, params::ReverbMix, -1,
-                                     params::PhaserMix, params::FlangerMix};
+                                     params::PhaserMix, params::FlangerMix, params::HyperMix, params::FilterFxCutoff};
     return (u >= 0 && u < kFxUnits) ? id[u] : -1;
+}
+// Ring position 0..1 of an FX ring parameter (Hertz rings sweep geometrically).
+static double RingNorm(const Preset& p, int id) {
+    const auto& d = params::def(id);
+    const double v = params::get(p, id);
+    if (d.log) return std::log(v / d.lo) / std::log(d.hi / d.lo);
+    return (v - d.lo) / (d.hi - d.lo);
+}
+static double RingValue(int id, double n) {
+    const auto& d = params::def(id);
+    n = std::clamp(n, 0.0, 1.0);
+    return d.log ? d.lo * std::pow(d.hi / d.lo, n) : d.lo + n * (d.hi - d.lo);
 }
 static bool& FxEnabled(Preset& p, int i) {
     switch (i) {
@@ -557,6 +582,8 @@ static bool& FxEnabled(Preset& p, int i) {
     case 4: return p.fx.reverb.enabled;
     case 6: return p.fx.phaser.enabled;
     case 7: return p.fx.flanger.enabled;
+    case 8: return p.fx.hyper.enabled;
+    case 9: return p.fx.filter.enabled;
     default: return p.fx.eq.enabled;
     }
 }
@@ -1454,8 +1481,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     snprintf(det[5], 40, "%+.0f %+.0f %+.0f dB", f.eq.lowDb, f.eq.midDb, f.eq.highDb);
     snprintf(det[6], 40, "%.2f Hz  FB %.0f", f.phaser.rateHz, f.phaser.feedback * 100);
     snprintf(det[7], 40, "%.2f Hz  FB %.0f", f.flanger.rateHz, f.flanger.feedback * 100);
-    static const char* names[kFxUnits] = {"DIST", "CHORUS", "DELAY", "COMP", "REVERB", "EQ", "PHASER", "FLANGER"};
-    static const char* ringLabel[kFxUnits] = {"DRIVE", "MIX", "MIX", "AMOUNT", "MIX", "", "MIX", "MIX"};
+    snprintf(det[8], 40, "\u00B1%.0f ct  DIM %.0f", Hyper::peakCents(0, f.hyper.rateHz, f.hyper.detune), f.hyper.dimension * 100);
+    snprintf(det[9], 40, "%s", ui::filterFxModeName(f.filter.mode));
+    static const char* names[kFxUnits] = {"DIST", "CHORUS", "DELAY", "COMP", "REVERB", "EQ", "PHASER", "FLANGER", "HYPER", "FILTER"};
+    static const char* ringLabel[kFxUnits] = {"DRIVE", "MIX", "MIX", "AMOUNT", "MIX", "", "MIX", "MIX", "MIX", "CUTOFF"};
     const int* accHex = kFxAccent;
     {
         NSRect c0 = [self fxCard:0];
@@ -1464,10 +1493,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
               NSFontWeightSemibold, NSTextAlignmentRight);
     }
     for (int s = 0; s < kFxUnits; ++s) { // flow chevrons between neighbours
-        if (s % 4 == 3) continue;
+        if (s % 5 == 4) continue;
         NSRect r = [self fxCard:s];
         NSBezierPath* ch = [NSBezierPath bezierPath];
-        CGFloat cx = NSMaxX(r) + 4, cy = NSMidY(r);
+        CGFloat cx = NSMaxX(r) + 3, cy = NSMidY(r);
         [ch moveToPoint:NSMakePoint(cx - 1.5, cy + 3)]; [ch lineToPoint:NSMakePoint(cx + 1.5, cy)]; [ch lineToPoint:NSMakePoint(cx - 1.5, cy - 3)];
         [C(0x3b4552) setStroke]; ch.lineWidth = 1.2; [ch stroke];
     }
@@ -1501,16 +1530,16 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             o.lineWidth = dropFx == s ? 2 : 1; [o stroke];
         }
         CGFloat alpha = moving ? 0.35 : 1.0;
-        Text(S(names[i]), NSMakeRect(r.origin.x + 8, NSMaxY(r) - 19, 46, 13), 8.5,
-             [(on ? acc : C(0x5f6b7b)) colorWithAlphaComponent:alpha], NSFontWeightSemibold);
+        Text(S(names[i]), NSMakeRect(r.origin.x + 6, NSMaxY(r) - 17, r.size.width - 20, 12), 7.5,
+             [(on ? acc : C(0x5f6b7b)) colorWithAlphaComponent:alpha], NSFontWeightBold);
         NSRect led = [self fxLed:s];
-        FillRound(NSMakeRect(NSMidX(led) - 3.5, NSMidY(led) - 3.5, 7, 7), 3.5, [(on ? acc : C(0x303947)) colorWithAlphaComponent:alpha]);
-        Text(S(det[i]), NSMakeRect(r.origin.x + 8, NSMaxY(r) - 32, r.size.width - 12, 11), 7,
+        FillRound(NSMakeRect(NSMidX(led) - 3, NSMidY(led) - 3, 6, 6), 3, [(on ? acc : C(0x303947)) colorWithAlphaComponent:alpha]);
+        Text(S(det[i]), NSMakeRect(r.origin.x + 6, NSMaxY(r) - 29, r.size.width - 8, 10), 6.3,
              [(on ? C(0x8793a3) : C(0x4a5462)) colorWithAlphaComponent:alpha], NSFontWeightMedium);
-        TextA([NSString stringWithFormat:@"%d", s + 1], NSMakeRect(NSMaxX(r) - 16, r.origin.y + 4, 11, 10), 7,
+        TextA([NSString stringWithFormat:@"%d", s + 1], NSMakeRect(NSMaxX(r) - 14, r.origin.y + 3, 10, 9), 6.5,
               C(0x3b4552), NSFontWeightBold, NSTextAlignmentRight); // chain position
         if (i == FxEQ) { // EQ: response curve instead of a ring
-            NSRect plot = NSMakeRect(r.origin.x + 6, r.origin.y + 14, r.size.width - 12, 30);
+            NSRect plot = NSMakeRect(r.origin.x + 5, r.origin.y + 14, r.size.width - 10, 36);
             FillRound(plot, 4, C(0x0f141b));
             [C(0x232b36) setStroke];
             NSBezierPath* zero = [NSBezierPath bezierPath];
@@ -1527,23 +1556,29 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             [[(on ? acc : C(0x3b4552)) colorWithAlphaComponent:alpha] setStroke]; curve.lineWidth = 1.4; [curve stroke];
             continue;
         }
-        double val = params::get(current, FxParam(i)) / 100.0;
+        const int rid = FxParam(i);
+        double val = RingNorm(current, rid);
         bool dragging = dragKnob == kFxDrag + i;
         NSPoint c = [self fxRingCenter:s];
         NSBezierPath* ring = [NSBezierPath bezierPath];
-        [ring appendBezierPathWithArcWithCenter:c radius:12 startAngle:225 endAngle:-45 clockwise:YES];
-        [[C(0x303947) colorWithAlphaComponent:alpha] setStroke]; ring.lineWidth = 2.6; [ring stroke];
+        [ring appendBezierPathWithArcWithCenter:c radius:13 startAngle:225 endAngle:-45 clockwise:YES];
+        [[C(0x303947) colorWithAlphaComponent:alpha] setStroke]; ring.lineWidth = 2.4; [ring stroke];
         NSBezierPath* arc = [NSBezierPath bezierPath];
-        [arc appendBezierPathWithArcWithCenter:c radius:12 startAngle:225 endAngle:225 - 270 * val clockwise:YES];
-        [[(on ? acc : C(0x4a5462)) colorWithAlphaComponent:alpha] setStroke]; arc.lineWidth = 2.6; [arc stroke];
-        Text(S(ringLabel[i]), NSMakeRect(r.origin.x + 35, r.origin.y + 27, 34, 10), 6.5,
-             [C(0x6f7b8b) colorWithAlphaComponent:alpha], NSFontWeightSemibold);
-        Text([NSString stringWithFormat:@"%.0f%%", val * 100], NSMakeRect(r.origin.x + 35, r.origin.y + 12, 34, 14), 10.5,
-             [(dragging ? acc : (on ? C(0xd5dce5) : C(0x5f6b7b))) colorWithAlphaComponent:alpha], NSFontWeightMedium);
+        [arc appendBezierPathWithArcWithCenter:c radius:13 startAngle:225 endAngle:225 - 270 * val clockwise:YES];
+        [[(on ? acc : C(0x4a5462)) colorWithAlphaComponent:alpha] setStroke]; arc.lineWidth = 2.4; [arc stroke];
+        NSString* vt;
+        if (params::def(rid).unit == params::Hertz) {
+            double hz = params::get(current, rid);
+            vt = hz >= 1000 ? [NSString stringWithFormat:@"%.1fk", hz / 1000] : [NSString stringWithFormat:@"%.0f", hz];
+        } else vt = [NSString stringWithFormat:@"%.0f", val * 100];
+        TextA(vt, NSMakeRect(c.x - 13, c.y - 5, 26, 11), 8.5,
+              [(dragging ? acc : (on ? C(0xd5dce5) : C(0x5f6b7b))) colorWithAlphaComponent:alpha], NSFontWeightSemibold, NSTextAlignmentCenter);
+        TextA(S(ringLabel[i]), NSMakeRect(r.origin.x + 2, r.origin.y + 12, r.size.width - 4, 9), 6,
+              [C(0x6f7b8b) colorWithAlphaComponent:alpha], NSFontWeightSemibold, NSTextAlignmentCenter);
     }
     if (fxMove >= 0 && fxMove < kFxUnits) { // the card under the pointer
         const int u = f.order.slot[fxMove];
-        NSRect g = NSMakeRect(dragPoint.x - 35, dragPoint.y - 12, 70, 24);
+        NSRect g = NSMakeRect(dragPoint.x - 30, dragPoint.y - 12, 60, 24);
         FillRound(g, 7, C(0x26303c));
         NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(g, 0.5, 0.5) xRadius:7 yRadius:7];
         [C(accHex[u]) setStroke]; o.lineWidth = 1; [o stroke];
@@ -2023,6 +2058,120 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     edited = true; [self applySound]; [self setNeedsDisplay:YES];
 }
 
+// 0.27.0 HYPER page: the six voices across the stereo field. Each voice is a
+// column at its pan position whose height is its pitch swing (cents); the
+// shaded wings show how far the dimension taps widen the image.
+- (void)drawHyperVisual:(bool)on {
+    const HyperParams& h = current.fx.hyper;
+    NSColor* acc = C(kFxAccent[FxHyper]);
+    NSRect V = [self fxDetailVisual];
+    FillRound(V, 6, C(0x10151c));
+    NSRect plot = NSInsetRect(V, 10, 16);
+    plot.origin.y += 4;
+    const CGFloat midY = NSMidY(plot), half = plot.size.height / 2;
+    const double dim = std::clamp(h.dimension, 0.0, 1.0), mix = std::clamp(h.mix, 0.0, 1.0);
+    // Dimension wings: gradient from the centre outwards.
+    if (dim > 0) {
+        NSGradient* g = [[NSGradient alloc] initWithStartingColor:C(kFxAccent[FxHyper], 0.0)
+                                                      endingColor:C(kFxAccent[FxHyper], (on ? 0.22 : 0.08) * dim)];
+        CGFloat w = plot.size.width / 2;
+        [g drawInRect:NSMakeRect(NSMidX(plot), plot.origin.y, w, plot.size.height) angle:0];
+        [g drawInRect:NSMakeRect(plot.origin.x, plot.origin.y, w, plot.size.height) angle:180];
+    }
+    [C(0x232b36) setStroke];
+    for (int g = -1; g <= 1; ++g) { // cent grid: 0 and +-20
+        NSBezierPath* l = [NSBezierPath bezierPath];
+        CGFloat y = midY + g * half * 0.8;
+        [l moveToPoint:NSMakePoint(plot.origin.x, y)]; [l lineToPoint:NSMakePoint(NSMaxX(plot), y)];
+        if (g) { CGFloat d[2] = {2, 3}; [l setLineDash:d count:2 phase:0]; }
+        [l stroke];
+    }
+    NSBezierPath* cl = [NSBezierPath bezierPath];
+    [cl moveToPoint:NSMakePoint(NSMidX(plot), plot.origin.y)]; [cl lineToPoint:NSMakePoint(NSMidX(plot), NSMaxY(plot))]; [cl stroke];
+    double peak = 0;
+    for (int v = 0; v < Hyper::kVoices; ++v) {
+        const double ct = Hyper::peakCents(v, h.rateHz, h.detune);
+        peak = std::max(peak, ct);
+        const CGFloat x = NSMidX(plot) + Hyper::voicePan(v) * (plot.size.width / 2 - 6);
+        const CGFloat hgt = std::max<CGFloat>(1.5, std::min(ct / 20.0, 1.2) * half * 0.8);
+        NSColor* vc = on ? [acc colorWithAlphaComponent:0.35 + 0.65 * mix] : C(0x4a5462);
+        FillRound(NSMakeRect(x - 3, midY - hgt, 6, 2 * hgt), 3, [vc colorWithAlphaComponent:on ? 0.3 : 0.4]);
+        FillRound(NSMakeRect(x - 1, midY - hgt, 2, 2 * hgt), 1, vc);
+        FillRound(NSMakeRect(x - 3.5, midY - 3.5, 7, 7), 3.5, on ? C(0xd5dce5) : C(0x5f6b7b));
+        TextA([NSString stringWithFormat:@"%d", v + 1], NSMakeRect(x - 6, plot.origin.y - 13, 12, 9), 6.5, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    Text(@"L", NSMakeRect(V.origin.x + 6, NSMaxY(V) - 13, 12, 10), 7, C(0x5f6b7b), NSFontWeightBold);
+    TextA(@"R", NSMakeRect(NSMaxX(V) - 18, NSMaxY(V) - 13, 12, 10), 7, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
+    TextA([NSString stringWithFormat:@"\u00B1%.1f CENTS", peak], NSMakeRect(V.origin.x, NSMaxY(V) - 13, V.size.width, 10), 7,
+          on ? acc : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+}
+
+// 0.27.0 FILTER FX page: the response at the set cutoff, the sweep range the
+// LFO covers (shaded, with its end curves dashed) and the cutoff marker.
+static double FilterFxMag(int mode, double hz, double fc, double q) {
+    const double w = hz / fc, re = 1.0 - w * w, im = w / q, den = std::sqrt(re * re + im * im);
+    switch (mode) {
+    case 1: return w / den;                 // band (peak gain Q)
+    case 2: return (w * w) / den;           // high
+    case 3: return std::fabs(re) / den;     // notch
+    case 4: return (1.0 + w * w) / den;     // peak: low - high
+    default: return 1.0 / den;              // low
+    }
+}
+- (void)drawFilterFxVisual:(bool)on {
+    const FilterFxParams& fp = current.fx.filter;
+    NSColor* acc = C(kFxAccent[FxFilter]);
+    NSRect V = [self fxDetailVisual];
+    FillRound(V, 6, C(0x10151c));
+    NSRect plot = NSInsetRect(V, 8, 14);
+    plot.origin.y += 2;
+    const double q = 0.5 * std::pow(28.0, std::clamp(fp.reso, 0.0, 1.0)), depth = std::clamp(fp.lfoDepth, 0.0, 1.0);
+    const double fc = std::clamp(fp.cutoffHz, 40.0, 18000.0);
+    auto xOf = [&](double hz) { return plot.origin.x + plot.size.width * std::log(hz / 20.0) / std::log(1000.0); };
+    auto yOf = [&](double mag) { double db = 20.0 * std::log10(std::max(mag, 1e-4)); return plot.origin.y + plot.size.height * (std::clamp(db, -36.0, 24.0) + 36.0) / 60.0; };
+    [C(0x232b36) setStroke];
+    for (double g : {100.0, 1000.0, 10000.0}) { // decade lines
+        NSBezierPath* l = [NSBezierPath bezierPath];
+        [l moveToPoint:NSMakePoint(xOf(g), plot.origin.y)]; [l lineToPoint:NSMakePoint(xOf(g), NSMaxY(plot))]; [l stroke];
+    }
+    { NSBezierPath* l = [NSBezierPath bezierPath]; // 0 dB
+      [l moveToPoint:NSMakePoint(plot.origin.x, yOf(1.0))]; [l lineToPoint:NSMakePoint(NSMaxX(plot), yOf(1.0))];
+      CGFloat d[2] = {2, 3}; [l setLineDash:d count:2 phase:0]; [l stroke]; }
+    const double lo = std::clamp(fc * std::pow(2.0, -4.0 * depth), 20.0, 20000.0), hi = std::clamp(fc * std::pow(2.0, 4.0 * depth), 20.0, 20000.0);
+    if (depth > 0) { // sweep band
+        FillRound(NSMakeRect(xOf(lo), plot.origin.y, xOf(hi) - xOf(lo), plot.size.height), 3, C(kFxAccent[FxFilter], on ? 0.10 : 0.05));
+        for (double e : {lo, hi}) {
+            NSBezierPath* c = [NSBezierPath bezierPath];
+            for (int k = 0; k <= 72; ++k) {
+                double hz = 20.0 * std::pow(1000.0, k / 72.0);
+                NSPoint pt = NSMakePoint(xOf(hz), yOf(FilterFxMag(fp.mode, hz, e, q)));
+                k ? [c lineToPoint:pt] : [c moveToPoint:pt];
+            }
+            CGFloat d[2] = {3, 3}; [c setLineDash:d count:2 phase:0];
+            [C(kFxAccent[FxFilter], on ? 0.45 : 0.2) setStroke]; c.lineWidth = 1; [c stroke];
+        }
+    }
+    NSBezierPath* curve = [NSBezierPath bezierPath];
+    for (int k = 0; k <= 120; ++k) {
+        double hz = 20.0 * std::pow(1000.0, k / 120.0);
+        NSPoint pt = NSMakePoint(xOf(hz), yOf(FilterFxMag(fp.mode, hz, fc, q)));
+        k ? [curve lineToPoint:pt] : [curve moveToPoint:pt];
+    }
+    NSBezierPath* fill = [curve copy];
+    [fill lineToPoint:NSMakePoint(NSMaxX(plot), plot.origin.y)]; [fill lineToPoint:NSMakePoint(plot.origin.x, plot.origin.y)]; [fill closePath];
+    [C(kFxAccent[FxFilter], on ? 0.14 : 0.05) setFill]; [fill fill];
+    [(on ? acc : C(0x4a5462)) setStroke]; curve.lineWidth = 1.8; [curve stroke];
+    const CGFloat mx = xOf(fc);
+    FillRound(NSMakeRect(mx - 0.75, plot.origin.y, 1.5, plot.size.height), 0.75, on ? C(0xd5dce5, 0.6) : C(0x4a5462));
+    const CGFloat my = yOf(FilterFxMag(fp.mode, fc, fc, q));
+    FillRound(NSMakeRect(mx - 4, std::clamp(my, plot.origin.y, NSMaxY(plot)) - 4, 8, 8), 4, on ? C(0xffffff) : C(0x8793a3));
+    Text(@"20 Hz", NSMakeRect(V.origin.x + 6, V.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
+    TextA(@"20 kHz", NSMakeRect(NSMaxX(V) - 46, V.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
+    TextA(S(ui::fxValueText(current.fx, FxFilter, 1)), NSMakeRect(V.origin.x, NSMaxY(V) - 12, V.size.width - 8, 10), 7,
+          on ? acc : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
+    Text(S(ui::filterFxModeName(fp.mode)), NSMakeRect(V.origin.x + 8, NSMaxY(V) - 12, 80, 10), 7, C(0x8793a3), NSFontWeightBold);
+}
+
 // ---- interaction ----
 - (void)drawFxDetail {
     const int u = fxDetail;
@@ -2050,12 +2199,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [C(0x29313d) setFill]; NSRectFill(NSMakeRect(P.origin.x + 12, NSMaxY(P) - 34, P.size.width - 24, 1));
 
     const auto& cs = ui::fxControls(u);
+    const bool compact = FxVisualPage(u);
+    const CGFloat valW = compact ? 52 : 64, tagW = compact ? 32 : 36;
     for (int i = 0; i < (int)cs.size(); ++i) {
         const ui::FxControl& c = cs[i];
         NSRect row = [self fxDetailRow:i], bar = [self fxDetailBar:i];
         bool inactive = ui::fxRowInactive(f, u, i);
         bool live = on && !inactive;
-        Text(S(c.label), NSMakeRect(row.origin.x + 2, row.origin.y + 4, 88, 12), 8.5, inactive ? C(0x4a5462) : C(0xa8b2c1), NSFontWeightSemibold);
+        Text(S(c.label), NSMakeRect(row.origin.x + 2, row.origin.y + (compact ? 3 : 4), compact ? 60 : 88, 12), compact ? 7.5 : 8.5,
+             inactive ? C(0x4a5462) : C(0xa8b2c1), NSFontWeightSemibold);
         const double v = ui::fxGet(f, u, i);
         if (c.fmt == ui::FmtChoice && c.hi - c.lo < 3) { // segmented choice
             int n = (int)(c.hi - c.lo) + 1;
@@ -2068,12 +2220,17 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                       sel ? (live ? acc : C(0x8793a3)) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
             }
         } else if (c.fmt == ui::FmtChoice) { // stepper: left half steps down, right half up
-            NSRect box = NSMakeRect(bar.origin.x + 1, bar.origin.y - 1, bar.size.width - 2, 16);
+            NSRect box = NSMakeRect(bar.origin.x + 1, bar.origin.y - 1, bar.size.width - 2, compact ? 15 : 16);
             FillRound(box, 4, C(0x10151c));
             TextA(@"\u25C0", NSMakeRect(box.origin.x + 4, box.origin.y + 3, 14, 11), 7, (int)v > c.lo ? C(0x8793a3) : C(0x303947), NSFontWeightBold, NSTextAlignmentCenter);
             TextA(@"\u25B6", NSMakeRect(NSMaxX(box) - 18, box.origin.y + 3, 14, 11), 7, (int)v < c.hi ? C(0x8793a3) : C(0x303947), NSFontWeightBold, NSTextAlignmentCenter);
-            TextA((int)v == 0 ? @"FREE TIME" : @"TEMPO SYNC", NSMakeRect(box.origin.x + 20, box.origin.y + 3.5, box.size.width - 40, 10), 7,
-                  (int)v == 0 ? C(0x5f6b7b) : (live || on ? acc : C(0x8793a3)), NSFontWeightSemibold, NSTextAlignmentCenter);
+            if (u == FxFilter && i == 0) // filter type: the name sits in the stepper
+                TextA(S(ui::filterFxModeName((int)v)), NSMakeRect(box.origin.x + 18, box.origin.y + 3, box.size.width - 36, 10), 7,
+                      on ? acc : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+            else
+                TextA((int)v == 0 ? (compact ? @"FREE" : @"FREE TIME") : (compact ? @"SYNC" : @"TEMPO SYNC"),
+                      NSMakeRect(box.origin.x + 18, box.origin.y + 3.5, box.size.width - 36, 10), 7,
+                      (int)v == 0 ? C(0x5f6b7b) : (live || on ? acc : C(0x8793a3)), NSFontWeightSemibold, NSTextAlignmentCenter);
         } else { // slider
             double n = ui::fxNorm(c, v);
             NSRect track = NSMakeRect(bar.origin.x, NSMidY(bar) - 2, bar.size.width, 4);
@@ -2088,7 +2245,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                     if ((int)rt.dest != c.dest || !ui::routeActive(rt)) continue;
                     (IsRack(rt.source) ? lfo : mac) += rt.amount;
                 }
-                double unit = (c.fmt == ui::FmtMs ? 10.0 : 1.0) / (c.hi - c.lo);
+                // FX CUTOFF routes are octaves (1 = +4 oct) on a log row; others are row units.
+                double unit = c.dest == (int)ModRoute::Dest::FxFilterCutoff ? 4.0 / std::log2(c.hi / c.lo)
+                                                                            : (c.fmt == ui::FmtMs ? 10.0 : 1.0) / (c.hi - c.lo);
                 if (mac != 0) {
                     double span = mac * unit;
                     double m0 = std::clamp(n + std::min(0.0, span), 0.0, 1.0), m1 = std::clamp(n + std::max(0.0, span), 0.0, 1.0);
@@ -2106,16 +2265,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(NSMakeRect(k.x - 5, k.y - 5, 10, 10), 5, inactive ? C(0x303947) : (fxRowDrag == i ? C(0xffffff) : C(0xd5dce5)));
             FillRound(NSMakeRect(k.x - 2, k.y - 2, 4, 4), 2, inactive ? C(0x19202a) : acc);
         }
-        TextA(S(ui::fxValueText(f, u, i)), NSMakeRect(NSMaxX(bar) + 6, row.origin.y + 3.5, 64, 13), 9.5,
-              inactive ? C(0x5f6b7b) : fxRowDrag == i ? acc : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentRight);
+        if (!(u == FxFilter && i == 0))
+            TextA(S(ui::fxValueText(f, u, i)), NSMakeRect(NSMaxX(bar) + 4, row.origin.y + (compact ? 2.5 : 3.5), valW, 13), compact ? 8.5 : 9.5,
+                  inactive ? C(0x5f6b7b) : fxRowDrag == i ? acc : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentRight);
         if (c.dest >= 0) { // modulation tag: route amount when a macro or FX LFO drives this row
             int nr = 0; double amt = ui::fxRouteSum(current.routes, c.dest, &nr);
-            NSRect tag = NSMakeRect(NSMaxX(row) - 36, row.origin.y + 3, 36, 14);
+            NSRect tag = NSMakeRect(NSMaxX(row) - tagW, row.origin.y + (compact ? 2 : 3), tagW, compact ? 13 : 14);
             bool rack = false;
             for (const auto& rt : current.routes) if ((int)rt.dest == c.dest && ui::routeActive(rt) && IsRack(rt.source)) rack = true;
             NSColor* tc = rack ? C(0xb68cff) : C(0xf27a55);
             FillRound(tag, 4, nr ? [tc colorWithAlphaComponent:0.18] : C(0x10151c));
             NSString* t = !nr ? @"MOD" : c.fmt == ui::FmtMs ? [NSString stringWithFormat:@"%+.0fms", amt * 10.0]
+                        : c.dest == (int)ModRoute::Dest::FxFilterCutoff ? [NSString stringWithFormat:@"%+.1fo", amt * 4.0]
                                                    : [NSString stringWithFormat:@"%+.0f%%", amt * 100.0];
             TextA(t, NSMakeRect(tag.origin.x, tag.origin.y + 2.5, tag.size.width, 10), 7, nr ? tc : C(0x4a5462), NSFontWeightBold,
                   NSTextAlignmentCenter);
@@ -2144,8 +2305,23 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     case FxFlanger: snprintf(foot, sizeof foot, "SWEEP 0.3 TO %.1f ms  \u2022  QUADRATURE STEREO", 0.3 + 4.0 * std::clamp(f.flanger.depth, 0.0, 1.0)); break;
     case FxChorus: snprintf(foot, sizeof foot, "TWO MODULATED TAPS  \u2022  %.1f TO %.1f ms", f.chorus.baseMs, f.chorus.baseMs + f.chorus.depthMs); break;
     case FxDist: snprintf(foot, sizeof foot, "OUTPUT TRIMS AS DRIVE RISES"); break;
+    case FxHyper:
+        snprintf(foot, sizeof foot, "SIX DRIFTING VOICES  \u2022  %.0f TO %.0f ms  \u2022  CROSS-FED DIMENSION TAPS",
+                 Hyper::voiceBaseMs(0), Hyper::voiceBaseMs(Hyper::kVoices - 1));
+        break;
+    case FxFilter: {
+        const double lo = std::clamp(f.filter.cutoffHz * std::pow(2.0, -4.0 * f.filter.lfoDepth), 20.0, 20000.0);
+        const double hi = std::clamp(f.filter.cutoffHz * std::pow(2.0, 4.0 * f.filter.lfoDepth), 20.0, 20000.0);
+        auto hz = [](double v) { char t[16]; if (v >= 1000) snprintf(t, sizeof t, "%.1f kHz", v / 1000); else snprintf(t, sizeof t, "%.0f Hz", v); return std::string(t); };
+        if (f.filter.lfoDepth <= 0.0) snprintf(foot, sizeof foot, "STEREO STATE-VARIABLE FILTER  \u2022  SWEEP OFF");
+        else snprintf(foot, sizeof foot, "SWEEP %s TO %s  \u2022  %s  \u2022  RIGHT SIDE LEADS", hz(lo).c_str(), hz(hi).c_str(),
+                      f.filter.lfoSync > 0 ? (std::string(ui::syncName(f.filter.lfoSync)) + " SYNCED").c_str() : "FREE RUNNING");
+        break;
+    }
     default: break;
     }
+    if (u == FxHyper) [self drawHyperVisual:on];
+    else if (u == FxFilter) [self drawFilterFxVisual:on];
     if (u == FxEQ) { // response curve under the three bands
         NSRect plot = NSMakeRect(P.origin.x + 104, P.origin.y + 14, 196, 66);
         FillRound(plot, 6, C(0x10151c));
@@ -2966,7 +3142,7 @@ static int SortForColumn(int c) {
     if (dragKnob >= kFxDrag) { // FX ring: drive / mix / amount, published as AU parameters
         int id = [self paramForDrag:dragKnob];
         if (host) host->parameterGesture(id, true);
-        dragValue = params::get(current, id) / 100.0;
+        dragValue = RingNorm(current, id);
         [self setNeedsDisplay:YES];
         return;
     }
@@ -3142,7 +3318,7 @@ static int SortForColumn(int c) {
     if (dragKnob < 0) return;
     if (dragKnob >= kFxDrag) {
         int id = [self paramForDrag:dragKnob];
-        params::set(current, id, std::clamp(dragValue + (p.y - dragStart.y) / scale, 0.0, 1.0) * 100.0);
+        params::set(current, id, RingValue(id, dragValue + (p.y - dragStart.y) / scale));
         edited = true;
         if (!host || !host->editParameter(id, current)) [self applySound];
         [self setNeedsDisplay:YES];

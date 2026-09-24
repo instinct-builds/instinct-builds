@@ -59,6 +59,8 @@ public:
             case ModRoute::Dest::FxPhaserDepth: d = FXChain::kPhDepth; break;
             case ModRoute::Dest::FxFlangerDepth: d = FXChain::kFlDepth; break;
             case ModRoute::Dest::FxChorusDepth: d = FXChain::kChDepth; break;
+            case ModRoute::Dest::FxHyperDetune: d = FXChain::kHyDetune; break;   // 0.27.0
+            case ModRoute::Dest::FxFilterCutoff: d = FXChain::kFiCutoff; break; // 0.27.0
             default: break;
             }
             if (d < 0) continue;
@@ -88,6 +90,8 @@ public:
             case FXChain::kRevDecay: m.reverbDecay += v; break;
             case FXChain::kPhDepth: m.phaserDepth += v; break;
             case FXChain::kFlDepth: m.flangerDepth += v; break;
+            case FXChain::kHyDetune: m.hyperDetune += v; break;
+            case FXChain::kFiCutoff: m.filterCutoff += v; break;
             default: m.chorusDepth += v; break;
             }
         }

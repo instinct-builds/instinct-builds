@@ -42,6 +42,9 @@ struct PresetInfo {
 //                  0.13.0 adds optional `phaser`, `flanger` and `fxorder` lines.
 //                  0.14.0 adds an optional `delaysync` line.
 //                  0.15.0 adds an optional `fxlfo` line (rack LFOs).
+//                  0.27.0 adds optional `hyper <en> <rate> <detune> <dim> <mix>` and
+//                  `filterfx <en> <mode> <cutoff> <reso> <drive> <rate> <sync> <depth> <mix>`
+//                  lines; an older 8-unit `fxorder` line gets the new units appended.
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
@@ -139,6 +142,14 @@ struct Preset {
         const auto& fl = fx.flanger; const auto& df = d.flanger;
         if (fl.enabled != df.enabled || fl.rateHz != df.rateHz || fl.depth != df.depth || fl.feedback != df.feedback || fl.mix != df.mix)
             fxLine("flanger", fl.enabled, fl.rateHz, fl.depth, fl.feedback, fl.mix);
+        const auto& hy = fx.hyper; const auto& dh = d.hyper;
+        if (hy.enabled != dh.enabled || hy.rateHz != dh.rateHz || hy.detune != dh.detune || hy.dimension != dh.dimension || hy.mix != dh.mix)
+            fxLine("hyper", hy.enabled, hy.rateHz, hy.detune, hy.dimension, hy.mix);
+        const auto& ff = fx.filter; const auto& dff = d.filter;
+        if (ff.enabled != dff.enabled || ff.mode != dff.mode || ff.cutoffHz != dff.cutoffHz || ff.reso != dff.reso || ff.drive != dff.drive
+            || ff.lfoRateHz != dff.lfoRateHz || ff.lfoSync != dff.lfoSync || ff.lfoDepth != dff.lfoDepth || ff.mix != dff.mix)
+            o << "filterfx " << (ff.enabled ? 1 : 0) << " " << ff.mode << " " << ff.cutoffHz << " " << ff.reso << " " << ff.drive << " "
+              << ff.lfoRateHz << " " << ff.lfoSync << " " << ff.lfoDepth << " " << ff.mix << "\n";
         if (fx.delay.syncL != d.delay.syncL || fx.delay.syncR != d.delay.syncR)
             o << "delaysync " << fx.delay.syncL << " " << fx.delay.syncR << "\n";
         if (fx.lfo[0] != d.lfo[0] || fx.lfo[1] != d.lfo[1]) {
@@ -415,6 +426,22 @@ struct Preset {
                     else fx.flanger = FlangerParams{e != 0, rate, depth, fb, mix};
                 }
             }
+            else if (key == "hyper") {
+                int e = 0; double rate, det, dim, mix;
+                if (ls >> e >> rate >> det >> dim >> mix && std::isfinite(rate) && std::isfinite(det) && std::isfinite(dim) && std::isfinite(mix))
+                    fx.hyper = HyperParams{e != 0, std::clamp(rate, 0.05, 5.0), std::clamp(det, 0.0, 1.0), std::clamp(dim, 0.0, 1.0), std::clamp(mix, 0.0, 1.0)};
+            }
+            else if (key == "filterfx") {
+                int e = 0, mode = 0, sync = 0; double cut, reso, drive, rate, depth, mix;
+                if (ls >> e >> mode >> cut >> reso >> drive >> rate >> sync >> depth >> mix && std::isfinite(cut) && std::isfinite(reso)
+                    && std::isfinite(drive) && std::isfinite(rate) && std::isfinite(depth) && std::isfinite(mix)) {
+                    FilterFxParams f;
+                    f.enabled = e != 0; f.mode = std::clamp(mode, 0, 4); f.cutoffHz = std::clamp(cut, 40.0, 18000.0);
+                    f.reso = std::clamp(reso, 0.0, 1.0); f.drive = std::clamp(drive, 0.0, 1.0); f.lfoRateHz = std::clamp(rate, 0.02, 20.0);
+                    f.lfoSync = std::clamp(sync, 0, kSyncCount - 1); f.lfoDepth = std::clamp(depth, 0.0, 1.0); f.mix = std::clamp(mix, 0.0, 1.0);
+                    fx.filter = f;
+                }
+            }
             else if (key == "fxlfo") {
                 RackLfoParams l[2];
                 bool ok = true;
@@ -437,6 +464,11 @@ struct Preset {
                     if (u < 0 || n >= kFxUnits) { n = -1; break; }
                     v[n++] = u;
                 }
+                if (n == 8) { // 0.13.0-0.26.0 8-unit line: units added later keep their default place at the end
+                    bool seen[kFxUnits] = {};
+                    for (int k = 0; k < n; ++k) seen[v[k]] = true;
+                    for (int k = 0; k < kFxUnits; ++k) if (!seen[k] && n < kFxUnits) v[n++] = k;
+                }
                 FxOrder ord;
                 if (n == kFxUnits && ord.assign(v, n)) fx.order = ord;
             }
@@ -445,7 +477,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Keytrack && d >= 0 && d <= (int)ModRoute::Dest::UnisonBlend) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Keytrack && d >= 0 && d <= (int)ModRoute::Dest::FxFilterCutoff) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
                     std::string k2;
@@ -555,6 +587,11 @@ struct Preset {
             && fa.flanger.depth == fb.flanger.depth && fa.flanger.feedback == fb.flanger.feedback && fa.flanger.mix == fb.flanger.mix
             && fa.delay.syncL == fb.delay.syncL && fa.delay.syncR == fb.delay.syncR
             && fa.lfo[0] == fb.lfo[0] && fa.lfo[1] == fb.lfo[1]
+            && fa.hyper.enabled == fb.hyper.enabled && fa.hyper.rateHz == fb.hyper.rateHz && fa.hyper.detune == fb.hyper.detune
+            && fa.hyper.dimension == fb.hyper.dimension && fa.hyper.mix == fb.hyper.mix
+            && fa.filter.enabled == fb.filter.enabled && fa.filter.mode == fb.filter.mode && fa.filter.cutoffHz == fb.filter.cutoffHz
+            && fa.filter.reso == fb.filter.reso && fa.filter.drive == fb.filter.drive && fa.filter.lfoRateHz == fb.filter.lfoRateHz
+            && fa.filter.lfoSync == fb.filter.lfoSync && fa.filter.lfoDepth == fb.filter.lfoDepth && fa.filter.mix == fb.filter.mix
             && fa.order == fb.order;
     }
 

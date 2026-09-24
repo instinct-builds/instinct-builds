@@ -277,7 +277,7 @@ int main() {
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(wk.x, wk.y - 30), w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, NSMakePoint(wk.x, wk.y - 30), w)];
             CGFloat cardH = (t - 286 - 44 - 58 - 6) / 2;
-            NSPoint dr = NSMakePoint(468 + 19, 58 + cardH + 6 + 24); // DISTORTION drive ring (chain slot 1): up 30 pt = +20%
+            NSPoint dr = NSMakePoint(468 + 28, 58 + cardH + 6 + 36); // DISTORTION drive ring (chain slot 1): up 30 pt = +20%
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, dr, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(dr.x, dr.y + 15), w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(dr.x, dr.y + 30), w)];
@@ -410,14 +410,14 @@ int main() {
         After(6.9, ^{ // 0.13.0 FX chain: drag PHASER from slot 7 to slot 2, switch it on, raise its mix
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
-            NSPoint from = NSMakePoint(468 + 2 * 78 + 30, 58 + h - 26);         // PHASER card body (bottom row, 3rd)
-            NSPoint to = NSMakePoint(468 + 1 * 78 + 30, 58 + h + 6 + h - 26);   // CHORUS card (top row, 2nd)
+            NSPoint from = NSMakePoint(468 + 1 * 62 + 20, 58 + h - 25);         // PHASER card body (bottom row, 2nd)
+            NSPoint to = NSMakePoint(468 + 1 * 62 + 20, 58 + h + 6 + h - 25);   // CHORUS card (top row, 2nd)
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint((from.x + to.x) / 2, (from.y + to.y) / 2), w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, to, w)];
             [view mouseUp:Mouse(NSEventTypeLeftMouseUp, to, w)];
-            Click(view, w, NSMakePoint(468 + 78 + 70 - 11, 58 + h + 6 + h - 13)); // its LED, now in slot 2
-            NSPoint ring = NSMakePoint(468 + 78 + 19, 58 + h + 6 + 24);          // its MIX ring: up 30 pt = +20%
+            Click(view, w, NSMakePoint(468 + 62 + 56 - 9, 58 + h + 6 + h - 11)); // its LED, now in slot 2
+            NSPoint ring = NSMakePoint(468 + 62 + 28, 58 + h + 6 + 36);          // its MIX ring: up 30 pt = +20%
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, ring, w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(ring.x, ring.y + 15), w)];
             [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, NSMakePoint(ring.x, ring.y + 30), w)];
@@ -429,7 +429,7 @@ int main() {
             std::string ord;
             for (int i = 0; i < muew::kFxUnits; ++i) ord += std::string(i ? " " : "") + muew::fxUnitName(st.fx.order.slot[i]);
             printf("fx chain: %s; phaser %s, mix %.2f (param 28 = %.1f)\n", ord.c_str(), st.fx.phaser.enabled ? "on" : "off", st.fx.phaser.mix, pm);
-            Check(ok && ord == "dist phaser chorus delay comp reverb eq flanger", "dragging the PHASER card moved it to chain slot 2 in the AU state");
+            Check(ok && ord == "dist phaser chorus delay comp reverb eq flanger hyper filterfx", "dragging the PHASER card moved it to chain slot 2 in the AU state");
             Check(ok && st.fx.phaser.enabled && pm > 60 && pm < 80 && std::fabs(st.fx.phaser.mix - pm / 100.0) < 1e-3,
                   "PHASER LED and MIX ring reached the AU (parameter 28)");
             fflush(stdout);
@@ -437,7 +437,7 @@ int main() {
         After(6.95, ^{ // 0.14.0 FX detail editor: open PHASER, set DEPTH; open DELAY, sync L to 1/8, set FEEDBACK
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
-            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); }; // 0.27.0: 5 x 2 rack
             auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 92 + 196 * n, 48 + 200 - 58 - 24 * row + 10); };
             Click(view, w, card(1));                      // PHASER (moved to slot 2 above)
             Click(view, w, bar(1, 0.9));                  // DEPTH -> 90%
@@ -471,7 +471,7 @@ int main() {
         After(6.97, ^{ // 0.15.0 FX LFOs: drop FX LFO 1 on FLANGER, FX LFO 2 on DELAY; shape and sync them
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
-            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); }; // 0.27.0: 5 x 2 rack
             auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.75, (i < 8 ? 216 : 198) + 7.5); };
             auto dropOn = [&](NSPoint from, NSPoint to) {
                 [view mouseDown:Mouse(NSEventTypeLeftMouseDown, from, w)];
@@ -485,7 +485,7 @@ int main() {
             State(before);
             if (getenv("MUEW_FXDETAIL_PREFIX") && *getenv("MUEW_FXDETAIL_PREFIX"))
                 Click(view, w, NSMakePoint(36 + 424 - 20, 48 + 200 - 17));     // close the DELAY detail left open above
-            Click(view, w, NSMakePoint(468 + 3 * 78 + 70 - 11, 58 + h - 13)); // FLANGER LED (slot 8) on
+            Click(view, w, NSMakePoint(468 + 2 * 62 + 56 - 9, 58 + h - 11)); // FLANGER LED (slot 8) on
             dropOn(badge(13), card(7));                                         // FX LFO 1 -> FLANGER
             Click(view, w, shape);                                              // sine -> triangle
             dropOn(badge(14), card(3));                                         // FX LFO 2 -> DELAY
@@ -515,7 +515,7 @@ int main() {
         After(6.98, ^{ // 0.16.0 route curves + aux: bend and aux-scale routes on page 4 (FX LFOs) and page 1
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
-            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); }; // 0.27.0: 5 x 2 rack
             auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.75, (i < 8 ? 216 : 198) + 7.5); };
             auto curve = [&](int row) { return NSMakePoint(44 + 151 + 10, 190 - row * 44 + 4 + 7); };
             auto aux = [&](int row) { return NSMakePoint(44 + 174 + 13, 190 - row * 44 + 4 + 7); };
@@ -557,7 +557,7 @@ int main() {
         After(6.99, ^{ // 0.17.0 MSEG editor: open MSEG 2, add points, bend a segment, LOOP + sync, then route it to CUTOFF
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
-            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); }; // 0.27.0: 5 x 2 rack
             auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.75, (i < 8 ? 216 : 198) + 7.5); };
             auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 152 + 54 * v); }; // canvas y 94..210 since 0.18.0
             auto drag = [&](NSPoint from, NSPoint to) {
@@ -604,7 +604,7 @@ int main() {
         After(6.995, ^{ // 0.18.0 LFO editor: draw LFO 3's cycle, bend it, FREE, PHASE 90 degrees, RISE
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
-            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); }; // 0.27.0: 5 x 2 rack
             auto badge = [&](int i) { return NSMakePoint(304 + (i % 8) * 19 + 8.5, (i < 8 ? 216 : 198) + 7.5); };
             auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 152 + 54 * v); };
             auto drag = [&](NSPoint from, NSPoint to) {
@@ -647,7 +647,7 @@ int main() {
         After(6.997, ^{ // 0.19.0 warp depth: OSC A WARP 2 = REMAP at 50% with a drawn curve, OSC B WARP 2 = FM B
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
-            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 4) * 78 + 50, (slot < 4 ? 58 + h + 6 : 58) + h - 35); };
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); }; // 0.27.0: 5 x 2 rack
             auto canvas = [&](double tt, double v) { return NSMakePoint(50 + 396 * tt, 152 + 54 * v); };
             muew::Preset before;
             bool ok0 = State(before);
@@ -967,6 +967,54 @@ int main() {
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));
             MusicDeviceMIDIEvent(gUnit, 0xB0, 123, 0, 0);
             RenderBlock();
+            fflush(stdout);
+        });
+        After(7.06, ^{ // 0.27.0 FX depth: HYPER / DIMENSION and FILTER FX pages (chain slots 9 and 10)
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); };
+            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 56 - 19 * row + 8.5); }; // compact rows
+            const NSPoint toggle = NSMakePoint(36 + 424 - 84 + 23, 48 + 200 - 25 + 8);
+            muew::Preset st0; State(st0);
+            const int hs = st0.fx.order.slotOf(muew::FxHyper), fs = st0.fx.order.slotOf(muew::FxFilter);
+            Click(view, w, card(hs));                 // HYPER page (replaces whatever detail was open)
+            Click(view, w, toggle);                   // ON
+            Click(view, w, bar(1, 0.8));              // DETUNE 80%
+            Click(view, w, bar(2, 0.6));              // DIMENSION 60%
+            Click(view, w, bar(3, 0.5));              // MIX 50% (parameter 34)
+            RenderBlock();
+            Snapshot(view, "MUEW_HYPER_PNG", "HYPER / DIMENSION page snapshot written");
+            Click(view, w, card(fs));                 // FILTER FX page
+            Click(view, w, toggle);                   // ON
+            Click(view, w, bar(0, 0.75));             // MODE > : BAND PASS
+            Click(view, w, bar(1, 0.5));              // CUTOFF at mid-sweep of 40 Hz..18 kHz: ~849 Hz (parameter 35)
+            Click(view, w, bar(2, 0.6));              // RESONANCE 60%
+            Click(view, w, bar(4, 0.4));              // SWEEP 40%
+            Click(view, w, bar(6, 0.75));             // SYNC > : first synced value
+            RenderBlock();
+            Snapshot(view, "MUEW_FILTERFX_PNG", "FILTER FX page snapshot written");
+            muew::Preset st;
+            const bool ok = State(st);
+            AudioUnitParameterValue hm = -1, fc = -1;
+            AudioUnitGetParameter(gUnit, muew::params::HyperMix, kAudioUnitScope_Global, 0, &hm);
+            AudioUnitGetParameter(gUnit, muew::params::FilterFxCutoff, kAudioUnitScope_Global, 0, &fc);
+            const auto& hy = st.fx.hyper; const auto& ff = st.fx.filter;
+            printf("fx27: hyper on %d det %.2f dim %.2f mix %.2f (param 34 = %.1f); filter on %d mode %d cutoff %.0f (param 35 = %.0f) reso %.2f sweep %.2f sync %d\n",
+                   hy.enabled ? 1 : 0, hy.detune, hy.dimension, hy.mix, hm, ff.enabled ? 1 : 0, ff.mode, ff.cutoffHz, fc, ff.reso, ff.lfoDepth, ff.lfoSync);
+            Check(ok && hy.enabled && std::fabs(hy.detune - 0.8) < 0.01 && std::fabs(hy.dimension - 0.6) < 0.01 && std::fabs(hy.mix - 0.5) < 0.01
+                  && std::fabs(hm - 50) < 1.0, "HYPER page: ON, DETUNE, DIMENSION and MIX reached the AU (parameter 34)");
+            Check(ok && ff.enabled && ff.mode == 1 && ff.cutoffHz > 800 && ff.cutoffHz < 900 && std::fabs(fc - ff.cutoffHz) < 1.0
+                  && std::fabs(ff.reso - 0.6) < 0.01 && std::fabs(ff.lfoDepth - 0.4) < 0.01 && ff.lfoSync == 1,
+                  "FILTER FX page: ON, BAND PASS, CUTOFF, RESONANCE, SWEEP and SYNC reached the AU (parameter 35)");
+            Check(ok && st.serialize().find("\nhyper 1 ") != std::string::npos && st.serialize().find("\nfilterfx 1 1 ") != std::string::npos,
+                  "the AU state saves hyper and filterfx lines");
+            // Leave both units off (settings kept) and the DELAY detail open as before.
+            Click(view, w, toggle);
+            Click(view, w, card(hs)); Click(view, w, toggle);
+            Click(view, w, card(st0.fx.order.slotOf(muew::FxDelay)));
+            muew::Preset back;
+            Check(State(back) && !back.fx.hyper.enabled && !back.fx.filter.enabled && back.fx.filter.cutoffHz == ff.cutoffHz,
+                  "HYPER and FILTER FX switch off from their pages and keep their settings");
             fflush(stdout);
         });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).

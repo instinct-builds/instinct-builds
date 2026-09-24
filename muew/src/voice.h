@@ -34,7 +34,8 @@ struct ModRoute {
                       Osc1Warp2 = 21, Osc2Warp2 = 22,                 // 0.19.0: second warp slot amounts (0..1)
                       FilterDrive = 23, FilterMorph = 24,             // 0.21.0: filter 1 drive / morph (0..1)
                       Filter2Morph = 25, FilterBalance = 26,          // 0.22.0: filter 2 morph, parallel F1/F2 balance (0..1)
-                      UnisonBlend = 27 } dest;                        // 0.23.0: unison outer-voice level (0..1)
+                      UnisonBlend = 27,                               // 0.23.0: unison outer-voice level (0..1)
+                      FxHyperDetune = 28, FxFilterCutoff = 29 } dest; // 0.27.0: HYPER detune, FILTER FX cutoff (1 = +4 oct)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is

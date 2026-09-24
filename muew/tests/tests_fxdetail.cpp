@@ -27,7 +27,7 @@ static int firstEcho(const std::vector<float>& v, int from) {
 
 int main() {
     // Panel model: counts, titles, every row round-trips through fxSet/fxGet.
-    const int counts[kFxUnits] = {3, 4, 6, 1, 3, 3, 4, 4};
+    const int counts[kFxUnits] = {3, 4, 6, 1, 3, 3, 4, 4, 4, 8};
     bool cnt = true; for (int u = 0; u < kFxUnits; ++u) cnt = cnt && ui::fxControlCount(u) == counts[u] && *ui::fxUnitTitle(u);
     check(cnt, "every unit lists its controls (dist 3, chorus 4, delay 6, comp 1, reverb 3, eq 3, phaser 4, flanger 4)");
     bool rt = true, clampOk = true, normOk = true;
