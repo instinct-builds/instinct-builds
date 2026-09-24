@@ -951,18 +951,31 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(cv, 8, C(0x0a0d12)); // no DRAW grid behind the controls
         const NSRect pv = [self wtSpecPreview];
         FillRound(pv, 6, C(0x0d1117));
-        for (int i = 1; i < 4; ++i) FillRound(NSMakeRect(pv.origin.x + pv.size.width * i / 4, pv.origin.y + 4, 1, pv.size.height - 8), 0, C(0x161c25));
-        FillRound(NSMakeRect(pv.origin.x + 4, NSMidY(pv) - .5, pv.size.width - 8, 1), 0, C(0x222a36));
+        // 0.31.0 fix2: the wave gets the top of the preview, the partial spectrum its own band below it.
+        const CGFloat specH = 38;
+        const NSRect wv = NSMakeRect(pv.origin.x, pv.origin.y + specH + 4, pv.size.width, pv.size.height - specH - 4);
+        const NSRect sp = NSMakeRect(pv.origin.x + 4, pv.origin.y + 4, pv.size.width - 8, specH - 4);
+        for (int i = 1; i < 4; ++i) FillRound(NSMakeRect(wv.origin.x + wv.size.width * i / 4, wv.origin.y + 4, 1, wv.size.height - 8), 0, C(0x161c25));
+        FillRound(NSMakeRect(wv.origin.x + 4, NSMidY(wv) - .5, wv.size.width - 8, 1), 0, C(0x222a36));
+        FillRound(NSMakeRect(pv.origin.x + 4, pv.origin.y + specH + 1.5, pv.size.width - 8, 1), 0, C(0x1b222c));
         const Frame pf = processFrame(f, wtSpec);
         const bool changed = !wtSpec.isIdentity();
-        StrokeFrame(f, NSInsetRect(pv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
-        if (changed) { StrokeFrame(pf, NSInsetRect(pv, 4, 6), .42, [col colorWithAlphaComponent:.22], 5); StrokeFrame(pf, NSInsetRect(pv, 4, 6), .42, col, 1.8); }
-        // Partial strip under the preview: the processed frame's first 24 harmonics.
-        std::vector<double> hs = frameHarmonics(pf, 24);
-        const CGFloat bw = (pv.size.width - 8) / 24.0;
-        for (int k = 0; k < 24; ++k)
-            FillRound(NSMakeRect(pv.origin.x + 4 + k * bw + 1, pv.origin.y + 3, bw - 2, std::max<CGFloat>(1, 14 * std::clamp(hs[k], 0.0, 1.0))), 1,
-                      [col colorWithAlphaComponent:.3 + .5 * std::clamp(hs[k], 0.0, 1.0)]);
+        StrokeFrame(f, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
+        if (changed) { StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.22], 5); StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, col, 1.8); }
+        // Partials 1-32 on a 48 dB scale: processed bars, original as a grey cap line on each bar.
+        const int nP = 32;
+        std::vector<double> hp = frameHarmonics(pf, nP), ho = frameHarmonics(f, nP);
+        auto dbh = [](double a) { return a <= 0 ? 0.0 : std::clamp(1.0 + 20.0 * std::log10(a) / 48.0, 0.0, 1.0); };
+        const CGFloat bw = sp.size.width / nP, barTop = sp.size.height - 10;
+        for (int k = 0; k < nP; ++k) {
+            const double v = dbh(hp[k]), o = dbh(ho[k]);
+            const CGFloat x = sp.origin.x + k * bw;
+            FillRound(NSMakeRect(x + .5, sp.origin.y, bw - 1, 1), 0, C(0x1b222c));
+            if (v > 0) FillRound(NSMakeRect(x + .5, sp.origin.y, bw - 1, std::max<CGFloat>(1.5, barTop * v)), 1, [col colorWithAlphaComponent:.35 + .55 * v]);
+            if (changed && o > 0) FillRound(NSMakeRect(x + .5, sp.origin.y + barTop * o - .5, bw - 1, 1.2), 0, C(0x8793a3));
+        }
+        TextA(@"PARTIALS 1-32", NSMakeRect(sp.origin.x + 2, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
+        TextA(changed ? @"GREY = BEFORE" : @"48 dB", NSMakeRect(NSMaxX(sp) - 92, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x4a5462), NSFontWeightBold, NSTextAlignmentRight);
         TextA(changed ? @"PREVIEW" : @"FRAME", NSMakeRect(pv.origin.x + 6, NSMaxY(pv) - 14, 80, 10), 7, changed ? col : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
         NSArray* names = @[@"FORMANT", @"STRETCH", @"TILT", @"ODD/EVEN"];
         for (int i = 0; i < 4; ++i) {
@@ -1046,8 +1059,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     for (int i = 0; i < 16; ++i) {
         NSRect r = [self wtThumb:i];
         if (i < std::min(nT, 16)) {
-            const int fi = ThumbFrame(i, nT);
             const bool on = i == selT;
+            const int fi = on ? wtFrame : ThumbFrame(i, nT); // 0.31.0 fix2: the selected thumb shows the frame being edited
             FillRound(r, 4, on ? [col colorWithAlphaComponent:.22] : C(0x0f141b));
             if (nT > 16) { // 0.21.0: the frame number gets its own band under the wave instead of sitting on it
                 StrokeFrame(t[fi], NSMakeRect(r.origin.x + 2, r.origin.y + 11, r.size.width - 4, r.size.height - 13), .4,
