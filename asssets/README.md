@@ -777,3 +777,29 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   credits list, and contact sheets get a credits page. Turn it off with
   Include Credits Page in the board Export menu.
 - Logic and tests: `Rights.swift`, `RightsTests.swift`.
+
+## 1.26.0: bulk rights, renewals and the rights report
+
+- Select several assets and the inspector shows RIGHTS for all of them.
+  Fields that differ read "Mixed" and stay as they are unless you edit
+  them. Apply to N changes only what you touched. Credits can use {title}
+  and {n}, e.g. "Photo: {title} / Northlight" for one agency order. The
+  end date can be left alone, set or removed for the whole selection.
+- Extend 1 Year moves each end date on by a year, counting from today
+  when it has already passed. Mark Renewed records today as the renewal
+  date and sets a fresh one-year term. Both work on one asset or a
+  selection, write the sidecars (asssets:RightsRenewed) and undo in one
+  step.
+- Rights Report (PDF + CSV) for a board (Export menu), a collection or
+  smart collection (right-click) or a selection (inspector). Landscape
+  pages list every asset with status, license, credit, source, allowed
+  uses, end and renewal dates. Problems sort first, then things ending
+  soon, missing info and OK. A CSV with the same rows is saved next to
+  the PDF.
+- The sidebar shows Rights to Check under Library when anything is
+  expired or ending within 30 days. Its count is red for expired and
+  amber for ending soon, and the Rights Expired and Rights Expiring smart
+  collections get the same colored counts.
+- At launch, a banner lists licenses that ended since ASSSETS was last
+  opened. Review selects them in Rights Expired.
+- Logic and tests: `BulkRights.swift`, `BulkRightsTests.swift`.

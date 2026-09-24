@@ -29,13 +29,16 @@ public struct UsageRights: Codable, Equatable, Hashable, Sendable {
     public var uses: String
     /// Last day the license covers, yyyy-MM-dd. nil means no end date.
     public var expires: String?
+    /// Day the license was last renewed, yyyy-MM-dd (1.26).
+    public var renewed: String?
 
-    public init(license: RightsLicense = .own, source: String = "", credit: String = "", uses: String = "", expires: String? = nil) {
+    public init(license: RightsLicense = .own, source: String = "", credit: String = "", uses: String = "", expires: String? = nil, renewed: String? = nil) {
         self.license = license; self.source = source; self.credit = credit; self.uses = uses
         self.expires = expires.flatMap(UsageRights.normalizeDate)
+        self.renewed = renewed.flatMap(UsageRights.normalizeDate)
     }
 
-    enum CodingKeys: String, CodingKey { case license, source, credit, uses, expires }
+    enum CodingKeys: String, CodingKey { case license, source, credit, uses, expires, renewed }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         license = (try? c.decodeIfPresent(RightsLicense.self, forKey: .license)) ?? .own
@@ -43,6 +46,7 @@ public struct UsageRights: Codable, Equatable, Hashable, Sendable {
         credit = try c.decodeIfPresent(String.self, forKey: .credit) ?? ""
         uses = try c.decodeIfPresent(String.self, forKey: .uses) ?? ""
         expires = (try c.decodeIfPresent(String.self, forKey: .expires)).flatMap(UsageRights.normalizeDate)
+        renewed = (try? c.decodeIfPresent(String.self, forKey: .renewed))?.flatMap(UsageRights.normalizeDate)
     }
 
     static let dayFormat: DateFormatter = {
@@ -85,7 +89,7 @@ public struct UsageRights: Codable, Equatable, Hashable, Sendable {
         return Int((b.timeIntervalSince(a) / 86_400).rounded())
     }
 
-    public var isEmpty: Bool { license == .own && source.isEmpty && credit.isEmpty && uses.isEmpty && expires == nil }
+    public var isEmpty: Bool { license == .own && source.isEmpty && credit.isEmpty && uses.isEmpty && expires == nil && renewed == nil }
 }
 
 public enum RightsStatus: Equatable, Sendable {

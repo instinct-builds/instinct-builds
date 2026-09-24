@@ -68,7 +68,7 @@ public enum XmpMetadata {
         var license = value("asssets:License", in: xmp).flatMap(RightsLicense.named)
         if license == nil, let marked = value("xmpRights:Marked", in: xmp)?.lowercased(), marked == "true" { license = .licensed }
         let r = UsageRights(license: license ?? .own, source: source, credit: credit, uses: uses,
-                            expires: value("asssets:RightsExpires", in: xmp))
+                            expires: value("asssets:RightsExpires", in: xmp), renewed: value("asssets:RightsRenewed", in: xmp))
         return r.isEmpty ? nil : r
     }
 
@@ -191,6 +191,7 @@ public enum XmpMetadata {
             if !r.source.isEmpty { out += "\n   <dc:source>\(escape(r.source))</dc:source>" }
             if !r.uses.isEmpty { out += "\n   <xmpRights:UsageTerms><rdf:Alt><rdf:li xml:lang=\"x-default\">\(escape(r.uses))</rdf:li></rdf:Alt></xmpRights:UsageTerms>" }
             if let e = r.expires { out += "\n   <asssets:RightsExpires>\(e)</asssets:RightsExpires>" }
+            if let e = r.renewed { out += "\n   <asssets:RightsRenewed>\(e)</asssets:RightsRenewed>" }
         }
         return out
     }
@@ -221,7 +222,7 @@ public enum XmpMetadata {
     public static func update(_ existing: String, with m: FileMetadata) -> String {
         var s = existing
         // Rights fields are only replaced when ASSSETS has rights to write, so credits another app wrote survive.
-        let rightsNames = (m.rights?.isEmpty ?? true) ? [] : ["asssets:License", "asssets:RightsExpires", "photoshop:Credit", "dc:source", "xmpRights:UsageTerms", "xmpRights:Marked"]
+        let rightsNames = (m.rights?.isEmpty ?? true) ? [] : ["asssets:License", "asssets:RightsExpires", "asssets:RightsRenewed", "photoshop:Credit", "dc:source", "xmpRights:UsageTerms", "xmpRights:Marked"]
         for name in ["dc:title", "dc:subject", "xmp:Rating", "xmp:Label"] + rightsNames {
             while let open = s.range(of: "<" + name + ">") ?? s.range(of: "<" + name + " "),
                   let close = s.range(of: "</" + name + ">", range: open.upperBound..<s.endIndex) {

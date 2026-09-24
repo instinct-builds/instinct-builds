@@ -224,6 +224,13 @@ jobs:
           SCU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$SC/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-credits.png" "$SCU?demo=credits" || true
           test -s "ASSSETS-$ASSSETS_VERSION-gallery-credits.png"
+          shoot rights-bulk 1920x1200 rights-bulk
+          shoot rights-report 1920x1200 rights-report-app demo-rights-report.txt
+          cat "$SUP/demo-rights-report.txt"; grep -q '^done pages=[1-9] rows=6' "$SUP/demo-rights-report.txt" || { echo "rights report did not render"; exit 1; }
+          cp "$SUP/demo-rights-report.png" "ASSSETS-$ASSSETS_VERSION-rights-report.png"; cp "$SUP/demo-rights-report.pdf" "ASSSETS-$ASSSETS_VERSION-rights-report.pdf"
+          cp "$SUP/demo-rights-report.csv" "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt"; head -3 "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt"
+          grep -q 'Harbor Night' "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt" || { echo "rights report CSV is missing rows"; exit 1; }
+          shoot rights-alerts 1920x1200 rights-alerts
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"
@@ -261,6 +268,9 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-color-search.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.pdf
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.csv.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-round-summary.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-share-round-listing.txt

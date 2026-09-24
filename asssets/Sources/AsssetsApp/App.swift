@@ -146,6 +146,8 @@ final class StudioLibrary: ObservableObject {
     @Published var savingTemplate: UUID?
     /// Client feedback read but not applied yet (1.23): the import preview sheet shows it.
     @Published var pendingFeedback: PendingFeedback?
+    /// Licenses that ended since the last launch (1.26); shown once as a banner.
+    @Published var rightsNotice: [RightsIssue]?
     /// Warning shown before expired or editorial-only assets go into client work (1.25).
     @Published var rightsWarning: RightsWarning?
     /// Add a credits page to galleries, round summaries and contact sheets (1.25).
@@ -567,6 +569,7 @@ final class StudioLibrary: ObservableObject {
         startWatching()
         refreshAutoTags()
         applyLaunchArguments()
+        if !isDemo { checkRightsSinceLastLaunch() }
         installKeyMonitor()
     }
 
@@ -2004,7 +2007,7 @@ final class StudioLibrary: ObservableObject {
                 show(board: id)
                 boardSelection = []
             }
-        case "rights-inspector", "rights-expiring", "board-rights", "share-credits":
+        case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2051,6 +2054,27 @@ final class StudioLibrary: ObservableObject {
                 if let smart = catalog.smartCollections.first(where: { $0.name == "Rights Expiring" }) { show(smart: smart.id) }
             case "board-rights":
                 show(board: id)
+            case "rights-bulk":
+                // Two files from the same Northlight order: license and source match, credit, uses and end date differ.
+                show(collection: StudioCatalog.inboxCollection)
+                let pair = ["Northlight Lobby.png", "Atrium Cork Wall.png"].compactMap { find($0)?.id }
+                selection = Set(pair); focusID = pair.first
+            case "rights-report":
+                show(collection: StudioCatalog.inboxCollection)
+                let ids = filtered.map(\.id)
+                selection = Set(ids)
+                let report = catalog.rightsReport(ids, title: "Hotel Pitch · client drop")
+                let pdf = supportRoot.appendingPathComponent("demo-rights-report.pdf"), csv = supportRoot.appendingPathComponent("demo-rights-report.csv")
+                let png = supportRoot.appendingPathComponent("demo-rights-report.png")
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    let pages = await self.writeRightsReport(report, pdf: pdf, csv: csv, png: png)
+                    try? "done pages=\(pages) rows=\(report.rows.count)".write(to: self.supportRoot.appendingPathComponent("demo-rights-report.txt"), atomically: true, encoding: .utf8)
+                }
+            case "rights-alerts":
+                // As if ASSSETS was last opened 20 days ago: Harbor Night's license ended in between.
+                show(collection: StudioCatalog.inboxCollection)
+                checkRightsSinceLastLaunch(since: inDays(-20))
             default:
                 show(board: id)
                 let out = supportRoot.appendingPathComponent("demo-share-credits", isDirectory: true)
@@ -2226,6 +2250,79 @@ extension StudioLibrary {
     }
 
     func credits(_ ids: [UUID]) -> [CreditLine] { includeCredits ? catalog.credits(for: ids) : [] }
+
+    // MARK: Bulk rights and the rights report (1.26)
+
+    func applyRights(_ edit: RightsEdit, to ids: [UUID]) {
+        var n = 0
+        mutate("Edit Rights") { n = $0.applyRights(edit, to: ids) }
+        guard n > 0 else { flash("Nothing to change"); return }
+        writeMetadata(Set(ids), quiet: true)
+        flash("Updated rights on \(n) asset\(n == 1 ? "" : "s")")
+    }
+
+    func extendRights(_ ids: Set<UUID>) {
+        var n = 0
+        mutate("Extend Rights") { n = $0.extendRights(ids) }
+        if n > 0 { writeMetadata(ids, quiet: true) }
+        flash(n == 0 ? "No end dates to extend" : "Extended \(n) license\(n == 1 ? "" : "s") by a year · ⌘Z to undo")
+    }
+
+    func markRenewed(_ ids: Set<UUID>) {
+        var n = 0
+        mutate("Mark Renewed") { n = $0.markRenewed(ids) }
+        if n > 0 { writeMetadata(ids, quiet: true) }
+        flash("Marked \(n) renewed today, ending in a year · ⌘Z to undo")
+    }
+
+    /// Asks where to save, then writes "<title> rights report.pdf" and ".csv" side by side.
+    func exportRightsReport(_ ids: [UUID], title: String) {
+        guard !ids.isEmpty else { flash("Nothing to report on"); return }
+        let report = catalog.rightsReport(ids, title: title)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = DragOut.safeName(title + " rights report") + ".pdf"
+        panel.message = "A CSV with the same rows is saved next to the PDF."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let csv = url.deletingPathExtension().appendingPathExtension("csv")
+        Task { @MainActor in
+            let pages = await self.writeRightsReport(report, pdf: url, csv: csv)
+            if pages > 0 { self.flash("Saved rights report: \(report.rows.count) assets, \(pages) page\(pages == 1 ? "" : "s") + CSV"); NSWorkspace.shared.activateFileViewerSelecting([url, csv]) }
+            else { self.flash("Couldn't write the rights report") }
+        }
+    }
+
+    /// Renders the report as landscape letter pages. Returns the page count, 0 on failure.
+    func writeRightsReport(_ report: RightsReport, pdf url: URL, csv: URL?, png: URL? = nil) async -> Int {
+        if let csv { try? report.csv.write(to: csv, atomically: true, encoding: .utf8) }
+        let per = RightsReportPage.rowsPerPage
+        let chunks = stride(from: 0, to: max(report.rows.count, 1), by: per).map { Array(report.rows[$0..<min($0 + per, report.rows.count)]) }
+        var box = CGRect(x: 0, y: 0, width: RightsReportPage.size.width, height: RightsReportPage.size.height)
+        let info: [CFString: Any] = [kCGPDFContextTitle: report.title + " rights report", kCGPDFContextCreator: "ASSSETS"]
+        guard let ctx = CGContext(url as CFURL, mediaBox: &box, info as CFDictionary) else { return 0 }
+        for (i, rows) in chunks.enumerated() {
+            let page = RightsReportPage(report: report, rows: rows, page: i + 1, pages: chunks.count)
+            let r = ImageRenderer(content: page)
+            r.proposedSize = ProposedViewSize(RightsReportPage.size)
+            r.render { _, draw in ctx.beginPDFPage(nil); draw(ctx); ctx.endPDFPage() }
+            if i == 0, let png {
+                r.scale = 2
+                if let cg = r.cgImage, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) { try? data.write(to: png, options: .atomic) }
+            }
+        }
+        ctx.closePDF()
+        return chunks.count
+    }
+
+    /// Once per launch: what expired since ASSSETS was last opened. The first launch only records the day.
+    func checkRightsSinceLastLaunch(since override: String? = nil) {
+        let key = "rightsLastChecked", today = UsageRights.today()
+        let since = override ?? UserDefaults.standard.string(forKey: key)
+        UserDefaults.standard.set(today, forKey: key)
+        guard let since, since < today else { return }
+        let lapsed = catalog.expired(since: since, today: today)
+        if !lapsed.isEmpty { rightsNotice = lapsed }
+    }
 
     /// Swaps outdated cards to the newest version in their stack (1.24): all of them, or just `only`.
     func updateToNewest(_ boardID: UUID, only: Set<UUID>? = nil) {
@@ -3040,6 +3137,7 @@ struct BoardCanvas: View {
             Button(board.versions.isEmpty ? "Versions…" : "Versions (\(board.versions.count))…") { model.boardVersionsOpen = true }
             Button("Export Round Summary PDF…") { model.exportRoundSummary(board.id) }
             Toggle("Include Credits Page", isOn: $model.includeCredits)
+            Button("Rights Report (PDF + CSV)…") { model.exportRightsReport(board.items.compactMap(\.assetID), title: board.name) }
             let newer = model.catalog.outdatedCards(on: board.id).count
             if newer > 0 { Button("Update All to Newest (\(newer))") { model.updateToNewest(board.id) } }
             Button("Share Round (Gallery + Summary)…") { model.shareRound(board.id) }
@@ -3790,6 +3888,9 @@ struct StudioView: View {
                     if let id = model.selectedBoard, let board = model.catalog.board(id) { BoardCanvas(board: board) } else { AssetBrowser() }
                 }
                 .frame(minWidth: 400, maxWidth: .infinity)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if let lapsed = model.rightsNotice { RightsNoticeBanner(issues: lapsed).transition(.move(edge: .top).combined(with: .opacity)) }
+                }
                 if model.showInspector {
                     InspectorResizeHandle(width: $inspectorWidth)
                     Group {
@@ -3899,6 +4000,16 @@ struct Sidebar: View {
                         SidebarRow(title: StudioLibrary.missingCollection, symbol: "exclamationmark.triangle", count: model.missing.count, selected: model.selectedBoard == nil && model.selectedSmart == nil && model.selectedCollection == StudioLibrary.missingCollection, accent: .warning) { model.show(collection: StudioLibrary.missingCollection) }
                             .contextMenu { Button("Remove All Missing from Library…", role: .destructive) { model.removeMissing() } }
                     }
+                    let alerts = model.catalog.rightsAlertCounts()
+                    if alerts.expiring + alerts.expired > 0 {
+                        let target = model.catalog.smartCollections.first { $0.name == (alerts.expired > 0 ? "Rights Expired" : "Rights Expiring") }
+                        SidebarRow(title: "Rights to Check", symbol: alerts.expired > 0 ? "exclamationmark.octagon" : "clock.badge.exclamationmark",
+                                   count: alerts.expiring + alerts.expired, selected: target != nil && model.selectedSmart == target?.id, accent: .warning,
+                                   badge: alerts.expired > 0 ? Theme.danger : Theme.warning) {
+                            if let target { model.show(smart: target.id) } else { model.show(collection: StudioCatalog.allAssets) }
+                        }
+                        .help("\(alerts.expired) expired · \(alerts.expiring) ending within \(StudioAsset.rightsWarningDays) days")
+                    }
                 }
 
                 SidebarSection(title: "COLLECTIONS", trailing: AnyView(
@@ -3909,6 +4020,7 @@ struct Sidebar: View {
                             .contextMenu {
                                 Button("Rename…") { renameText = name; model.renamingCollection = name }
                                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name) }
+                                Button("Rights Report…") { model.exportRightsReport(model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name) }
                                 Button("New Board from Collection") { model.newBoard(named: name, assets: model.catalog.assets.filter { $0.collection == name }.map(\.id)) }
                                 Button("Show") { model.show(collection: name) }
                             }
@@ -3946,9 +4058,12 @@ struct Sidebar: View {
                     Button { model.beginNewSmart() } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("New smart collection")
                 )) {
                     ForEach(model.catalog.smartCollections) { smart in
-                        SidebarRow(title: smart.name, symbol: smart.symbol, count: model.catalog.smartAssets(smart.id).count, selected: model.selectedSmart == smart.id, accent: .smart) { model.show(smart: smart.id) }
+                        let n = model.catalog.smartAssets(smart.id).count
+                        let badge: Color? = n == 0 ? nil : smart.rules.rights == .expired ? Theme.danger : smart.rules.rights == .expiringSoon ? Theme.warning : nil
+                        SidebarRow(title: smart.name, symbol: smart.symbol, count: n, selected: model.selectedSmart == smart.id, accent: .smart, badge: badge) { model.show(smart: smart.id) }
                             .contextMenu {
                                 Button("Edit Rules…") { model.beginEdit(smart: smart.id) }
+                                Button("Rights Report…") { model.exportRightsReport(model.catalog.smartAssets(smart.id).map(\.id), title: smart.name) }
                                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.smartAssets(smart.id).map(\.id), title: smart.name) }
                                 Button("New Board from Smart Collection") { model.newBoard(named: smart.name, assets: model.catalog.smartAssets(smart.id).map(\.id)) }
                                 Button("Delete Smart Collection", role: .destructive) { model.deleteSmart(smart.id) }
@@ -4123,6 +4238,8 @@ struct SidebarRow: View {
     var dropTarget: String? = nil
     var boardDrop: UUID? = nil
     var accent: RowAccent = .standard
+    /// Colors the count when it needs attention (1.26 rights alerts).
+    var badge: Color? = nil
     let action: () -> Void
     @State private var targeted = false
     @State private var hovering = false
@@ -4135,8 +4252,9 @@ struct SidebarRow: View {
             Spacer(minLength: 6)
             if let count {
                 // Never wraps: the title truncates first (1.18 caught "11" stacking as 1/1 beside a long board name).
-                Text("\(count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1).fixedSize()
-                    .padding(.horizontal, 6).padding(.vertical, 2).background(Color.white.opacity(0.06), in: Capsule())
+                Text("\(count)").font(.caption2.monospacedDigit().weight(badge == nil ? .regular : .bold))
+                    .foregroundStyle(badge == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.black.opacity(0.85))).lineLimit(1).fixedSize()
+                    .padding(.horizontal, 6).padding(.vertical, 2).background(badge ?? Color.white.opacity(0.06), in: Capsule())
             }
         }
         .padding(.horizontal, 9).padding(.vertical, 6)
@@ -6372,6 +6490,7 @@ struct BatchInspector: View {
                     Text(Dictionary(grouping: assets, by: \.kind).map { "\($0.value.count) \($0.key.rawValue.lowercased())" }.sorted().joined(separator: " • "))
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                BulkRightsSection(assets: assets)
                 InspectorLabel(text: "BATCH TAGS")
                 HStack {
                     TextField("Tags for all \(assets.count), comma separated", text: $tagText).textFieldStyle(.roundedBorder)
@@ -6403,6 +6522,7 @@ struct BatchInspector: View {
                     ShareButton(ids: ids)
                     Button { model.copyKeywords(ids) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
                 }
+                Button { model.exportRightsReport(assets.map(\.id), title: "\(assets.count) Selected Assets") } label: { Label("Rights Report…", systemImage: "list.bullet.rectangle") }.buttonStyle(.bordered)
                 Button(role: .destructive) { model.pendingRemoval = ids } label: { Label("Remove from Library…", systemImage: "trash") }.buttonStyle(.borderless).padding(.top, 4)
             }
             .padding(16)
@@ -7678,6 +7798,231 @@ struct FeedbackPreviewSheet: View {
     }
 }
 
+/// "N licenses expired since you last opened ASSSETS" (1.26). Shown once per launch.
+struct RightsNoticeBanner: View {
+    @EnvironmentObject var model: StudioLibrary
+    let issues: [RightsIssue]
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.octagon.fill").font(.system(size: 16)).foregroundStyle(Theme.danger)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(issues.count) license\(issues.count == 1 ? "" : "s") expired since you last opened ASSSETS").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Text(issues.prefix(3).map(\.title).joined(separator: ", ") + (issues.count > 3 ? " and \(issues.count - 3) more" : ""))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .layoutPriority(1)
+            Spacer(minLength: 8)
+            Button("Review") {
+                if let smart = model.catalog.smartCollections.first(where: { $0.rules.rights == .expired }) { model.show(smart: smart.id) }
+                model.selection = Set(issues.map(\.asset)); model.focusID = issues.first?.asset
+                model.rightsNotice = nil
+            }
+            .buttonStyle(.borderedProminent).tint(Theme.danger).controlSize(.small)
+            Button { model.rightsNotice = nil } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                .buttonStyle(.plain).foregroundStyle(.secondary).help("Dismiss")
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .background(Theme.danger.opacity(0.14))
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.danger.opacity(0.45)).frame(height: 1) }
+    }
+}
+
+/// Rights for a multi-selection (1.26): fields that differ read "Mixed" and stay as they are unless edited.
+struct BulkRightsSection: View {
+    @EnvironmentObject var model: StudioLibrary
+    let assets: [StudioAsset]
+    @State private var license: RightsLicense?
+    @State private var credit = ""
+    @State private var source = ""
+    @State private var uses = ""
+    @State private var touched: Set<String> = []
+    @State private var endMode = 0          // 0 leave, 1 set, 2 remove
+    @State private var endDate = Date()
+    @State private var loadedFor: Set<UUID> = []
+
+    var body: some View {
+        let ids = assets.map(\.id)
+        let common = model.catalog.commonRights(ids)
+        let problems = assets.filter { $0.rightsStatus().isProblem }.count
+        let withEnd = assets.filter { $0.rights?.expires != nil }.count
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                InspectorLabel(text: "RIGHTS · \(assets.count) ASSETS")
+                Spacer()
+                if problems > 0 {
+                    Text("\(problems) need\(problems == 1 ? "s" : "") a look").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.danger)
+                        .padding(.horizontal, 7).padding(.vertical, 2).background(Theme.danger.opacity(0.15), in: Capsule())
+                }
+            }
+            Menu {
+                ForEach(RightsLicense.allCases) { l in Button { license = l } label: { Label(l.rawValue, systemImage: l.symbol) } }
+            } label: {
+                HStack(spacing: 7) {
+                    let shown = license ?? common.license.value
+                    Image(systemName: shown?.symbol ?? "square.stack.3d.up").foregroundStyle(Theme.accent)
+                    Text(shown?.rawValue ?? "Mixed").font(.caption.weight(.semibold)).foregroundStyle(shown == nil ? .secondary : .primary)
+                    if license != nil { Text("edited").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.accent) }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(license != nil ? Theme.accent.opacity(0.6) : Theme.hairline))
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            field("Credit", key: "credit", shared: common.credit, text: $credit, hint: "Use {title} or {n} for per-file credits")
+            field("Source", key: "source", shared: common.source, text: $source)
+            field("Allowed uses", key: "uses", shared: common.uses, text: $uses)
+            HStack(spacing: 8) {
+                Picker("", selection: $endMode) {
+                    Text(common.expires.isMixed ? "Ends: Mixed" : (common.expires.value ?? nil).map { "Ends \($0)" } ?? "No end date").tag(0)
+                    Text("Set end date").tag(1)
+                    Text("Remove end date").tag(2)
+                }
+                .labelsHidden().controlSize(.small).frame(maxWidth: 150)
+                if endMode == 1 { DatePicker("", selection: $endDate, displayedComponents: .date).labelsHidden().datePickerStyle(.field).controlSize(.small) }
+                Spacer(minLength: 0)
+            }
+            if pending {
+                HStack {
+                    Button("Revert") { reset() }.buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { model.applyRights(edit, to: ids); reset() } label: {
+                        Text("Apply to \(assets.count)").font(.caption.weight(.bold)).padding(.horizontal, 12).padding(.vertical, 5)
+                            .background(Theme.accent, in: Capsule()).foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else if withEnd > 0 {
+                HStack(spacing: 6) {
+                    Button { model.extendRights(Set(ids)) } label: { Label("Extend \(withEnd) by 1 Year", systemImage: "calendar.badge.plus") }
+                    Button { model.markRenewed(Set(ids)) } label: { Label("Mark Renewed", systemImage: "arrow.clockwise.circle") }
+                }
+                .buttonStyle(.bordered).controlSize(.small).font(.caption)
+            }
+        }
+        .onAppear { if loadedFor != Set(ids) { reset() } }
+        .onChange(of: ids) { _, _ in reset() }
+    }
+
+    private var pending: Bool { !edit.isEmpty }
+
+    private var edit: RightsEdit {
+        RightsEdit(license: license,
+                   source: touched.contains("source") ? source : nil,
+                   credit: touched.contains("credit") ? credit : nil,
+                   uses: touched.contains("uses") ? uses : nil,
+                   expires: endMode == 1 ? .some(UsageRights.day(endDate)) : endMode == 2 ? .some(nil) : nil)
+    }
+
+    private func reset() {
+        loadedFor = Set(assets.map(\.id))
+        let common = model.catalog.commonRights(assets.map(\.id))
+        license = nil; touched = []; endMode = 0
+        credit = common.credit.value ?? ""; source = common.source.value ?? ""; uses = common.uses.value ?? ""
+        endDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+    }
+
+    private func field(_ title: String, key: String, shared: Shared<String>, text: Binding<String>, hint: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Text(title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                if touched.contains(key) { Text("edited").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.accent) }
+            }
+            TextField(shared.isMixed ? "Mixed" : (hint ?? ""), text: Binding(get: { text.wrappedValue }, set: { text.wrappedValue = $0; touched.insert(key) }))
+                .textFieldStyle(.plain).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(touched.contains(key) ? Theme.accent.opacity(0.6) : Theme.hairline))
+                .help(hint ?? "")
+        }
+    }
+}
+
+/// One landscape letter page of the rights report (1.26).
+struct RightsReportPage: View {
+    let report: RightsReport
+    let rows: [RightsReport.Row]
+    let page: Int
+    let pages: Int
+    static let size = CGSize(width: 792, height: 612)
+    static let rowsPerPage = 13
+    static let ink = Color(white: 0.1), muted = Color(white: 0.45), rule = Color(white: 0.87)
+    // Title, Status, License, Credit, Source / uses, Ends
+    static let widths: [CGFloat] = [140, 100, 78, 140, 140, 70]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("RIGHTS REPORT").font(.system(size: 9, weight: .heavy)).tracking(1.5).foregroundStyle(Self.muted)
+                    Text(report.title).font(.system(size: 20, weight: .heavy)).foregroundStyle(Self.ink).lineLimit(1)
+                }
+                Spacer()
+                let c = report.counts
+                HStack(spacing: 6) {
+                    pill("\(c.problems) expired or editorial", Color(red: 0.95, green: 0.3, blue: 0.33))
+                    pill("\(c.expiring) ending soon", Color(red: 1.0, green: 0.72, blue: 0.28))
+                    pill("\(c.missing) no info", Color(white: 0.75))
+                    pill("\(c.ok) OK", Color(red: 0.45, green: 0.85, blue: 0.55))
+                }
+            }
+            Text("\(report.rows.count) assets · as of \(report.date)").font(.system(size: 9.5)).foregroundStyle(Self.muted).padding(.top, 4).padding(.bottom, 10)
+            HStack(spacing: 8) {
+                ForEach(Array(["ASSET", "STATUS", "LICENSE", "CREDIT", "SOURCE · ALLOWED USES", "ENDS"].enumerated()), id: \.offset) { i, h in
+                    Text(h).font(.system(size: 7.5, weight: .heavy)).tracking(0.8).foregroundStyle(Self.muted).frame(width: Self.widths[i], alignment: .leading)
+                }
+            }
+            .padding(.vertical, 5)
+            Rectangle().fill(Self.ink.opacity(0.6)).frame(height: 1)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.title).font(.system(size: 9.5, weight: .bold)).foregroundStyle(Self.ink).lineLimit(1)
+                        Text(r.file).font(.system(size: 7.5)).foregroundStyle(Self.muted).lineLimit(1)
+                    }.frame(width: Self.widths[0], alignment: .leading)
+                    Text(r.status).font(.system(size: 8.5, weight: .bold)).foregroundStyle(statusColor(r.rank)).lineLimit(2).frame(width: Self.widths[1], alignment: .leading)
+                    Text(r.license).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(1).frame(width: Self.widths[2], alignment: .leading)
+                    Text(r.credit).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(2).frame(width: Self.widths[3], alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.source).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(1)
+                        Text(r.uses).font(.system(size: 7.5)).foregroundStyle(Self.muted).lineLimit(1)
+                    }.frame(width: Self.widths[4], alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.expires.isEmpty ? "—" : r.expires).font(.system(size: 8.5).monospacedDigit()).foregroundStyle(Self.ink)
+                        if !r.renewed.isEmpty { Text("renewed \(r.renewed)").font(.system(size: 7)).foregroundStyle(Self.muted) }
+                    }.frame(width: Self.widths[5], alignment: .leading)
+                }
+                .padding(.vertical, 6)
+                Rectangle().fill(Self.rule).frame(height: 1)
+            }
+            Spacer(minLength: 0)
+            HStack {
+                Text("Made with ASSSETS · CSV with the same rows saved alongside").font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
+                Spacer()
+                Text("\(page) of \(pages)").font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
+            }
+        }
+        .padding(.horizontal, 36).padding(.vertical, 30)
+        .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
+        .background(Color.white)
+    }
+
+    private func statusColor(_ rank: Int) -> Color {
+        switch rank {
+        case 0, 1: return Color(red: 0.8, green: 0.15, blue: 0.2)
+        case 2: return Color(red: 0.72, green: 0.45, blue: 0.0)
+        case 3: return Self.muted
+        default: return Color(red: 0.15, green: 0.55, blue: 0.3)
+        }
+    }
+
+    private func pill(_ t: String, _ c: Color) -> some View {
+        Text(t).font(.system(size: 8.5, weight: .heavy)).foregroundStyle(Self.ink)
+            .padding(.horizontal, 7).padding(.vertical, 3).background(c.opacity(0.55), in: Capsule())
+    }
+}
+
 struct RightsWarning: Identifiable {
     let id = UUID()
     let action: String
@@ -7739,6 +8084,16 @@ struct RightsSection: View {
                     Text("No end date").font(.caption2).foregroundStyle(.secondary)
                 }
                 Spacer()
+            }
+            if let rn = asset.rights?.renewed, !dirty {
+                Text("Renewed \(rn)").font(.caption2).foregroundStyle(.secondary)
+            }
+            if !dirty, asset.rights?.expires != nil {
+                HStack(spacing: 6) {
+                    Button { model.extendRights([asset.id]) } label: { Label("Extend 1 Year", systemImage: "calendar.badge.plus") }
+                    Button { model.markRenewed([asset.id]) } label: { Label("Mark Renewed", systemImage: "arrow.clockwise.circle") }
+                }
+                .buttonStyle(.bordered).controlSize(.small).font(.caption)
             }
             if dirty {
                 HStack {
