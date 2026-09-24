@@ -337,6 +337,29 @@ public func sessionShareText(_ session: RollSession) -> String {
         + session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n") + "\n"
 }
 
+/// A per-session Markdown file (2.72.0): the session's title (custom
+/// name included) as the heading, its stats line (2.69.0) and note
+/// (2.71.0), then its rolls oldest first as one table - the
+/// single-session counterpart of the session-log Markdown export, with
+/// the same pipe-escaping.
+public func sessionMarkdown(_ session: RollSession) -> String {
+    var lines = ["# \(session.title)", "", sessionStats(session).line, ""]
+    if let note = session.note {
+        lines.append(note)
+        lines.append("")
+    }
+    lines.append("| Time | Roll | Total |")
+    lines.append("| --- | --- | --- |")
+    for roll in session.rolls.reversed() {
+        let stamp = roll.rolledAt
+            .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
+        let what = (roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
+            .replacingOccurrences(of: "|", with: "\\|")
+        lines.append("| \(stamp) | \(what) | \(roll.total) |")
+    }
+    return lines.joined(separator: "\n") + "\n"
+}
+
 /// The stats line for one session segment (2.69.0). Totals read
 /// RollResult.total (modifier included); crits count kept d20 faces.
 public func sessionStats(_ session: RollSession) -> SessionStats {

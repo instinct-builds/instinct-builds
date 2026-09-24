@@ -819,4 +819,26 @@ struct SessionSegmentTests {
                                       now: now, calendar: cal)
         #expect(noteOnly[0].title == "Today")
     }
+
+    // 2.72.0: the per-session Markdown file - name as heading, stats
+    // line, note, then the roll table oldest first; a pipe in a label
+    // escapes so the table never breaks.
+    @Test func sessionMarkdownLaysOutTheSession() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        var piped = stamped("d20", at: at(cal, 24, 18))
+        piped.label = "Save | or suck"
+        let rolls = [piped, stamped("2d6", at: at(cal, 24, 17))]
+        let session = sessionSegments(rolls, now: now, calendar: cal)[0]
+            .renamed("Night watch")
+            .noted("The bridge over the Ember")
+        let md = sessionMarkdown(session)
+        let lines = md.components(separatedBy: "\n")
+        #expect(lines[0] == "# Night watch")
+        #expect(lines[2].hasPrefix("2 rolls"))
+        #expect(lines[4] == "The bridge over the Ember")
+        #expect(lines[6] == "| Time | Roll | Total |")
+        #expect(lines[8].contains("| 2d6 | 10 |"))
+        #expect(lines[9].contains("| Save \\| or suck (d20) | 10 |"))
+    }
 }

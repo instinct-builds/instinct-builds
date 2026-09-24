@@ -213,6 +213,11 @@ func run(model: AppModel, character: Character, outDir: String) {
             try? sessionShareText(model.namedSessions(crafted)[0])
                 .write(to: URL(fileURLWithPath: "\(outDir)/session-copy.txt"),
                        atomically: true, encoding: .utf8)
+            // 2.72.0 proof: the divider's export - the session as its
+            // own Markdown file (name as title, note, stats, table).
+            try? sessionMarkdown(model.namedSessions(crafted)[0])
+                .write(to: URL(fileURLWithPath: "\(outDir)/session-export.md"),
+                       atomically: true, encoding: .utf8)
         }
         model.autoLogRollsToJournal = true
     }

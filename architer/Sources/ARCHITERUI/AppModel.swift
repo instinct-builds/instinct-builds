@@ -668,6 +668,15 @@ public final class AppModel: ObservableObject {
                   name: "\(sel.name).html")
     }
 
+    /// Per-session Markdown export (2.72.0): one divider's session as
+    /// its own file - name as title, note, stats line, roll table.
+    public func exportSessionMarkdown(_ session: RollSession) {
+        let safe = session.title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        savePanel(text: sessionMarkdown(session), name: "\(safe).md")
+    }
+
     /// Session-log text export (2.42.0): the character's rolls as a
     /// day-grouped plain-text file, honoring the configured appendix range
     /// - the same rolls the compact-PDF appendix would print.

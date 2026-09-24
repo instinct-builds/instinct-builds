@@ -326,6 +326,13 @@ public struct HistoryListView: View {
                                     .buttonStyle(.plain)
                                     .foregroundStyle(Theme.inkFaint)
                                     .help("Copy this session's rolls as text")
+                                // 2.72.0: export the session as its own
+                                // Markdown file via save panel.
+                                Button { model.exportSessionMarkdown(session) }
+                                    label: { Image(systemName: "square.and.arrow.up") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.inkFaint)
+                                    .help("Export this session as a Markdown file")
                                 // 2.67.0: rename pencil - only datable
                                 // sessions carry a stable key to name.
                                 if session.key != nil {
