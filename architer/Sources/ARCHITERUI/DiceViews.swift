@@ -173,13 +173,24 @@ public struct HistoryListView: View {
 
     public init(rolls: [RollResult]) { self.rolls = rolls }
 
+    /// Row identity namespaced by group: bare per-section offsets collide
+    /// across sibling ForEaches inside a lazy stack, and SwiftUI drops the
+    /// "duplicate" rows - which is exactly what the 2.38.0 renders showed
+    /// (every later section rendered its header and no rows).
+    private struct IndexedRoll: Identifiable {
+        let id: String
+        let roll: RollResult
+    }
+
     public var body: some View {
         ScrollView {
             LazyVStack(spacing: Theme.Gap.sm, pinnedViews: [.sectionHeaders]) {
                 ForEach(Array(groupRollsByDay(rolls).enumerated()), id: \.offset) { _, group in
                     Section {
-                        ForEach(Array(group.rolls.enumerated()), id: \.offset) { _, roll in
-                            RollCard(roll: roll)
+                        ForEach(group.rolls.enumerated().map {
+                            IndexedRoll(id: "\(group.title)|\($0.offset)", roll: $0.element)
+                        }) { item in
+                            RollCard(roll: item.roll)
                         }
                     } header: {
                         HStack {
