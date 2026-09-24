@@ -675,3 +675,31 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Statuses and replies are saved with the board and survive restoring a
   version. Duplicate Board starts without them.
 - Logic and tests: `BoardApproval.swift`, `BoardApprovalTests.swift`.
+
+## 1.22.0: board templates and Share Round
+
+- The + next to BOARDS now offers Blank Board or From Template…. The
+  template picker shows a small drawing of each layout, with its slot
+  count.
+- Three original templates ship with ASSSETS:
+  - Moodboard 3x3: nine image slots, a note for the feeling and a starter
+    palette.
+  - Brand Direction A/B: two side-by-side sections, each with a hero, two
+    details and a one-line note.
+  - Product Launch: a hero feeding square, story and banner slots, with
+    arrows.
+- Empty slots show a dashed "Drop an image" card. Dropping an image on a
+  slot fills just that slot. Add to Board fills empty slots in reading
+  order first, then lays out the rest as usual. A slot keeps its size, and
+  the image is cropped from the middle to fill it (Crop… still adjusts
+  it). Right-click a card and choose Remove Image (Keep Slot) to empty it
+  again. The header counts empty slots.
+- Save as Template… (board right-click menu or Export menu) saves any
+  board's sections, headings, notes, palettes and arrows, with every image
+  turned into an empty slot. Your templates appear under YOUR TEMPLATES in
+  the picker. Right-click one to rename or delete it.
+- Share Round (Gallery + Summary)… builds the board's review gallery with
+  the round summary PDF inside the same folder and zip. The gallery page
+  gets a "Round summary (PDF)" button, so the client has both in one
+  place.
+- Logic and tests: `BoardTemplate.swift`, `BoardTemplateTests.swift`.

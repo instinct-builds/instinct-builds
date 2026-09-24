@@ -140,6 +140,9 @@ final class StudioLibrary: ObservableObject {
     @Published var boardVersionsOpen = false
     /// Approval (1.21): the status filter, the card whose thread is open, and who replies are signed as.
     @Published var boardStatusFilter: CardStatus?
+    /// Templates (1.22): the picker sheet and the board being saved as a template.
+    @Published var templatePickerOpen = false
+    @Published var savingTemplate: UUID?
     @Published var threadCard: UUID?
     @Published var replyAuthor = UserDefaults.standard.string(forKey: "replyAuthor") ?? (NSFullUserName().isEmpty ? "Studio" : NSFullUserName()) {
         didSet { UserDefaults.standard.set(replyAuthor, forKey: "replyAuthor") }
@@ -263,7 +266,7 @@ final class StudioLibrary: ObservableObject {
     @Published var galleryRunning = false
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
-    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil) {
+    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil) {
         let galleryID = UUID().uuidString, boardID = board?.layout.id
         let list = ids ?? filtered.map(\.id).filter(selection.contains)
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
@@ -309,7 +312,9 @@ final class StudioLibrary: ObservableObject {
                 let spots = ReviewGallery.spots(for: board.layout, including: Set(items.compactMap { UUID(uuidString: $0.id) }))
                 boardView = .init(image: "board.png", width: board.width, height: board.height, spots: spots)
             }
-            let manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView)
+            var summaryName: String?
+            if let summaryPDF, (try? fm.copyItem(at: summaryPDF, to: folder.appendingPathComponent("round-summary.pdf"))) != nil { summaryName = "round-summary.pdf" }
+            let manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView, summary: summaryName)
             let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
             // A zip next to the folder, ready to send.
             let zip = parent.appendingPathComponent(folderName + ".zip")
@@ -323,7 +328,7 @@ final class StudioLibrary: ObservableObject {
                 guard ok, !items.isEmpty else { self.flash("Could not build the gallery"); return }
                 // Remember where it came from, so the client's feedback pins back onto this board (1.20).
                 if let boardID { self.mutate { $0.noteGalleryShared(galleryID, from: boardID) } }
-                self.flash("Gallery ready: \(items.count) assets\(zipped ? ", zipped" : "")")
+                self.flash("Gallery ready: \(items.count) assets\(summaryPDF != nil ? " + round summary" : "")\(zipped ? ", zipped" : "")")
                 if fixedDir == nil { NSWorkspace.shared.activateFileViewerSelecting([zipped ? zip : folder]) }
                 else { try? "\(items.count)".write(to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8) }
             }
@@ -1451,7 +1456,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" && demo != "board-templates" && demo != "board-template" && demo != "share-round" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1810,6 +1815,43 @@ final class StudioLibrary: ObservableObject {
             } else if let b = catalog.board(id), let first = b.items.first(where: { $0.kind == .asset }) {
                 boardItem = first.id; if let a = first.assetID { selection = [a]; focusID = a }
             }
+        case "board-templates":
+            // One saved template next to the built-ins, then the picker.
+            let id = makeDemoApproval().0
+            mutate { _ = $0.saveTemplate(from: id, named: "Lobby Review Layout", summary: "Our lobby board: sections, notes and palette, images cleared.") }
+            show(board: id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.templatePickerOpen = true }
+        case "board-template":
+            // Brand Direction A/B filled from the library, one slot left empty on purpose.
+            var id: UUID?
+            mutate { id = $0.createBoard(from: BoardTemplate.brandID, named: "Cafe Rebrand") }
+            if let id {
+                let files = ["sandstone-4k.png", "paper-grain-4k.png", "prismatic-foil-4k.png", "album-gatefold-mockup.png", "cosmetic-plinth-mockup.png"]
+                let ids = files.compactMap { f in catalog.assets.first { $0.importedPath?.hasSuffix(f) == true }?.id }
+                let aspects = ids.map { i in Moodboard.aspect(resolution: catalog.assets.first { $0.id == i }?.resolution ?? "") }
+                mutate { c in
+                    _ = c.placeOnBoard(id, assets: Array(ids.prefix(3)))
+                    _ = c.updateBoard(id) { b in
+                        // The first two slots left in Direction B, so its small detail slot stays empty.
+                        for (i, slot) in b.emptySlots.prefix(2).enumerated() where i + 3 < ids.count {
+                            b.fillSlot(slot, with: ids[i + 3], aspect: aspects[i + 3])
+                        }
+                        let notes = b.items.filter { $0.kind == .note }.map(\.id)
+                        if notes.count >= 2 {
+                            b.setText(notes[0], "Direction A: warm stone and paper, quiet and tactile.")
+                            b.setText(notes[1], "Direction B: foil and bold type, louder at the counter.")
+                        }
+                    }
+                }
+                show(board: id)
+            }
+        case "share-round":
+            let id = makeDemoApproval().0
+            show(board: id)
+            let out = supportRoot.appendingPathComponent("demo-share-round", isDirectory: true)
+            try? FileManager.default.removeItem(at: out)
+            try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
         case "board-thread", "board-status":
             let (id, stage) = makeDemoApproval()
             show(board: id)
@@ -1907,9 +1949,37 @@ extension StudioLibrary {
     func addToBoard(_ id: UUID, ids: Set<UUID>, at point: (x: Double, y: Double)? = nil) {
         let ordered = filtered.map(\.id).filter(ids.contains) + ids.filter { i in !filtered.contains { $0.id == i } }
         var n = 0
-        mutate("Add to Board") { n = $0.addToBoard(id, assets: ordered, at: point) }
+        // Empty template slots fill first (1.22).
+        mutate("Add to Board") { n = $0.placeOnBoard(id, assets: ordered, at: point) }
         let name = catalog.board(id)?.name ?? "board"
         flash(n == 0 ? "Already on \(name)" : "Added \(n) to \(name)")
+    }
+
+    func newBoard(fromTemplate tid: UUID) {
+        var id: UUID?
+        mutate("New Board from Template") { id = $0.createBoard(from: tid) }
+        templatePickerOpen = false
+        if let id { show(board: id); flash("Drag images onto the empty slots, or use Add to Board") }
+    }
+
+    func saveTemplate(_ board: UUID, named name: String) {
+        var t: UUID?
+        mutate("Save as Template") { t = $0.saveTemplate(from: board, named: name) }
+        if let t, let tpl = catalog.template(t) { flash("Saved template \(tpl.name) · \(tpl.slotCount) image slots") }
+    }
+
+    func clearSlot(_ item: UUID) {
+        guard let id = selectedBoard else { return }
+        updateBoard(id, "Remove Image") { $0.clearSlot(item) }
+    }
+
+    /// Share Round (1.22): the board's review gallery with the round summary PDF inside the same zip.
+    func shareRound(_ id: UUID, to fixedDir: URL? = nil) {
+        let pdf = FileManager.default.temporaryDirectory.appendingPathComponent("round-summary-\(UUID().uuidString).pdf")
+        Task { @MainActor in
+            guard await self.writeRoundSummary(id, to: pdf) != nil else { self.flash("Couldn't make the round summary"); return }
+            self.shareBoardGallery(id, to: fixedDir, summaryPDF: pdf)
+        }
     }
 
     func renameBoard(_ id: UUID, to name: String) {
@@ -2273,7 +2343,7 @@ extension StudioLibrary {
     }
 
     /// Review gallery of the board's assets (reading order) with the rendered board on top.
-    func shareBoardGallery(_ id: UUID, to fixedDir: URL? = nil) {
+    func shareBoardGallery(_ id: UUID, to fixedDir: URL? = nil, summaryPDF: URL? = nil) {
         guard let board = catalog.board(id) else { return }
         var seen = Set<UUID>()
         let ids = board.readingOrder.compactMap { $0.kind == .asset ? $0.assetID : nil }.filter { seen.insert($0).inserted }
@@ -2281,7 +2351,7 @@ extension StudioLibrary {
         Task { @MainActor in
             guard let rendered = await self.renderBoard(id), let cg = rendered.0.cgImage,
                   let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { self.flash("Couldn't render \(board.name)"); return }
-            self.exportGallery(ids, title: board.name, to: fixedDir, board: (png, cg.width, cg.height, board))
+            self.exportGallery(ids, title: board.name, to: fixedDir, board: (png, cg.width, cg.height, board), summaryPDF: summaryPDF)
         }
     }
 }
@@ -2588,7 +2658,8 @@ struct BoardCanvas: View {
     private var subtitle: String {
         let n = "\(board.items.count) item\(board.items.count == 1 ? "" : "s")"
         let approved = board.statusCounts[.approved] ?? 0
-        let tail = approved > 0 ? " · \(approved) approved" : ""
+        let empty = board.emptySlots.count
+        let tail = (approved > 0 ? " · \(approved) approved" : "") + (empty > 0 ? " · \(empty) empty slot\(empty == 1 ? "" : "s")" : "")
         guard !board.reviews.isEmpty else { return n + tail }
         let picked = pins.values.filter(\.picked).count
         return n + " · \(picked) picked by " + (model.boardReviewer ?? (board.reviewers.count == 1 ? board.reviewers[0] : "\(board.reviewers.count) reviewers")) + tail
@@ -2645,6 +2716,7 @@ struct BoardCanvas: View {
             Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
             Button(board.versions.isEmpty ? "Versions…" : "Versions (\(board.versions.count))…") { model.boardVersionsOpen = true }
             Button("Export Round Summary PDF…") { model.exportRoundSummary(board.id) }
+            Button("Share Round (Gallery + Summary)…") { model.shareRound(board.id) }
             Divider()
             Picker("Status", selection: $model.boardStatusFilter) {
                 Text("All Cards").tag(CardStatus?.none)
@@ -2717,6 +2789,9 @@ struct BoardCanvas: View {
                 Button("PDF…") { model.exportBoard(board.id, pdf: true) }
                 Divider()
                 Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
+                Button("Share Round (Gallery + Summary)…") { model.shareRound(board.id) }
+                Divider()
+                Button("Save as Template…") { model.savingTemplate = board.id }
             } label: {
                 if compact { Image(systemName: "square.and.arrow.up") } else { Label("Export", systemImage: "square.and.arrow.up") }
             }.menuIndicator(compact ? .hidden : .visible).fixedSize().help("Export the board")
@@ -2829,6 +2904,8 @@ struct BoardCanvas: View {
                 Divider()
             }
             switch item.kind {
+            case .asset where item.isSlot:
+                Text("Empty slot: drag an image here")
             case .asset:
                 Menu("Status") {
                     ForEach(CardStatus.allCases, id: \.self) { st in
@@ -2846,6 +2923,7 @@ struct BoardCanvas: View {
                 if let a = item.assetID { Button("Quick Look") { model.viewerID = a } }
                 Button("Crop…") { select(item); model.beginCrop(item) }
                 if item.crop != nil { Button("Show Whole Image") { model.updateBoard(board.id, "Reset Crop") { $0.setCrop(item.id, nil) } } }
+                Button("Remove Image (Keep Slot)") { model.clearSlot(item.id) }
             case .heading:
                 Button("Edit Heading") { select(item); model.editingNote = item.id }
             case .note:
@@ -2923,6 +3001,8 @@ struct BoardItemView: View {
 
     @ViewBuilder private var content: some View {
         switch item.kind {
+        case .asset where item.isSlot:
+            TemplateSlot()
         case .asset:
             ZStack(alignment: .bottomLeading) {
                 if let asset {
@@ -3454,6 +3534,7 @@ struct Sidebar: View {
     @State private var renameText = ""
     @State private var renameKeywordText = ""
     @State private var renameBoardText = ""
+    @State private var templateNameText = ""
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -3492,7 +3573,11 @@ struct Sidebar: View {
                 }
 
                 SidebarSection(title: "BOARDS", trailing: AnyView(
-                    Button { model.newBoard(with: []) } label: { Image(systemName: "plus").font(.caption.bold()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("New moodboard")
+                    Menu {
+                        Button("Blank Board") { model.newBoard(with: []) }
+                        Button("From Template…") { model.templatePickerOpen = true }
+                    } label: { Image(systemName: "plus").font(.caption.bold()) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(.secondary).help("New moodboard")
                 )) {
                     ForEach(model.catalog.boards) { board in
                         SidebarRow(title: board.name, symbol: "rectangle.3.group", count: board.items.count, selected: model.selectedBoard == board.id, boardDrop: board.id) { model.show(board: board.id) }
@@ -3502,6 +3587,7 @@ struct Sidebar: View {
                                 Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
                                 Divider()
                                 Button("Rename…") { renameBoardText = board.name; model.renamingBoard = board.id }
+                                Button("Save as Template…") { templateNameText = board.name; model.savingTemplate = board.id }
                                 Button("Export PNG…") { model.exportBoard(board.id, pdf: false) }
                                 Button("Export PDF…") { model.exportBoard(board.id, pdf: true) }
                                 Divider()
@@ -3583,6 +3669,12 @@ struct Sidebar: View {
             Button("Rename") { if let id = model.renamingBoard { model.renameBoard(id, to: renameBoardText) }; model.renamingBoard = nil }
             Button("Cancel", role: .cancel) { model.renamingBoard = nil }
         }
+        .alert("Save as Template", isPresented: Binding(get: { model.savingTemplate != nil }, set: { if !$0 { model.savingTemplate = nil } })) {
+            TextField("Template name", text: $templateNameText)
+            Button("Save") { if let id = model.savingTemplate { model.saveTemplate(id, named: templateNameText) }; model.savingTemplate = nil }
+            Button("Cancel", role: .cancel) { model.savingTemplate = nil }
+        } message: { Text("Sections, headings, notes, palettes and arrows are kept. Every image becomes an empty slot of the same size.") }
+        .sheet(isPresented: $model.templatePickerOpen) { TemplatePickerSheet().environmentObject(model) }
     }
 
     private func symbol(for name: String) -> String {
@@ -6894,6 +6986,134 @@ extension StudioLibrary {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { @MainActor in
             if await self.writeRoundSummary(id, to: url) != nil { self.flash("Exported \(url.lastPathComponent)") } else { self.flash("Couldn't export the round summary") }
+        }
+    }
+}
+
+// MARK: - Board templates (1.22)
+
+/// An empty image slot from a template.
+struct TemplateSlot: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.035))
+            RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
+            VStack(spacing: 6) {
+                Image(systemName: "photo.badge.plus").font(.system(size: 22, weight: .light)).foregroundStyle(Theme.accent.opacity(0.9))
+                Text("Drop an image").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// A small drawing of a template's layout: sections as outlines, headings as bars, slots dashed, notes and palettes filled.
+struct TemplatePreview: View {
+    let template: BoardTemplate
+    var body: some View {
+        GeometryReader { geo in
+            let b = Self.bounds(template.items)
+            let s = min(Double(geo.size.width) / b.w, Double(geo.size.height) / b.h)
+            let ox = (Double(geo.size.width) - b.w * s) / 2 - b.x * s, oy = (Double(geo.size.height) - b.h * s) / 2 - b.y * s
+            ZStack(alignment: .topLeading) {
+                ForEach(template.items.sorted { $0.z < $1.z }) { it in
+                    shape(it)
+                        .frame(width: max(2, it.w * s), height: max(2, it.h * s))
+                        .offset(x: ox + it.x * s, y: oy + it.y * s)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(red: 0.035, green: 0.04, blue: 0.065), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    static func bounds(_ items: [BoardItem]) -> BoardRect {
+        guard !items.isEmpty else { return BoardRect(x: 0, y: 0, w: 100, h: 75) }
+        let x0 = items.map(\.x).min()!, y0 = items.map(\.y).min()!
+        let x1 = items.map { $0.x + $0.w }.max()!, y1 = items.map { $0.y + $0.h }.max()!
+        return BoardRect(x: x0, y: y0, w: max(1, x1 - x0), h: max(1, y1 - y0))
+    }
+
+    @ViewBuilder private func shape(_ it: BoardItem) -> some View {
+        switch it.kind {
+        case .asset: RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.accent.opacity(0.85), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+        case .frame: RoundedRectangle(cornerRadius: 4).strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+        case .heading: VStack { Capsule().fill(Color.white.opacity(0.75)).frame(height: max(2, it.h * 0.02 + 3)); Spacer(minLength: 0) }
+        case .note: RoundedRectangle(cornerRadius: 3).fill(Color(red: 0.98, green: 0.92, blue: 0.7).opacity(0.85))
+        case .palette:
+            HStack(spacing: 0) { ForEach(it.colors, id: \.self) { Color(hex: $0) } }.clipShape(RoundedRectangle(cornerRadius: 3))
+        }
+    }
+}
+
+struct TemplatePickerSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State private var renaming: UUID?
+    @State private var draft = ""
+    private let columns = [GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 14)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("New Board from Template").font(.title3.weight(.bold))
+                    Text("Start from a layout, then drag images onto the empty slots.").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Cancel") { model.templatePickerOpen = false }.keyboardShortcut(.cancelAction)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    section("BUILT IN", BoardTemplate.builtIns)
+                    if !model.catalog.templates.isEmpty { section("YOUR TEMPLATES", model.catalog.templates) }
+                    else {
+                        Text("Save any board as a template from its menu (Save as Template…) and it shows up here.")
+                            .font(.caption).foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 760, height: 520)
+        .background(Theme.panel)
+    }
+
+    private func section(_ title: String, _ list: [BoardTemplate]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 10, weight: .heavy)).tracking(1.4).foregroundStyle(.secondary)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+                ForEach(list) { t in card(t) }
+            }
+        }
+    }
+
+    private func card(_ t: BoardTemplate) -> some View {
+        Button { model.newBoard(fromTemplate: t.id) } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                TemplatePreview(template: t).frame(height: 130)
+                if renaming == t.id {
+                    TextField("Name", text: $draft).textFieldStyle(.roundedBorder).onSubmit {
+                        model.mutate("Rename Template") { $0.renameTemplate(t.id, to: draft) }; renaming = nil
+                    }
+                } else {
+                    Text(t.name).font(.callout.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                }
+                Text(t.summary.isEmpty ? "\(t.slotCount) image slots" : t.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(t.slotCount) slots").font(.caption2.monospacedDigit()).foregroundStyle(Theme.accent)
+            }
+            .padding(10)
+            .background(Theme.raised, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.hairline))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("New Board from \(t.name)") { model.newBoard(fromTemplate: t.id) }
+            if !t.builtIn {
+                Button("Rename…") { draft = t.name; renaming = t.id }
+                Button("Delete Template", role: .destructive) { model.mutate("Delete Template") { $0.deleteTemplate(t.id) } }
+            }
         }
     }
 }

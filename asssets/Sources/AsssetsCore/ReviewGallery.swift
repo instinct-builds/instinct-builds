@@ -35,8 +35,10 @@ public enum ReviewGallery {
         public var items: [Item]
         /// Set when the gallery was shared from a moodboard (1.17): the board image with a clickable spot per asset.
         public var board: Board?
-        public init(gallery: String = UUID().uuidString, title: String, created: String, items: [Item], board: Board? = nil) {
-            self.gallery = gallery; self.title = title; self.created = created; self.items = items; self.board = board
+        /// Set when the round summary PDF ships alongside (1.22 Share Round): its file name in the folder.
+        public var summary: String?
+        public init(gallery: String = UUID().uuidString, title: String, created: String, items: [Item], board: Board? = nil, summary: String? = nil) {
+            self.gallery = gallery; self.title = title; self.created = created; self.items = items; self.board = board; self.summary = summary
         }
     }
 
@@ -116,7 +118,7 @@ header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:18px;
 .brand{font-weight:800;letter-spacing:.32em;font-size:12px;color:var(--accent)}h1{margin:0;font-size:22px;letter-spacing:-.01em}.sub{color:var(--dim);font-size:12.5px}
 .spacer{flex:1}input.name{background:var(--raised);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 11px;width:190px;font:inherit}
 button{font:inherit;cursor:pointer}.primary{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600}
-.filter{background:var(--raised);color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 12px}.filter.on{color:#fff;border-color:var(--pick);background:rgba(255,92,138,.14)}
+.filter{background:var(--raised);color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 12px}.filter.on{color:#fff;border-color:var(--pick);background:rgba(255,92,138,.14)}a.filter{text-decoration:none;font-size:13px}a.filter[hidden]{display:none}
 main{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px;padding:26px 32px 60px}
 .card{background:var(--raised);border:1px solid var(--line);border-radius:14px;overflow:hidden;transition:transform .12s,border-color .12s}.card:hover{transform:translateY(-2px);border-color:rgba(140,97,255,.5)}
 .card.picked{border-color:var(--pick);box-shadow:0 0 0 1px var(--pick)}
@@ -141,7 +143,7 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 .spot.picked{border-color:var(--pick)}.spot .heart{top:6px;right:6px;width:26px;height:26px;line-height:26px;font-size:13px;pointer-events:none}footer{color:var(--faint);font-size:12px;text-align:center;padding:0 0 28px}
 </style></head><body>
 <header><div><div class="brand">ASSSETS</div><h1 id="title"></h1><div class="sub" id="sub"></div></div><div class="spacer"></div>
-<button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
+<a class="filter" id="summary" target="_blank" hidden>Round summary (PDF)</a><button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
 <button class="primary" id="download">Download feedback</button></header>
 <section id="board"><div class="lbl">BOARD · CLICK ANY IMAGE TO REVIEW IT</div><div class="bwrap" id="bwrap"></div></section>
 <main id="grid"></main>
@@ -187,6 +189,7 @@ $('download').onclick=()=>{const out={format:'asssets-review-feedback',gallery:M
 items:M.items.map(it=>({id:it.id,favorite:!!st(it.id).favorite,note:(st(it.id).note||'').trim()})).filter(x=>x.favorite||x.note)};
 const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));
 a.download=(M.title+' feedback'+(out.reviewer?' - '+out.reviewer:'')).replace(/[\/:\\]/g,'-')+'.json';document.body.appendChild(a);a.click();a.remove()};
+if(M.summary){const a=$('summary');a.href=encodeURI(M.summary);a.hidden=false}
 render();if(q.get('demo')==='lightbox')open(0);
 </script></body></html>
 """#

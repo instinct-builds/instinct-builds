@@ -140,8 +140,10 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var recentColors: [String] = []
     /// Moodboards (1.16).
     public var boards: [Moodboard] = []
+    /// Board templates the user saved (1.22). The built-in ones live in code, see `BoardTemplate.builtIns`.
+    public var templates: [BoardTemplate] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts, recentColors, boards }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts, recentColors, boards, templates }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -155,6 +157,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         viewSorts = ((try? c.decodeIfPresent([String: String].self, forKey: .viewSorts)) ?? [:]).compactMapValues(AssetSort.init(rawValue:))
         recentColors = ((try? c.decodeIfPresent([String].self, forKey: .recentColors)) ?? []).compactMap(ColorSearch.normalize)
         boards = (try? c.decodeIfPresent([Moodboard].self, forKey: .boards)) ?? []
+        templates = ((try? c.decodeIfPresent([BoardTemplate].self, forKey: .templates)) ?? []).filter { !$0.builtIn }
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {
