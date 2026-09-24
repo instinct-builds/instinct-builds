@@ -233,14 +233,17 @@ public struct JournalBlock: View {
               trimmed.range(of: query, options: .caseInsensitive) != nil else {
             return Text(trimmed)
         }
-        var result = Text("")
+        var result = AttributedString()
         var rest = trimmed[trimmed.startIndex...]
         while let hit = rest.range(of: query, options: .caseInsensitive) {
-            result = result + Text(trimmed[rest.startIndex..<hit.lowerBound])
-            result = result + Text(trimmed[hit]).background(Theme.accent.opacity(0.30))
+            result.append(AttributedString(String(trimmed[rest.startIndex..<hit.lowerBound])))
+            var marked = AttributedString(String(trimmed[hit]))
+            marked.backgroundColor = Theme.accent.opacity(0.30)
+            result.append(marked)
             rest = trimmed[hit.upperBound...]
         }
-        return result + Text(rest)
+        result.append(AttributedString(String(rest)))
+        return Text(result)
     }
 
     public var body: some View {
