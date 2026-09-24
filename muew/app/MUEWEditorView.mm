@@ -213,54 +213,59 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 // 0.23.0 voice strip in the OSCILLATORS title row: POLY/MONO/LEGATO, voice
 // count stepper, GLIDE time bar, glide ALWAYS/LEGATO chip, unison PHASE chip,
 // unison BLEND bar.
-- (NSRect)voiceMode:(int)i { return NSMakeRect(146 + i * 29, [self top] - 28, 28, 15); }
-- (NSRect)voiceCount { return NSMakeRect(235, [self top] - 28, 38, 15); }
-- (NSRect)glideBar { return NSMakeRect(277, [self top] - 28, 70, 15); }
-- (NSRect)glideModeChip { return NSMakeRect(350, [self top] - 28, 26, 15); }
-- (NSRect)phaseChip { return NSMakeRect(379, [self top] - 28, 30, 15); }
-- (NSRect)blendBar { return NSMakeRect(412, [self top] - 28, 42, 15); }
+- (NSRect)voiceMode:(int)i {
+    static const CGFloat x[3] = {133, 160, 189}, wd[3] = {26, 28, 38};
+    return NSMakeRect(x[i], [self top] - 28, wd[i], 15);
+}
+- (NSRect)voiceCount { return NSMakeRect(231, [self top] - 28, 36, 15); }
+- (NSRect)glideBar { return NSMakeRect(271, [self top] - 28, 78, 15); }
+- (NSRect)glideModeChip { return NSMakeRect(352, [self top] - 28, 26, 15); }
+- (NSRect)phaseChip { return NSMakeRect(381, [self top] - 28, 30, 15); }
+- (NSRect)blendBar { return NSMakeRect(414, [self top] - 28, 42, 15); }
 static double GlidePos(double t) { return std::sqrt(std::clamp(t, 0.0, 2.0) / 2.0); }   // bar 0..1 <-> 0..2 s, fine near 0
 static double GlideFromPos(double x) { x = std::clamp(x, 0.0, 1.0); double t = 2.0 * x * x; return t < 0.002 ? 0.0 : t; }
-static NSString* GlideText(double t) {
-    if (!(t > 0)) return @"GLIDE OFF";
-    return t < 1.0 ? [NSString stringWithFormat:@"GLIDE %.0f ms", t * 1000] : [NSString stringWithFormat:@"GLIDE %.2f s", t];
+static NSString* GlideValue(double t) {
+    if (!(t > 0)) return @"OFF";
+    return t < 1.0 ? [NSString stringWithFormat:@"%.0f ms", t * 1000] : [NSString stringWithFormat:@"%.2f s", t];
+}
+// A value pill: muted label left, value right, and a thin level track along the bottom edge.
+static void ValuePill(NSRect r, NSString* label, NSString* value, double level, NSColor* accent, bool active) {
+    FillRound(r, 4, C(0x0f141b));
+    const NSRect track = NSMakeRect(r.origin.x + 4, r.origin.y + 2, r.size.width - 8, 1.5);
+    FillRound(track, 0.75, C(0x232b36));
+    if (level > 0) FillRound(NSMakeRect(track.origin.x, track.origin.y, std::max(2.0, track.size.width * std::clamp(level, 0.0, 1.0)), track.size.height), 0.75, accent);
+    TextA(label, NSMakeRect(r.origin.x + 4, r.origin.y + 4.5, r.size.width - 8, 10), 6.5, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentLeft);
+    TextA(value, NSMakeRect(r.origin.x + 4, r.origin.y + 4.5, r.size.width - 8, 10), 7, active ? accent : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
 }
 - (void)drawVoiceStrip {
     const VoiceParams& v = current.voice;
     NSColor* teal = C(0x5adac8);
+    NSColor* amber = C(0xf2ab55);
     NSString* modes[3] = {@"POLY", @"MONO", @"LEGATO"};
-    FillRound(NSMakeRect(144, [self top] - 29, 89, 17), 5, C(0x0f141b));
+    FillRound(NSMakeRect(131, [self top] - 29, 98, 17), 5, C(0x0f141b));
     for (int i = 0; i < 3; ++i) {
         NSRect r = [self voiceMode:i];
         const bool on = std::clamp(v.voiceMode, 0, 2) == i;
         if (on) FillRound(NSInsetRect(r, 0.5, 0.5), 4, teal);
-        TextFit(modes[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 10), 7, 5.5, on ? C(0x0b0e13) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+        TextA(modes[i], NSMakeRect(r.origin.x, r.origin.y + 4, r.size.width, 10), 6.5, on ? C(0x0b0e13) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
     }
     NSRect vc = [self voiceCount];
     FillRound(vc, 4, C(0x0f141b));
     const bool poly = v.voiceMode == 0;
     TextA(@"\u2039", NSMakeRect(vc.origin.x + 1, vc.origin.y + 1.5, 9, 12), 10, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
     TextA(@"\u203A", NSMakeRect(NSMaxX(vc) - 10, vc.origin.y + 1.5, 9, 12), 10, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
-    TextA([NSString stringWithFormat:@"%d V", poly ? std::clamp(v.polyVoices, 1, 16) : 1], NSMakeRect(vc.origin.x + 8, vc.origin.y + 3.5, vc.size.width - 16, 10), 7.5,
+    TextA([NSString stringWithFormat:@"%d V", poly ? std::clamp(v.polyVoices, 1, 16) : 1], NSMakeRect(vc.origin.x + 8, vc.origin.y + 4, vc.size.width - 16, 10), 7,
           poly ? C(0xd5dce5) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
-    NSRect gb = [self glideBar];
-    FillRound(gb, 4, C(0x0f141b));
-    const double gp = GlidePos(v.glideTime);
-    if (gp > 0) FillRound(NSMakeRect(gb.origin.x, gb.origin.y, std::max(8.0, gb.size.width * gp), gb.size.height), 4, [C(0xf2ab55) colorWithAlphaComponent:.85]);
-    TextA(GlideText(v.glideTime), NSMakeRect(gb.origin.x, gb.origin.y + 3.5, gb.size.width, 10), 7, gp > .6 ? C(0x0b0e13) : (gp > 0 ? C(0xf5f7fa) : C(0x8793a3)),
-          NSFontWeightBold, NSTextAlignmentCenter);
+    ValuePill([self glideBar], @"GLIDE", GlideValue(v.glideTime), GlidePos(v.glideTime), amber, v.glideTime > 0);
     NSRect gm = [self glideModeChip];
-    FillRound(gm, 4, v.glideLegato ? [C(0xf2ab55) colorWithAlphaComponent:.25] : C(0x0f141b));
-    TextA(v.glideLegato ? @"LEG" : @"ALL", NSMakeRect(gm.origin.x, gm.origin.y + 3.5, gm.size.width, 10), 7, v.glideTime > 0 ? C(0xf2ab55) : C(0x5f6b7b),
+    FillRound(gm, 4, v.glideLegato ? [amber colorWithAlphaComponent:.22] : C(0x0f141b));
+    TextA(v.glideLegato ? @"LEG" : @"ALL", NSMakeRect(gm.origin.x, gm.origin.y + 4, gm.size.width, 10), 6.5, v.glideTime > 0 ? amber : C(0x5f6b7b),
           NSFontWeightBold, NSTextAlignmentCenter);
     NSRect ph = [self phaseChip];
-    FillRound(ph, 4, v.uniPhase ? [teal colorWithAlphaComponent:.25] : C(0x0f141b));
-    TextA(v.uniPhase ? @"RAND" : @"SPRD", NSMakeRect(ph.origin.x, ph.origin.y + 3.5, ph.size.width, 10), 7, v.uniPhase ? teal : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
-    NSRect bb = [self blendBar];
-    FillRound(bb, 4, C(0x0f141b));
+    FillRound(ph, 4, v.uniPhase ? [teal colorWithAlphaComponent:.22] : C(0x0f141b));
+    TextA(v.uniPhase ? @"RAND" : @"SPRD", NSMakeRect(ph.origin.x, ph.origin.y + 4, ph.size.width, 10), 6.5, v.uniPhase ? teal : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
     const double bl = std::clamp(v.uniBlend, 0.0, 1.0);
-    if (bl > 0) FillRound(NSMakeRect(bb.origin.x, bb.origin.y, std::max(8.0, bb.size.width * bl), bb.size.height), 4, [C(0xc3cbd6) colorWithAlphaComponent:.30]);
-    TextA([NSString stringWithFormat:@"BLEND %.0f", bl * 100], NSMakeRect(bb.origin.x, bb.origin.y + 3.5, bb.size.width, 10), 7, C(0xd5dce5), NSFontWeightBold, NSTextAlignmentCenter);
+    ValuePill([self blendBar], @"BLND", [NSString stringWithFormat:@"%.0f", bl * 100], bl, C(0xc3cbd6), true);
 }
 - (void)voiceParamEdited:(int)id {
     edited = true;
