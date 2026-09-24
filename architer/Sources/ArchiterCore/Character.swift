@@ -452,6 +452,20 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
         entries.map { $0.shareText }.joined(separator: "\n\n")
     }
 
+    /// Journal bulk summary (2.64.0): "47 lines · 312 words" over the
+    /// given entries - the header's live total, which follows the
+    /// filter. Empty-body-only sets read as nil (nothing to count).
+    public static func bulkSummary(entries: [JournalEntry]) -> String? {
+        let bodies = entries.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !bodies.isEmpty else { return nil }
+        let lines = bodies.reduce(0) { $0 + $1.components(separatedBy: "\n").count }
+        let words = bodies.reduce(0) {
+            $0 + $1.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+        }
+        return "\(lines) lines · \(words) words"
+    }
+
     /// Lines containing the filter query, case-insensitive (2.60.0):
     /// the journal's search-as-you-type highlight shows the first hit
     /// as a snippet plus a count. Blank queries match nothing.

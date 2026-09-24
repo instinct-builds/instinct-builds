@@ -393,6 +393,14 @@ public struct JournalBlock: View {
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkFaint)
                 }
+                // 2.64.0: live bulk totals over the visible entries -
+                // follows the filter when one is active.
+                if let summary = JournalEntry.bulkSummary(
+                    entries: character.journal.filter { $0.matchesFilter(query) }) {
+                    Text(summary)
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                }
                 TextField("Filter", text: $filter)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 130)

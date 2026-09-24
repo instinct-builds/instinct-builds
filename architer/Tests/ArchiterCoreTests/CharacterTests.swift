@@ -1148,6 +1148,16 @@ struct JournalTests {
         #expect(JournalEntry.shareText(entries: []) == "")
     }
 
+    @Test func journalBulkSummaryCountsLinesAndWords() throws {
+        let entries = [JournalEntry(title: "A", text: "one two\nthree"),
+                       JournalEntry(title: "B", text: "four"),
+                       JournalEntry(title: "C", text: "   ")]
+        #expect(JournalEntry.bulkSummary(entries: entries) == "3 lines · 4 words")
+        #expect(JournalEntry.bulkSummary(entries: [JournalEntry(text: "")]) == nil)
+        #expect(JournalEntry.bulkSummary(entries: []) == nil)
+        #expect(JournalEntry.bulkSummary(entries: [JournalEntry(text: "a\nb\nc")]) == "3 lines · 3 words")
+    }
+
     @Test func journalEntrySizeLabel() throws {
         #expect(JournalEntry(text: "").sizeLabel == nil)
         #expect(JournalEntry(text: "   \n  ").sizeLabel == nil)
