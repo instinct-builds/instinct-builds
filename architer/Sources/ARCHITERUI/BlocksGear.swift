@@ -212,7 +212,7 @@ struct JournalBlock: View {
     var body: some View {
         BlockCard(title: "Journal") {
             ForEach($character.journal) { $entry in
-                let long = entry.text.contains("\n") || entry.text.count > 80
+                let long = entry.isLong
                 let collapsed = (entry.isCollapsed ?? false) && long
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -276,6 +276,20 @@ struct JournalBlock: View {
                 Button("Copy today") { model.copySessionRecapToPasteboard(character) }
                     .controlSize(.small)
                     .help("Copy today's journal entries and rolls as one shareable recap")
+            }
+        } trailing: {
+            // 2.53.0: one-tap scan - collapse every long entry at once,
+            // or expand them all back. Persisted per entry.
+            let anyLong = character.journal.contains { $0.isLong }
+            let anyExpanded = character.journal.contains { $0.isLong && !($0.isCollapsed ?? false) }
+            if anyLong {
+                Button { character.setAllJournalCollapsed(anyExpanded) } label: {
+                    Image(systemName: anyExpanded
+                          ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help(anyExpanded ? "Collapse all long entries" : "Expand all entries")
             }
         }
     }

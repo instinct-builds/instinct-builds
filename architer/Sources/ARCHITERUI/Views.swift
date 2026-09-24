@@ -159,12 +159,23 @@ public struct SheetColumnView: View {
     }
 }
 
-public struct BlockCard<Content: View>: View {
+public struct BlockCard<Content: View, Trailing: View>: View {
     let title: String
+    @ViewBuilder var trailing: Trailing
     @ViewBuilder var content: Content
 
-    public init(title: String, @ViewBuilder content: () -> Content) {
+    public init(title: String, @ViewBuilder content: () -> Content) where Trailing == EmptyView {
         self.title = title
+        self.trailing = EmptyView()
+        self.content = content()
+    }
+
+    /// Header trailing accessory (2.53.0): small controls that act on the
+    /// whole block, e.g. the journal's collapse-all.
+    public init(title: String, @ViewBuilder content: () -> Content,
+                @ViewBuilder trailing: () -> Trailing) {
+        self.title = title
+        self.trailing = trailing()
         self.content = content()
     }
 
@@ -179,6 +190,7 @@ public struct BlockCard<Content: View>: View {
                     .tracking(1.4)
                     .foregroundStyle(Theme.inkMuted)
                 Spacer()
+                trailing
             }
             VStack(alignment: .leading, spacing: Theme.Gap.md) { content }
         }

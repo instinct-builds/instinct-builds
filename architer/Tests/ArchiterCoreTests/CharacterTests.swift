@@ -996,6 +996,31 @@ struct JournalTests {
         #expect(decoded.isCollapsed == true)
     }
 
+    @Test func journalEntryIsLongRule() throws {
+        #expect(JournalEntry(text: "short").isLong == false)
+        #expect(JournalEntry(text: String(repeating: "x", count: 80)).isLong == false)
+        #expect(JournalEntry(text: String(repeating: "x", count: 81)).isLong == true)
+        #expect(JournalEntry(text: "one\ntwo").isLong == true)
+    }
+
+    @Test func setAllJournalCollapsedTogglesLongOnly() throws {
+        var c = Character(name: "Wren Halloway")
+        c.journal = [
+            JournalEntry(title: "Short", text: "brief"),
+            JournalEntry(title: "Long", text: "one\ntwo"),
+            JournalEntry(title: "Longer", text: String(repeating: "x", count: 90)),
+        ]
+        c.setAllJournalCollapsed(true)
+        #expect(c.journal[0].isCollapsed == nil)
+        #expect(c.journal[1].isCollapsed == true)
+        #expect(c.journal[2].isCollapsed == true)
+        // Expanding restores the default nil, and short entries stay out.
+        c.setAllJournalCollapsed(false)
+        #expect(c.journal[0].isCollapsed == nil)
+        #expect(c.journal[1].isCollapsed == nil)
+        #expect(c.journal[2].isCollapsed == nil)
+    }
+
     @Test func journalRoundTripsAndDefaults() throws {
         var c = Character(name: "Test")
         #expect(c.journal.isEmpty)

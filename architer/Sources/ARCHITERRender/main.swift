@@ -213,6 +213,16 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: width, name: "journal-collapse", outDir: outDir)
+        // 2.53.0 proof: the header's collapse-all puts every long entry
+        // into its one-line preview at once.
+        sel.setAllJournalCollapsed(true)
+        model.selected?.wrappedValue = sel
+        renderPNG(
+            SheetColumnView(character: .constant(sel))
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "journal-collapse-all", outDir: outDir)
     }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.

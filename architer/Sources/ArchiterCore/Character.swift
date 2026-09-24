@@ -320,6 +320,11 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
                   createdAt: now,
                   isCollapsed: true)
     }
+
+    /// Multiline or over 80 chars - long enough to carry a collapse
+    /// triangle (rule introduced with 2.51.0, shared model-side in
+    /// 2.53.0 so the view and bulk actions agree).
+    public var isLong: Bool { text.contains("\n") || text.count > 80 }
 }
 
 public extension JournalEntry {
@@ -525,6 +530,16 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var toolProficiencies: [ToolProficiency]
     /// Dated session-log entries shown in the journal block.
     public var journal: [JournalEntry]
+
+    /// Collapse or expand every long journal entry at once (2.53.0) -
+    /// the journal header's one-tap scan control. Collapsing sets true;
+    /// expanding restores the default nil. Short entries are untouched:
+    /// they never carry a triangle.
+    public mutating func setAllJournalCollapsed(_ collapsed: Bool) {
+        for i in journal.indices where journal[i].isLong {
+            journal[i].isCollapsed = collapsed ? true : nil
+        }
+    }
 
     /// Move a journal entry by a relative offset (2.50.0), clamped to the
     /// array bounds; unknown ids and zero/edge moves are no-ops. Journal
