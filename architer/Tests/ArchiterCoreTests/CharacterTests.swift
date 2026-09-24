@@ -1051,6 +1051,17 @@ struct JournalTests {
         #expect(c.journal.count == 3)
     }
 
+    @Test func journalEntrySizeLabel() throws {
+        #expect(JournalEntry(text: "").sizeLabel == nil)
+        #expect(JournalEntry(text: "   \n  ").sizeLabel == nil)
+        #expect(JournalEntry(text: "one").sizeLabel == "1 word")
+        #expect(JournalEntry(text: "Rolled 15 (2d10+3)").sizeLabel == "3 words")
+        #expect(JournalEntry(text: "a\nb").sizeLabel == "2 lines")
+        #expect(JournalEntry(text: "a\nb\nc").sizeLabel == "3 lines")
+        // A trailing newline does not inflate the count.
+        #expect(JournalEntry(text: "a\nb\n").sizeLabel == "2 lines")
+    }
+
     @Test func journalRoundTripsAndDefaults() throws {
         var c = Character(name: "Test")
         #expect(c.journal.isEmpty)

@@ -326,6 +326,18 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// 2.53.0 so the view and bulk actions agree).
     public var isLong: Bool { text.contains("\n") || text.count > 80 }
 
+    /// Row size label (2.57.0): "9 lines" for multiline entries, "42
+    /// words" for single-line ones, nil when empty - a glanceable bulk
+    /// hint that needs no expansion.
+    public var sizeLabel: String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let lines = trimmed.components(separatedBy: "\n").count
+        if lines > 1 { return "\(lines) lines" }
+        let words = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.count
+        return words == 1 ? "1 word" : "\(words) words"
+    }
+
     /// One-entry share block (2.55.0): the export head line followed by
     /// the body, or the head alone for bodiless entries - what the
     /// journal row's copy button puts on the pasteboard.

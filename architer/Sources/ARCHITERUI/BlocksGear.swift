@@ -239,6 +239,13 @@ public struct JournalBlock: View {
                             .frame(width: 110)
                         TextField("Title", text: $entry.title)
                             .textFieldStyle(InsetFieldStyle())
+                        // 2.57.0: bulk at a glance - lines for multiline,
+                        // words for single-line entries.
+                        if let size = entry.sizeLabel {
+                            Text(size)
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.inkFaint)
+                        }
                         // 2.51.0: long entries collapse to a one-line
                         // preview; the state persists on the entry.
                         if long {

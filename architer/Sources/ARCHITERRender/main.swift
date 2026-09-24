@@ -240,6 +240,14 @@ func run(model: AppModel, character: Character, outDir: String) {
                     .background(Theme.surface)
                     .environmentObject(model),
                 width: width, name: "journal-duplicate", outDir: outDir)
+            // 2.57.0 proof: every row carries its size label - "9
+            // lines" on the digests, word counts on the roll entries.
+            renderPNG(
+                JournalBlock(character: .constant(sel))
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: width, name: "journal-size", outDir: outDir)
         }
         // 2.54.0 proof: the header filter narrows the journal by
         // title/body text - "fire bolt" keeps the attack, both damage
