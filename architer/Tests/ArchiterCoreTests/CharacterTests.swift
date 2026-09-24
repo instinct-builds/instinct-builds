@@ -1195,6 +1195,28 @@ struct JournalTests {
         #expect(!empty.contains("## Journal"))
     }
 
+    @Test func exportJournalTimestampOptionDropsTimes() {
+        let stamp = Date(timeIntervalSince1970: 1_790_000_000)
+        let e = JournalEntry(date: "2026-09-24", title: "4d6kh3", createdAt: stamp)
+        #expect(e.exportHeadWithoutTime == "2026-09-24 - 4d6kh3")
+        #expect(JournalEntry().exportHeadWithoutTime == "Entry")
+        var c = Character(name: "Test")
+        c.journal = [e]
+        let time = RollResult.historyTimeFormatter.string(from: stamp)
+        // Default exports keep the stamped head.
+        #expect(SheetExporter.exportMarkdown(c).contains(time))
+        #expect(SheetExporter.exportHTML(c).contains(time))
+        let pdf = String(decoding: SheetPDFExporter.export(c), as: UTF8.self)
+        #expect(pdf.contains(time))
+        // The option drops it everywhere.
+        #expect(!SheetExporter.exportMarkdown(c, journalTimestamps: false).contains(time))
+        #expect(!SheetExporter.exportHTML(c, journalTimestamps: false).contains(time))
+        let plainPdf = String(decoding: SheetPDFExporter.export(c, journalTimestamps: false), as: UTF8.self)
+        #expect(!plainPdf.contains(time))
+        // The head itself survives in both modes.
+        #expect(SheetExporter.exportMarkdown(c, journalTimestamps: false).contains("2026-09-24 - 4d6kh3"))
+    }
+
     @Test func exportHeadAddsTimeForStampedEntries() {
         let stamp = Date(timeIntervalSince1970: 1_790_000_000)
         let time = RollResult.historyTimeFormatter.string(from: stamp)

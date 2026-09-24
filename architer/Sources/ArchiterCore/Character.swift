@@ -497,6 +497,14 @@ public extension JournalEntry {
         let head = [day, title].filter { !$0.isEmpty }.joined(separator: " - ")
         return head.isEmpty ? "Entry" : head
     }
+
+    /// Export head without the creation stamp (2.66.0): "Session 4 -
+    /// Lantern Street" even for stamped entries - the journal-timestamp
+    /// export option turns times off for clean archival sheets.
+    var exportHeadWithoutTime: String {
+        let head = [date, title].filter { !$0.isEmpty }.joined(separator: " - ")
+        return head.isEmpty ? "Entry" : head
+    }
 }
 
 /// Non-walking movement kinds. Genre-standard categories; walking speed

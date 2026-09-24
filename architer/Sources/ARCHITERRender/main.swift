@@ -196,6 +196,12 @@ func run(model: AppModel, character: Character, outDir: String) {
                                    groups: groupRollsByDay(Array(logRolls.reversed())))
     try? logMd.write(to: URL(fileURLWithPath: "\(outDir)/session-log.md"),
                      atomically: true, encoding: .utf8)
+    // 2.66.0 proof: the journal-timestamp export option - the same
+    // sheet's markdown with per-entry times dropped (the pristine
+    // sample-sheet.md above keeps the default and stays byte-stable).
+    try? SheetExporter.exportMarkdown(character, journalTimestamps: false)
+        .write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-notime.md"),
+               atomically: true, encoding: .utf8)
     // 2.49.0 proof: digest the newest session into the journal as one
     // entry - the recap below then carries it, titled by the session.
     if let session = sessionSegments(model.rollHistory).first {

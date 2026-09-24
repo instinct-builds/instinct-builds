@@ -69,6 +69,15 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let digestFormatKey = "architer.digestFormat"
+    /// Journal timestamps in exports (2.66.0): on keeps the 2.47.0
+    /// stamped heads; off gives clean archival sheets.
+    @Published public var exportJournalTimestamps: Bool =
+        UserDefaults.standard.object(forKey: AppModel.exportJournalTimestampsKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(exportJournalTimestamps, forKey: AppModel.exportJournalTimestampsKey)
+        }
+    }
+    private static let exportJournalTimestampsKey = "architer.exportJournalTimestamps"
     /// Compact-PDF option (2.39.0): append the exported character's roll
     /// history as a day-grouped session-log appendix. Off by default - the
     /// compact layout is for cheap printing, so extra pages are opt-in.
@@ -593,12 +602,14 @@ public final class AppModel: ObservableObject {
 
     public func exportMarkdown() {
         guard let sel = selected?.wrappedValue else { return }
-        savePanel(text: SheetExporter.exportMarkdown(sel), name: "\(sel.name).md")
+        savePanel(text: SheetExporter.exportMarkdown(sel, journalTimestamps: exportJournalTimestamps),
+                  name: "\(sel.name).md")
     }
 
     public func exportHTML() {
         guard let sel = selected?.wrappedValue else { return }
-        savePanel(text: SheetExporter.exportHTML(sel), name: "\(sel.name).html")
+        savePanel(text: SheetExporter.exportHTML(sel, journalTimestamps: exportJournalTimestamps),
+                  name: "\(sel.name).html")
     }
 
     /// Session-log text export (2.42.0): the character's rolls as a
@@ -629,7 +640,7 @@ public final class AppModel: ObservableObject {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(sel.name).pdf"
         if panel.runModal() == .OK, let url = panel.url {
-            try? SheetPDFExporter.export(sel).write(to: url)
+            try? SheetPDFExporter.export(sel, journalTimestamps: exportJournalTimestamps).write(to: url)
         }
     }
 
@@ -642,7 +653,8 @@ public final class AppModel: ObservableObject {
                                          orientation: landscape ? .landscape : .portrait,
                                          collapseEmptyInventory: compactPDFHideEmptyRows,
                                          sessionRolls: compactPDFSessionLog
-                                             ? rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange) : []).write(to: url)
+                                             ? rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange) : [],
+                                         journalTimestamps: exportJournalTimestamps).write(to: url)
         }
     }
 

@@ -13,7 +13,7 @@ public enum SheetExporter {
     }
 
 
-    public static func exportMarkdown(_ c: Character) -> String {
+    public static func exportMarkdown(_ c: Character, journalTimestamps: Bool = true) -> String {
         var out: [String] = []
         for block in c.layout.visibleBlocks {
             switch block.kind {
@@ -130,7 +130,8 @@ public enum SheetExporter {
                 if !c.journal.isEmpty {
                     var lines = ["## Journal"]
                     for e in c.journal {
-                        lines.append("### \(e.exportHead)")
+                        // 2.66.0: the export option drops per-entry times.
+                        lines.append("### \(journalTimestamps ? e.exportHead : e.exportHeadWithoutTime)")
                         if !e.text.isEmpty { lines.append(e.text) }
                     }
                     out.append(lines.joined(separator: "\n"))
@@ -173,7 +174,7 @@ public enum SheetExporter {
         }
     }
 
-    public static func exportHTML(_ c: Character) -> String {
+    public static func exportHTML(_ c: Character, journalTimestamps: Bool = true) -> String {
         var body: [String] = []
         for block in c.layout.visibleBlocks {
             switch block.kind {
@@ -300,7 +301,7 @@ public enum SheetExporter {
                 if !c.journal.isEmpty {
                     var items = ""
                     for e in c.journal {
-                        items += "<h3>\(esc(e.exportHead))</h3>"
+                        items += "<h3>\(esc(journalTimestamps ? e.exportHead : e.exportHeadWithoutTime))</h3>"
                         if !e.text.isEmpty {
                             items += "<p>\(esc(e.text).replacingOccurrences(of: "\n", with: "<br>"))</p>"
                         }

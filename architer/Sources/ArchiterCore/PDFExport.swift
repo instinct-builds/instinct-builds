@@ -155,7 +155,8 @@ public enum SheetPDFExporter {
     public static func export(_ c: Character, style: LayoutStyle = .full,
                               orientation: PageOrientation = .portrait,
                               collapseEmptyInventory: Bool = false,
-                              sessionRolls: [RollResult] = []) -> Data {
+                              sessionRolls: [RollResult] = [],
+                              journalTimestamps: Bool = true) -> Data {
         let compact = style == .compact
         let pageSize: PDFDocument.PageSize = orientation == .landscape
             ? PDFDocument.PageSize(width: PDFDocument.PageSize.letter.height,
@@ -483,7 +484,9 @@ public enum SheetPDFExporter {
                 guard !c.journal.isEmpty else { continue }
                 cursor.section("Journal", margin: margin)
                 for e in c.journal {
-                    let headLines = wrap(e.exportHead, width: flowW, size: 9)
+                    // 2.66.0: the export option drops per-entry times.
+                    let head = journalTimestamps ? e.exportHead : e.exportHeadWithoutTime
+                    let headLines = wrap(head, width: flowW, size: 9)
                     var bodyLines: [String] = []
                     for para in e.text.components(separatedBy: "\n") {
                         bodyLines += wrap(para, width: flowW - 14, size: 9)
