@@ -149,9 +149,24 @@ public struct DiceRollerView: View {
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }
             ScrollView {
-                LazyVStack(spacing: Theme.Gap.sm) {
-                    ForEach(Array(visibleHistory.enumerated()), id: \.offset) { _, roll in
-                        RollCard(roll: roll)
+                // 2.38.0: day-grouped history with sticky date headers.
+                LazyVStack(spacing: Theme.Gap.sm, pinnedViews: [.sectionHeaders]) {
+                    ForEach(Array(groupRollsByDay(visibleHistory).enumerated()), id: \.offset) { _, group in
+                        Section {
+                            ForEach(Array(group.rolls.enumerated()), id: \.offset) { _, roll in
+                                RollCard(roll: roll)
+                            }
+                        } header: {
+                            HStack {
+                                Text(group.title)
+                                    .font(Theme.Typeface.caption.bold())
+                                    .foregroundStyle(Theme.inkMuted)
+                                Spacer()
+                            }
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity)
+                            .background(Theme.surface)
+                        }
                     }
                 }
             }

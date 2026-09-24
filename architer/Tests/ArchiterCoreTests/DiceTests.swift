@@ -174,6 +174,60 @@ struct MacroDamageTypeTests {
     }
 }
 
+@Suite("Roll history day groups")
+struct RollDayGroupTests {
+    private func stamped(_ expression: String, label: String, at: Date?) -> RollResult {
+        var r = RollResult(expression: expression, dice: [], modifier: 0, total: 10, alternateTotal: nil)
+        r.label = label
+        r.rolledAt = at
+        return r
+    }
+
+    private var utc: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
+    }
+
+    @Test func groupsNewestFirstByDay() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 18)))
+        let earlier = now.addingTimeInterval(-3600)
+        let yesterday = try #require(cal.date(byAdding: .day, value: -1, to: now))
+        let rolls = [
+            stamped("1d20", label: "newer today", at: now),
+            stamped("2d6", label: "older today", at: earlier),
+            stamped("1d8", label: "yesterday", at: yesterday),
+            stamped("1d4", label: "undated", at: nil),
+        ]
+        let groups = groupRollsByDay(rolls, now: now, calendar: cal)
+        #expect(groups.map { $0.title } == ["Today", "Yesterday", "Undated"])
+        #expect(groups[0].rolls.map { $0.label ?? "" } == ["newer today", "older today"])
+        #expect(groups[1].rolls.count == 1)
+        #expect(groups[2].rolls.count == 1)
+    }
+
+    @Test func olderDaysUseTheFormattedDate() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 18)))
+        let old = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 1, hour: 12)))
+        let groups = groupRollsByDay([stamped("1d6", label: "old", at: old)], now: now, calendar: cal)
+        let expected = RollResult.historyDateFormatter.string(from: old)
+        #expect(groups[0].title == expected)
+        #expect(groups[0].title != "Today")
+    }
+
+    @Test func allTodayIsASingleGroup() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 18)))
+        let rolls = [stamped("1d20", label: "a", at: now), stamped("2d6", label: "b", at: now)]
+        let groups = groupRollsByDay(rolls, now: now, calendar: cal)
+        #expect(groups.count == 1)
+        #expect(groups[0].title == "Today")
+        #expect(groupRollsByDay([], now: now, calendar: cal).isEmpty)
+    }
+}
+
 @Suite("Roll history filtering")
 struct RollHistoryFilterTests {
     private func roll(_ expression: String, label: String? = nil, character: String? = nil) -> RollResult {

@@ -57,6 +57,51 @@ public extension RollResult {
         f.dateFormat = "HH:mm"
         return f
     }()
+    /// Date title for history day groups older than yesterday
+    /// ("Sep 21, 2026"). Same pinning rationale as the time formatter.
+    static let historyDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d, yyyy"
+        return f
+    }()
+}
+
+/// One day of history rows under a sticky date header (2.38.0).
+public struct RollDayGroup: Equatable, Sendable {
+    public let title: String
+    public var rolls: [RollResult]
+}
+
+/// The group title for a roll's day: "Today", "Yesterday", a formatted
+/// date, or "Undated" for rolls with no recorded time (pre-2.35.0).
+/// `now` and `calendar` are injectable so tests pin the boundaries.
+public func rollDayTitle(_ date: Date?, now: Date = Date(),
+                         calendar: Calendar = .current) -> String {
+    guard let date else { return "Undated" }
+    let day = calendar.startOfDay(for: date)
+    let today = calendar.startOfDay(for: now)
+    if day == today { return "Today" }
+    if let yesterday = calendar.date(byAdding: .day, value: -1, to: today),
+       day == yesterday { return "Yesterday" }
+    return RollResult.historyDateFormatter.string(from: date)
+}
+
+/// Groups a newest-first history list under day headers, preserving the
+/// list's order: a new group starts whenever the title changes, so the
+/// scope and text filters keep working exactly as before.
+public func groupRollsByDay(_ rolls: [RollResult], now: Date = Date(),
+                            calendar: Calendar = .current) -> [RollDayGroup] {
+    var groups: [RollDayGroup] = []
+    for roll in rolls {
+        let title = rollDayTitle(roll.rolledAt, now: now, calendar: calendar)
+        if let last = groups.last, last.title == title {
+            groups[groups.count - 1].rolls.append(roll)
+        } else {
+            groups.append(RollDayGroup(title: title, rolls: [roll]))
+        }
+    }
+    return groups
 }
 
 public extension Array where Element == RollResult {

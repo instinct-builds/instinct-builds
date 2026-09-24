@@ -91,6 +91,13 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Seeded after the sheet render so the resisted total lands in dice
     // history without lowering the sheet's HP bar.
     model.rollIncomingDamage("2d6+3", type: .fire)
+    // 2.38.0 proof: backdate the two oldest rolls so the history groups
+    // into Today / Yesterday under its sticky headers.
+    if model.rollHistory.count >= 2,
+       let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) {
+        model.rollHistory[model.rollHistory.count - 1].rolledAt = yesterday
+        model.rollHistory[model.rollHistory.count - 2].rolledAt = yesterday.addingTimeInterval(3600)
+    }
     renderPNG(
         DiceRollerView()
             .padding()

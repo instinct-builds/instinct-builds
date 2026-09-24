@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.38.0
+
+- History grouped by day: the Dice tab history now sorts under sticky
+  date headers - "Today", "Yesterday", or the date - that stay pinned
+  while you scroll, built on 2.35.0's timestamps. Rolls with no recorded
+  time (pre-2.35.0) collect under "Undated". Scope and text filters
+  apply first, so searching "fire" groups only the matching days.
+
 ## What's in 2.37.0
 
 - Inventory consume/restock buttons: every item row gains one-tap - and
