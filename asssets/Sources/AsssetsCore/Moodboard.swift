@@ -7,10 +7,27 @@ public struct BoardRect: Equatable, Sendable {
     public init(x: Double, y: Double, w: Double, h: Double) { self.x = x; self.y = y; self.w = w; self.h = h }
     public var maxX: Double { x + w }
     public var maxY: Double { y + h }
+    public var midX: Double { x + w / 2 }
+    public var midY: Double { y + h / 2 }
+    public func contains(_ r: BoardRect) -> Bool { r.x >= x && r.y >= y && r.maxX <= maxX && r.maxY <= maxY }
+    public func contains(x px: Double, y py: Double) -> Bool { px >= x && px <= maxX && py >= y && py <= maxY }
+    public func intersects(_ r: BoardRect) -> Bool { r.x < maxX && r.maxX > x && r.y < maxY && r.maxY > y }
+    /// Rect spanning two corner points, in any order (a marquee drag).
+    public static func spanning(_ a: (x: Double, y: Double), _ b: (x: Double, y: Double)) -> BoardRect {
+        BoardRect(x: min(a.x, b.x), y: min(a.y, b.y), w: abs(a.x - b.x), h: abs(a.y - b.y))
+    }
+}
+
+/// Where a dragged group lands and the alignment lines to draw (1.18).
+public struct BoardGuides: Equatable, Sendable {
+    public var dx: Double, dy: Double
+    /// x positions of vertical guide lines and y positions of horizontal ones, in board coordinates.
+    public var vertical: [Double], horizontal: [Double]
+    public init(dx: Double, dy: Double, vertical: [Double] = [], horizontal: [Double] = []) { self.dx = dx; self.dy = dy; self.vertical = vertical; self.horizontal = horizontal }
 }
 
 public struct BoardItem: Codable, Equatable, Identifiable, Sendable {
-    public enum Kind: String, Codable, Sendable { case asset, note, palette }
+    public enum Kind: String, Codable, Sendable { case asset, note, palette, frame }
     public var id: UUID
     public var kind: Kind
     /// The library asset shown (asset cards) or the asset the colors came from (palette cards).
@@ -164,8 +181,9 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
+    /// Frames stay behind the cards.
     public mutating func bringToFront(_ id: UUID) {
-        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        guard let i = items.firstIndex(where: { $0.id == id }), items[i].kind != .frame else { return }
         items[i].z = topZ
     }
     public mutating func sendToBack(_ id: UUID) {
@@ -208,10 +226,123 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         return (s, (width - rect.w * s) / 2 - rect.x * s, (height - rect.h * s) / 2 - rect.y * s)
     }
 
-    /// Lays everything out in rows, back to front, keeping sizes.
+    // MARK: Sections and groups (1.18)
+
+    /// Default padding between a frame's edge and its cards; the top leaves room for the label.
+    public static let framePadding = 20.0, frameLabelSpace = 44.0
+
+    /// Cards whose centers sit inside the frame, plus frames entirely inside it.
+    public func contents(ofFrame id: UUID) -> Set<UUID> {
+        guard let f = items.first(where: { $0.id == id && $0.kind == .frame }) else { return [] }
+        let r = f.rect
+        return Set(items.filter { it in
+            it.id != id && (it.kind == .frame ? r.contains(it.rect) && it.rect != r : r.contains(x: it.rect.midX, y: it.rect.midY))
+        }.map(\.id))
+    }
+
+    /// What actually moves when `ids` is dragged: frames bring their contents (and nested frames theirs).
+    public func movingSet(_ ids: Set<UUID>) -> Set<UUID> {
+        var out = ids.filter { id in items.contains { $0.id == id } }
+        var queue = Array(out)
+        while let id = queue.popLast() {
+            for c in contents(ofFrame: id) where !out.contains(c) { out.insert(c); queue.append(c) }
+        }
+        return out
+    }
+
+    /// A marquee picks cards it touches; frames only when it covers them entirely.
+    public func items(in r: BoardRect) -> Set<UUID> {
+        Set(items.filter { $0.kind == .frame ? r.contains($0.rect) : r.intersects($0.rect) }.map(\.id))
+    }
+
+    public func bounds(of ids: Set<UUID>) -> BoardRect? {
+        let sel = items.filter { ids.contains($0.id) }
+        guard let f = sel.first else { return nil }
+        var minX = f.x, minY = f.y, maxX = f.x + f.w, maxY = f.y + f.h
+        for i in sel.dropFirst() { minX = min(minX, i.x); minY = min(minY, i.y); maxX = max(maxX, i.x + i.w); maxY = max(maxY, i.y + i.h) }
+        return BoardRect(x: minX, y: minY, w: maxX - minX, h: maxY - minY)
+    }
+
+    /// Final offset for dragging `ids` by (dx, dy). Each axis snaps to the nearest edge or center of another card
+    /// within `threshold`; otherwise it falls back to the grid (when snap is on) using the group's top-left corner.
+    public func guides(moving ids: Set<UUID>, dx: Double, dy: Double, threshold: Double = 6) -> BoardGuides {
+        let moving = movingSet(ids)
+        guard let b = bounds(of: moving) else { return BoardGuides(dx: dx, dy: dy) }
+        let others = items.filter { !moving.contains($0.id) }.map(\.rect)
+        let mx = [b.x + dx, b.midX + dx, b.maxX + dx], my = [b.y + dy, b.midY + dy, b.maxY + dy]
+        func best(_ mine: [Double], _ theirs: [Double]) -> (adjust: Double, line: Double)? {
+            var pick: (Double, Double)?
+            for m in mine { for t in theirs where abs(t - m) <= threshold { if pick == nil || abs(t - m) < abs(pick!.0) { pick = (t - m, t) } } }
+            return pick.map { (adjust: $0.0, line: $0.1) }
+        }
+        var g = BoardGuides(dx: dx, dy: dy)
+        if let v = best(mx, others.flatMap { [$0.x, $0.midX, $0.maxX] }) {
+            g.dx = dx + v.adjust
+            let lines = others.flatMap { [$0.x, $0.midX, $0.maxX] }.filter { t in [b.x, b.midX, b.maxX].contains { abs($0 + g.dx - t) < 0.001 } }
+            g.vertical = Array(Set(lines)).sorted()
+        } else if snap { g.dx = Self.snapped(b.x + dx, grid: grid) - b.x }
+        if let h = best(my, others.flatMap { [$0.y, $0.midY, $0.maxY] }) {
+            g.dy = dy + h.adjust
+            let lines = others.flatMap { [$0.y, $0.midY, $0.maxY] }.filter { t in [b.y, b.midY, b.maxY].contains { abs($0 + g.dy - t) < 0.001 } }
+            g.horizontal = Array(Set(lines)).sorted()
+        } else if snap { g.dy = Self.snapped(b.y + dy, grid: grid) - b.y }
+        // Nothing crosses the board's top or left edge.
+        g.dx = max(g.dx, -b.x); g.dy = max(g.dy, -b.y)
+        return g
+    }
+
+    /// Moves `ids` (and whatever frames among them contain) by an exact offset; use `guides` first to snap.
+    public mutating func moveGroup(_ ids: Set<UUID>, dx: Double, dy: Double) {
+        let moving = movingSet(ids)
+        guard let b = bounds(of: moving) else { return }
+        let ddx = max(dx, -b.x), ddy = max(dy, -b.y)
+        for i in items.indices where moving.contains(items[i].id) { items[i].x += ddx; items[i].y += ddy }
+    }
+
+    /// Keeps the group's own stacking order.
+    public mutating func bringToFront(_ ids: Set<UUID>) {
+        var z = topZ
+        for it in layered where ids.contains(it.id) && it.kind != .frame {
+            if let i = items.firstIndex(where: { $0.id == it.id }) { items[i].z = z; z += 1 }
+        }
+    }
+    public mutating func sendToBack(_ ids: Set<UUID>) {
+        let sel = layered.filter { ids.contains($0.id) }
+        var z = (items.map(\.z).min() ?? 0) - sel.count
+        for it in sel { if let i = items.firstIndex(where: { $0.id == it.id }) { items[i].z = z; z += 1 } }
+    }
+
+    /// A labeled section. Frames sit behind every card.
+    @discardableResult
+    public mutating func addFrame(_ label: String, rect: BoardRect? = nil) -> UUID {
+        let r = rect ?? {
+            let o = nextOrigin(width: 480)
+            return BoardRect(x: o.x, y: o.y, w: 480, h: 320)
+        }()
+        let z = (items.map(\.z).min() ?? 0) - 1
+        let it = BoardItem(kind: .frame, text: label, x: max(0, s(r.x)), y: max(0, s(r.y)), w: max(Self.minSize * 3, s(r.w)), h: max(Self.minSize * 2, s(r.h)), z: z)
+        items.append(it)
+        return it.id
+    }
+
+    /// Frames the given cards with padding and room for the label above them.
+    @discardableResult
+    public mutating func frame(around ids: Set<UUID>, label: String) -> UUID? {
+        guard let b = bounds(of: ids) else { return nil }
+        let p = Self.framePadding
+        // Unsnapped so the padding is exact on every side.
+        let keep = snap; snap = false
+        defer { snap = keep }
+        let x = max(0, b.x - p), y = max(0, b.y - Self.frameLabelSpace)
+        return addFrame(label, rect: BoardRect(x: x, y: y, w: b.maxX + p - x, h: b.maxY + p - y))
+    }
+
+    /// Lays out the loose cards in rows below any frames, back to front, keeping sizes. Frames and what they hold stay put.
     public mutating func tidy() {
-        var x = Self.margin, y = Self.margin, rowH = 0.0
-        for it in layered {
+        let framed = movingSet(Set(items.filter { $0.kind == .frame }.map(\.id)))
+        let top = items.filter { framed.contains($0.id) }.map { $0.y + $0.h }.max().map { $0 + grid * 2 } ?? Self.margin
+        var x = Self.margin, y = top, rowH = 0.0
+        for it in layered where !framed.contains(it.id) {
             guard let i = items.firstIndex(where: { $0.id == it.id }) else { continue }
             if x > Self.margin && x + it.w > Self.flowWidth { x = Self.margin; y += rowH + grid; rowH = 0 }
             items[i].x = s(x); items[i].y = s(y)
@@ -246,6 +377,20 @@ extension StudioCatalog {
         guard !t.isEmpty, let i = boards.firstIndex(where: { $0.id == id }), !boards.contains(where: { $0.id != id && $0.name == t }) else { return false }
         boards[i].name = t
         return true
+    }
+
+    /// A copy with fresh ids, named "<name> copy" (or "copy 2"...).
+    @discardableResult
+    public mutating func duplicateBoard(_ id: UUID) -> UUID? {
+        guard let src = board(id) else { return nil }
+        let taken = Set(boards.map(\.name))
+        var name = src.name + " copy", n = 2
+        while taken.contains(name) { name = "\(src.name) copy \(n)"; n += 1 }
+        var b = src
+        b.id = UUID(); b.name = name
+        b.items = src.items.map { var it = $0; it.id = UUID(); return it }
+        if let i = boards.firstIndex(where: { $0.id == id }) { boards.insert(b, at: i + 1) } else { boards.append(b) }
+        return b.id
     }
 
     @discardableResult

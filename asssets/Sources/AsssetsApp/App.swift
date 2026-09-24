@@ -117,7 +117,14 @@ final class StudioLibrary: ObservableObject {
     @Published var selectedSmart: UUID?
     /// Moodboard shown in place of the grid (1.16), its selected card, and the note being edited.
     @Published var selectedBoard: UUID?
-    @Published var boardItem: UUID?
+    /// Selected cards on the open board (1.18: several at once). `boardItem` is the single selection, when there is one.
+    @Published var boardSelection: Set<UUID> = []
+    var boardItem: UUID? {
+        get { boardSelection.count == 1 ? boardSelection.first : nil }
+        set { boardSelection = newValue.map { [$0] } ?? [] }
+    }
+    /// A drag the board demo shows mid-flight (ids, dx, dy) so CI can capture the guides.
+    var demoDrag: (Set<UUID>, Double, Double)?
     @Published var editingNote: UUID?
     @Published var renamingBoard: UUID?
     @Published var boardZoom = 1.0
@@ -433,8 +440,10 @@ final class StudioLibrary: ObservableObject {
             if d <= 5 { rate(ids, d) } else if let l = ColorLabel.forKey(d) { label(ids, l) }
             return true
         }
-        if selectedBoard != nil, viewerID == nil, let item = boardItem, e.keyCode == 51 || e.keyCode == 117 {
-            removeFromBoard([item]); return true
+        if selectedBoard != nil, viewerID == nil {
+            if !boardSelection.isEmpty, e.keyCode == 51 || e.keyCode == 117 { removeFromBoard(boardSelection); return true }   // Delete
+            if e.keyCode == 0, e.modifierFlags.contains(.command), let b = currentBoard { boardSelection = Set(b.items.map(\.id)); return true }  // ⌘A
+            if e.keyCode == 53, !boardSelection.isEmpty { boardSelection = []; return true }                                    // Esc
         }
         switch e.keyCode {
         case 49: if viewerID == nil { openViewer() } else { closeViewer() }; return true
@@ -1415,7 +1424,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1774,6 +1783,10 @@ final class StudioLibrary: ObservableObject {
             } else if let b = catalog.board(id), let first = b.items.first(where: { $0.kind == .asset }) {
                 boardItem = first.id; if let a = first.assetID { selection = [a]; focusID = a }
             }
+        case "board-edit":
+            let id = makeDemoSections()
+            show(board: id)
+            boardSelection = demoDrag?.0 ?? []   // show() cleared it
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -1845,7 +1858,7 @@ extension StudioLibrary {
     func removeFromBoard(_ items: Set<UUID>) {
         guard let id = selectedBoard else { return }
         updateBoard(id, "Remove from Board") { _ = $0.remove(items) }
-        if let b = boardItem, items.contains(b) { boardItem = nil }
+        boardSelection.subtract(items)
     }
 
     func dragIDs(_ text: String) -> [UUID] {
@@ -1955,6 +1968,69 @@ extension StudioLibrary {
     }
 }
 
+
+// MARK: - Canvas editing (1.18)
+
+extension StudioLibrary {
+    /// Frames the selection when there is one, otherwise drops an empty section; either way the label is ready to type.
+    func addFrame() {
+        guard let id = selectedBoard else { return }
+        var made: UUID?
+        let sel = boardSelection
+        updateBoard(id, sel.isEmpty ? "Add Section" : "Put in Section") { b in
+            made = sel.isEmpty ? b.addFrame("") : b.frame(around: sel, label: "")
+        }
+        if let made { boardSelection = [made]; editingNote = made }
+    }
+
+    func duplicateBoard(_ id: UUID) {
+        var copy: UUID?
+        mutate("Duplicate Board") { copy = $0.duplicateBoard(id) }
+        if let copy { show(board: copy) }
+    }
+
+    /// A board from a collection or smart collection: up to 48 assets in the view's order, flowed into rows.
+    func newBoard(named name: String, assets ids: [UUID]) {
+        guard !ids.isEmpty else { flash("\(name) is empty"); return }
+        let pick = Array(ids.prefix(48))
+        var id = UUID()
+        mutate("New Board") { c in id = c.createBoard(named: name); _ = c.addToBoard(id, assets: pick) }
+        show(board: id)
+        if ids.count > pick.count { flash("Added the first \(pick.count) of \(ids.count) assets") }
+    }
+
+    /// Demo: the lobby board arranged in two sections, two loose cards selected and caught mid-drag on a guide.
+    func makeDemoSections() -> UUID {
+        let all = catalog.assets
+        func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
+        var id = UUID()
+        var loose: Set<UUID> = []
+        mutate { c in
+            id = c.createBoard(named: "Lobby Sections")
+            _ = c.updateBoard(id) { b in
+                func put(_ f: String, _ x: Double, _ y: Double, _ w: Double) -> UUID? {
+                    guard let a = find(f) else { return nil }
+                    return b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y))
+                }
+                let mock = [put("cosmetic-plinth-mockup.png", 60, 100, 360), put("device-stage-mockup.png", 440, 100, 260), put("album-gatefold-mockup.png", 440, 300, 260)].compactMap { $0 }
+                var mats = [put("sandstone-4k.png", 800, 100, 180), put("prismatic-foil-4k.png", 1000, 100, 180), put("paper-grain-4k.png", 800, 300, 180)].compactMap { $0 }
+                if let a = find("sandstone-4k.png"), let p = b.addPalette(a.palette, from: a.id, at: (x: 1000, y: 300)) { b.resize(p, w: 180, h: 180); mats.append(p) }
+                b.frame(around: Set(mock), label: "Mockups")
+                b.frame(around: Set(mats), label: "Materials")
+                if let clip = put("motion-loop-01.mp4", 300, 580, 220) { loose.insert(clip) }
+                loose.insert(b.addNote("Warm stone, brass and soft foil. Keep the lobby calm - no neon.", at: (x: 540, y: 580)))
+            }
+            // Two more boards so the sidebar shows Duplicate and New Board from Collection at work.
+            _ = c.duplicateBoard(id)
+            let tex = c.assets.filter { $0.collection == "Material Textures" }.prefix(12).map(\.id)
+            let t = c.createBoard(named: "Material Textures"); _ = c.addToBoard(t, assets: Array(tex))
+        }
+        boardSelection = loose
+        // Dragged left until the clip's edge meets the Mockups section's left edge.
+        demoDrag = (loose, -236, 0)
+        return id
+    }
+}
 
 // MARK: - Present and share boards (1.17)
 
@@ -2072,6 +2148,7 @@ struct PresentView: View {
         case .asset: return item.assetID.flatMap { id in model.catalog.assets.first { $0.id == id }?.title } ?? "Asset"
         case .note: return item.text.split(separator: "\n").first.map(String.init) ?? "Note"
         case .palette: return "Palette · " + item.colors.joined(separator: " ")
+        case .frame: return "Section · " + (item.text.isEmpty ? "Untitled" : item.text)
         }
     }
 
@@ -2098,12 +2175,17 @@ struct PresentView: View {
 struct BoardCanvas: View {
     @EnvironmentObject var model: StudioLibrary
     let board: Moodboard
-    @State private var drag: (id: UUID, dx: Double, dy: Double)?
+    /// The drag in flight: what was grabbed, what moves with it (frame contents) and where guides put it.
+    @State private var drag: (ids: Set<UUID>, moving: Set<UUID>, guides: BoardGuides)?
     @State private var sizing: (id: UUID, dw: Double, dh: Double)?
+    @State private var marquee: BoardRect?
+    @State private var marqueeBase: Set<UUID> = []
     @State private var viewport: CGSize = .zero
     @State private var dropTargeted = false
     /// Off after a manual zoom; while on, the board refits when the view changes size (inspector, window).
     @State private var autoFit = true
+    /// Gestures measure in board points here, before the zoom is applied.
+    static let space = "board-canvas"
 
     private var z: Double { model.boardZoom }
     private var canvas: CGSize {
@@ -2114,6 +2196,7 @@ struct BoardCanvas: View {
                       height: max(1100.0, (b?.maxY ?? 0) + 400, Double(viewport.height) / z))
     }
     private var zf: CGFloat { CGFloat(model.boardZoom) }
+    private static let guideColor = Color(red: 1.0, green: 0.36, blue: 0.62)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2124,11 +2207,19 @@ struct BoardCanvas: View {
                     ZStack(alignment: .topLeading) {
                         BoardGrid(step: board.grid, zoom: model.boardZoom).frame(width: canvas.width, height: canvas.height)
                             .contentShape(Rectangle())
-                            .onTapGesture { model.boardItem = nil; model.editingNote = nil }
+                            .gesture(marqueeGesture)
+                            .onTapGesture { model.boardSelection = []; model.editingNote = nil }
                         ForEach(board.layered) { item in card(item) }
+                        guideLines
+                        if let m = marquee {
+                            Rectangle().fill(Theme.accent.opacity(0.08))
+                                .overlay(Rectangle().stroke(Theme.accent.opacity(0.85), lineWidth: 1 / max(0.1, z)))
+                                .frame(width: m.w, height: m.h).offset(x: m.x, y: m.y).allowsHitTesting(false)
+                        }
                         if board.items.isEmpty { emptyHint }
                     }
                     .frame(width: canvas.width, height: canvas.height, alignment: .topLeading)
+                    .coordinateSpace(name: Self.space)
                     .scaleEffect(zf, anchor: .topLeading)
                     .frame(width: canvas.width * zf, height: canvas.height * zf, alignment: .topLeading)
                     // Pinned top-left; a board smaller than the view used to float in the middle.
@@ -2139,12 +2230,44 @@ struct BoardCanvas: View {
                 }
                 .background(Theme.ink)
                 .overlay(RoundedRectangle(cornerRadius: 2).stroke(dropTargeted ? Theme.accent : .clear, lineWidth: 2))
-                .onAppear { viewport = geo.size; fit() }
+                .onAppear {
+                    viewport = geo.size; fit()
+                    if let d = model.demoDrag {
+                        drag = (d.0, board.movingSet(d.0), board.guides(moving: d.0, dx: d.1, dy: d.2, threshold: 6 / max(0.1, z)))
+                    }
+                }
                 .onChange(of: geo.size) { _, s in viewport = s; if autoFit { fit() } }
                 .onChange(of: model.fitBoardRequest) { _, _ in autoFit = true; fit() }
             }
         }
         .background(Theme.backdrop)
+    }
+
+    /// Drag on empty canvas: select what the rectangle touches (shift adds to the selection).
+    private var marqueeGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
+            .onChanged { v in
+                if marquee == nil {
+                    marqueeBase = NSEvent.modifierFlags.contains(.shift) ? model.boardSelection : []
+                    model.editingNote = nil
+                }
+                let r = BoardRect.spanning((x: Double(v.startLocation.x), y: Double(v.startLocation.y)), (x: Double(v.location.x), y: Double(v.location.y)))
+                marquee = r
+                model.boardSelection = marqueeBase.union(board.items(in: r))
+            }
+            .onEnded { _ in marquee = nil; syncInspector() }
+    }
+
+    @ViewBuilder private var guideLines: some View {
+        if let g = drag?.guides {
+            let t = 1 / max(0.1, z)
+            ForEach(g.vertical, id: \.self) { x in
+                Rectangle().fill(Self.guideColor).frame(width: t, height: canvas.height).offset(x: x - t / 2).allowsHitTesting(false)
+            }
+            ForEach(g.horizontal, id: \.self) { y in
+                Rectangle().fill(Self.guideColor).frame(width: canvas.width, height: t).offset(y: y - t / 2).allowsHitTesting(false)
+            }
+        }
     }
 
     private func fit() {
@@ -2177,6 +2300,7 @@ struct BoardCanvas: View {
             .layoutPriority(1)
             Spacer(minLength: compact ? 4 : 8)
             Button { model.addNote() } label: { Image(systemName: "note.text.badge.plus") }.help("Add a note")
+            Button { model.addFrame() } label: { Image(systemName: "rectangle.dashed") }.help(model.boardSelection.isEmpty ? "Add a section" : "Put the selection in a section")
             Button { model.updateBoard(board.id, "Tidy Board") { $0.tidy() }; model.fitBoardRequest += 1 } label: { Image(systemName: "rectangle.grid.2x2") }.help("Tidy into rows")
             Toggle(isOn: Binding(get: { board.snap }, set: { v in model.updateBoard(board.id, v ? "Snap On" : "Snap Off") { $0.snap = v } })) { Image(systemName: "grid") }
                 .toggleStyle(.button).help("Snap to grid")
@@ -2207,7 +2331,7 @@ struct BoardCanvas: View {
 
     private func itemRect(_ item: BoardItem) -> BoardRect {
         var r = item.rect
-        if let d = drag, d.id == item.id { r.x = max(0, r.x + d.dx); r.y = max(0, r.y + d.dy) }
+        if let d = drag, d.moving.contains(item.id) { r.x += d.guides.dx; r.y += d.guides.dy }
         if let s = sizing, s.id == item.id {
             r.w = max(Moodboard.minSize, r.w + s.dw)
             r.h = item.kind == .asset ? r.w * item.h / max(1, item.w) : max(Moodboard.minSize, r.h + s.dh)
@@ -2217,72 +2341,106 @@ struct BoardCanvas: View {
 
     @ViewBuilder private func card(_ item: BoardItem) -> some View {
         let r = itemRect(item)
-        let selected = model.boardItem == item.id
+        let selected = model.boardSelection.contains(item.id)
         BoardItemView(item: item, asset: item.assetID.flatMap { id in model.catalog.assets.first { $0.id == id } }, selected: selected, editing: model.editingNote == item.id)
             .frame(width: r.w, height: r.h)
             .overlay(alignment: .bottomTrailing) {
-                if selected {
+                if selected && model.boardSelection.count == 1 {
                     RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 12, height: 12)
                         .overlay(RoundedRectangle(cornerRadius: 3).stroke(.white, lineWidth: 1.5))
                         .offset(x: 5, y: 5)
-                        .gesture(DragGesture(minimumDistance: 1)
-                            .onChanged { v in sizing = (item.id, Double(v.translation.width) / z, Double(v.translation.height) / z) }
+                        .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
+                            .onChanged { v in sizing = (item.id, Double(v.translation.width), Double(v.translation.height)) }
                             .onEnded { v in
-                                let w = item.w + Double(v.translation.width) / z, h = item.h + Double(v.translation.height) / z
+                                let w = item.w + Double(v.translation.width), h = item.h + Double(v.translation.height)
                                 sizing = nil
-                                model.updateBoard(board.id, "Resize") { $0.resize(item.id, w: w, h: h) }
+                                model.updateBoard(board.id, item.kind == .frame ? "Resize Section" : "Resize") { $0.resize(item.id, w: w, h: h) }
                             })
                         .help("Drag to resize")
                 }
             }
             .offset(x: r.x, y: r.y)
-            .gesture(DragGesture(minimumDistance: 3)
+            .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
                 .onChanged { v in
-                    if model.boardItem != item.id { select(item) }
-                    drag = (item.id, Double(v.translation.width) / z, Double(v.translation.height) / z)
+                    if drag == nil {
+                        if !model.boardSelection.contains(item.id) { select(item) }
+                        model.editingNote = nil
+                    }
+                    let ids = model.boardSelection.contains(item.id) ? model.boardSelection : [item.id]
+                    let g = board.guides(moving: ids, dx: Double(v.translation.width), dy: Double(v.translation.height), threshold: 6 / max(0.1, z))
+                    drag = (ids, board.movingSet(ids), g)
                 }
-                .onEnded { v in
+                .onEnded { _ in
+                    guard let d = drag else { return }
                     drag = nil
-                    let x = item.x + Double(v.translation.width) / z, y = item.y + Double(v.translation.height) / z
-                    model.updateBoard(board.id, "Move") { $0.move(item.id, x: x, y: y); $0.bringToFront(item.id) }
+                    model.updateBoard(board.id, d.ids.count > 1 ? "Move \(d.ids.count) Cards" : "Move") { $0.moveGroup(d.ids, dx: d.guides.dx, dy: d.guides.dy); $0.bringToFront(d.ids) }
                 })
             .onTapGesture(count: 2) {
-                if item.kind == .note { select(item); model.editingNote = item.id }
+                if item.kind == .note || item.kind == .frame { select(item); model.editingNote = item.id }
                 else if item.kind == .asset, let a = item.assetID { select(item); model.viewerID = a }
             }
-            .onTapGesture { select(item) }
+            .onTapGesture {
+                let flags = NSEvent.modifierFlags
+                if flags.contains(.shift) || flags.contains(.command) {
+                    if model.boardSelection.contains(item.id) { model.boardSelection.remove(item.id) } else { model.boardSelection.insert(item.id) }
+                    model.editingNote = nil
+                    syncInspector()
+                } else { select(item) }
+            }
             .contextMenu { menu(item) }
     }
 
     private func select(_ item: BoardItem) {
-        model.boardItem = item.id
+        model.boardSelection = [item.id]
         if model.editingNote != item.id { model.editingNote = nil }
-        if let a = item.assetID, item.kind == .asset { model.selection = [a]; model.focusID = a }
+        syncInspector()
+    }
+
+    /// The inspector follows the assets among the selected cards.
+    private func syncInspector() {
+        let assets = board.layered.filter { model.boardSelection.contains($0.id) && $0.kind == .asset }.compactMap(\.assetID)
+        guard let first = assets.first else { return }
+        model.selection = Set(assets); model.focusID = first
     }
 
     @ViewBuilder private func menu(_ item: BoardItem) -> some View {
-        Button("Bring to Front") { model.updateBoard(board.id, "Bring to Front") { $0.bringToFront(item.id) } }
-        Button("Send to Back") { model.updateBoard(board.id, "Send to Back") { $0.sendToBack(item.id) } }
-        Divider()
-        switch item.kind {
-        case .asset:
-            Button("Add Palette Card") { model.addPaletteCard(for: item) }
-            if let a = item.assetID, let asset = model.catalog.assets.first(where: { $0.id == a }), let hex = asset.palette.first {
-                Button("Search Library by Its Color") { model.searchFromBoard(hex) }
+        let sel = model.boardSelection
+        if sel.count > 1 && sel.contains(item.id) {
+            Button("Bring \(sel.count) to Front") { model.updateBoard(board.id, "Bring to Front") { $0.bringToFront(sel) } }
+            Button("Send \(sel.count) to Back") { model.updateBoard(board.id, "Send to Back") { $0.sendToBack(sel) } }
+            Button("Put in New Section") { model.addFrame() }
+            Divider()
+            Button("Remove \(sel.count) from Board", role: .destructive) { model.removeFromBoard(sel) }
+        } else {
+            if item.kind != .frame {
+                Button("Bring to Front") { model.updateBoard(board.id, "Bring to Front") { $0.bringToFront(item.id) } }
+                Button("Send to Back") { model.updateBoard(board.id, "Send to Back") { $0.sendToBack(item.id) } }
+                Button("Put in New Section") { select(item); model.addFrame() }
+                Divider()
             }
-            if let a = item.assetID { Button("Quick Look") { model.viewerID = a } }
-        case .note:
-            Button("Edit Note") { select(item); model.editingNote = item.id }
-        case .palette:
-            Menu("Search Library by Color") {
-                ForEach(item.colors, id: \.self) { h in Button(h) { model.searchFromBoard(h) } }
+            switch item.kind {
+            case .asset:
+                Button("Add Palette Card") { model.addPaletteCard(for: item) }
+                if let a = item.assetID, let asset = model.catalog.assets.first(where: { $0.id == a }), let hex = asset.palette.first {
+                    Button("Search Library by Its Color") { model.searchFromBoard(hex) }
+                }
+                if let a = item.assetID { Button("Quick Look") { model.viewerID = a } }
+            case .note:
+                Button("Edit Note") { select(item); model.editingNote = item.id }
+            case .palette:
+                Menu("Search Library by Color") {
+                    ForEach(item.colors, id: \.self) { h in Button(h) { model.searchFromBoard(h) } }
+                }
+                Button("Copy Hex Codes") {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(item.colors.joined(separator: " "), forType: .string)
+                }
+            case .frame:
+                Button("Rename Section") { select(item); model.editingNote = item.id }
+                Button("Select Contents") { model.boardSelection = board.contents(ofFrame: item.id); syncInspector() }
             }
-            Button("Copy Hex Codes") {
-                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(item.colors.joined(separator: " "), forType: .string)
-            }
+            Divider()
+            Button(item.kind == .frame ? "Remove Section (Keep Cards)" : "Remove from Board", role: .destructive) { model.removeFromBoard([item.id]) }
         }
-        Divider()
-        Button("Remove from Board", role: .destructive) { model.removeFromBoard([item.id]) }
     }
 }
 
@@ -2323,10 +2481,14 @@ struct BoardItemView: View {
     @State private var hovering = false
 
     var body: some View {
-        content
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Theme.accent : Color.white.opacity(hovering ? 0.18 : 0.08), lineWidth: selected ? 2 : 1))
-            .shadow(color: .black.opacity(0.45), radius: selected ? 14 : 8, y: 4)
-            .onHover { hovering = $0 }
+        if item.kind == .frame {
+            content
+        } else {
+            content
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Theme.accent : Color.white.opacity(hovering ? 0.18 : 0.08), lineWidth: selected ? 2 : 1))
+                .shadow(color: .black.opacity(0.45), radius: selected ? 14 : 8, y: 4)
+                .onHover { hovering = $0 }
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -2353,6 +2515,42 @@ struct BoardItemView: View {
             .onChange(of: editing) { _, e in if e { draft = item.text } }
         case .palette:
             BoardPalette(colors: item.colors)
+        case .frame:
+            BoardFrame(label: item.text, selected: selected, editing: editing, draft: $draft) { text in
+                guard let b = model.selectedBoard else { return }
+                if text != item.text { model.updateBoard(b, "Rename Section") { $0.setText(item.id, text) } }
+                model.editingNote = nil
+            }
+            .onAppear { draft = item.text }
+            .onChange(of: editing) { _, e in if e { draft = item.text } }
+        }
+    }
+}
+
+/// A labeled section behind the cards (1.18). Draws its own border, so it skips the card shadow.
+struct BoardFrame: View {
+    let label: String
+    let selected: Bool
+    let editing: Bool
+    @Binding var draft: String
+    let commit: (String) -> Void
+    @FocusState private var focused: Bool
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.028))
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(selected ? Theme.accent : Color.white.opacity(0.2), style: StrokeStyle(lineWidth: selected ? 2 : 1.2, dash: selected ? [] : [7, 5]))
+            if editing {
+                TextField("Section name", text: $draft).textFieldStyle(.plain).font(.system(size: 18, weight: .bold))
+                    .focused($focused).onAppear { focused = true }.onSubmit { commit(draft) }
+                    .onChange(of: focused) { _, f in if !f { commit(draft) } }
+                    .onExitCommand { commit(draft) }
+                    .padding(.horizontal, 16).padding(.top, 11).frame(maxWidth: 360, alignment: .leading)
+            } else {
+                Text((label.isEmpty ? "Untitled section" : label).uppercased()).font(.system(size: 16, weight: .heavy)).tracking(1.6)
+                    .foregroundStyle(Color.white.opacity(label.isEmpty ? 0.35 : 0.72)).lineLimit(1)
+                    .padding(.horizontal, 16).padding(.top, 12)
+            }
         }
     }
 }
@@ -2429,6 +2627,8 @@ struct BoardExportView: View {
             BoardNote(text: item.text, editing: false, draft: .constant(item.text)) { _ in }
         case .palette:
             BoardPalette(colors: item.colors)
+        case .frame:
+            BoardFrame(label: item.text, selected: false, editing: false, draft: .constant(item.text)) { _ in }
         }
     }
 }
@@ -2555,6 +2755,7 @@ struct Sidebar: View {
                             .contextMenu {
                                 Button("Rename…") { renameText = name; model.renamingCollection = name }
                                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name) }
+                                Button("New Board from Collection") { model.newBoard(named: name, assets: model.catalog.assets.filter { $0.collection == name }.map(\.id)) }
                                 Button("Show") { model.show(collection: name) }
                             }
                     }
@@ -2567,6 +2768,7 @@ struct Sidebar: View {
                         SidebarRow(title: board.name, symbol: "rectangle.3.group", count: board.items.count, selected: model.selectedBoard == board.id, boardDrop: board.id) { model.show(board: board.id) }
                             .contextMenu {
                                 Button("Present") { model.show(board: board.id); model.startPresenting(board.id) }
+                                Button("Duplicate Board") { model.duplicateBoard(board.id) }
                                 Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
                                 Divider()
                                 Button("Rename…") { renameBoardText = board.name; model.renamingBoard = board.id }
@@ -2589,6 +2791,7 @@ struct Sidebar: View {
                             .contextMenu {
                                 Button("Edit Rules…") { model.beginEdit(smart: smart.id) }
                                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.smartAssets(smart.id).map(\.id), title: smart.name) }
+                                Button("New Board from Smart Collection") { model.newBoard(named: smart.name, assets: model.catalog.smartAssets(smart.id).map(\.id)) }
                                 Button("Delete Smart Collection", role: .destructive) { model.deleteSmart(smart.id) }
                             }
                     }

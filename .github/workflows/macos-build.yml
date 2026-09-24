@@ -181,6 +181,7 @@ jobs:
           echo "board PNG ${bw}x${bh}"; test "$bw" -ge 1600 -a "$bh" -ge 800 || { echo "board PNG too small"; exit 1; }
           shoot focus 1920x1200 focus
           shoot present 1920x1200 present
+          shoot board-edit 1920x1200 board-edit
           shoot board-gallery 1920x1200 board-gallery-app demo-board-gallery/gallery-done.txt
           BG=$(ls -d "$SUP/demo-board-gallery/"*Review | head -1); test -s "$BG/board.png"; grep -q '"spots"' "$BG/index.html" || { echo "board gallery has no board"; exit 1; }
           unzip -l "$BG.zip" | tee "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"; grep -q 'board.png' "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"

@@ -586,3 +586,25 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   `ReviewGallery.Board` and `ReviewGallery.spots` in
   `MoodboardTests.swift` (row grouping, fit and clamping, spot fractions,
   manifest round-trip, galleries from before 1.17).
+
+## 1.18.0: canvas editing
+
+- Select several cards: shift- or ⌘-click to add and remove, drag a
+  rectangle on empty canvas (shift keeps what was already selected), or
+  ⌘A. Drag any selected card to move them all. Delete removes them, Esc
+  clears the selection, and the right-click menu brings them forward,
+  sends them back or frames them. The inspector shows the selected assets.
+- Alignment guides: while dragging, the group snaps to the edges and
+  centers of other cards within a few points and a pink line shows what
+  it lined up with. Away from any guide it falls back to the grid (when
+  snap is on).
+- Sections: the dashed-rectangle button (or Put in New Section) frames
+  the selection with a label, or adds an empty section. Moving a section
+  moves everything inside it, including nested sections. Double-click the
+  label to rename it. Sections stay behind the cards, show in exports,
+  galleries and Present, and Tidy leaves them and their cards alone.
+- Duplicate Board in the board menu, and New Board from Collection / New
+  Board from Smart Collection (first 48 assets) in those menus.
+- Logic and tests: frames, moving sets, marquee hit testing, guides,
+  group z-order, tidy and duplicate in `Moodboard.swift`,
+  `MoodboardTests.swift`.
