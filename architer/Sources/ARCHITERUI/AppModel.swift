@@ -244,6 +244,14 @@ public final class AppModel: ObservableObject {
         pb.setString(rolls.historyText, forType: .string)
     }
 
+    /// One-tap session recap (2.46.0): the character's journal entries
+    /// and rolls from today as one shareable text block.
+    public func copySessionRecapToPasteboard(_ character: Character) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(sessionRecap(character: character, rolls: rollHistory), forType: .string)
+    }
+
     public func clearRollHistory() {
         rollHistory.removeAll()
         rollHistoryStore.save(rollHistory)
@@ -365,7 +373,12 @@ public final class AppModel: ObservableObject {
     public func addRollToJournal(_ roll: RollResult) {
         guard var c = selected?.wrappedValue else { return }
         let title = roll.label ?? roll.expression
-        c.journal.append(JournalEntry(date: "", title: title, text: "Rolled \(roll.total) (\(roll.expression))"))
+        // 2.46.0: stamp the entry with the roll's own day and creation
+        // time so the session recap can place it.
+        let stamp = roll.rolledAt ?? Date()
+        c.journal.append(JournalEntry(date: JournalStamp.day(stamp), title: title,
+                                      text: "Rolled \(roll.total) (\(roll.expression))",
+                                      createdAt: stamp))
         selected?.wrappedValue = c
     }
 

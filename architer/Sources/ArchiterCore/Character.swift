@@ -284,11 +284,16 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     public var date: String
     public var title: String
     public var text: String
+    /// When the entry was created (2.46.0); nil for pre-2.46.0 entries,
+    /// which decode unchanged and sit out of "today" session recaps.
+    public var createdAt: Date? = nil
 
-    public init(date: String = "", title: String = "", text: String = "") {
+    public init(date: String = "", title: String = "", text: String = "",
+                createdAt: Date? = nil) {
         self.date = date
         self.title = title
         self.text = text
+        self.createdAt = createdAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -297,6 +302,7 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
         date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
     }
 }
 

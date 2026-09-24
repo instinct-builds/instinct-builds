@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.46.0
+
+- **Session recap**: a Copy today button on the sheet's journal block
+  copies one shareable text block - today's journal entries, then today's
+  rolls, oldest first, ready to paste into the group chat. Auto-logged
+  roll entries now carry the roll's day and creation stamp, and
+  hand-written entries stamp on creation, so the recap knows what
+  happened today. Entries from older saves sit out of "today" until
+  re-saved.
+
 ## What's in 2.45.0
 
 - **Auto-log rolls to the journal**: a Journal toggle in the dice history

@@ -207,6 +207,7 @@ struct NotesBlock: View {
 
 struct JournalBlock: View {
     @Binding var character: Character
+    @EnvironmentObject var model: AppModel
 
     var body: some View {
         BlockCard(title: "Journal") {
@@ -228,19 +229,21 @@ struct JournalBlock: View {
                 }
                 .padding(.vertical, 2)
             }
-            Button("Add entry") {
-                character.journal.append(JournalEntry(
-                    date: JournalBlock.todayStamp(),
-                    title: "Session \(character.journal.count + 1)"))
+            HStack {
+                Button("Add entry") {
+                    character.journal.append(JournalEntry(
+                        date: JournalStamp.day(Date()),
+                        title: "Session \(character.journal.count + 1)",
+                        createdAt: Date()))
+                }
+                .controlSize(.small)
+                // 2.46.0: one-tap recap - today's journal entries and
+                // rolls as one shareable text block.
+                Button("Copy today") { model.copySessionRecapToPasteboard(character) }
+                    .controlSize(.small)
+                    .help("Copy today's journal entries and rolls as one shareable recap")
             }
-            .controlSize(.small)
         }
-    }
-
-    static func todayStamp() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
     }
 }
 

@@ -47,8 +47,9 @@ func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String,
 func run(model: AppModel, character: Character, outDir: String) {
     // Seed roll history so the dice render and the sheet's inline dice block
     // exercise the roll cards (kept/dropped chips, advantage, crit glow).
-    // 2.45.0 proof: auto-log on - all 12 rolls below also land in the
-    // journal, so the exported PDF gains a JOURNAL section.
+    // 2.45.0 proof: auto-log on - every roll below also lands in the
+    // journal, so the sheet render's journal block lists them (exports
+    // keep the pristine character for byte-stability).
     model.autoLogRollsToJournal = true
     model.roll("4d6kh3")
     model.roll("2d6+3")
@@ -65,11 +66,14 @@ func run(model: AppModel, character: Character, outDir: String) {
     let tool = character.toolProficiencies[0]
     model.rollCheck("\(tool.name) check (INT)", bonus: character.toolBonus(tool, ability: .intelligence))
     // 2.24.0 proofs: an attack whose damage history entry carries the
-    // outgoing-defense note, and that entry quick-added to the journal so
-    // the sheet render shows it in the journal block.
+    // outgoing-defense note. While auto-log (2.45.0) is on the roll already
+    // lands in the journal, so the manual quick-add (the hidden pencil
+    // path) stays out - otherwise the entry would duplicate.
     if let fireBolt = character.attacks.first(where: { $0.name == "Fire Bolt" }) {
         model.rollAttack(fireBolt, for: character)
-        if let rolled = model.rollHistory.first { model.addRollToJournal(rolled) }
+        if !model.autoLogRollsToJournal, let rolled = model.rollHistory.first {
+            model.addRollToJournal(rolled)
+        }
     }
     // 2.37.0 proof: a zero-quantity row renders its consume button
     // disabled in the gear block below.
@@ -169,6 +173,12 @@ func run(model: AppModel, character: Character, outDir: String) {
     let logMd = sessionLogMarkdown(character: character.name, range: .today,
                                    groups: groupRollsByDay(Array(logRolls.reversed())))
     try? logMd.write(to: URL(fileURLWithPath: "\(outDir)/session-log.md"),
+                     atomically: true, encoding: .utf8)
+    // 2.46.0 proof: today's journal entries and rolls as one shareable
+    // recap block - the same text the sheet's Copy today button copies.
+    let recap = sessionRecap(character: model.selected?.wrappedValue ?? character,
+                             rolls: model.rollHistory)
+    try? recap.write(to: URL(fileURLWithPath: "\(outDir)/session-recap.txt"),
                      atomically: true, encoding: .utf8)
     let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
     try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))
