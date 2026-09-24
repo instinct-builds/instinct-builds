@@ -745,14 +745,14 @@ int main() {
             muew::Preset st0;
             bool ok0 = State(st0);
             for (int i = 0; i < 9 && ok0 && st0.voice.filterMode != 5; ++i) {
-                Click(view, w, NSMakePoint(656 + 116 - 8, t - 29 + 8.5));      // model right arrow
+                Click(view, w, NSMakePoint(676 + 94 - 8, t - 29 + 8.5));      // model right arrow
                 ok0 = State(st0);
             }
             Check(ok0 && st0.voice.filterMode == 5, "the FILTER 1 model arrows reached LADDER 24 in the AU's sound");
-            Click(view, w, NSMakePoint(656 + 8, t - 29 + 8.5));                // left arrow: back one model
+            Click(view, w, NSMakePoint(676 + 8, t - 29 + 8.5));                // left arrow: back one model
             muew::Preset back1;
             bool ok1 = State(back1);
-            Click(view, w, NSMakePoint(656 + 116 - 8, t - 29 + 8.5));          // right arrow: LADDER 24 again
+            Click(view, w, NSMakePoint(676 + 94 - 8, t - 29 + 8.5));          // right arrow: LADDER 24 again
             Check(ok1 && back1.voice.filterMode == 4, "the left arrow stepped the model back to PEAK");
             Click(view, w, NSMakePoint(494 + 0.45 * 88, t - 167 + 6.5));       // DRIVE bar at 45%
             Click(view, w, NSMakePoint(494 + 94 + 0.75 * 88, t - 167 + 6.5));  // KEYTRACK bar at 75%
@@ -888,7 +888,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             SEL arpSel = NSSelectorFromString(@"muewArpText");
             auto arpText = [&]() -> std::string { if (![view respondsToSelector:arpSel]) return ""; NSString* a = [view valueForKey:@"muewArpText"]; return a.UTF8String ?: ""; };
-            Click(view, w, NSMakePoint(652 + 20, t - 29 + 8.5));          // ARP tab
+            Click(view, w, NSMakePoint(638 + 17, t - 29 + 8.5));          // ARP tab
             Click(view, w, NSMakePoint(492 + 22, t - 58 + 9));            // ARP ON
             Click(view, w, NSMakePoint(542 + 2 * 38 + 18, t - 58 + 9));   // UP/DN
             Click(view, w, NSMakePoint(492 + 74 - 6, t - 84 + 9));        // OCT > : 2

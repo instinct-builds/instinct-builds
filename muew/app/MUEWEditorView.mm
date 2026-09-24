@@ -550,7 +550,8 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)remapChip:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 17, 40, 13); }
 - (NSRect)oscTitle:(int)o { return NSMakeRect(o ? 256 : 50, [self top] - 47, 186, 16); }
 - (NSRect)wtPosBar:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(r.origin.x + 10, r.origin.y + 5, r.size.width - 20, 7); }
-- (NSRect)filterTab:(int)i { return i == 2 ? NSMakeRect(652, [self top] - 29, 40, 17) : NSMakeRect(i ? 556 : 492, [self top] - 29, i ? 92 : 60, 17); }
+// 0.25.0: FILTER 1 / FILTER 2 + SUB / ARP tabs, narrowed so the FILTER 1 model selector keeps its own space to the right.
+- (NSRect)filterTab:(int)i { static const CGFloat x[3] = {492, 550, 638}, wd[3] = {54, 84, 34}; i = std::clamp(i, 0, 2); return NSMakeRect(x[i], [self top] - 29, wd[i], 17); }
 // 0.25.0 ARP page (FILTER panel tab 3).
 - (NSRect)arpOnRect { return NSMakeRect(492, [self top] - 58, 44, 18); }
 - (NSRect)arpModeRect:(int)m { return NSMakeRect(542 + m * 38, [self top] - 58, 36, 18); }
@@ -564,7 +565,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)f2TypeRect { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x, NSMaxY(r) - 18, r.size.width, 18); }
 - (NSRect)f2RouteRect:(int)i { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x + 5 + i * 39, r.origin.y + 4, 37, 13); }
 // 0.21.0 FILTER 1 page: model selector (arrows step the model), response display, DRIVE / KEYTRACK / MORPH bars.
-- (NSRect)f1ModelRect { return NSMakeRect(656, [self top] - 29, 116, 17); }
+- (NSRect)f1ModelRect { return NSMakeRect(676, [self top] - 29, 94, 17); } // 0.25.0: 676 (was 656 / 116) clears the ARP tab
 - (NSRect)f1MsegChip { NSRect r = [self f2Display]; return NSMakeRect(NSMaxX(r) - 37, r.origin.y + 4, 33, 13); }
 - (NSRect)f1Bar:(int)i { return NSMakeRect(494 + i * 94, [self top] - 167, 88, 13); }
 // 0.22.0 FILTER 2 + SUB page bars: F1 MIX, F2 MIX, BALANCE, F2 MORPH (drag ids 3-6).
@@ -1030,7 +1031,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [tri closePath];
         [C(0xc3cbd6) setFill]; [tri fill];
     }
-    TextA(S(ui::filterModeName(v.filterMode)), NSMakeRect(mr.origin.x + 14, mr.origin.y + 3, mr.size.width - 28, 11), 8.5, C(0xf2ab55),
+    TextFit(S(ui::filterModeName(v.filterMode)), NSMakeRect(mr.origin.x + 14, mr.origin.y + 3, mr.size.width - 28, 11), 8.5, 7, C(0xf2ab55),
           NSFontWeightBold, NSTextAlignmentCenter);
     const char* names[3] = {"DRIVE", "KEYTRACK", "MORPH"};
     const double vals[3] = {v.filterDrive, v.filterKeytrack, v.filterMorph};
