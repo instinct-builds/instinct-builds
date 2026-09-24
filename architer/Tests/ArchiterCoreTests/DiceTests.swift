@@ -841,4 +841,17 @@ struct SessionSegmentTests {
         #expect(lines[8].contains("| 2d6 | 10 |"))
         #expect(lines[9].contains("| Save \\| or suck (d20) | 10 |"))
     }
+
+    // 2.74.0: the Latest session scope keeps only the newest session's
+    /// rolls, in history order; empty stays empty.
+    @Test func latestSessionKeepsOnlyTheNewestSession() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 17)),
+                     stamped("1d6", at: at(cal, 23, 18))]
+        let latest = rolls.latestSession(now: now, calendar: cal)
+        #expect(latest.map(\.expression) == ["d20", "2d6"])
+        #expect([RollResult]().latestSession(now: now, calendar: cal).isEmpty)
+    }
 }

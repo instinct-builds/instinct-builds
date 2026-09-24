@@ -32,7 +32,10 @@ struct DiceInlineBlock: View {
 public struct DiceRollerView: View {
     @EnvironmentObject var model: AppModel
 
-    public init() {}
+    /// 2.74.0: harness hook - start with the Latest session scope on.
+    public init(initialLatestSession: Bool = false) {
+        _historyLatestSession = State(initialValue: initialLatestSession)
+    }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
@@ -46,12 +49,17 @@ public struct DiceRollerView: View {
     @State private var saveForCharacter = true
     /// History scope: false = whole table, true = selected character only.
     @State private var historyForCharacter = false
+    /// Latest-session scope (2.74.0): true shows only the newest
+    /// session's rolls - the common case at the table.
+    @State private var historyLatestSession = false
     /// Text filter over history labels and expressions; blank shows all.
     @State private var historyFilter = ""
 
     private var visibleHistory: [RollResult] {
         let name = historyForCharacter ? model.selected?.wrappedValue.name : nil
-        return model.rollHistory.forCharacter(name).matching(historyFilter)
+        let base = model.rollHistory.forCharacter(name)
+        let scoped = historyLatestSession ? base.latestSession() : base
+        return scoped.matching(historyFilter)
     }
 
     public var body: some View {
@@ -133,6 +141,10 @@ public struct DiceRollerView: View {
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 220)
                 }
+                Toggle("Latest session", isOn: $historyLatestSession)
+                    .toggleStyle(.checkbox)
+                    .font(Theme.Typeface.caption)
+                    .help("Show only the newest session's rolls - pane, count, and Copy all follow")
                 TextField("Filter rolls", text: $historyFilter)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(maxWidth: 160)

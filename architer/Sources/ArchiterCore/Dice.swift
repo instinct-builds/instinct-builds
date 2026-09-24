@@ -540,6 +540,13 @@ public extension RollResult {
 }
 
 public extension Array where Element == RollResult {
+    /// The newest session's rolls (2.74.0): the "Latest session" history
+    /// scope - the common case at the table. Empty history stays empty.
+    func latestSession(now: Date = Date(),
+                       calendar: Calendar = .current) -> [RollResult] {
+        sessionSegments(self, now: now, calendar: calendar).first?.rolls ?? []
+    }
+
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }

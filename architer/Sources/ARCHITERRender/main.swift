@@ -125,6 +125,14 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.74.0 proof: the Latest session scope - the pane shows only the
+    // newest session's rolls (the Yesterday group is gone).
+    renderPNG(
+        DiceRollerView(initialLatestSession: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-latest-session", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 2.38.0/2.48.0 proof: the session-divided history list in a fixed
     // frame, with a crafted roll set spanning Today and Yesterday.
     var h1 = DiceRoller(seed: 11).rollD20(mode: .normal)
