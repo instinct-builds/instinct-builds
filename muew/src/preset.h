@@ -47,6 +47,8 @@ struct PresetInfo {
 //                  lines; an older 8-unit `fxorder` line gets the new units appended.
 //                  0.28.0 adds optional `reverbx <mode> <predelay ms> <size> <width> <lowcut Hz>`
 //                  and `compx <mode> <upward> <speed> <low dB> <mid dB> <high dB> <mix>` lines.
+//                  0.29.0 adds an optional `distx <quality>` line and an optional 8th compx field
+//                  (AUTO GAIN 0/1, written only when on).
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
@@ -131,6 +133,7 @@ struct Preset {
         const FXParams d;
         if (fx.dist.enabled != d.dist.enabled || fx.dist.mode != d.dist.mode || fx.dist.drive != d.dist.drive || fx.dist.mix != d.dist.mix)
             o << "dist " << (fx.dist.enabled ? 1 : 0) << " " << fx.dist.mode << " " << fx.dist.drive << " " << fx.dist.mix << "\n";
+        if (fx.dist.quality != d.dist.quality) o << "distx " << fx.dist.quality << "\n"; // 0.29.0
         if (fx.eq.enabled != d.eq.enabled || fx.eq.lowDb != d.eq.lowDb || fx.eq.midDb != d.eq.midDb || fx.eq.highDb != d.eq.highDb)
             o << "eq " << (fx.eq.enabled ? 1 : 0) << " " << fx.eq.lowDb << " " << fx.eq.midDb << " " << fx.eq.highDb << "\n";
         if (fx.comp.enabled != d.comp.enabled || fx.comp.amount != d.comp.amount)
@@ -149,9 +152,9 @@ struct Preset {
             o << "reverbx " << rv.mode << " " << rv.preDelayMs << " " << rv.size << " " << rv.width << " " << rv.lowCutHz << "\n";
         const auto& cp = fx.comp; const auto& dc = d.comp;
         if (cp.mode != dc.mode || cp.upward != dc.upward || cp.speed != dc.speed || cp.lowDb != dc.lowDb || cp.midDb != dc.midDb
-            || cp.highDb != dc.highDb || cp.mix != dc.mix)
+            || cp.highDb != dc.highDb || cp.mix != dc.mix || cp.makeup != dc.makeup)
             o << "compx " << cp.mode << " " << cp.upward << " " << cp.speed << " " << cp.lowDb << " " << cp.midDb << " " << cp.highDb
-              << " " << cp.mix << "\n";
+              << " " << cp.mix << (cp.makeup ? " 1" : "") << "\n";
         const auto& hy = fx.hyper; const auto& dh = d.hyper;
         if (hy.enabled != dh.enabled || hy.rateHz != dh.rateHz || hy.detune != dh.detune || hy.dimension != dh.dimension || hy.mix != dh.mix)
             fxLine("hyper", hy.enabled, hy.rateHz, hy.detune, hy.dimension, hy.mix);
@@ -444,6 +447,7 @@ struct Preset {
                     fx.reverb.lowCutHz = std::clamp(lc, 20.0, 1000.0);
                 }
             }
+            else if (key == "distx") { int q = 0; if (ls >> q) fx.dist.quality = std::clamp(q, 0, 1); } // 0.29.0
             else if (key == "compx") {
                 int m = 0; double up, sp, lo, mid, hi, mix;
                 if (ls >> m >> up >> sp >> lo >> mid >> hi >> mix && std::isfinite(up) && std::isfinite(sp) && std::isfinite(lo)
@@ -452,6 +456,7 @@ struct Preset {
                     c.mode = std::clamp(m, 0, 1); c.upward = std::clamp(up, 0.0, 1.0); c.speed = std::clamp(sp, 0.0, 1.0);
                     c.lowDb = std::clamp(lo, -12.0, 12.0); c.midDb = std::clamp(mid, -12.0, 12.0); c.highDb = std::clamp(hi, -12.0, 12.0);
                     c.mix = std::clamp(mix, 0.0, 1.0);
+                    int mk = 0; if (ls >> mk) c.makeup = mk != 0 ? 1 : 0; // 0.29.0 optional AUTO GAIN field
                 }
             }
             else if (key == "hyper") {
@@ -608,6 +613,7 @@ struct Preset {
             && fa.reverb.width == fb.reverb.width && fa.reverb.lowCutHz == fb.reverb.lowCutHz
             && fa.comp.mode == fb.comp.mode && fa.comp.upward == fb.comp.upward && fa.comp.speed == fb.comp.speed
             && fa.comp.lowDb == fb.comp.lowDb && fa.comp.midDb == fb.comp.midDb && fa.comp.highDb == fb.comp.highDb && fa.comp.mix == fb.comp.mix
+            && fa.comp.makeup == fb.comp.makeup && fa.dist.quality == fb.dist.quality
             && fa.dist.enabled == fb.dist.enabled && fa.dist.mode == fb.dist.mode
             && fa.dist.drive == fb.dist.drive && fa.dist.mix == fb.dist.mix
             && fa.eq.enabled == fb.eq.enabled && fa.eq.lowDb == fb.eq.lowDb

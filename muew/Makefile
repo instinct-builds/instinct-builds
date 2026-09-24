@@ -71,6 +71,8 @@ build/muew-tests-fxdetail: tests/tests_fxdetail.cpp src/fx.h src/preset.h src/ui
 
 build/muew-tests-fx28: tests/tests_fx28.cpp src/fx.h src/preset.h src/ui_model.h src/au_params.h src/factory_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_fx28.cpp
+build/muew-tests-quality29: tests/tests_quality29.cpp src/fx.h src/preset.h src/ui_model.h src/synth.h src/voice.h src/envelope.h src/factory_bank.h | build
+	$(CXX) $(CXXFLAGS) -o $@ tests/tests_quality29.cpp
 
 build/muew-tests-fx27: tests/tests_fx27.cpp src/fx.h src/filter.h src/preset.h src/ui_model.h src/synth.h src/factory_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_fx27.cpp
@@ -109,7 +111,7 @@ build/muew-license: src/license_tool.cpp src/license.h | build
 build/muew-render-preset: src/render_preset.cpp src/preset.h src/preset_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28
+test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28 build/muew-tests-quality29
 	./build/muew-tests
 	./build/muew-tests-fx
 	./build/muew-tests-license
@@ -126,6 +128,7 @@ test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-t
 	./build/muew-tests-filter1
 	./build/muew-tests-fx27
 	./build/muew-tests-fx28
+	./build/muew-tests-quality29
 	./build/muew-tests-filterroute
 	./build/muew-tests-voicex
 	./build/muew-tests-perf

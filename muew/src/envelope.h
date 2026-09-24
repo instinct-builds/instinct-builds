@@ -17,6 +17,8 @@ public:
         r_ = std::max(0.001, release);
     }
 
+    // 0.29.0: hard stop (host Reset) - no release tail, the next note starts from zero.
+    void reset() { level_ = 0.0; stage_ = Stage::Idle; }
     void noteOn() { stage_ = Stage::Attack; }
     void noteOff() {
         if (stage_ != Stage::Idle) stage_ = Stage::Release;

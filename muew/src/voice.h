@@ -345,6 +345,14 @@ public:
 
     void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); mseg2_.release(); }
 
+    // 0.29.0: hard silence for a host Reset - envelopes, filter memories and glide cleared, so the next
+    // note renders exactly as the first note after power-on (no release tail, no attack resuming mid-way).
+    void silence() {
+        ampEnv_.reset(); modEnv_.reset(); env3_.reset();
+        filter_.reset(); filterR_.reset(); f2L_.reset(); f2R_.reset();
+        dcL_.reset(); dcR_.reset();
+        glideLeft_ = 0; glideSemi_ = 0.0;
+    }
     bool isActive() const { return ampEnv_.isActive(); }
     bool dcBlockerOn() const { return dcOn_; } // 0.12.0 (tests)
     int note() const { return note_; }

@@ -150,7 +150,7 @@ int main() {
         ui::fxSet(f, FxReverb, 0, 1); ui::fxSet(f, FxReverb, 3, 80); ui::fxSet(f, FxComp, 0, 1);
         check(f.reverb.mode == 1 && ui::fxValueText(f, FxReverb, 0) == "HALL" && ui::fxValueText(f, FxReverb, 3) == "80.0 ms" && !ui::fxRowInactive(f, FxReverb, 3)
               && ui::fxValueText(f, FxComp, 0) == "MULTIBAND" && !ui::fxRowInactive(f, FxComp, 4), "mode rows switch on the new rows");
-        check(std::string(ui::fxChoiceName(FxReverb, 2)) == "PLATE" && std::string(ui::fxChoiceName(FxComp, 0)) == "ONE-KNOB" && std::string(ui::fxChoiceName(FxDist, 1)) == "FOLD",
+        check(std::string(ui::fxChoiceName(FxReverb, 0, 2)) == "PLATE" && std::string(ui::fxChoiceName(FxComp, 0, 0)) == "ONE-KNOB" && std::string(ui::fxChoiceName(FxDist, 0, 1)) == "FOLD",
               "segmented choice labels per unit");
         Preset a = factoryPresets()[3];
         params::set(a, params::ReverbSize, 25); params::set(a, params::CompUpward, 70);

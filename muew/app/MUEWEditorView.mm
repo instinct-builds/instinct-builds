@@ -1474,7 +1474,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     // FX rack, chain order left to right, top to bottom. Cards drag to reorder.
     const FXParams& f = current.fx;
     char det[kFxUnits][40];
-    snprintf(det[0], 40, "%s", ui::distModeName(f.dist.mode));
+    snprintf(det[0], 40, "%s%s", ui::distModeName(f.dist.mode), f.dist.quality && f.dist.mode != 2 ? " HQ" : "");
     snprintf(det[1], 40, "RATE %.2f Hz", f.chorus.rateHz);
     snprintf(det[2], 40, "%s", ui::delayCardReadout(f.delay).c_str());
     if (f.comp.mode == 1) snprintf(det[3], 40, "3-BAND %.0f%%", 100.0 * std::clamp(f.comp.amount, 0.0, 1.0));
@@ -2176,6 +2176,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     Text(S(ui::filterFxModeName(fp.mode)), NSMakeRect(V.origin.x + 8, NSMaxY(V) - 12, 80, 10), 7, C(0x8793a3), NSFontWeightBold);
 }
 
+- (NSRect)compAutoGainPill { NSRect V = [self fxDetailVisual]; return NSMakeRect(NSMaxX(V) - 66, NSMaxY(V) - 14, 60, 13); }
 // 0.28.0 COMP page: input/output curve per band (from the parameters) beside the three band trims.
 - (void)drawCompVisual:(bool)on {
     const CompressorParams& cp = current.fx.comp;
@@ -2234,10 +2235,18 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     Text(@"IN -72 dB", NSMakeRect(V.origin.x + 6, V.origin.y + 3, 50, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
     TextA(@"0 dB", NSMakeRect(NSMaxX(plot) - 30, V.origin.y + 3, 30, 10), 6.5, C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
     Text(S(ui::compModeName(cp.mode)), NSMakeRect(V.origin.x + 8, NSMaxY(V) - 12, 80, 10), 7, C(0x8793a3), NSFontWeightBold);
-    char t[32];
-    if (multi) snprintf(t, sizeof t, "UP %+.0f dB MAX", 18.0 * std::clamp(cp.upward, 0.0, 1.0));
-    else snprintf(t, sizeof t, "%.1f:1", 1.5 + 6.5 * a);
-    TextA(S(t), NSMakeRect(V.origin.x, NSMaxY(V) - 12, V.size.width - 8, 10), 7, on ? acc : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
+    if (multi) { // 0.29.0 AUTO GAIN pill (click toggles)
+        NSRect pill = [self compAutoGainPill];
+        const bool mk = cp.makeup != 0;
+        FillRound(pill, 5, mk ? C(kFxAccent[FxComp], on ? 0.28 : 0.12) : C(0x19202a));
+        char t[32];
+        if (mk) snprintf(t, sizeof t, "AUTO %+.1f dB", mb.makeupDb()); else snprintf(t, sizeof t, "AUTO GAIN");
+        TextA(S(t), NSMakeRect(pill.origin.x, pill.origin.y + 2.5, pill.size.width, 10), 6.5, mk ? (on ? acc : C(0x8793a3)) : C(0x5f6b7b),
+              NSFontWeightBold, NSTextAlignmentCenter);
+    } else {
+        char t[32]; snprintf(t, sizeof t, "%.1f:1", 1.5 + 6.5 * a);
+        TextA(S(t), NSMakeRect(V.origin.x, NSMaxY(V) - 12, V.size.width - 8, 10), 7, on ? acc : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
+    }
 }
 
 // 0.28.0 REVERB page: energy over time - pre-delay gap, diffusion build, decay slope; the dim line is the treble dying first.
@@ -2343,7 +2352,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
                 NSRect seg = NSMakeRect(bar.origin.x + k * w + 1, bar.origin.y - 1, w - 2, 16);
                 bool sel = (int)v == k;
                 FillRound(seg, 4, sel ? C(kFxAccent[u], live ? 0.28 : 0.12) : C(0x10151c));
-                TextA(S(ui::fxChoiceName(u, k)), NSMakeRect(seg.origin.x, seg.origin.y + (compact ? 3.5 : 3), seg.size.width, 11), compact ? 6.5 : 7.5,
+                TextA(S(ui::fxChoiceName(u, i, k)), NSMakeRect(seg.origin.x, seg.origin.y + (compact ? 3.5 : 3), seg.size.width, 11), compact ? 6.5 : 7.5,
                       sel ? (live ? acc : C(0x8793a3)) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
             }
         } else if (c.fmt == ui::FmtChoice) { // stepper: left half steps down, right half up
@@ -2392,7 +2401,8 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
             FillRound(NSMakeRect(k.x - 5, k.y - 5, 10, 10), 5, inactive ? C(0x303947) : (fxRowDrag == i ? C(0xffffff) : C(0xd5dce5)));
             FillRound(NSMakeRect(k.x - 2, k.y - 2, 4, 4), 2, inactive ? C(0x19202a) : acc);
         }
-        if (!(u == FxFilter && i == 0))
+        const bool segRow = c.fmt == ui::FmtChoice && c.hi - c.lo < 3;
+        if (!(u == FxFilter && i == 0) && !(compact && segRow)) // 0.29.0: compact segmented rows already show their value
             TextA(S(ui::fxValueText(f, u, i)), NSMakeRect(NSMaxX(bar) + 4, row.origin.y + (compact ? 2.5 : 3.5), valW, 13), compact ? 8.5 : 9.5,
                   inactive ? C(0x5f6b7b) : fxRowDrag == i ? acc : C(0xd5dce5), NSFontWeightMedium, NSTextAlignmentRight);
         if (c.dest >= 0) { // modulation tag: route amount when a macro or FX LFO drives this row
@@ -2491,6 +2501,10 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (NSPointInRect(p, NSInsetRect([self fxDetailClose], -4, -4))) { fxDetail = -1; [self setNeedsDisplay:YES]; return YES; }
     if (NSPointInRect(p, [self fxDetailToggle])) {
         bool& en = FxEnabled(current, u); en = !en;
+        edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
+    }
+    if (u == FxComp && current.fx.comp.mode == 1 && NSPointInRect(p, NSInsetRect([self compAutoGainPill], -3, -3))) { // 0.29.0
+        current.fx.comp.makeup = current.fx.comp.makeup ? 0 : 1;
         edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
     }
     const auto& cs = ui::fxControls(u);

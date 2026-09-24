@@ -398,6 +398,13 @@ int main() {
                 printf("FAIL: MULTIBAND UPWARD not audible or not stored\n"); return 1;
             }
         }
+        // 0.29.0: a host Reset gives every note the same render (no envelope, tail or LFO phase carried over).
+        {
+            double s1 = 0, m1 = 0, s2 = 0, m2 = 0, s3 = 0, m3 = 0;
+            if (!selectPreset(7) || !measureLR(s1, m1) || !measureLR(s2, m2) || !measureLR(s3, m3)) { printf("FAIL: render preset 7 three times\n"); return 1; }
+            printf("reset: preset 7 energy %.6f / %.6f / %.6f\n", m1, m2, m3);
+            if (std::fabs(m2 - m1) > 1e-6 * m1 || std::fabs(m3 - m1) > 1e-6 * m1) { printf("FAIL: notes after a Reset render differently\n"); return 1; }
+        }
         printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros, unison width, drive, HYPER / FILTER FX, SIZE / UPWARD and recall: ok\n", (int)mp::Count);
     }
 

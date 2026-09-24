@@ -25,6 +25,11 @@ public:
         table_ = std::make_unique<Wavetable>();
         fx_.init(sampleRate);
         for (auto& v : voices_) v.init(sampleRate, table_.get());
+        // 0.29.0: init is also the host Reset - clear every note, tail and stack so the next note
+        // renders the same whether or not anything played before.
+        allNotesOff();
+        for (auto& v : voices_) v.silence();
+        lastNote_ = -1; lastFreq_ = 0.0; clock_ = 0;
         setParams(VoiceParams{}, defaultRoutes());
     }
 

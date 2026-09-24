@@ -1071,6 +1071,56 @@ int main() {
                   "REVERB and COMP return to CLASSIC / ONE-KNOB from their pages and keep their settings");
             fflush(stdout);
         });
+        After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); };
+            auto wide = [&](int row, double n) { return NSMakePoint(36 + 12 + 92 + 196 * n, 48 + 200 - 58 - 24 * row + 10); }; // full-width rows
+            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 52 - 17 * row + 8); };  // compact rows
+            const NSPoint toggle = NSMakePoint(36 + 424 - 84 + 23, 48 + 200 - 25 + 8);
+            const NSPoint pill = NSMakePoint(36 + 274 + 138 - 66 + 30, 48 + 26 + 136 - 14 + 6.5);
+            muew::Preset st0; State(st0);
+            const int ds = st0.fx.order.slotOf(muew::FxDist), cs = st0.fx.order.slotOf(muew::FxComp);
+            Click(view, w, card(ds));                 // DIST page
+            if (!st0.fx.dist.enabled) Click(view, w, toggle);
+            Click(view, w, wide(0, 0.5));             // MODE: FOLD
+            Click(view, w, wide(1, 0.7));             // DRIVE 70%
+            Click(view, w, wide(3, 0.75));            // QUALITY: HQ 4X
+            RenderBlock();
+            Snapshot(view, "MUEW_DISTHQ_PNG", "DIST HQ page snapshot written");
+            Click(view, w, card(cs));                 // COMP page
+            if (!st0.fx.comp.enabled) Click(view, w, toggle);
+            Click(view, w, bar(0, 0.75));             // MODE: MULTIBAND
+            Click(view, w, bar(1, 0.8));              // AMOUNT 80%
+            Click(view, w, pill);                     // AUTO GAIN on
+            RenderBlock();
+            Snapshot(view, "MUEW_AUTOGAIN_PNG", "COMP AUTO GAIN snapshot written");
+            muew::Preset st;
+            const bool ok = State(st);
+            printf("quality29: dist on %d mode %d drive %.2f quality %d; comp mode %d amount %.2f makeup %d\n", st.fx.dist.enabled ? 1 : 0,
+                   st.fx.dist.mode, st.fx.dist.drive, st.fx.dist.quality, st.fx.comp.mode, st.fx.comp.amount, st.fx.comp.makeup);
+            Check(ok && st.fx.dist.enabled && st.fx.dist.mode == 1 && std::fabs(st.fx.dist.drive - 0.7) < 0.01 && st.fx.dist.quality == 1,
+                  "DIST page: FOLD, DRIVE and QUALITY HQ 4X reached the AU");
+            Check(ok && st.fx.comp.mode == 1 && std::fabs(st.fx.comp.amount - 0.8) < 0.01 && st.fx.comp.makeup == 1,
+                  "COMP page: the AUTO GAIN pill reached the AU");
+            Check(ok && st.serialize().find("\ndistx 1\n") != std::string::npos, "the AU state saves the distx line");
+            // Put everything back and reopen the DELAY detail.
+            Click(view, w, pill);                     // AUTO GAIN off
+            Click(view, w, bar(0, 0.25));             // ONE-KNOB
+            Click(view, w, bar(1, st0.fx.comp.amount));
+            if (!st0.fx.comp.enabled) Click(view, w, toggle);
+            Click(view, w, card(ds));
+            Click(view, w, wide(3, 0.25));            // QUALITY: STANDARD
+            Click(view, w, wide(0, (st0.fx.dist.mode + 0.5) / 3.0));
+            Click(view, w, wide(1, st0.fx.dist.drive));
+            if (!st0.fx.dist.enabled) Click(view, w, toggle);
+            Click(view, w, card(st0.fx.order.slotOf(muew::FxDelay)));
+            muew::Preset back;
+            Check(State(back) && back.fx.dist.quality == 0 && back.fx.comp.makeup == 0 && back.fx.comp.mode == 0
+                  && back.fx.dist.mode == st0.fx.dist.mode && back.fx.dist.enabled == st0.fx.dist.enabled && back.fx.comp.enabled == st0.fx.comp.enabled,
+                  "DIST and COMP return to STANDARD / ONE-KNOB from their pages");
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });

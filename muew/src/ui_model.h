@@ -440,9 +440,11 @@ inline const char* distModeName(int m) {
     static const char* n[] = {"SOFT CLIP", "FOLD", "BITCRUSH"};
     return (m >= 0 && m < 3) ? n[m] : "?";
 }
-inline const char* fxChoiceName(int unit, int k) {
+inline const char* distQualityName(int q) { return q == 1 ? "HQ 4X" : "STANDARD"; } // 0.29.0
+inline const char* fxChoiceName(int unit, int row, int k) {
     if (unit == FxReverb) return reverbModeName(k);
     if (unit == FxComp) return compModeName(k);
+    if (unit == FxDist && row == 3) return distQualityName(k);
     return distModeName(k);
 }
 
@@ -460,7 +462,8 @@ struct FxControl {
 inline const std::vector<FxControl>& fxControls(int unit) {
     using D = ModRoute::Dest;
     static const std::vector<FxControl> c[kFxUnits] = {
-        {{"MODE", FmtChoice, 0, 2, false, -1}, {"DRIVE", FmtPercent, 0, 1, false, (int)D::DistDrive}, {"MIX", FmtPercent, 0, 1, false, -1}},
+        {{"MODE", FmtChoice, 0, 2, false, -1}, {"DRIVE", FmtPercent, 0, 1, false, (int)D::DistDrive}, {"MIX", FmtPercent, 0, 1, false, -1},
+         {"QUALITY", FmtChoice, 0, 1, false, -1}}, // 0.29.0
         {{"RATE", FmtHz, 0.05, 5, true, -1}, {"DEPTH", FmtMs, 0, 20, false, (int)D::FxChorusDepth}, {"DELAY", FmtMs, 5, 30, false, -1},
          {"MIX", FmtPercent, 0, 1, false, -1}},
         {{"TIME L", FmtSec, 0.01, 1.99, true, -1}, {"SYNC L", FmtChoice, 0, kSyncCount - 1, false, -1},
@@ -499,7 +502,7 @@ inline const char* fxUnitTitle(int unit) {
 // Raw value of a control (choice rows: the index as a double).
 inline double fxGet(const FXParams& f, int unit, int i) {
     switch (unit) {
-    case FxDist: return i == 0 ? f.dist.mode : i == 1 ? f.dist.drive : f.dist.mix;
+    case FxDist: return i == 0 ? f.dist.mode : i == 1 ? f.dist.drive : i == 3 ? f.dist.quality : f.dist.mix;
     case FxChorus: return i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix;
     case FxDelay: return i == 0 ? f.delay.timeLSec : i == 1 ? f.delay.syncL : i == 2 ? f.delay.timeRSec : i == 3 ? f.delay.syncR
                        : i == 4 ? f.delay.feedback : f.delay.mix;
@@ -524,7 +527,7 @@ inline void fxSet(FXParams& f, int unit, int i, double v) {
     v = std::clamp(v, c.lo, c.hi);
     const int k = (int)std::lround(v);
     switch (unit) {
-    case FxDist: if (i == 0) f.dist.mode = k; else if (i == 1) f.dist.drive = v; else f.dist.mix = v; break;
+    case FxDist: if (i == 0) f.dist.mode = k; else if (i == 1) f.dist.drive = v; else if (i == 3) f.dist.quality = std::clamp(k, 0, 1); else f.dist.mix = v; break;
     case FxChorus: (i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix) = v; break;
     case FxDelay:
         if (i == 1) f.delay.syncL = k; else if (i == 3) f.delay.syncR = k;
@@ -565,7 +568,8 @@ inline bool fxRowInactive(const FXParams& f, int unit, int i) {
     return (unit == FxDelay && ((i == 0 && f.delay.syncL > 0) || (i == 2 && f.delay.syncR > 0)))
         || (unit == FxFilter && i == 5 && f.filter.lfoSync > 0)  // 0.27.0: a synced FILTER FX sweep ignores RATE
         || (unit == FxReverb && f.reverb.mode == 0 && i >= 3 && i <= 6) // 0.28.0: CLASSIC has no space rows
-        || (unit == FxComp && f.comp.mode == 0 && i >= 2);             // 0.28.0: ONE-KNOB has only AMOUNT
+        || (unit == FxComp && f.comp.mode == 0 && i >= 2)              // 0.28.0: ONE-KNOB has only AMOUNT
+        || (unit == FxDist && i == 3 && f.dist.mode == 2);             // 0.29.0: BITCRUSH aliases on purpose
 }
 inline std::string fxValueText(const FXParams& f, int unit, int i) {
     const auto& cs = fxControls(unit);
@@ -574,7 +578,7 @@ inline std::string fxValueText(const FXParams& f, int unit, int i) {
     char b[40];
     switch (cs[i].fmt) {
     case FmtChoice:
-        if (unit == FxDist) return distModeName((int)v);
+        if (unit == FxDist) return i == 3 ? distQualityName((int)v) : distModeName((int)v);
         if (unit == FxFilter && i == 0) return filterFxModeName((int)v);
         if (unit == FxReverb && i == 0) return reverbModeName((int)v);
         if (unit == FxComp && i == 0) return compModeName((int)v);

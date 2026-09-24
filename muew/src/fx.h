@@ -146,6 +146,9 @@ public:
         pre_[0].resize((int)(sr * 0.26) + 4); pre_[1].resize((int)(sr * 0.26) + 4);
         for (auto& l : lines_) l.resize((int)(sr * 0.2) + 8);
         for (auto& side : diff_) for (auto& d : side) d.line.resize((int)(sr * 0.03) + 8);
+        for (double& v : lp_) v = 0.0;
+        for (int i = 0; i < 4; ++i) modPh_[i] = 0.25 * i;
+        hpL_ = hpR_ = hpXL_ = hpXR_ = 0.0;
         configured_ = false;
     }
     // Rebuilds lengths and gains; cheap, called when parameters change.
@@ -232,6 +235,7 @@ public:
             for (int i = 0; i < 4; ++i) {
                 combs_[ch][i].line.resize(combTun[ch][i] + 4);
                 combs_[ch][i].length = combTun[ch][i];
+                combs_[ch][i].store = 0.0f; // 0.29.0: Reset clears the damping memory too
             }
             for (int i = 0; i < 2; ++i) {
                 aps_[ch][i].line.resize(apTun[ch][i] + 4);
@@ -293,6 +297,7 @@ struct DistortionParams {
     int mode = 0;       // 0 soft clip, 1 fold, 2 bitcrush
     double drive = 0.4; // 0..1
     double mix = 1.0;   // 0..1
+    int quality = 0;    // 0.29.0: 0 STANDARD, 1 HQ (soft clip and fold run 4x oversampled). Append only.
 };
 
 // Waveshaping distortion. Soft clip is a normalized tanh curve; fold
@@ -321,8 +326,10 @@ public:
         }
         }
     }
+    void reset() { for (auto& h : os_) for (auto& s : h) s.reset(); holdCount_ = 0; heldL_ = heldR_ = 0; }
     inline void process(float& l, float& r) {
         const double d = drive();
+        if (p_.quality == 1 && p_.mode != 2) { processHQ(l, r, d); return; }
         float wl, wr;
         if (p_.mode == 2) {
             const int hold = 1 + (int)(d * 15.0);
@@ -337,7 +344,24 @@ public:
         r = r + m * (wr * trim - r);
     }
     const DistortionParams& params() const { return p_; }
+    static constexpr int kHQLatency = Halfband2x::kLatency + Halfband2x::kLatency / 2; // 22 whole samples (+0.5)
 private:
+    // 0.29.0 HQ: two halfband stages up to 4x; dry and wet mix inside the oversampled domain so they stay aligned.
+    inline double shapeMix(double x, double d, float trim, float m) const { return x + m * (shape(p_.mode, d, (float)x) * trim - x); }
+    inline void processHQ(float& l, float& r, double d) {
+        const float trim = (float)(1.0 / (1.0 + d * (p_.mode == 0 ? 1.2 : 0.4)));
+        const float m = (float)std::clamp(p_.mix, 0.0, 1.0);
+        float* io[2] = {&l, &r};
+        for (int c = 0; c < 2; ++c) {
+            double a, b, q[4];
+            os_[c][0].up(*io[c], a, b);
+            os_[c][1].up(a, q[0], q[1]); os_[c][1].up(b, q[2], q[3]);
+            for (double& v : q) v = shapeMix(v, d, trim, m);
+            const double y0 = os_[c][2].down(q[0], q[1]), y1 = os_[c][2].down(q[2], q[3]);
+            *io[c] = (float)os_[c][3].down(y0, y1);
+        }
+    }
+    Halfband2x os_[2][4]; // per channel: up 1x->2x, up 2x->4x, down 4x->2x, down 2x->1x
     DistortionParams p_;
     double driveOffset_ = 0.0;
     int holdCount_ = 0;
@@ -366,6 +390,7 @@ public:
         }
         b0_ = b0 / a0; b1_ = b1 / a0; b2_ = b2 / a0; a1_ = a1 / a0; a2_ = a2 / a0;
     }
+    void reset() { z1_ = z2_ = 0.0; } // 0.29.0
     inline float process(float x) {
         const double y = b0_ * x + z1_;
         z1_ = b1_ * x - a1_ * y + z2_;
@@ -383,7 +408,7 @@ struct EQParams {
 
 class EQ3 {
 public:
-    void init(double sr) { sr_ = sr; set(p_); }
+    void init(double sr) { sr_ = sr; set(p_); for (auto& ch : band_) for (auto& b : ch) b.reset(); }
     void set(const EQParams& p) {
         p_ = p;
         for (int ch = 0; ch < 2; ++ch) {
@@ -413,6 +438,7 @@ struct CompressorParams {
     double speed = 0.5;   // 0..1 slow..fast attack/release
     double lowDb = 0.0, midDb = 0.0, highDb = 0.0; // -12..12 band output trims
     double mix = 1.0;     // 0..1
+    int makeup = 0;       // 0.29.0 MULTIBAND auto gain: 0 off, 1 on. Append only.
 };
 
 // 0.28.0 MULTIBAND: three bands split at 120 Hz and 2.5 kHz by complementary
@@ -462,7 +488,10 @@ public:
         trim_[0] = std::pow(10.0, std::clamp(p.lowDb, -12.0, 12.0) / 20.0);
         trim_[1] = std::pow(10.0, std::clamp(p.midDb, -12.0, 12.0) / 20.0);
         trim_[2] = std::pow(10.0, std::clamp(p.highDb, -12.0, 12.0) / 20.0);
+        // 0.29.0 AUTO GAIN: give back half the squeeze a -12 dBFS band gets, at most +12 dB.
+        makeup_ = p.makeup ? std::pow(10.0, std::clamp(-0.5 * gainFor(-12.0), 0.0, 12.0) / 20.0) : 1.0;
     }
+    double makeupDb() const { return 20.0 * std::log10(makeup_); }
     // Static gain (dB) a band applies at a steady input level; the panel draws it.
     double staticGainDb(double levelDb) const { return gainFor(levelDb); }
     double bandGainDb(int b) const { return gDb_[std::clamp(b, 0, kBands - 1)]; }
@@ -479,7 +508,7 @@ public:
             env_[b] = pk > env_[b] ? pk + atk_ * (env_[b] - pk) : pk + rel_ * (env_[b] - pk);
             const double target = gainFor(20.0 * std::log10(env_[b] + 1e-9));
             gDb_[b] = target + (target < gDb_[b] ? gAtk_ : gRel_) * (gDb_[b] - target);
-            const double g = std::pow(10.0, gDb_[b] / 20.0) * trim_[b];
+            const double g = std::pow(10.0, gDb_[b] / 20.0) * trim_[b] * makeup_;
             out[0] += band[0][b] * g; out[1] += band[1][b] * g;
         }
         const double mix = std::clamp(p_.mix, 0.0, 1.0);
@@ -509,7 +538,7 @@ private:
     double sr_ = 44100.0, atk_ = 0.0, rel_ = 0.0, gAtk_ = 0.0, gRel_ = 0.0;
     double thrDb_ = -21.0, ratio_ = 3.5, upThrDb_ = -27.0, upRatio_ = 1.6, upMaxDb_ = 7.2;
     BQ lp1_[2][2], hp1_[2][2], lp2_[2][2], hp2_[2][2], ap_[2], dryAp_[2][2];
-    double env_[kBands] = {}, gDb_[kBands] = {}, trim_[kBands] = {1.0, 1.0, 1.0};
+    double env_[kBands] = {}, gDb_[kBands] = {}, trim_[kBands] = {1.0, 1.0, 1.0}, makeup_ = 1.0;
     CompressorParams p_;
 };
 
@@ -524,6 +553,7 @@ public:
         atk_ = std::exp(-1.0 / (0.002 * sr));
         rel_ = std::exp(-1.0 / (0.12 * sr));
         mb_.init(sr); mb_.set(p_); // 0.28.0
+        env_ = 0.0; grDb_ = 0.0;     // 0.29.0: a host Reset starts the detector fresh
     }
     void set(const CompressorParams& p) {
         p_ = p;
@@ -867,7 +897,17 @@ struct FXParams {
 // passes through untouched when off.
 class FXChain {
 public:
-    void init(double sr) { sr_ = sr; chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); phaser_.init(sr); flanger_.init(sr); hyper_.init(sr); filter_.init(sr); }
+    // init is also the host Reset (0.29.0): every unit starts from power-on state - buffers, filter
+    // memories, LFO phases, detectors - then the current sound and tempo are put back.
+    void init(double sr) {
+        const FXParams keep = p_; const double bpm = bpm_; const Mod base = base_; const std::vector<LfoRoute> routes = lfoRoutes_;
+        chorus_ = Chorus{}; delay_ = StereoDelay{}; reverb_ = Reverb{}; dist_ = Distortion{}; eq_ = EQ3{}; comp_ = Compressor{};
+        phaser_ = Phaser{}; flanger_ = Flanger{}; hyper_ = Hyper{}; filter_ = FilterFx{};
+        lfoPhase_[0] = lfoPhase_[1] = 0.0; lfoTick_ = 0;
+        sr_ = sr; chorus_.init(sr); delay_.init(sr); reverb_.init(sr); eq_.init(sr); comp_.init(sr); phaser_.init(sr); flanger_.init(sr); hyper_.init(sr); filter_.init(sr);
+        set(keep); setTempo(bpm);
+        if (!routes.empty()) setLfoRoutes(base, routes); else { base_ = base; setMod(base); }
+    }
     void set(const FXParams& p) {
         chorus_.set(p.chorus); delay_.set(p.delay); reverb_.set(p.reverb);
         dist_.set(p.dist); eq_.set(p.eq); comp_.set(p.comp);
