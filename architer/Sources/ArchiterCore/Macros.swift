@@ -14,11 +14,17 @@ public struct DiceMacro: Codable, Equatable, Sendable, Identifiable {
     /// Owner when the macro is per-character; nil means shared by the table.
     /// Optional, so macro files written before 2.18 decode unchanged.
     public var characterName: String?
+    /// Damage-type tag (2.36.0): typed macro rolls carry the same
+    /// outgoing-defense note attack damage rolls get. Optional, so macro
+    /// files written before 2.36.0 decode unchanged.
+    public var damageType: String?
 
-    public init(name: String, expression: String, characterName: String? = nil) {
+    public init(name: String, expression: String, characterName: String? = nil,
+                damageType: String? = nil) {
         self.name = name
         self.expression = expression
         self.characterName = characterName
+        self.damageType = damageType
     }
 
     /// Trimmed, non-empty name and an expression the dice parser accepts.
@@ -81,5 +87,6 @@ public func duplicatedMacro(_ macro: DiceMacro, existing: [DiceMacro]) -> DiceMa
         candidate = "\(macro.name) copy \(n)"
         n += 1
     }
-    return DiceMacro(name: candidate, expression: macro.expression, characterName: macro.characterName)
+    return DiceMacro(name: candidate, expression: macro.expression,
+                     characterName: macro.characterName, damageType: macro.damageType)
 }

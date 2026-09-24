@@ -53,7 +53,10 @@ func run(model: AppModel, character: Character, outDir: String) {
     model.roll("d20")
     // Seed macros so the dice render shows both groups (character + table),
     // and a tool roll so history shows the 2.18 roll-from-sheet path.
-    model.saveMacro(name: "Fireball", expression: "8d6")
+    model.saveMacro(name: "Fireball", expression: "8d6", damageType: "fire")
+    // 2.36.0 proof: a typed macro roll lands in history with the
+    // outgoing-defense note, and the macro row shows its tag chip.
+    model.rollMacro(DiceMacro(name: "Fireball", expression: "8d6", damageType: "fire"))
     model.saveMacro(name: "Sneak attack", expression: "1d8+4d6+3", forCharacter: character.name)
     let tool = character.toolProficiencies[0]
     model.rollCheck("\(tool.name) check (INT)", bonus: character.toolBonus(tool, ability: .intelligence))
@@ -90,7 +93,7 @@ func run(model: AppModel, character: Character, outDir: String) {
         width: width, name: "dice", outDir: outDir, minHeight: 420)
     // Proof render for 2.23.0: a macro row mid edit-in-place.
     renderPNG(
-        MacroRowView(macro: DiceMacro(name: "Sneak attack", expression: "1d8+4d6+3", characterName: character.name),
+        MacroRowView(macro: DiceMacro(name: "Fireball", expression: "8d6", damageType: "fire"),
                      startEditing: true)
             .padding()
             .background(Theme.surface)

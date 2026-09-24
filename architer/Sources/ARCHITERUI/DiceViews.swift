@@ -178,12 +178,14 @@ public struct MacroRowView: View {
     @State private var editing: Bool
     @State private var nameDraft: String
     @State private var expressionDraft: String
+    @State private var typeDraft: DamageType?
 
     public init(macro: DiceMacro, startEditing: Bool = false) {
         self.macro = macro
         _editing = State(initialValue: startEditing)
         _nameDraft = State(initialValue: macro.name)
         _expressionDraft = State(initialValue: macro.expression)
+        _typeDraft = State(initialValue: macro.damageType.flatMap { DamageType(rawValue: $0) })
     }
 
     private var draftsValid: Bool {
@@ -200,8 +202,16 @@ public struct MacroRowView: View {
                 TextField("Expression", text: $expressionDraft)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(maxWidth: 220)
+                Picker("", selection: $typeDraft) {
+                    Text("No type").tag(DamageType?.none)
+                    ForEach(DamageType.allCases, id: \.self) { Text($0.displayName).tag(DamageType?.some($0)) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 110)
+                .help("Damage-type tag: rolls from this macro note what they deal against resistance, immunity, and vulnerability")
                 Button {
-                    model.updateMacro(macro, name: nameDraft, expression: expressionDraft)
+                    model.updateMacro(macro, name: nameDraft, expression: expressionDraft,
+                                      damageType: typeDraft?.rawValue)
                     editing = false
                 } label: { Image(systemName: "checkmark") }
                     .disabled(!draftsValid)
@@ -215,12 +225,19 @@ public struct MacroRowView: View {
                 Text(macro.expression)
                     .font(Theme.Typeface.caption)
                     .foregroundStyle(Theme.inkMuted)
+                if let type = macro.damageType.flatMap({ DamageType(rawValue: $0) }) {
+                    Text(type.displayName.lowercased())
+                        .font(Theme.Typeface.captionSmall)
+                        .foregroundStyle(Theme.accent)
+                        .help("Damage-type tag: rolls note what they deal against defenses")
+                }
                 Spacer()
-                Button("Roll") { model.rollLabeled(macro.name, macro.expression) }
+                Button("Roll") { model.rollMacro(macro) }
                     .buttonStyle(RollButtonStyle())
                 Button {
                     nameDraft = macro.name
                     expressionDraft = macro.expression
+                    typeDraft = macro.damageType.flatMap { DamageType(rawValue: $0) }
                     editing = true
                 } label: { Image(systemName: "pencil") }
                     .help("Edit macro")

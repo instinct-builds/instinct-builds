@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.36.0
+
+- Per-macro damage-type tags: edit a macro and pick a type ("Fireball -
+  fire"), and rolls from it carry the same outgoing-defense note attack
+  damage gets - "Fireball (fire: resist 7 - immune 0 - vuln 28)". The
+  row shows a small type chip next to the expression; duplicating a
+  macro keeps its tag. Macros saved before this version decode
+  unchanged and roll exactly as before, and an unknown stored tag fails
+  safe to untyped.
+
 ## What's in 2.35.0
 
 - Roll history timestamps: every roll now records when it was made. The

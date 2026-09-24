@@ -140,6 +140,40 @@ struct CharacterRollHistoryTests {
     }
 }
 
+@Suite("Dice macro damage-type tags")
+struct MacroDamageTypeTests {
+    @Test func oldMacrosWithoutDamageTypeDecode() throws {
+        // Macro files written before 2.36.0 have no damageType key.
+        let json = Data(#"[{"name":"Fireball","expression":"8d6"}]"#.utf8)
+        let macros = try JSONDecoder().decode([DiceMacro].self, from: json)
+        #expect(macros.count == 1)
+        #expect(macros[0].damageType == nil)
+    }
+
+    @Test func damageTypeRoundTrips() throws {
+        let m = DiceMacro(name: "Fireball", expression: "8d6", characterName: "Wren", damageType: "fire")
+        let data = try JSONEncoder().encode(m)
+        let decoded = try JSONDecoder().decode(DiceMacro.self, from: data)
+        #expect(decoded == m)
+        #expect(decoded.damageType == "fire")
+    }
+
+    @Test func duplicateCarriesDamageType() {
+        let m = DiceMacro(name: "Fireball", expression: "8d6", damageType: "fire")
+        let copy = ArchiterCore.duplicatedMacro(m, existing: [m])
+        #expect(copy.name == "Fireball copy")
+        #expect(copy.damageType == "fire")
+    }
+
+    @Test func unknownTagFailsSafeToUntyped() {
+        // A renamed type case decodes as stored but resolves to no type,
+        // so the roll path falls back to a plain labeled roll (2.33.0 pattern).
+        let m = DiceMacro(name: "Fireball", expression: "8d6", damageType: "pyro")
+        let resolved = m.damageType.flatMap { DamageType(rawValue: $0) }
+        #expect(resolved == nil)
+    }
+}
+
 @Suite("Roll history filtering")
 struct RollHistoryFilterTests {
     private func roll(_ expression: String, label: String? = nil, character: String? = nil) -> RollResult {

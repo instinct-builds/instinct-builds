@@ -147,11 +147,13 @@ public final class AppModel: ObservableObject {
     /// Adds or replaces a macro by scoped id; invalid names/expressions are
     /// ignored. Passing a character name binds the macro to that character,
     /// so a table macro and a character macro can share a name.
-    public func saveMacro(name: String, expression: String, forCharacter characterName: String? = nil) {
+    public func saveMacro(name: String, expression: String, forCharacter characterName: String? = nil,
+                          damageType: String? = nil) {
         let macro = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
             expression: expression.trimmingCharacters(in: .whitespaces),
-            characterName: characterName)
+            characterName: characterName,
+            damageType: damageType)
         guard macro.isValid else { return }
         macros.removeAll { $0.id == macro.id }
         macros.append(macro)
@@ -162,21 +164,25 @@ public final class AppModel: ObservableObject {
     /// Replaces a macro in place (edit-in-place): validates the drafts,
     /// removes the old scoped id, then upserts under the new one. The owner
     /// binding (table-wide vs character) is preserved.
-    public func updateMacro(_ macro: DiceMacro, name: String, expression: String) {
+    public func updateMacro(_ macro: DiceMacro, name: String, expression: String,
+                            damageType: String? = nil) {
         let updated = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
             expression: expression.trimmingCharacters(in: .whitespaces),
-            characterName: macro.characterName)
+            characterName: macro.characterName,
+            damageType: damageType)
         guard updated.isValid else { return }
         macros.removeAll { $0.id == macro.id }
-        saveMacro(name: updated.name, expression: updated.expression, forCharacter: updated.characterName)
+        saveMacro(name: updated.name, expression: updated.expression,
+                  forCharacter: updated.characterName, damageType: updated.damageType)
     }
 
     /// Clones a macro in place as "<name> copy" (bumped when taken); the
     /// owner binding rides along, so the copy lands in the same group.
     public func duplicateMacro(_ macro: DiceMacro) {
         let copy = ArchiterCore.duplicatedMacro(macro, existing: macros)
-        saveMacro(name: copy.name, expression: copy.expression, forCharacter: copy.characterName)
+        saveMacro(name: copy.name, expression: copy.expression,
+                  forCharacter: copy.characterName, damageType: copy.damageType)
     }
 
     public func deleteMacro(_ macro: DiceMacro) {
@@ -257,6 +263,19 @@ public final class AppModel: ObservableObject {
 
     public func rollLabeled(_ label: String, _ expression: String) {
         if let r = try? roller.rollLabeled(label, expression) { record(r) }
+    }
+
+    /// Roll a saved macro: labeled with its name. A macro with a damage-type
+    /// tag (2.36.0) takes the same outgoing-defense-note path as typed free
+    /// rolls and attack damage; an unknown stored tag falls back to a plain
+    /// labeled roll (fail-safe on a renamed case, like 2.33.0).
+    public func rollMacro(_ macro: DiceMacro) {
+        let type = macro.damageType.flatMap { DamageType(rawValue: $0) }
+        if let type {
+            recordDamageRoll(macro.name, macro.expression, type: type)
+        } else {
+            rollLabeled(macro.name, macro.expression)
+        }
     }
 
     /// Damage roll labeled with the outgoing-defense math for its type -
