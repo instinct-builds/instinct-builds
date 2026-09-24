@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.39.0
+
+- Compact-PDF session-log appendix: a new opt-in toggle ("Compact PDF:
+  Session Log Appendix") appends the exported character's roll history to
+  compact PDF exports as a chronological record - oldest rolls first,
+  grouped under the same "Today"/"Yesterday"/date headers as the Dice
+  tab - starting on its own page so the sheet and the log file
+  separately. Off by default: the compact layout is for cheap printing,
+  so extra pages stay opt-in.
+
 ## What's in 2.38.0
 
 - History grouped by day: the Dice tab history now sorts under sticky
