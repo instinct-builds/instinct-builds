@@ -1033,6 +1033,24 @@ struct JournalTests {
         #expect(JournalEntry(date: "Session 1", title: "Start").shareText == "Session 1 - Start")
     }
 
+    @Test func duplicateJournalEntryInsertsCopyBelow() throws {
+        var c = Character(name: "Wren Halloway")
+        c.journal = [JournalEntry(title: "A", text: "alpha"),
+                     JournalEntry(title: "B", text: "bravo")]
+        let a = c.journal[0].id
+        c.duplicateJournalEntry(a)
+        #expect(c.journal.count == 3)
+        #expect(c.journal[1].title == "A")
+        #expect(c.journal[1].text == "alpha")
+        #expect(c.journal[1].id != a)
+        #expect(c.journal[1].createdAt != nil)
+        #expect(c.journal[0].id == a)
+        #expect(c.journal[2].title == "B")
+        // Unknown ids change nothing.
+        c.duplicateJournalEntry(UUID())
+        #expect(c.journal.count == 3)
+    }
+
     @Test func journalRoundTripsAndDefaults() throws {
         var c = Character(name: "Test")
         #expect(c.journal.isEmpty)

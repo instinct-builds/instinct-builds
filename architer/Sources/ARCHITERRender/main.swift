@@ -229,6 +229,18 @@ func run(model: AppModel, character: Character, outDir: String) {
             try? digestEntry.shareText.write(to: URL(fileURLWithPath: "\(outDir)/journal-entry-copy.txt"),
                                              atomically: true, encoding: .utf8)
         }
+        // 2.56.0 proof: duplicate the digest - the copy lands right below
+        // with a fresh id and stamp, so the recap below counts 14 today.
+        if let digestId = sel.journal.first(where: { $0.title.hasPrefix("Session ") })?.id {
+            sel.duplicateJournalEntry(digestId)
+            model.selected?.wrappedValue = sel
+            renderPNG(
+                JournalBlock(character: .constant(sel))
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: width, name: "journal-duplicate", outDir: outDir)
+        }
         // 2.54.0 proof: the header filter narrows the journal by
         // title/body text - "fire bolt" keeps the attack, both damage
         // entries, and the digest (whose body mentions them), with the

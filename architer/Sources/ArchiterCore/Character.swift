@@ -538,6 +538,18 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// Dated session-log entries shown in the journal block.
     public var journal: [JournalEntry]
 
+    /// Duplicate a journal entry (2.56.0): the copy keeps date, title,
+    /// text, and collapse state, gets a fresh id and creation stamp, and
+    /// lands right below the original - starting today's entry from
+    /// yesterday's template. Unknown ids are a no-op.
+    public mutating func duplicateJournalEntry(_ id: UUID) {
+        guard let i = journal.firstIndex(where: { $0.id == id }) else { return }
+        var copy = journal[i]
+        copy.id = UUID()
+        copy.createdAt = Date()
+        journal.insert(copy, at: i + 1)
+    }
+
     /// Collapse or expand every long journal entry at once (2.53.0) -
     /// the journal header's one-tap scan control. Collapsing sets true;
     /// expanding restores the default nil. Short entries are untouched:

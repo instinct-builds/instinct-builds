@@ -256,6 +256,13 @@ public struct JournalBlock: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(Theme.inkFaint)
                         .help("Copy this entry")
+                        // 2.56.0: duplicate this entry right below.
+                        Button { character.duplicateJournalEntry(entry.id) } label: {
+                            Image(systemName: "plus.square.on.square")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.inkFaint)
+                        .help("Duplicate this entry")
                         // 2.50.0: nudge entries into the user's order;
                         // exports and the session recap follow it.
                         Button { character.moveJournalEntry(entry.id, by: -1) }
