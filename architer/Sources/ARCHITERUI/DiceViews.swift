@@ -174,6 +174,7 @@ extension DiceRollerView {
 /// window with the second group's rows clipped), so the group proof
 /// renders this list in a fixed frame instead.
 public struct HistoryListView: View {
+    @EnvironmentObject var model: AppModel
     let rolls: [RollResult]
 
     public init(rolls: [RollResult]) { self.rolls = rolls }
@@ -203,6 +204,20 @@ public struct HistoryListView: View {
                                 .font(Theme.Typeface.caption.bold())
                                 .foregroundStyle(Theme.inkMuted)
                             Spacer()
+                            // 2.49.0: digest the whole session into the
+                            // journal as one entry. Hidden while auto-log
+                            // is on (the rolls are already there), matching
+                            // the 2.45.0 pencil; undated runs have no
+                            // session to name.
+                            if session.number > 0, !model.autoLogRollsToJournal {
+                                Button {
+                                    model.addSessionToJournal(session)
+                                } label: { Image(systemName: "text.book.closed") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.inkFaint)
+                                    .help("Add this session's rolls to the journal as one entry")
+                                    .disabled(model.selected == nil)
+                            }
                         }
                         .padding(.vertical, 4)
                         .frame(maxWidth: .infinity)

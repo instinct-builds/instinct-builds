@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.49.0
+
+- **Roll a session into the journal**: session dividers in dice history
+  gain a one-tap button that drops the whole session's rolls into the
+  journal as one entry - titled by the session, rolls oldest-first,
+  stamped under today's date. Hidden while auto-log is on (the rolls are
+  already journaled), matching the per-roll pencil.
+
 ## What's in 2.48.0
 
 - **Session dividers in dice history**: the history list now splits into

@@ -144,6 +144,17 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: 800, name: "history-groups", outDir: outDir, minHeight: 620, maxHeight: 620)
+        // 2.49.0 proof: with auto-log OFF the session dividers gain their
+        // digest-into-journal button (the main dice render keeps it hidden
+        // while the toggle is on, matching the pencil rule).
+        model.autoLogRollsToJournal = false
+        renderPNG(
+            HistoryListView(rolls: [h1, h2, y2, y1])
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 800, name: "history-session", outDir: outDir, minHeight: 620, maxHeight: 620)
+        model.autoLogRollsToJournal = true
     }
     // Proof render for 2.23.0: a macro row mid edit-in-place.
     renderPNG(
@@ -175,6 +186,11 @@ func run(model: AppModel, character: Character, outDir: String) {
                                    groups: groupRollsByDay(Array(logRolls.reversed())))
     try? logMd.write(to: URL(fileURLWithPath: "\(outDir)/session-log.md"),
                      atomically: true, encoding: .utf8)
+    // 2.49.0 proof: digest the newest session into the journal as one
+    // entry - the recap below then carries it, titled by the session.
+    if let session = sessionSegments(model.rollHistory).first {
+        model.addSessionToJournal(session)
+    }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.
     let recap = sessionRecap(character: model.selected?.wrappedValue ?? character,

@@ -385,6 +385,19 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
+    /// One-tap session digest (2.49.0): drop a whole session's rolls into
+    /// the journal as one entry, oldest first - the session-divider
+    /// button's action, offered while auto-log is off.
+    public func addSessionToJournal(_ session: RollSession) {
+        guard var c = selected?.wrappedValue else { return }
+        let body = session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n")
+        c.journal.append(JournalEntry(date: JournalStamp.day(Date()),
+                                      title: session.title,
+                                      text: body,
+                                      createdAt: Date()))
+        selected?.wrappedValue = c
+    }
+
     /// Level-up assistant: roll the hit die or take the average, then apply.
     public func levelUp(rollHP: Bool) {
         guard var c = selected?.wrappedValue, c.level < 20 else { return }
