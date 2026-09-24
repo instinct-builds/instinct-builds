@@ -775,6 +775,9 @@ int main() {
         });
         After(6.9998, ^{ // 0.23.0 voice strip: LEGATO, 8 voices, GLIDE 500 ms (LEGATO glide), RANDOM phase, BLEND 40%
             CGFloat t = view.bounds.size.height - 100;
+            Click(view, w, NSMakePoint(400 + 24, t - 32 + 8.5));   // DONE: the wavetable editor from the 3D step still covers the OSC panel
+            muew::Preset before;
+            bool ok0 = State(before);
             Click(view, w, NSMakePoint(235 + 30, t - 28 + 7.5));                          // voices > : 16 stays 16 (max)
             for (int i = 0; i < 8; ++i) Click(view, w, NSMakePoint(235 + 6, t - 28 + 7.5)); // voices < x8: 8
             Click(view, w, NSMakePoint(146 + 2 * 29 + 14, t - 28 + 7.5));               // LEGATO
@@ -783,7 +786,7 @@ int main() {
             Click(view, w, NSMakePoint(379 + 15, t - 28 + 7.5));                        // PHASE SPRD -> RAND
             Click(view, w, NSMakePoint(412 + 0.4 * 42, t - 28 + 7.5));                  // BLEND 40%
             // Add a unison stack on OSC A so the strip has something to act on in the shot.
-            Click(view, w, NSMakePoint(46 + 6 + 4 * 13 + 6.5, t - 137 + 9));            // OSC A unison: 5 voices
+            Click(view, w, NSMakePoint(46 + 6 + 4 * 13 + 6.5, t - 137 + 9));            // OSC A unison: 5 voices (so the strip acts on a stack)
             Snapshot(view, "MUEW_VOICE_PNG", "voice strip snapshot written");
             muew::Preset st;
             bool ok = State(st);
@@ -799,17 +802,18 @@ int main() {
             muew::Preset rt;
             std::string txt = ok ? st.serialize() : "";
             Check(ok && rt.parse(txt) && rt == st && txt.find("\nvoice 2 8 0.5") != std::string::npos, "the AU state saves the voice settings");
-            // Back to POLY 16, no glide, SPRD, BLEND 75% so later steps hear the preset as before.
+            // Back to POLY 16, no glide, SPRD and the original BLEND / unison so later steps hear the sound as before.
             Click(view, w, NSMakePoint(146 + 14, t - 28 + 7.5));
             for (int i = 0; i < 8; ++i) Click(view, w, NSMakePoint(235 + 32, t - 28 + 7.5));
             Click(view, w, NSMakePoint(277 + 0.5, t - 28 + 7.5));
             Click(view, w, NSMakePoint(350 + 13, t - 28 + 7.5));
             Click(view, w, NSMakePoint(379 + 15, t - 28 + 7.5));
-            Click(view, w, NSMakePoint(412 + 0.75 * 42, t - 28 + 7.5));
-            Click(view, w, NSMakePoint(46 + 6 + 6.5, t - 137 + 9));                     // OSC A unison back to 1
+            Click(view, w, NSMakePoint(412 + before.voice.uniBlend * 42, t - 28 + 7.5));   // BLEND as it was
+            Click(view, w, NSMakePoint(46 + 6 + (std::max(1, before.voice.osc1Unison) - 1) * 13 + 6.5, t - 137 + 9)); // OSC A unison as it was
             muew::Preset back;
-            Check(State(back) && back.voice.voiceMode == 0 && back.voice.polyVoices == 16 && back.voice.glideTime == 0 && !back.voice.glideLegato
-                  && back.voice.uniPhase == 0 && std::fabs(back.voice.uniBlend - 0.75) < 1e-9 && back.serialize().find("\nvoice ") == std::string::npos,
+            Check(ok0 && State(back) && back.voice.voiceMode == 0 && back.voice.polyVoices == 16 && back.voice.glideTime == 0 && !back.voice.glideLegato
+                  && back.voice.uniPhase == 0 && std::fabs(back.voice.uniBlend - before.voice.uniBlend) < 0.01 && back.voice.osc1Unison == before.voice.osc1Unison
+                  && back.serialize().find("\nvoice ") == std::string::npos,
                   "the strip returns to the defaults and the voice line disappears");
             fflush(stdout);
         });
