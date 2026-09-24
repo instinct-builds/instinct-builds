@@ -78,7 +78,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -209,6 +209,93 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 - (NSRect)unisonPip:(int)osc voice:(int)i {
     NSRect r = [self unisonStrip:osc];
     return NSMakeRect(r.origin.x + 6 + i * 13, r.origin.y, 13, r.size.height);
+}
+// 0.23.0 voice strip in the OSCILLATORS title row: POLY/MONO/LEGATO, voice
+// count stepper, GLIDE time bar, glide ALWAYS/LEGATO chip, unison PHASE chip,
+// unison BLEND bar.
+- (NSRect)voiceMode:(int)i { return NSMakeRect(146 + i * 29, [self top] - 28, 28, 15); }
+- (NSRect)voiceCount { return NSMakeRect(235, [self top] - 28, 38, 15); }
+- (NSRect)glideBar { return NSMakeRect(277, [self top] - 28, 70, 15); }
+- (NSRect)glideModeChip { return NSMakeRect(350, [self top] - 28, 26, 15); }
+- (NSRect)phaseChip { return NSMakeRect(379, [self top] - 28, 30, 15); }
+- (NSRect)blendBar { return NSMakeRect(412, [self top] - 28, 42, 15); }
+static double GlidePos(double t) { return std::sqrt(std::clamp(t, 0.0, 2.0) / 2.0); }   // bar 0..1 <-> 0..2 s, fine near 0
+static double GlideFromPos(double x) { x = std::clamp(x, 0.0, 1.0); double t = 2.0 * x * x; return t < 0.002 ? 0.0 : t; }
+static NSString* GlideText(double t) {
+    if (!(t > 0)) return @"GLIDE OFF";
+    return t < 1.0 ? [NSString stringWithFormat:@"GLIDE %.0f ms", t * 1000] : [NSString stringWithFormat:@"GLIDE %.2f s", t];
+}
+- (void)drawVoiceStrip {
+    const VoiceParams& v = current.voice;
+    NSColor* teal = C(0x5adac8);
+    NSString* modes[3] = {@"POLY", @"MONO", @"LEGATO"};
+    FillRound(NSMakeRect(144, [self top] - 29, 89, 17), 5, C(0x0f141b));
+    for (int i = 0; i < 3; ++i) {
+        NSRect r = [self voiceMode:i];
+        const bool on = std::clamp(v.voiceMode, 0, 2) == i;
+        if (on) FillRound(NSInsetRect(r, 0.5, 0.5), 4, teal);
+        TextFit(modes[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 10), 7, 5.5, on ? C(0x0b0e13) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    NSRect vc = [self voiceCount];
+    FillRound(vc, 4, C(0x0f141b));
+    const bool poly = v.voiceMode == 0;
+    TextA(@"\u2039", NSMakeRect(vc.origin.x + 1, vc.origin.y + 1.5, 9, 12), 10, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA(@"\u203A", NSMakeRect(NSMaxX(vc) - 10, vc.origin.y + 1.5, 9, 12), 10, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA([NSString stringWithFormat:@"%d V", poly ? std::clamp(v.polyVoices, 1, 16) : 1], NSMakeRect(vc.origin.x + 8, vc.origin.y + 3.5, vc.size.width - 16, 10), 7.5,
+          poly ? C(0xd5dce5) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+    NSRect gb = [self glideBar];
+    FillRound(gb, 4, C(0x0f141b));
+    const double gp = GlidePos(v.glideTime);
+    if (gp > 0) FillRound(NSMakeRect(gb.origin.x, gb.origin.y, std::max(8.0, gb.size.width * gp), gb.size.height), 4, [C(0xf2ab55) colorWithAlphaComponent:.85]);
+    TextA(GlideText(v.glideTime), NSMakeRect(gb.origin.x, gb.origin.y + 3.5, gb.size.width, 10), 7, gp > .6 ? C(0x0b0e13) : (gp > 0 ? C(0xf5f7fa) : C(0x8793a3)),
+          NSFontWeightBold, NSTextAlignmentCenter);
+    NSRect gm = [self glideModeChip];
+    FillRound(gm, 4, v.glideLegato ? [C(0xf2ab55) colorWithAlphaComponent:.25] : C(0x0f141b));
+    TextA(v.glideLegato ? @"LEG" : @"ALL", NSMakeRect(gm.origin.x, gm.origin.y + 3.5, gm.size.width, 10), 7, v.glideTime > 0 ? C(0xf2ab55) : C(0x5f6b7b),
+          NSFontWeightBold, NSTextAlignmentCenter);
+    NSRect ph = [self phaseChip];
+    FillRound(ph, 4, v.uniPhase ? [teal colorWithAlphaComponent:.25] : C(0x0f141b));
+    TextA(v.uniPhase ? @"RAND" : @"SPRD", NSMakeRect(ph.origin.x, ph.origin.y + 3.5, ph.size.width, 10), 7, v.uniPhase ? teal : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    NSRect bb = [self blendBar];
+    FillRound(bb, 4, C(0x0f141b));
+    const double bl = std::clamp(v.uniBlend, 0.0, 1.0);
+    if (bl > 0) FillRound(NSMakeRect(bb.origin.x, bb.origin.y, std::max(8.0, bb.size.width * bl), bb.size.height), 4, [C(0xc3cbd6) colorWithAlphaComponent:.30]);
+    TextA([NSString stringWithFormat:@"BLEND %.0f", bl * 100], NSMakeRect(bb.origin.x, bb.origin.y + 3.5, bb.size.width, 10), 7, C(0xd5dce5), NSFontWeightBold, NSTextAlignmentCenter);
+}
+- (void)voiceParamEdited:(int)id {
+    edited = true;
+    if (id < 0 || !host || !host->editParameter(id, current)) [self applySound];
+    [self setNeedsDisplay:YES];
+}
+- (BOOL)voiceStripMouseDown:(NSPoint)p event:(NSEvent*)e {
+    VoiceParams& v = current.voice;
+    for (int i = 0; i < 3; ++i)
+        if (NSPointInRect(p, [self voiceMode:i])) { v.voiceMode = i; [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, [self voiceCount])) {
+        if (v.voiceMode != 0) v.voiceMode = 0; // the count is a POLY setting: stepping it returns to POLY
+        else v.polyVoices = std::clamp(v.polyVoices + (p.x < NSMidX([self voiceCount]) ? -1 : 1), 1, 16);
+        [self voiceParamEdited:-1];
+        return YES;
+    }
+    if (NSPointInRect(p, NSInsetRect([self glideBar], 0, -3))) {
+        if (host) host->parameterGesture(params::GlideTime, true);
+        if (e.clickCount == 2) v.glideTime = 0;
+        else { v.glideTime = GlideFromPos((p.x - [self glideBar].origin.x) / [self glideBar].size.width); voiceDrag = 0; dragValue = GlidePos(v.glideTime); }
+        [self voiceParamEdited:params::GlideTime];
+        if (voiceDrag < 0 && host) host->parameterGesture(params::GlideTime, false);
+        return YES;
+    }
+    if (NSPointInRect(p, [self glideModeChip])) { v.glideLegato = !v.glideLegato; [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, [self phaseChip])) { v.uniPhase = v.uniPhase ? 0 : 1; [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, NSInsetRect([self blendBar], 0, -3))) {
+        if (host) host->parameterGesture(params::UnisonBlend, true);
+        if (e.clickCount == 2) v.uniBlend = VoiceParams{}.uniBlend;
+        else { v.uniBlend = std::clamp((p.x - [self blendBar].origin.x) / [self blendBar].size.width, 0.0, 1.0); voiceDrag = 1; dragValue = v.uniBlend; }
+        [self voiceParamEdited:params::UnisonBlend];
+        if (voiceDrag < 0 && host) host->parameterGesture(params::UnisonBlend, false);
+        return YES;
+    }
+    return NO;
 }
 // FX rack: 4 x 2 cards laid out in chain order (FXParams::order), left to
 // right, top to bottom. Card geometry is by slot; the unit in a slot is
@@ -908,6 +995,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     Text([NSString stringWithFormat:@"OSC B  \u2022  %s%@  \u2022  %s", ui::shapeName(v.osc2Shape),
           v.osc2Shape == kCustomShape ? [NSString stringWithFormat:@" %dF", std::max(1, (int)current.tables[1].size())] : @"", ui::warpName(v.osc2WarpMode)],
          NSMakeRect(256, top - 47, 190, 16), 10, C(0x9d7df2), NSFontWeightSemibold);
+    [self drawVoiceStrip]; // 0.23.0
     for (int o = 0; o < 2; ++o) { // unison strips
         NSColor* col = o ? C(0x9d7df2) : C(0x5adac8);
         NSRect st = [self unisonStrip:o];
@@ -2559,6 +2647,7 @@ static int SortForColumn(int c) {
     if (browserOpen) { [self browserMouseDown:p]; return; }
     if (NSPointInRect(p, [self expandRect]) || NSPointInRect(p, [self presetDisplayRect])) { [self setBrowserOpen:true]; return; }
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
+    if ([self voiceStripMouseDown:p event:e]) return; // 0.23.0
     if ([self oscMouseDown:p event:e]) return;
     if ([self filterPanelMouseDown:p event:e]) return;
     if ([self msegMouseDown:p event:e]) return;
@@ -2657,6 +2746,13 @@ static int SortForColumn(int c) {
         return;
     }
     if (msegEdit >= 0 && (msegPt >= 0 || msegSeg >= 0 || msegLoopEdge >= 0)) { [self msegDragTo:p shift:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return; }
+    if (voiceDrag >= 0) { // 0.23.0 GLIDE / BLEND bars: the full bar width is the whole range
+        NSRect r = voiceDrag ? [self blendBar] : [self glideBar];
+        const double x = std::clamp(dragValue + (p.x - dragStart.x) / (r.size.width * scale / 150.0), 0.0, 1.0);
+        if (voiceDrag) current.voice.uniBlend = x; else current.voice.glideTime = GlideFromPos(x);
+        [self voiceParamEdited:voiceDrag ? params::UnisonBlend : params::GlideTime];
+        return;
+    }
     if (filterXDrag >= 0) { // 0.21.0 FILTER 1 bars: the full bar width is 0..100%
         double& val = *[self filterXField:filterXDrag];
         val = std::clamp(dragValue + (p.x - dragStart.x) / ([self filterXBar:filterXDrag].size.width * scale / 150.0), 0.0, 1.0);
@@ -2769,6 +2865,8 @@ static int SortForColumn(int c) {
         if (id >= 0 && host) host->parameterGesture(id, false);
         fxRowDrag = -1;
     }
+    if (voiceDrag >= 0 && host) host->parameterGesture(voiceDrag ? params::UnisonBlend : params::GlideTime, false);
+    voiceDrag = -1;
     dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
     msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);

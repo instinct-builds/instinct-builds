@@ -73,6 +73,7 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::FilterMorph: return "F MORPH";
     case ModRoute::Dest::Filter2Morph: return "F2 MORPH";
     case ModRoute::Dest::FilterBalance: return "F BALANCE";
+    case ModRoute::Dest::UnisonBlend: return "UNI BLEND";
     }
     return "?";
 }
@@ -193,7 +194,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::FxDelayFeedback, D::FxReverbDecay, D::FxPhaserDepth, D::FxFlangerDepth, D::FxChorusDepth,
                                   D::Osc1Warp2, D::Osc2Warp2, // 0.19.0 appended
                                   D::FilterDrive, D::FilterMorph, // 0.21.0 appended
-                                  D::Filter2Morph, D::FilterBalance}; // 0.22.0 appended
+                                  D::Filter2Morph, D::FilterBalance, // 0.22.0 appended
+                                  D::UnisonBlend}; // 0.23.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.

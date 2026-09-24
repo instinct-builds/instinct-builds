@@ -45,6 +45,7 @@ struct PresetInfo {
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
+//                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.22.0 adds optional `filterr <f1mix> <f2mix> <balance> <f2morph>`; filter2 types 6-8.
 //                  0.21.0 adds optional `filterx <drive> <keytrack> <morph>`; filterMode 5-8.
 //                  0.19.0 adds optional `warpx <modeA> <amtA> <modeB> <amtB>` (second
@@ -198,6 +199,13 @@ struct Preset {
             else if (key == "lfo2") ls >> voice.lfo2Rate >> voice.lfo2Shape;
             else if (key == "warp1") ls >> voice.osc1WarpMode >> voice.osc1Warp;
             else if (key == "warp2") ls >> voice.osc2WarpMode >> voice.osc2Warp;
+            else if (key == "voice") { // 0.23.0: mode poly-voices glide-time glide-legato unison-phase
+                int m = 0, n = 16, gl = 0, ph = 0; double g = 0;
+                if (ls >> m >> n >> g >> gl >> ph && std::isfinite(g)) {
+                    voice.voiceMode = std::clamp(m, 0, 2); voice.polyVoices = std::clamp(n, 1, 16);
+                    voice.glideTime = std::clamp(g, 0.0, 5.0); voice.glideLegato = gl != 0; voice.uniPhase = std::clamp(ph, 0, 1);
+                }
+            }
             else if (key == "filterr") { // 0.22.0: f1 mix, f2 mix, parallel balance, f2 morph
                 double m1 = 1, m2 = 1, b = 0.5, f2m = 0;
                 if (ls >> m1 >> m2 >> b >> f2m && std::isfinite(m1) && std::isfinite(m2) && std::isfinite(b) && std::isfinite(f2m)) {
@@ -414,7 +422,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::MSEG2 && d >= 0 && d <= (int)ModRoute::Dest::FilterBalance) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::MSEG2 && d >= 0 && d <= (int)ModRoute::Dest::UnisonBlend) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
                     std::string k2;
@@ -484,6 +492,7 @@ struct Preset {
             && tables[0] == o.tables[0] && tables[1] == o.tables[1];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;
+        if (a.voiceMode != b.voiceMode || a.polyVoices != b.polyVoices || a.glideTime != b.glideTime || a.glideLegato != b.glideLegato || a.uniPhase != b.uniPhase) return false; // 0.23.0
         if (a.filter1Mix != b.filter1Mix || a.filter2Mix != b.filter2Mix || a.filterBalance != b.filterBalance || a.filter2Morph != b.filter2Morph) return false; // 0.22.0
         if (a.filterDrive != b.filterDrive || a.filterKeytrack != b.filterKeytrack || a.filterMorph != b.filterMorph) return false; // 0.21.0
         if (a.osc1Warp2Mode != b.osc1Warp2Mode || a.osc1Warp2 != b.osc1Warp2 || a.osc2Warp2Mode != b.osc2Warp2Mode || a.osc2Warp2 != b.osc2Warp2
@@ -558,6 +567,8 @@ private:
             for (const auto& p : v.mseg2Points) o << " " << p.time << " " << p.value << " " << p.curve;
             o << "\n";
         }
+        if (v.voiceMode != 0 || v.polyVoices != 16 || v.glideTime != 0 || v.glideLegato || v.uniPhase != 0) // 0.23.0
+            o << "voice " << v.voiceMode << " " << v.polyVoices << " " << v.glideTime << " " << (v.glideLegato ? 1 : 0) << " " << v.uniPhase << "\n";
         if (v.filter1Mix != 1 || v.filter2Mix != 1 || v.filterBalance != 0.5 || v.filter2Morph != 0) // 0.22.0
             o << "filterr " << v.filter1Mix << " " << v.filter2Mix << " " << v.filterBalance << " " << v.filter2Morph << "\n";
         if (v.filterDrive != 0 || v.filterKeytrack != 0 || v.filterMorph != 0) // 0.21.0

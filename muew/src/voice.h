@@ -32,7 +32,8 @@ struct ModRoute {
                       FxDelayFeedback = 16, FxReverbDecay = 17, FxPhaserDepth = 18, FxFlangerDepth = 19, FxChorusDepth = 20,
                       Osc1Warp2 = 21, Osc2Warp2 = 22,                 // 0.19.0: second warp slot amounts (0..1)
                       FilterDrive = 23, FilterMorph = 24,             // 0.21.0: filter 1 drive / morph (0..1)
-                      Filter2Morph = 25, FilterBalance = 26 } dest;   // 0.22.0: filter 2 morph, parallel F1/F2 balance (0..1)
+                      Filter2Morph = 25, FilterBalance = 26,          // 0.22.0: filter 2 morph, parallel F1/F2 balance (0..1)
+                      UnisonBlend = 27 } dest;                        // 0.23.0: unison outer-voice level (0..1)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -129,6 +130,13 @@ struct VoiceParams {
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
     // 0.22.0: per-filter dry/wet, parallel balance (0 all F1 .. 1 all F2), filter 2 MORPH position.
     double filter1Mix = 1.0, filter2Mix = 1.0, filterBalance = 0.5, filter2Morph = 0.0;
+    // 0.23.0 voice depth. Defaults are the 0.22.0 behavior exactly: 16-voice
+    // poly, no glide, unison stacks restarting at their fixed spread phases.
+    int voiceMode = 0;          // 0 poly, 1 mono (retrigger), 2 legato (mono, no retrigger while held)
+    int polyVoices = 16;        // 1..16 voices in poly mode
+    double glideTime = 0.0;     // seconds for a full glide, 0 = off
+    bool glideLegato = false;   // glide only between overlapping notes
+    int uniPhase = 0;           // 0 spread (fixed phases, retriggered), 1 random per note
 };
 
 constexpr int kMaxUnison = 8;
@@ -185,12 +193,13 @@ public:
         filter_.setMorph(p.filterMorph); filterR_.setMorph(p.filterMorph);
         usesFilterX_ = false;
         bool driveRouted = false;
-        usesF2Morph_ = false; usesBalance_ = false;
+        usesF2Morph_ = false; usesBalance_ = false; usesUniBlend_ = false;
         for (const auto& r : routes) {
             if (r.dest == ModRoute::Dest::FilterDrive || r.dest == ModRoute::Dest::FilterMorph) usesFilterX_ = true;
             if (r.dest == ModRoute::Dest::FilterDrive) driveRouted = true;
             if (r.dest == ModRoute::Dest::Filter2Morph) usesF2Morph_ = true;   // 0.22.0
             if (r.dest == ModRoute::Dest::FilterBalance) usesBalance_ = true;
+            if (r.dest == ModRoute::Dest::UnisonBlend) usesUniBlend_ = true; // 0.23.0
         }
         filter_.setOversample(p.filterDrive > 0 || driveRouted); filterR_.setOversample(p.filterDrive > 0 || driveRouted); // 0.22.0
         ampEnv_.set(p.ampA, p.ampD, p.ampS, p.ampR);
@@ -245,6 +254,7 @@ public:
         note_ = note;
         velocity_ = velocity;
         baseFreq_ = midiToFreq(note);
+        glideLeft_ = 0; glideSemi_ = 0.0;
         ampEnv_.noteOn();
         modEnv_.noteOn();
         resetLfos();
@@ -253,15 +263,42 @@ public:
         // Stacked voices start at spread phases so a unison stack sounds wide
         // from the first cycle instead of flanging out of one phase. Voice 0
         // starts at 0 like the single-oscillator path.
-        for (int i = 0; i < kMaxUnison; ++i) {
-            osc1_[i].setPhase(i == 0 ? 0.0 : std::fmod(i * 0.618034, 1.0));
-            osc2_[i].setPhase(i == 0 ? 0.0 : std::fmod(i * 0.381966 + 0.25, 1.0));
+        if (params_.uniPhase == 1) { // 0.23.0 RANDOM: fresh start phases every note, all voices
+            for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setPhase(nextRand()); osc2_[i].setPhase(nextRand()); }
+        } else {
+            for (int i = 0; i < kMaxUnison; ++i) {
+                osc1_[i].setPhase(i == 0 ? 0.0 : std::fmod(i * 0.618034, 1.0));
+                osc2_[i].setPhase(i == 0 ? 0.0 : std::fmod(i * 0.381966 + 0.25, 1.0));
+            }
         }
         age_ = 0;
         sub_.setPhase(0.0);
         dcL_.reset(); dcR_.reset(); dcOn_ = false;
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
     }
+
+    // 0.23.0 glide: slide the pitch from `fromHz` to the current note over
+    // glideTime (constant time, straight line in semitones). No-op when off.
+    void glideFrom(double fromHz) {
+        if (!(params_.glideTime > 0.0) || !(fromHz > 0.0) || note_ < 0) return;
+        glideTarget_ = midiToFreq(note_);
+        glideSemi_ = 12.0 * std::log2(fromHz / glideTarget_);
+        if (std::fabs(glideSemi_) < 1e-9) { glideSemi_ = 0.0; return; }
+        glideLeft_ = std::max<int64_t>(1, (int64_t)std::llround(params_.glideTime * sr_));
+        glideStep_ = -glideSemi_ / (double)glideLeft_;
+        baseFreq_ = fromHz;
+    }
+    // 0.23.0 legato: move a sounding voice to a new note without restarting
+    // its envelopes, LFOs or phases; glides there when glide is on.
+    void legatoTo(int note) {
+        const double from = baseFreq_;
+        note_ = note;
+        baseFreq_ = midiToFreq(note);
+        glideLeft_ = 0; glideSemi_ = 0.0;
+        glideFrom(from);
+    }
+    double currentFreq() const { return baseFreq_; }
+    bool gliding() const { return glideLeft_ > 0; }
 
     void noteOff() { ampEnv_.noteOff(); modEnv_.noteOff(); env3_.noteOff(); mseg1_.release(); mseg2_.release(); }
 
@@ -275,6 +312,10 @@ public:
     inline float process() { float l, r; processStereo(l, r); return 0.5f * (l + r); }
 
     inline void processStereo(float& outL, float& outR) {
+        if (glideLeft_ > 0) { // 0.23.0 glide
+            if (--glideLeft_ == 0) { glideSemi_ = 0.0; baseFreq_ = glideTarget_; }
+            else { glideSemi_ += glideStep_; baseFreq_ = glideTarget_ * std::pow(2.0, glideSemi_ / 12.0); }
+        }
         float lfo = lfo1_.process();
         float lfo2 = lfo2_.process();
         float modEnv = modEnv_.process();
@@ -348,6 +389,7 @@ public:
             l = r = osc1_[0].process() * g1 + osc2_[0].process() * g2;
         } else {
             const double width = std::clamp(params_.uniWidth + modSum(ModRoute::Dest::UnisonWidth), 0.0, 1.0);
+            if (usesUniBlend_) blendMod_ = modSum(ModRoute::Dest::UnisonBlend); // 0.23.0
             const double det1 = std::clamp(params_.osc1UniDetune + modSum(ModRoute::Dest::Osc1Unison), 0.0, 1.0);
             const double det2 = std::clamp(params_.osc2UniDetune + modSum(ModRoute::Dest::Osc2Unison), 0.0, 1.0);
             float l1 = 0, r1 = 0, l2 = 0, r2 = 0;
@@ -442,6 +484,14 @@ private:
     float velocity_ = 0.0f;
     double baseFreq_ = 440.0;
     uint64_t age_ = 0;
+    // 0.23.0 glide state and the RANDOM unison phase generator.
+    double glideTarget_ = 440.0, glideSemi_ = 0.0, glideStep_ = 0.0;
+    int64_t glideLeft_ = 0;
+    uint32_t rng_ = 0x6d2b79f5u;
+    double nextRand() { rng_ ^= rng_ << 13; rng_ ^= rng_ >> 17; rng_ ^= rng_ << 5; return (rng_ >> 8) * (1.0 / 16777216.0); }
+public:
+    void seedPhases(uint32_t s) { rng_ = s ? s : 0x6d2b79f5u; }
+private:
     // One unison stack of n voices: symmetric detune (outer voices at
     // +-detune semitones), constant-power pan across +-width, outer voices
     // at `blend` level, sum normalized by 1/sqrt(weights) so a stack keeps
@@ -482,7 +532,7 @@ private:
             l += s; r += s;
             return;
         }
-        gains.update(n, width, std::clamp(params_.uniBlend, 0.0, 1.0));
+        gains.update(n, width, usesUniBlend_ ? std::clamp(params_.uniBlend + blendMod_, 0.0, 1.0) : std::clamp(params_.uniBlend, 0.0, 1.0));
         if (detune != gains.detune) { // per-voice pitch ratios, recomputed only when the spread moves
             gains.detune = detune;
             for (int i = 0; i < n; ++i) gains.ratio[i] = std::pow(2.0, (2.0 * i / (n - 1) - 1.0) * detune / 12.0);
@@ -548,6 +598,7 @@ private:
     bool usesWarpX_ = false;
     bool usesFilterX_ = false;
     bool usesF2Morph_ = false, usesBalance_ = false; // 0.22.0
+    bool usesUniBlend_ = false; double blendMod_ = 0.0; // 0.23.0
     AlignDelay alignDry1L_, alignDry1R_, alignDry2L_, alignDry2R_, alignParL_, alignParR_, alignPar2L_, alignPar2R_; // 0.22.0 // 0.21.0: a route targets FILTER DRIVE or MORPH
     double w2a_ = 0.0, w2b_ = 0.0;
     static bool warp2Prone(int mode) { return mode >= 2 && mode != 5 && mode != 6 ? true : false; }

@@ -773,6 +773,46 @@ int main() {
             Check(ok && rt.parse(txt) && rt == st && txt.find("\nfilterr 1 0.6") != std::string::npos, "the AU state saves the filter routing");
             fflush(stdout);
         });
+        After(6.9998, ^{ // 0.23.0 voice strip: LEGATO, 8 voices, GLIDE 500 ms (LEGATO glide), RANDOM phase, BLEND 40%
+            CGFloat t = view.bounds.size.height - 100;
+            Click(view, w, NSMakePoint(235 + 30, t - 28 + 7.5));                          // voices > : 16 stays 16 (max)
+            for (int i = 0; i < 8; ++i) Click(view, w, NSMakePoint(235 + 6, t - 28 + 7.5)); // voices < x8: 8
+            Click(view, w, NSMakePoint(146 + 2 * 29 + 14, t - 28 + 7.5));               // LEGATO
+            Click(view, w, NSMakePoint(277 + 0.5 * 70, t - 28 + 7.5));                  // GLIDE bar at 50% = 500 ms
+            Click(view, w, NSMakePoint(350 + 13, t - 28 + 7.5));                        // glide ALL -> LEG
+            Click(view, w, NSMakePoint(379 + 15, t - 28 + 7.5));                        // PHASE SPRD -> RAND
+            Click(view, w, NSMakePoint(412 + 0.4 * 42, t - 28 + 7.5));                  // BLEND 40%
+            // Add a unison stack on OSC A so the strip has something to act on in the shot.
+            Click(view, w, NSMakePoint(46 + 6 + 4 * 13 + 6.5, t - 137 + 9));            // OSC A unison: 5 voices
+            Snapshot(view, "MUEW_VOICE_PNG", "voice strip snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            AudioUnitParameterValue gv = -1, bv = -1;
+            AudioUnitGetParameter(gUnit, muew::params::GlideTime, kAudioUnitScope_Global, 0, &gv);
+            AudioUnitGetParameter(gUnit, muew::params::UnisonBlend, kAudioUnitScope_Global, 0, &bv);
+            printf("voice: mode %d, voices %d, glide %.3f s (param %.3f), legato glide %d, phase %d, blend %.3f (param %.1f), unison A %d\n",
+                   st.voice.voiceMode, st.voice.polyVoices, st.voice.glideTime, gv, st.voice.glideLegato ? 1 : 0, st.voice.uniPhase, st.voice.uniBlend, bv, st.voice.osc1Unison);
+            Check(ok && st.voice.voiceMode == 2 && st.voice.polyVoices == 8 && std::fabs(st.voice.glideTime - 0.5) < 0.01 && st.voice.glideLegato
+                  && st.voice.uniPhase == 1 && std::fabs(st.voice.uniBlend - 0.4) < 0.01 && st.voice.osc1Unison == 5,
+                  "LEGATO, 8 voices, GLIDE 500 ms LEG, RAND phase and BLEND 40% reached the AU's sound");
+            Check(std::fabs(gv - 0.5) < 0.01 && std::fabs(bv - 40) < 1, "Glide Time and Unison Blend AU parameters follow the strip");
+            muew::Preset rt;
+            std::string txt = ok ? st.serialize() : "";
+            Check(ok && rt.parse(txt) && rt == st && txt.find("\nvoice 2 8 0.5") != std::string::npos, "the AU state saves the voice settings");
+            // Back to POLY 16, no glide, SPRD, BLEND 75% so later steps hear the preset as before.
+            Click(view, w, NSMakePoint(146 + 14, t - 28 + 7.5));
+            for (int i = 0; i < 8; ++i) Click(view, w, NSMakePoint(235 + 32, t - 28 + 7.5));
+            Click(view, w, NSMakePoint(277 + 0.5, t - 28 + 7.5));
+            Click(view, w, NSMakePoint(350 + 13, t - 28 + 7.5));
+            Click(view, w, NSMakePoint(379 + 15, t - 28 + 7.5));
+            Click(view, w, NSMakePoint(412 + 0.75 * 42, t - 28 + 7.5));
+            Click(view, w, NSMakePoint(46 + 6 + 6.5, t - 137 + 9));                     // OSC A unison back to 1
+            muew::Preset back;
+            Check(State(back) && back.voice.voiceMode == 0 && back.voice.polyVoices == 16 && back.voice.glideTime == 0 && !back.voice.glideLegato
+                  && back.voice.uniPhase == 0 && std::fabs(back.voice.uniBlend - 0.75) < 1e-9 && back.serialize().find("\nvoice ") == std::string::npos,
+                  "the strip returns to the defaults and the voice line disappears");
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });

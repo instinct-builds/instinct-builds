@@ -11,7 +11,10 @@ namespace muew {
 // Polyphonic synth: fixed voice pool, oldest-voice stealing, soft-clipped mix.
 class Synth {
 public:
-    explicit Synth(int maxVoices = 16) { voices_.resize(maxVoices); }
+    explicit Synth(int maxVoices = 16) {
+        voices_.resize(maxVoices); polyVoices_ = maxVoices;
+        for (int i = 0; i < maxVoices; ++i) voices_[i].seedPhases(0x9e3779b9u * (uint32_t)(i + 1)); // 0.23.0 RANDOM phase streams
+    }
 
     void init(double sampleRate) {
         sr_ = sampleRate;
@@ -29,6 +32,15 @@ public:
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
         for (auto& v : voices_) v.setParams(p, routes);
+        const int mode = std::clamp(p.voiceMode, 0, 2);
+        if (mode != voiceMode_) { // leaving or entering mono: release everything, start from a clean note stack
+            for (auto& v : voices_) if (v.isActive()) v.noteOff();
+            held_ = 0;
+        }
+        voiceMode_ = mode;
+        polyVoices_ = std::clamp(p.polyVoices, 1, (int)voices_.size());
+        glideOn_ = p.glideTime > 0.0;
+        glideLegato_ = p.glideLegato;
         // The FX rack is shared by all voices, so only global sources (macros,
         // rack LFOs) can modulate it.
         FXChain::Mod m;
@@ -93,21 +105,37 @@ public:
     void setTempo(double bpm) { for (auto& v : voices_) v.setTempo(bpm); fx_.setTempo(bpm); }
 
     void noteOn(int note, float velocity) {
-        // Reuse a voice already playing this note, else a free one, else steal oldest.
+        if (voiceMode_ != 0) { monoNoteOn(note, velocity); return; }
+        // Poly: reuse a voice already playing this note, else a free one, else
+        // steal the oldest, among the first polyVoices voices.
+        const int n = polyVoices_;
+        const bool overlap = anyHeld();
         Voice* target = nullptr;
-        for (auto& v : voices_) if (v.isActive() && v.note() == note) { target = &v; break; }
-        if (!target) for (auto& v : voices_) if (!v.isActive()) { target = &v; break; }
+        for (int i = 0; i < n; ++i) if (voices_[i].isActive() && voices_[i].note() == note) { target = &voices_[i]; break; }
+        if (!target) for (int i = 0; i < n; ++i) if (!voices_[i].isActive()) { target = &voices_[i]; break; }
         if (!target) {
             target = &voices_[0];
-            for (auto& v : voices_) if (v.age() > target->age()) target = &v;
+            for (int i = 0; i < n; ++i) if (voices_[i].age() > target->age()) target = &voices_[i];
         }
         target->setClock(clock_);
         target->noteOn(note, velocity);
+        // 0.23.0 poly glide: from the last note played (ALWAYS), or only while
+        // another key is still down (LEGATO).
+        if (glideOn_ && lastNote_ >= 0 && (!glideLegato_ || overlap)) target->glideFrom(lastFreq_);
+        lastNote_ = note; lastFreq_ = midiToFreq(note);
+        push(note, velocity);
     }
 
     void noteOff(int note) {
+        if (voiceMode_ != 0) { monoNoteOff(note); return; }
+        remove(note);
         for (auto& v : voices_) if (v.isActive() && v.note() == note) v.noteOff();
     }
+
+    // 0.23.0 inspection (tests, UI).
+    int voiceMode() const { return voiceMode_; }
+    int heldCount() const { return held_; }
+    const Voice& voice(int i) const { return voices_[std::clamp(i, 0, (int)voices_.size() - 1)]; }
 
     int activeVoiceCount() const {
         int n = 0;
@@ -172,6 +200,55 @@ public:
     FXChain fx_;
 
 private:
+    // 0.23.0 mono / legato. One voice (voice 0) plays the newest held key;
+    // releasing it falls back to the previous held key (last-note priority).
+    void monoNoteOn(int note, float velocity) {
+        Voice& v = voices_[0];
+        const bool overlap = anyHeld() && v.isActive();
+        remove(note);
+        push(note, velocity);
+        if (voiceMode_ == 2 && overlap) { v.legatoTo(note); return; } // LEGATO: no retrigger while held
+        const double from = v.isActive() ? v.currentFreq() : lastFreq_;
+        v.setClock(clock_);
+        v.noteOn(note, velocity);
+        if (glideOn_ && lastNote_ >= 0 && (!glideLegato_ || overlap)) v.glideFrom(from);
+        lastNote_ = note; lastFreq_ = midiToFreq(note);
+    }
+    void monoNoteOff(int note) {
+        const bool wasTop = held_ > 0 && heldNote_[held_ - 1] == note;
+        remove(note);
+        Voice& v = voices_[0];
+        if (!wasTop || !v.isActive()) return;
+        if (held_ == 0) { v.noteOff(); return; }
+        const int back = heldNote_[held_ - 1];
+        if (voiceMode_ == 2) v.legatoTo(back);          // LEGATO: slide back without a new attack
+        else {                                           // MONO: retrigger the previous key
+            const double from = v.currentFreq();
+            v.setClock(clock_);
+            v.noteOn(back, heldVel_[held_ - 1]);
+            if (glideOn_) v.glideFrom(from);
+        }
+        lastNote_ = back; lastFreq_ = midiToFreq(back);
+    }
+    bool anyHeld() const { return held_ > 0; }
+    void push(int note, float vel) {
+        remove(note);
+        if (held_ == kHeld) { for (int i = 1; i < kHeld; ++i) { heldNote_[i - 1] = heldNote_[i]; heldVel_[i - 1] = heldVel_[i]; } --held_; }
+        heldNote_[held_] = note; heldVel_[held_] = vel; ++held_;
+    }
+    void remove(int note) {
+        int w = 0;
+        for (int i = 0; i < held_; ++i) if (heldNote_[i] != note) { heldNote_[w] = heldNote_[i]; heldVel_[w] = heldVel_[i]; ++w; }
+        held_ = w;
+    }
+    static constexpr int kHeld = 32;
+    int heldNote_[kHeld] = {};
+    float heldVel_[kHeld] = {};
+    int held_ = 0;
+    int voiceMode_ = 0, polyVoices_ = 16, lastNote_ = -1;
+    double lastFreq_ = 0.0;
+    bool glideOn_ = false, glideLegato_ = false;
+
     double sr_ = 44100.0;
     std::unique_ptr<Wavetable> table_;
     std::vector<Voice> voices_;
