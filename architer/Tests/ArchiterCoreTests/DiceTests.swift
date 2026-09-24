@@ -782,8 +782,10 @@ struct SessionSegmentTests {
             .renamed("Night watch")
         let text = sessionShareText(session)
         #expect(text.hasPrefix("Night watch\n2 rolls \u{00B7} high 10 \u{00B7} low 10\n\n"))
+        // lines[2] is the blank separator after the stats line.
         let lines = text.components(separatedBy: "\n")
-        #expect(lines[2].contains("2d6: 10"))
-        #expect(lines[3].contains("d20: 10"))
+        #expect(lines[2].isEmpty)
+        #expect(lines[3].contains("2d6: 10"))
+        #expect(lines[4].contains("d20: 10"))
     }
 }
