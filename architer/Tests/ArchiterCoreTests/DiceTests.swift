@@ -228,6 +228,34 @@ struct RollDayGroupTests {
     }
 }
 
+@Suite("Roll-again spec")
+struct RerollSpecTests {
+    @Test func rollsWithoutASpecDecodeUnchanged() throws {
+        // The pre-2.40.0 saved shape: no reroll key at all.
+        let json = #"{"expression":"2d6+3","dice":[],"modifier":3,"total":10,"alternateTotal":null,"label":null,"characterName":null,"rolledAt":null}"#
+        let roll = try JSONDecoder().decode(RollResult.self, from: Data(json.utf8))
+        #expect(roll.reroll == nil)
+    }
+
+    @Test func specRoundTrips() throws {
+        var roll = RollResult(expression: "8d6", dice: [], modifier: 0, total: 26, alternateTotal: nil)
+        roll.label = "Fireball (fire: resist 13 - immune 0 - vuln 52)"
+        roll.reroll = RerollSpec(kind: .outgoingDamage, baseLabel: "Fireball", damageType: "fire")
+        let data = try JSONEncoder().encode(roll)
+        let back = try JSONDecoder().decode(RollResult.self, from: data)
+        #expect(back == roll)
+        #expect(back.reroll?.kind == .outgoingDamage)
+        #expect(back.reroll?.baseLabel == "Fireball")
+        #expect(back.reroll?.damageType == "fire")
+    }
+
+    @Test func checkSpecCarriesModeAndBonus() throws {
+        let spec = RerollSpec(kind: .check, baseLabel: "Stealth check", mode: .advantage, checkBonus: 7)
+        #expect(spec.mode == .advantage)
+        #expect(spec.checkBonus == 7)
+    }
+}
+
 @Suite("Session-log appendix rows")
 struct SessionLogRowTests {
     private func stamped(_ expression: String, label: String?, at: Date?) -> RollResult {

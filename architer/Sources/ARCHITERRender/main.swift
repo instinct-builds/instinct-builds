@@ -92,6 +92,9 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Seeded after the sheet render so the resisted total lands in dice
     // history without lowering the sheet's HP bar.
     model.rollIncomingDamage("2d6+3", type: .fire)
+    // 2.40.0 proof: roll the oldest raw roll again from its card - history
+    // gains a second 4d6kh3 entry at the top, stamped now.
+    if let oldest = model.rollHistory.last { model.rollAgain(oldest) }
     // 2.38.0 proof: backdate the three oldest rolls so the history groups
     // into Today / Yesterday under its sticky headers. The third-oldest is
     // the character's own check, which also puts a Yesterday group into the

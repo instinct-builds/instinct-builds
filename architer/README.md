@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.40.0
+
+- Roll again from history: every roll card on the Dice tab gains a
+  reroll button. Rolls made in 2.40.0+ replay their undecorated inputs,
+  so condition tags and outgoing-defense notes recompute against the
+  character as they are right now; older rolls reroll the same notation
+  under their recorded label. Incoming-damage rolls are the one
+  exception - no reroll button, because rolling again is not taking
+  more damage.
+
 ## What's in 2.39.0
 
 - Compact-PDF session-log appendix: a new opt-in toggle ("Compact PDF:

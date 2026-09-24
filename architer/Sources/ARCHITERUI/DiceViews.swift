@@ -335,6 +335,18 @@ struct RollCard: View {
                     .foregroundStyle(Theme.inkFaint)
                     .help(rolledAt.formatted(date: .abbreviated, time: .shortened))
             }
+            // 2.40.0 roll-again: every card except incoming damage (rolling
+            // again is not taking more damage).
+            if roll.reroll?.kind != .incomingDamage {
+                Button {
+                    model.rollAgain(roll)
+                } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.inkFaint)
+                    .help(roll.reroll == nil
+                        ? "Roll \(roll.expression) again"
+                        : "Roll again - condition tags and defense notes recompute")
+            }
             Button {
                 model.addRollToJournal(roll)
             } label: { Image(systemName: "square.and.pencil") }

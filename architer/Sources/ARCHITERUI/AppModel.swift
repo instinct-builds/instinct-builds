@@ -238,7 +238,10 @@ public final class AppModel: ObservableObject {
     }
 
     public func roll(_ expression: String) {
-        if let r = try? roller.roll(expression) { record(r) }
+        if var r = try? roller.roll(expression) {
+            r.reroll = RerollSpec(kind: .plain)
+            record(r)
+        }
     }
 
     /// Incoming damage on the dice path: roll the expression, fold the
@@ -256,6 +259,7 @@ public final class AppModel: ObservableObject {
         } else {
             r.label = "\(typeName) damage taken"
         }
+        r.reroll = RerollSpec(kind: .incomingDamage)
         record(r)
         // Defenses already folded in above; type nil keeps temp-HP absorption.
         c.applyDamage(adjusted, type: nil)
@@ -272,7 +276,37 @@ public final class AppModel: ObservableObject {
     }
 
     public func rollLabeled(_ label: String, _ expression: String) {
-        if let r = try? roller.rollLabeled(label, expression) { record(r) }
+        if var r = try? roller.rollLabeled(label, expression) {
+            r.reroll = RerollSpec(kind: .plain, baseLabel: label)
+            record(r)
+        }
+    }
+
+    /// 2.40.0 roll-again: replay a history card's roll. 2.40.0+ rolls
+    /// carry their undecorated inputs, so condition tags and
+    /// outgoing-defense notes recompute against the character as they are
+    /// now; older rolls fall back to a plain reroll of the expression
+    /// under the recorded display label. Incoming damage is not
+    /// rerollable - rolling again is not taking more damage.
+    public func rollAgain(_ roll: RollResult) {
+        guard let spec = roll.reroll else {
+            if let label = roll.label { rollLabeled(label, roll.expression) }
+            else { roll(roll.expression) }
+            return
+        }
+        switch spec.kind {
+        case .plain:
+            if let base = spec.baseLabel { rollLabeled(base, roll.expression) }
+            else { roll(roll.expression) }
+        case .check:
+            rollCheck(spec.baseLabel ?? roll.label ?? "Check",
+                      bonus: spec.checkBonus ?? 0, mode: spec.mode ?? .normal)
+        case .outgoingDamage:
+            recordDamageRoll(spec.baseLabel ?? roll.label ?? "Damage", roll.expression,
+                             type: spec.damageType.flatMap { DamageType(rawValue: $0) })
+        case .incomingDamage:
+            break
+        }
     }
 
     /// Roll a saved macro: labeled with its name. A macro with a damage-type
@@ -296,6 +330,8 @@ public final class AppModel: ObservableObject {
         if let type {
             r.label = "\(label) (\(Character.outgoingDefenseNote(total: r.total, type: type)))"
         }
+        r.reroll = RerollSpec(kind: .outgoingDamage, baseLabel: label,
+                              damageType: type?.rawValue)
         record(r)
     }
 
@@ -327,7 +363,9 @@ public final class AppModel: ObservableObject {
     /// blinded, prone...) fold disadvantage into the mode.
     public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal) {
         guard let c = selected?.wrappedValue else {
-            record(roller.check(label, bonus: bonus, mode: mode))
+            var r = roller.check(label, bonus: bonus, mode: mode)
+            r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode, checkBonus: bonus)
+            record(r)
             return
         }
         let kind: Character.D20RollKind = label.localizedCaseInsensitiveContains("attack") ? .attack : .check
@@ -342,7 +380,9 @@ public final class AppModel: ObservableObject {
             tags.append("advantage canceled by condition")
         }
         let tagged = tags.isEmpty ? label : "\(label) (\(tags.joined(separator: "; ")))"
-        record(roller.check(tagged, bonus: bonus - penalty, mode: effective))
+        var r = roller.check(tagged, bonus: bonus - penalty, mode: effective)
+        r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode, checkBonus: bonus)
+        record(r)
     }
 
     /// Attack roll + damage roll as two history entries.

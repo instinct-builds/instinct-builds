@@ -45,6 +45,48 @@ public struct RollResult: Equatable, Codable, Sendable {
     /// When the roll was made (2.35.0); nil for pre-2.35.0 saved rolls.
     /// Optional so old journal/history saves decode unchanged.
     public var rolledAt: Date? = nil
+    /// How to make this roll again (2.40.0); nil for pre-2.40.0 rolls,
+    /// which fall back to a plain reroll of the expression. Optional so
+    /// old saves decode unchanged.
+    public var reroll: RerollSpec? = nil
+}
+
+/// The roll path a history card replays (2.40.0).
+public enum RerollKind: String, Codable, Sendable {
+    /// Raw notation or a plain labeled roll.
+    case plain
+    /// A d20 check: mode and bonus replay, era/condition adjustments
+    /// recompute against the character as they are now.
+    case check
+    /// A typed damage roll: the outgoing-defense note recomputes.
+    case outgoingDamage
+    /// Damage already taken: not rerollable (rolling again is not taking
+    /// more damage). Stored so the card can hide its reroll button
+    /// without sniffing the label.
+    case incomingDamage
+}
+
+/// The undecorated inputs behind a roll's display label (2.40.0): the
+/// label before condition tags or defense notes were folded in, the
+/// requested d20 mode and bonus, and the damage-type tag. All optional
+/// beyond the kind so specs stay minimal per path.
+public struct RerollSpec: Equatable, Codable, Sendable {
+    public var kind: RerollKind
+    public var baseLabel: String?
+    public var mode: RollMode?
+    public var checkBonus: Int?
+    /// DamageType raw value; unknown stored values fail safe to nil on
+    /// reroll (2.33.0 pattern).
+    public var damageType: String?
+
+    public init(kind: RerollKind, baseLabel: String? = nil, mode: RollMode? = nil,
+                checkBonus: Int? = nil, damageType: String? = nil) {
+        self.kind = kind
+        self.baseLabel = baseLabel
+        self.mode = mode
+        self.checkBonus = checkBonus
+        self.damageType = damageType
+    }
 }
 
 public extension RollResult {
