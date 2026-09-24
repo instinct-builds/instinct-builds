@@ -271,6 +271,15 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: width, name: "journal-filter", outDir: outDir)
+        // 2.60.0 proof: while the filter is active, body hits surface
+        // as highlighted snippet lines - "fire bolt" matches deep in
+        // entries without expanding them.
+        renderPNG(
+            JournalBlock(character: .constant(sel), initialFilter: "fire bolt")
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "journal-highlight", outDir: outDir)
         // 2.59.0 proof: the From template menu stamps a combat debrief
         // outline in as a new entry - section headers prefilled, stamped
         // today, appended last (the recap below counts 15).

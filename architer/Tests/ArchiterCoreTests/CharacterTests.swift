@@ -1066,6 +1066,15 @@ struct JournalTests {
         #expect(JournalTemplate.builtIn.map { $0.name } == ["Combat debrief", "NPC meeting", "Loot log"])
     }
 
+    @Test func journalMatchingLinesFindsCaseInsensitiveHits() throws {
+        let e = JournalEntry(text: "Rolled 15 (2d10+3)\nFire Bolt damage\nno hit here\nFIRE again")
+        #expect(e.matchingLines("fire") == ["Fire Bolt damage", "FIRE again"])
+        #expect(e.matchingLines("") == [])
+        #expect(e.matchingLines("   ") == [])
+        #expect(e.matchingLines("absent") == [])
+        #expect(JournalEntry(text: "").matchingLines("x") == [])
+    }
+
     @Test func journalEntrySizeLabel() throws {
         #expect(JournalEntry(text: "").sizeLabel == nil)
         #expect(JournalEntry(text: "   \n  ").sizeLabel == nil)

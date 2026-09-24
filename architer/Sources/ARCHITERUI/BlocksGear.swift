@@ -225,6 +225,24 @@ public struct JournalBlock: View {
             || entry.text.lowercased().contains(query)
     }
 
+    /// 2.60.0: the query rendered with a brass wash behind each hit,
+    /// so matching text stands out inside the snippet line.
+    private func highlighted(_ line: String, query: String) -> Text {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty,
+              trimmed.range(of: query, options: .caseInsensitive) != nil else {
+            return Text(trimmed)
+        }
+        var result = Text("")
+        var rest = trimmed[trimmed.startIndex...]
+        while let hit = rest.range(of: query, options: .caseInsensitive) {
+            result = result + Text(trimmed[rest.startIndex..<hit.lowerBound])
+            result = result + Text(trimmed[hit]).background(Theme.accent.opacity(0.30))
+            rest = trimmed[hit.upperBound...]
+        }
+        return result + Text(rest)
+    }
+
     public var body: some View {
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
         BlockCard(title: "Journal") {
@@ -287,6 +305,26 @@ public struct JournalBlock: View {
                         Button(role: .destructive) {
                             character.journal.removeAll { $0.id == entry.id }
                         } label: { Image(systemName: "minus.circle") }
+                    }
+                    // 2.60.0: while the filter is active, body hits
+                    // surface as a highlighted snippet - no need to
+                    // expand the row to see why it matched.
+                    if !query.isEmpty, let firstHit = entry.matchingLines(query).first {
+                        HStack(spacing: 4) {
+                            Image(systemName: "text.magnifyingglass")
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.inkFaint)
+                            highlighted(firstHit, query: query)
+                                .font(.caption)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            let extra = entry.matchingLines(query).count - 1
+                            if extra > 0 {
+                                Text("+\(extra) more")
+                                    .font(Theme.Typeface.caption)
+                                    .foregroundStyle(Theme.inkFaint)
+                            }
+                        }
                     }
                     if collapsed {
                         Text(entry.text.replacingOccurrences(of: "\n", with: "  "))

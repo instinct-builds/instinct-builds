@@ -396,6 +396,15 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
         return words == 1 ? "1 word" : "\(words) words"
     }
 
+    /// Lines containing the filter query, case-insensitive (2.60.0):
+    /// the journal's search-as-you-type highlight shows the first hit
+    /// as a snippet plus a count. Blank queries match nothing.
+    public func matchingLines(_ query: String) -> [String] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return [] }
+        return text.components(separatedBy: "\n").filter { $0.lowercased().contains(q) }
+    }
+
     /// One-entry share block (2.55.0): the export head line followed by
     /// the body, or the head alone for bodiless entries - what the
     /// journal row's copy button puts on the pasteboard.
