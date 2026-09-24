@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.43.0
+
+- **Reroll variants**: right-click a history card's reroll button to roll
+  again With Advantage / With Disadvantage (checks) or With +2 / With -2
+  (anything rerollable) - mode flips request a new d20 mode so conditions
+  still apply; modifiers shift the check bonus or append to the
+  expression, and defense notes recompute on the new total.
+
 ## What's in 2.42.0
 
 - **Session-log text export**: File > Export Session Log saves the

@@ -297,21 +297,26 @@ public final class AppModel: ObservableObject {
     /// now; older rolls fall back to a plain reroll of the expression
     /// under the recorded display label. Incoming damage is not
     /// rerollable - rolling again is not taking more damage.
-    public func rollAgain(_ source: RollResult) {
+    public func rollAgain(_ source: RollResult, variant: RerollVariant = .same) {
+        // 2.43.0 variants: advantage/disadvantage override the requested
+        // d20 mode (conditions still apply); +/-2 shifts a check bonus or
+        // appends to a plain/damage expression.
         guard let spec = source.reroll else {
-            if let label = source.label { rollLabeled(label, source.expression) }
-            else { roll(source.expression) }
+            if let label = source.label { rollLabeled(label, source.expression.withRerollModifier(variant)) }
+            else { roll(source.expression.withRerollModifier(variant)) }
             return
         }
         switch spec.kind {
         case .plain:
-            if let base = spec.baseLabel { rollLabeled(base, source.expression) }
-            else { roll(source.expression) }
+            if let base = spec.baseLabel { rollLabeled(base, source.expression.withRerollModifier(variant)) }
+            else { roll(source.expression.withRerollModifier(variant)) }
         case .check:
-            rollCheck(spec.baseLabel ?? source.label ?? "Check",
-                      bonus: spec.checkBonus ?? 0, mode: spec.mode ?? .normal)
+            let adjusted = spec.adjusted(for: variant)
+            rollCheck(adjusted.baseLabel ?? source.label ?? "Check",
+                      bonus: adjusted.checkBonus ?? 0, mode: adjusted.mode ?? .normal)
         case .outgoingDamage:
-            recordDamageRoll(spec.baseLabel ?? source.label ?? "Damage", source.expression,
+            recordDamageRoll(spec.baseLabel ?? source.label ?? "Damage",
+                             source.expression.withRerollModifier(variant),
                              type: spec.damageType.flatMap { DamageType(rawValue: $0) })
         case .incomingDamage:
             break

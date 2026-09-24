@@ -95,6 +95,12 @@ func run(model: AppModel, character: Character, outDir: String) {
     // 2.40.0 proof: roll the oldest raw roll again from its card - history
     // gains a second 4d6kh3 entry at the top, stamped now.
     if let oldest = model.rollHistory.last { model.rollAgain(oldest) }
+    // 2.43.0 proof: roll the Fire Bolt damage again with +2 - history
+    // gains a second Fire Bolt damage card reading "2d10+3 + 2", the
+    // defense note recomputed on the higher total.
+    if let bolt = model.rollHistory.first(where: { $0.label?.contains("Fire Bolt damage") == true }) {
+        model.rollAgain(bolt, variant: .plusTwo)
+    }
     // 2.38.0 proof: backdate the three oldest rolls so the history groups
     // into Today / Yesterday under its sticky headers. The third-oldest is
     // the character's own check, which also puts a Yesterday group into the

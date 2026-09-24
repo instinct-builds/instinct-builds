@@ -256,6 +256,40 @@ struct RerollSpecTests {
     }
 }
 
+@Suite("Reroll variants")
+struct RerollVariantTests {
+    @Test func availabilityPerKind() {
+        #expect(RerollVariant.available(for: .check) == RerollVariant.allCases)
+        #expect(RerollVariant.available(for: .plain) == [.same, .plusTwo, .minusTwo])
+        #expect(RerollVariant.available(for: .outgoingDamage) == [.same, .plusTwo, .minusTwo])
+        #expect(RerollVariant.available(for: .incomingDamage).isEmpty)
+    }
+
+    @Test func checkSpecAdjustments() {
+        let spec = RerollSpec(kind: .check, baseLabel: "Stealth", mode: .normal, checkBonus: 7)
+        #expect(spec.adjusted(for: .same) == spec)
+        #expect(spec.adjusted(for: .advantage).mode == .advantage)
+        #expect(spec.adjusted(for: .disadvantage).mode == .disadvantage)
+        #expect(spec.adjusted(for: .plusTwo).checkBonus == 9)
+        #expect(spec.adjusted(for: .minusTwo).checkBonus == 5)
+        // A spec without a bonus still adjusts from zero.
+        let bare = RerollSpec(kind: .check)
+        #expect(bare.adjusted(for: .minusTwo).checkBonus == -2)
+    }
+
+    @Test func expressionModifiers() {
+        #expect("2d10+3".withRerollModifier(.plusTwo) == "2d10+3 + 2")
+        #expect("2d10+3".withRerollModifier(.minusTwo) == "2d10+3 - 2")
+        #expect("2d10+3".withRerollModifier(.same) == "2d10+3")
+        #expect("2d10+3".withRerollModifier(.advantage) == "2d10+3")
+    }
+
+    @Test func displayNamesAreStable() {
+        #expect(RerollVariant.allCases.map(\.displayName) ==
+            ["Roll Again", "With Advantage", "With Disadvantage", "With +2", "With -2"])
+    }
+}
+
 @Suite("Session-log text export")
 struct SessionLogTextTests {
     @Test func dayGroupedLayoutWithIndentedRolls() {

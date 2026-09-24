@@ -344,8 +344,15 @@ struct RollCard: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.inkFaint)
                     .help(roll.reroll == nil
-                        ? "Roll \(roll.expression) again"
-                        : "Roll again - condition tags and defense notes recompute")
+                        ? "Roll \(roll.expression) again - right-click for variants"
+                        : "Roll again - condition tags and defense notes recompute; right-click for variants")
+                    // 2.43.0 reroll variants: right-click offers mode flips
+                    // for checks and +/-2 for anything rerollable.
+                    .contextMenu {
+                        ForEach(RerollVariant.available(for: roll.reroll?.kind ?? .plain), id: \.self) { variant in
+                            Button(variant.displayName) { model.rollAgain(roll, variant: variant) }
+                        }
+                    }
             }
             Button {
                 model.addRollToJournal(roll)

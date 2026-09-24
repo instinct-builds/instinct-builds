@@ -89,6 +89,73 @@ public struct RerollSpec: Equatable, Codable, Sendable {
     }
 }
 
+/// Reroll variant (2.43.0): how a roll-again departs from the recorded
+/// inputs, picked from the card's context menu. Advantage/disadvantage
+/// request a new d20 mode (conditions still apply); +/-2 shifts a check
+/// bonus or appends to a plain/damage expression.
+public enum RerollVariant: String, CaseIterable, Sendable {
+    case same
+    case advantage
+    case disadvantage
+    case plusTwo
+    case minusTwo
+
+    /// Context-menu label.
+    public var displayName: String {
+        switch self {
+        case .same: return "Roll Again"
+        case .advantage: return "With Advantage"
+        case .disadvantage: return "With Disadvantage"
+        case .plusTwo: return "With +2"
+        case .minusTwo: return "With -2"
+        }
+    }
+
+    /// The variants a reroll kind supports. d20 modes are check-only;
+    /// incoming damage is never rerollable (2.40.0).
+    public static func available(for kind: RerollKind) -> [RerollVariant] {
+        switch kind {
+        case .check: return RerollVariant.allCases
+        case .plain, .outgoingDamage: return [.same, .plusTwo, .minusTwo]
+        case .incomingDamage: return []
+        }
+    }
+}
+
+public extension RerollSpec {
+    /// The spec adjusted for a variant (2.43.0): mode override or bonus
+    /// shift. Only checks consume both fields; plain/damage variants
+    /// adjust the expression instead (withRerollModifier).
+    func adjusted(for variant: RerollVariant) -> RerollSpec {
+        var copy = self
+        switch variant {
+        case .same:
+            break
+        case .advantage:
+            copy.mode = .advantage
+        case .disadvantage:
+            copy.mode = .disadvantage
+        case .plusTwo:
+            copy.checkBonus = (checkBonus ?? 0) + 2
+        case .minusTwo:
+            copy.checkBonus = (checkBonus ?? 0) - 2
+        }
+        return copy
+    }
+}
+
+public extension String {
+    /// A roll expression adjusted for a +/-2 variant (2.43.0), for plain
+    /// and damage rerolls where no check bonus exists.
+    func withRerollModifier(_ variant: RerollVariant) -> String {
+        switch variant {
+        case .plusTwo: return self + " + 2"
+        case .minusTwo: return self + " - 2"
+        case .same, .advantage, .disadvantage: return self
+        }
+    }
+}
+
 public extension RollResult {
     /// Short clock time for history rows and the text export ("18:42").
     /// POSIX locale, local timezone, 24-hour: exports stay aligned and
