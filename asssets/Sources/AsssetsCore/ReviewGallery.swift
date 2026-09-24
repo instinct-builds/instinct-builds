@@ -209,7 +209,7 @@ items:M.items.map(it=>{const s=st(it.id),x={id:it.id,favorite:!!s.favorite,note:
 const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));
 a.download=(M.title+' feedback'+(out.reviewer?' - '+out.reviewer:'')).replace(/[\/:\\]/g,'-')+'.json';document.body.appendChild(a);a.click();a.remove()};
 if(M.summary){const a=$('summary');a.href=encodeURI(M.summary);a.hidden=false}
-render();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);if(q.get('demo')==='approve-grid')window.addEventListener('load',()=>window.scrollTo(0,$('grid').offsetTop-90));
+if(q.get('demo')==='approve-grid')M.board=null;render();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
 </script></body></html>
 """#
 }
