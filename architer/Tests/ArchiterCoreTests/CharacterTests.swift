@@ -1108,6 +1108,33 @@ struct JournalTests {
         #expect(c.journal.count == 3)
     }
 
+    @Test func digestBodyFormats() throws {
+        var r1 = RollResult(expression: "1d20+6", dice: [DieResult(sides: 20, value: 15, kept: true)],
+                            modifier: 6, total: 21, alternateTotal: nil)
+        r1.label = "Stealth check"
+        r1.characterName = "Wren"
+        var r2 = RollResult(expression: "2d10+3", dice: [DieResult(sides: 10, value: 4, kept: true)],
+                            modifier: 3, total: 7, alternateTotal: nil)
+        r2.label = "Fire Bolt damage"
+        r2.characterName = "Wren"
+        let r3 = RollResult(expression: "1d8", dice: [DieResult(sides: 8, value: 5, kept: true)],
+                            modifier: 0, total: 5, alternateTotal: nil)
+        // r3 has no character - filed under Table.
+        let session = RollSession(number: 2, title: "Session 2 - Today", rolls: [r3, r2, r1])
+        let condensed = JournalEntry.digestBody(session: session, format: .condensed)
+        #expect(condensed.components(separatedBy: "\n").count == 3)
+        #expect(!condensed.contains("Wren:"))
+        let grouped = JournalEntry.digestBody(session: session, format: .byActor)
+        let groups = grouped.components(separatedBy: "\n\n")
+        #expect(groups.count == 2)
+        #expect(groups[0].hasPrefix("Wren:"))
+        #expect(groups[0].components(separatedBy: "\n").count == 3)
+        #expect(groups[1].hasPrefix("Table:"))
+        // The digest init defaults to condensed and honors the format.
+        #expect(JournalEntry(sessionDigest: session).text == condensed)
+        #expect(JournalEntry(sessionDigest: session, format: .byActor).text == grouped)
+    }
+
     @Test func journalEntrySizeLabel() throws {
         #expect(JournalEntry(text: "").sizeLabel == nil)
         #expect(JournalEntry(text: "   \n  ").sizeLabel == nil)

@@ -306,6 +306,19 @@ func run(model: AppModel, character: Character, outDir: String) {
                     .environmentObject(model),
                 width: width, name: "journal-pinned", outDir: outDir)
         }
+        // 2.62.0 proof: the same session digested by actor - lines
+        // grouped under each roller instead of one flat list (the
+        // recap below counts 16).
+        if let session = sessionSegments(model.rollHistory).first {
+            sel.journal.append(JournalEntry(sessionDigest: session, format: .byActor))
+            model.selected?.wrappedValue = sel
+            renderPNG(
+                JournalBlock(character: .constant(sel))
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: width, name: "journal-format", outDir: outDir)
+        }
     }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.

@@ -60,6 +60,15 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let compactPDFHideEmptyRowsKey = "architer.compactPDFHideEmptyRows"
+    /// Digest body format (2.62.0): the session-divider naming row's
+    /// picker; the last choice is remembered across digests and launches.
+    @Published public var digestFormat: DigestFormat =
+        DigestFormat(rawValue: UserDefaults.standard.string(forKey: AppModel.digestFormatKey) ?? "") ?? .condensed {
+        didSet {
+            UserDefaults.standard.set(digestFormat.rawValue, forKey: AppModel.digestFormatKey)
+        }
+    }
+    private static let digestFormatKey = "architer.digestFormat"
     /// Compact-PDF option (2.39.0): append the exported character's roll
     /// history as a day-grouped session-log appendix. Off by default - the
     /// compact layout is for cheap printing, so extra pages are opt-in.
@@ -397,9 +406,12 @@ public final class AppModel: ObservableObject {
     /// One-tap session digest (2.49.0): drop a whole session's rolls into
     /// the journal as one entry, oldest first - the session-divider
     /// button's action, offered while auto-log is off.
-    public func addSessionToJournal(_ session: RollSession, title: String? = nil) {
+    public func addSessionToJournal(_ session: RollSession, title: String? = nil,
+                                    format: DigestFormat? = nil) {
         guard var c = selected?.wrappedValue else { return }
-        c.journal.append(JournalEntry(sessionDigest: session, title: title))
+        // 2.62.0: no explicit format follows the remembered choice.
+        c.journal.append(JournalEntry(sessionDigest: session, title: title,
+                                      format: format ?? digestFormat))
         selected?.wrappedValue = c
     }
 

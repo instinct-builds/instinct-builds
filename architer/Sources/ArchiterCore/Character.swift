@@ -277,6 +277,14 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// Digest body layout (2.62.0): condensed keeps the 2.49.0 shape of
+/// one line per roll; byActor groups the lines under each roller so
+/// tables that read "who did what" get a per-actor digest.
+public enum DigestFormat: String, Codable, Sendable, CaseIterable {
+    case condensed
+    case byActor
+}
+
 /// A starter outline for a new journal entry (2.59.0): the From
 /// template menu stamps one in with section headers the user fills in
 /// place. Built-ins only - original ARCHITER text, no published material.
@@ -365,13 +373,37 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// body stays one tap away without crowding the journal block.
     /// 2.58.0: a custom title ("Lantern Street heist") replaces the
     /// session's generated one; blank input falls back to it.
-    public init(sessionDigest session: RollSession, title: String? = nil, now: Date = Date()) {
+    public init(sessionDigest session: RollSession, title: String? = nil,
+                format: DigestFormat = .condensed, now: Date = Date()) {
         let custom = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.init(date: JournalStamp.day(now),
                   title: custom.isEmpty ? session.title : custom,
-                  text: session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n"),
+                  text: JournalEntry.digestBody(session: session, format: format),
                   createdAt: now,
                   isCollapsed: true)
+    }
+
+    /// Digest body text for a session (2.62.0), oldest roll first in
+    /// both layouts. Condensed is one line per roll; byActor groups the
+    /// lines under each roller in first-appearance order, with rolls
+    /// made under no character filed under "Table".
+    public static func digestBody(session: RollSession, format: DigestFormat) -> String {
+        let rolls = session.rolls.reversed()
+        switch format {
+        case .condensed:
+            return rolls.map { $0.historyLine }.joined(separator: "\n")
+        case .byActor:
+            var order: [String] = []
+            var grouped: [String: [String]] = [:]
+            for roll in rolls {
+                let actor = roll.characterName.flatMap { $0.isEmpty ? nil : $0 } ?? "Table"
+                if grouped[actor] == nil { order.append(actor) }
+                grouped[actor, default: []].append(roll.historyLine)
+            }
+            return order.map { actor in
+                ([actor + ":"] + (grouped[actor] ?? [])).joined(separator: "\n")
+            }.joined(separator: "\n\n")
+        }
     }
 
     /// Entry from a starter template (2.59.0): titled with the

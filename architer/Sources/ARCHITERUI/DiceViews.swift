@@ -230,6 +230,20 @@ public struct HistoryListView: View {
                                     .textFieldStyle(InsetFieldStyle())
                                     .frame(width: 180)
                                     .onSubmit { confirmDigest(session) }
+                                // 2.62.0: digest body layout - condensed
+                                // one-line-per-roll or grouped by actor.
+                                // The choice rides model.digestFormat, so
+                                // the next digest preselects it.
+                                Picker(selection: $model.digestFormat) {
+                                    Text("Condensed").tag(DigestFormat.condensed)
+                                    Text("By actor").tag(DigestFormat.byActor)
+                                } label: {
+                                    Image(systemName: "list.bullet.indent")
+                                }
+                                .pickerStyle(.menu)
+                                .controlSize(.small)
+                                .fixedSize()
+                                .help("Digest body format - remembered for the next digest")
                                 Button { confirmDigest(session) }
                                     label: { Image(systemName: "checkmark") }
                                     .buttonStyle(.plain)
