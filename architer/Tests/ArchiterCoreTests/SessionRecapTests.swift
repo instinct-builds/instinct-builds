@@ -24,6 +24,24 @@ struct SessionRecapTests {
         return r
     }
 
+    @Test func recapPreambleRidesAtTheTopWhenSet() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
+        var c = Character(name: "Wren Halloway")
+        // No preamble: the head line is first.
+        var text = sessionRecap(character: c, rolls: [], now: now, calendar: cal)
+        #expect(text.hasPrefix("Wren Halloway - session recap"))
+        #expect(!text.contains("Athenaeum"))
+        // Set: the preamble line follows the head.
+        c.recapPreamble = "Session at the Athenaeum, party of 4"
+        text = sessionRecap(character: c, rolls: [], now: now, calendar: cal)
+        #expect(text.contains("\nSession at the Athenaeum, party of 4\n"))
+        // Blank-only preamble behaves like none.
+        c.recapPreamble = "   "
+        text = sessionRecap(character: c, rolls: [], now: now, calendar: cal)
+        #expect(!text.contains("Athenaeum"))
+    }
+
     @Test func recapJoinsTodayEntriesAndRolls() throws {
         let cal = utc
         let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))

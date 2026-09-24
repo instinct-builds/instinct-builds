@@ -27,7 +27,13 @@ public func sessionRecap(character: Character, rolls: [RollResult],
         .filter { entry in entry.createdAt.map { calendar.isDate($0, inSameDayAs: now) } ?? false }
     let todayRolls = rolls.forCharacter(character.name).within(.today, now: now, calendar: calendar)
 
-    var lines: [String] = ["\(character.name) - session recap (\(RollResult.historyDateFormatter.string(from: now)))", ""]
+    var lines: [String] = ["\(character.name) - session recap (\(RollResult.historyDateFormatter.string(from: now)))"]
+    // 2.65.0: the character's recap preamble rides at the top when set.
+    if let preamble = character.recapPreamble?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !preamble.isEmpty {
+        lines.append(preamble)
+    }
+    lines.append("")
     if todayEntries.isEmpty && todayRolls.isEmpty {
         lines.append("Nothing logged today yet.")
     } else {

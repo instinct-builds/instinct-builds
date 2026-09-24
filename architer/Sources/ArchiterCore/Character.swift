@@ -686,6 +686,11 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var toolProficiencies: [ToolProficiency]
     /// Dated session-log entries shown in the journal block.
     public var journal: [JournalEntry]
+    /// Session recap preamble (2.65.0): one line of context ("Session
+    /// at the Athenaeum, party of 4") prepended to every Copy today
+    /// recap. Optional so old saves decode unchanged and nil stays
+    /// unencoded.
+    public var recapPreamble: String? = nil
 
     /// Duplicate a journal entry (2.56.0): the copy keeps date, title,
     /// text, and collapse state, gets a fresh id and creation stamp, and
@@ -902,6 +907,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         extraSpeeds = try c.decodeIfPresent([MovementSpeed].self, forKey: .extraSpeeds) ?? []
         currency = try c.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
         journal = try c.decodeIfPresent([JournalEntry].self, forKey: .journal) ?? []
+        recapPreamble = try c.decodeIfPresent(String.self, forKey: .recapPreamble)
         proficienciesText = try c.decodeIfPresent(String.self, forKey: .proficienciesText) ?? ""
         toolProficiencies = try c.decodeIfPresent([ToolProficiency].self, forKey: .toolProficiencies) ?? []
         features = try c.decodeIfPresent([Feature].self, forKey: .features) ?? []

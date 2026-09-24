@@ -383,6 +383,12 @@ public struct JournalBlock: View {
                     .help("Copy the filter-visible entries (head + body) as one text block")
                 }
             }
+            // 2.65.0: one line of context prepended to every Copy
+            // today recap; clearing it drops the line again.
+            TextField("Recap intro (prepended to Copy today)", text: Binding(
+                get: { character.recapPreamble ?? "" },
+                set: { character.recapPreamble = $0.isEmpty ? nil : $0 }))
+                .textFieldStyle(InsetFieldStyle())
         } trailing: {
             HStack(spacing: Theme.Gap.sm) {
                 // 2.54.0: filter the journal by date/title/body;

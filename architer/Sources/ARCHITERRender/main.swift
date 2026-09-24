@@ -325,6 +325,12 @@ func run(model: AppModel, character: Character, outDir: String) {
                 width: width, name: "journal-format", outDir: outDir)
         }
     }
+    // 2.65.0 proof: the recap preamble rides at the top of the recap
+    // below - one line of context, no retyping per share.
+    if var sel = model.selected?.wrappedValue {
+        sel.recapPreamble = "Session at the Athenaeum, party of 4"
+        model.selected?.wrappedValue = sel
+    }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.
     let recap = sessionRecap(character: model.selected?.wrappedValue ?? character,
