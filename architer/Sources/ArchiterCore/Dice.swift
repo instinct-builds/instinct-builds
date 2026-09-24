@@ -292,6 +292,9 @@ public func sessionLogMarkdown(character: String, range: SessionLogRange,
             }
             lines.append("")
         }
+        // One trailing newline total, matching the text export: drop the
+        // blank separator after the final group.
+        if lines.last == "" { lines.removeLast() }
     }
     return lines.joined(separator: "\n") + "\n"
 }
