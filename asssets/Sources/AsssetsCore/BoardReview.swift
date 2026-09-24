@@ -61,7 +61,11 @@ extension Moodboard {
             let t = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty { notes[id] = String(t.prefix(4000)) }
         }
-        guard !picks.isEmpty || !notes.isEmpty else { return false }
+        // 1.23: Approve / Request changes from the gallery set the status on every card showing that asset.
+        var asked: [UUID: CardStatus] = [:]
+        for e in f.items { if let id = UUID(uuidString: e.id), here.contains(id), let st = e.cardStatus { asked[id] = st } }
+        for it in items where it.kind == .asset { if let a = it.assetID, let st = asked[a] { statuses[it.id] = st } }
+        guard !picks.isEmpty || !notes.isEmpty || !asked.isEmpty else { return false }
         reviews.removeAll { $0.gallery == f.gallery && $0.reviewer == reviewer }
         reviews.append(BoardReview(gallery: f.gallery, reviewer: reviewer, imported: imported, picks: picks, notes: notes))
         return true

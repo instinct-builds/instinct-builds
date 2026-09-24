@@ -57,6 +57,13 @@ struct ReviewGalleryTests {
         #expect(back.assets[0].clientNotes.count == 2)
     }
 
+    @Test func pageOffersApproveAndWritesStatusOnlyWhenChosen() {
+        let h = ReviewGallery.html(.init(title: "T", created: "2026-09-24", items: []))
+        #expect(h.contains("id=\"lbap\"") && h.contains("Request changes"))
+        #expect(h.contains("if(s.status==='approved'||s.status==='changes')x.status=s.status"))
+        #expect(h.contains(".filter(x=>x.favorite||x.note||x.status)"))
+    }
+
     @Test func rejectsOtherJSON() {
         #expect(ReviewGallery.decodeFeedback(Data(#"{"format":"other","gallery":"g","title":"t","reviewer":"r","items":[]}"#.utf8)) == nil)
         #expect(ReviewGallery.decodeFeedback(Data("not json".utf8)) == nil)

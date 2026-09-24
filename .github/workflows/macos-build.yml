@@ -201,6 +201,15 @@ jobs:
           shoot share-round 1920x1200 share-round demo-share-round/gallery-done.txt
           SR=$(ls -d "$SUP/demo-share-round/"*Review | head -1); test -s "$SR/round-summary.pdf"; grep -q '"summary":"round-summary.pdf"' "$SR/index.html" || { echo "share round has no summary link"; exit 1; }
           unzip -l "$SR.zip" | tee "ASSSETS-$ASSSETS_VERSION-share-round-listing.txt"; grep -q 'round-summary.pdf' "ASSSETS-$ASSSETS_VERSION-share-round-listing.txt"
+          grep -q 'id="lbap"' "$SR/index.html" || { echo "gallery has no Approve control"; exit 1; }
+          SRU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$SR/index.html")
+          "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-approve.png" "$SRU?demo=approve" || true
+          "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-approve-grid.png" "$SRU?demo=approve-grid" || true
+          test -s "ASSSETS-$ASSSETS_VERSION-gallery-approve.png"
+          shoot feedback-preview 1920x1200 feedback-preview
+          shoot feedback-imported 1920x1200 feedback-imported
+          shoot board-arrange-before 1920x1200 board-arrange-before
+          shoot board-arrange 1920x1200 board-arrange
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"

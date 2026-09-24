@@ -143,6 +143,8 @@ final class StudioLibrary: ObservableObject {
     /// Templates (1.22): the picker sheet and the board being saved as a template.
     @Published var templatePickerOpen = false
     @Published var savingTemplate: UUID?
+    /// Client feedback read but not applied yet (1.23): the import preview sheet shows it.
+    @Published var pendingFeedback: PendingFeedback?
     @Published var threadCard: UUID?
     @Published var replyAuthor = UserDefaults.standard.string(forKey: "replyAuthor") ?? (NSFullUserName().isEmpty ? "Studio" : NSFullUserName()) {
         didSet { UserDefaults.standard.set(replyAuthor, forKey: "replyAuthor") }
@@ -339,25 +341,50 @@ final class StudioLibrary: ObservableObject {
         let p = NSOpenPanel(); p.allowedContentTypes = [.json]; p.allowsMultipleSelection = true
         p.message = "Choose the feedback file(s) your client downloaded from the review gallery"
         guard p.runModal() == .OK else { return }
-        importFeedback(p.urls)
+        previewFeedback(p.urls)
+    }
+
+    /// Reads the files and opens the preview sheet; nothing changes until Import.
+    func previewFeedback(_ urls: [URL]) {
+        var files: [PendingFeedback.File] = [], bad = 0
+        for u in urls {
+            guard let data = try? Data(contentsOf: u), let f = ReviewGallery.decodeFeedback(data) else { bad += 1; continue }
+            files.append(.init(feedback: f, preview: catalog.previewFeedback(f), name: u.lastPathComponent))
+        }
+        guard !files.isEmpty else { flash("That isn't an ASSSETS review feedback file"); return }
+        pendingFeedback = PendingFeedback(files: files, unreadable: bad)
+    }
+
+    func applyPendingFeedback() {
+        guard let p = pendingFeedback else { return }
+        pendingFeedback = nil
+        importFeedback(feedback: p.files.map(\.feedback), unreadable: p.unreadable)
     }
 
     func importFeedback(_ urls: [URL]) {
-        var total = StudioCatalog.FeedbackResult(), reviewers: [String] = [], bad = 0
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let today = df.string(from: Date())
+        var list: [ReviewGallery.Feedback] = [], bad = 0
         for u in urls {
-            guard let data = try? Data(contentsOf: u), let f = ReviewGallery.decodeFeedback(data) else { bad += 1; continue }
+            if let data = try? Data(contentsOf: u), let f = ReviewGallery.decodeFeedback(data) { list.append(f) } else { bad += 1 }
+        }
+        importFeedback(feedback: list, unreadable: bad)
+    }
+
+    func importFeedback(feedback list: [ReviewGallery.Feedback], unreadable bad: Int) {
+        var total = StudioCatalog.FeedbackResult(), reviewers: [String] = []
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let today = df.string(from: Date())
+        for f in list {
             var r = StudioCatalog.FeedbackResult()
             mutate { r = $0.applyFeedback(f, imported: today) }
-            total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown
+            total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown; total.statuses += r.statuses
             total.smartCollection = r.smartCollection ?? total.smartCollection
             total.board = r.board ?? total.board
             let who = f.reviewer.trimmingCharacters(in: .whitespaces); if !who.isEmpty && !reviewers.contains(who) { reviewers.append(who) }
         }
-        if total.favorites + total.notes == 0 {
-            flash(bad > 0 ? "That isn't an ASSSETS review feedback file" : "No favorites or notes in that feedback"); return
+        if total.favorites + total.notes + total.statuses == 0 && total.board == nil {
+            flash(bad > 0 && list.isEmpty ? "That isn't an ASSSETS review feedback file" : "No favorites, notes or decisions in that feedback"); return
         }
         var msg = "\(total.favorites) client \(total.favorites == 1 ? "pick" : "picks"), \(total.notes) \(total.notes == 1 ? "note" : "notes")"
+        if total.statuses > 0 { msg += ", \(total.statuses) \(total.statuses == 1 ? "status" : "statuses") updated" }
         if !reviewers.isEmpty { msg += " from " + reviewers.joined(separator: ", ") }
         if total.unknown > 0 { msg += " · \(total.unknown) not in this library" }
         if let b = total.board, let name = catalog.board(b)?.name {
@@ -1456,7 +1483,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" && demo != "board-templates" && demo != "board-template" && demo != "share-round" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" && demo != "board-templates" && demo != "board-template" && demo != "share-round" && demo != "feedback-preview" && demo != "feedback-imported" && demo != "board-arrange" && demo != "board-arrange-before" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1853,6 +1880,43 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
+        case "feedback-preview", "feedback-imported":
+            // A third reviewer's file with Approve / Request changes, against the Lobby Refresh round.
+            let id = makeDemoApproval().0
+            show(board: id)
+            let f = demoApprovalFeedback()
+            if demo == "feedback-preview" {
+                let u = FileManager.default.temporaryDirectory.appendingPathComponent("Lobby Refresh feedback - Jordan Lee.json")
+                if let data = try? JSONEncoder().encode(f) { try? data.write(to: u) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self.previewFeedback([u]) }
+            } else {
+                importFeedback(feedback: [f], unreadable: 0)
+            }
+        case "board-arrange", "board-arrange-before":
+            // Four signage options dropped in by hand, then matched, top-aligned and evenly spaced.
+            let all = catalog.assets
+            func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
+            var id = UUID(), cards: [UUID] = []
+            mutate { c in
+                id = c.createBoard(named: "Signage Options")
+                _ = c.updateBoard(id) { b in
+                    b.snap = false
+                    b.addHeading("Signage options", at: (x: 40, y: 20))
+                    let place: [(String, Double, Double, Double)] = [
+                        ("album-gatefold-mockup.png", 40, 150, 260), ("cosmetic-plinth-mockup.png", 430, 230, 200),
+                        ("device-stage-mockup.png", 790, 120, 300), ("terrazzo-texture.png", 1220, 260, 180)]
+                    for (f, x, y, w) in place { if let a = find(f) { cards.append(b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y))) } }
+                    b.addNote("Line these up before the client call.", at: (x: 40, y: 520))
+                }
+            }
+            if demo == "board-arrange" {
+                let sel = Set(cards)
+                updateBoard(id, "Match Heights") { $0.arrange(sel, .matchHeight) }
+                updateBoard(id, "Align Top Edges") { $0.arrange(sel, .top) }
+                updateBoard(id, "Distribute Horizontally") { $0.arrange(sel, .distributeH) }
+            }
+            show(board: id)
+            boardSelection = Set(cards)
         case "board-thread", "board-status":
             let (id, stage) = makeDemoApproval()
             show(board: id)
@@ -2127,6 +2191,20 @@ extension StudioLibrary {
     }
 
     /// The client round with the studio's answers (1.21): statuses on four cards and replies under two comments.
+    /// Jordan's feedback on the Lobby Refresh round: one approval that flips Changes, one new change request, a note, a stray asset.
+    func demoApprovalFeedback() -> ReviewGallery.Feedback {
+        let all = catalog.assets
+        func aid(_ f: String) -> String { all.first { $0.importedPath?.hasSuffix(f) == true }?.id.uuidString.lowercased() ?? "" }
+        typealias E = ReviewGallery.Feedback.Entry
+        return ReviewGallery.Feedback(gallery: "demo-review-round", title: "Lobby Refresh", reviewer: "Jordan Lee", items: [
+            E(id: aid("device-stage-mockup.png"), favorite: false, note: "The stone-frame screen works. Approved.", status: "approved"),
+            E(id: aid("prismatic-foil-4k.png"), favorite: false, note: "Too loud next to the brass - a softer foil?", status: "changes"),
+            E(id: aid("paper-grain-4k.png"), favorite: true, note: "", status: "approved"),
+            E(id: aid("cosmetic-plinth-mockup.png"), favorite: true, note: "", status: "approved"),
+            E(id: aid("motion-loop-01.mp4"), favorite: true, note: "Could this run on the lobby screen?"),
+            E(id: UUID().uuidString.lowercased(), favorite: true, note: "The old logo lockup", status: "approved")])
+    }
+
     func makeDemoApproval() -> (UUID, UUID) {
         let id = makeDemoReviewRound()
         guard let b = catalog.board(id) else { return (id, id) }
@@ -2773,7 +2851,7 @@ struct BoardCanvas: View {
             Button { model.addNote() } label: { Image(systemName: "note.text.badge.plus") }.help("Add a note")
             Button { model.addHeading() } label: { Image(systemName: "textformat.size") }.help("Add a heading")
             Button { model.addFrame() } label: { Image(systemName: "rectangle.dashed") }.help(model.boardSelection.isEmpty ? "Add a section" : "Put the selection in a section")
-            Button { model.updateBoard(board.id, "Tidy Board") { $0.tidy() }; model.fitBoardRequest += 1 } label: { Image(systemName: "rectangle.grid.2x2") }.help("Tidy into rows")
+            ArrangeMenu(board: board, selection: model.boardSelection)
             Toggle(isOn: Binding(get: { board.snap }, set: { v in model.updateBoard(board.id, v ? "Snap On" : "Snap Off") { $0.snap = v } })) { Image(systemName: "grid") }
                 .toggleStyle(.button).help("Snap to grid")
             HStack(spacing: 4) {
@@ -2892,6 +2970,7 @@ struct BoardCanvas: View {
             Button("Send \(sel.count) to Back") { model.updateBoard(board.id, "Send to Back") { $0.sendToBack(sel) } }
             Button("Put in New Section") { model.addFrame() }
             if sel.count == 2 { Button("Connect with Arrow") { model.connectSelection() } }
+            ArrangeMenu(board: board, selection: sel, inContextMenu: true)
             Menu("Mark \(sel.count) as") {
                 ForEach(CardStatus.allCases, id: \.self) { st in Button(st.label) { model.updateBoard(board.id, "Mark \(st.label)") { $0.setStatus(st, for: sel) } } }
             }
@@ -3676,6 +3755,7 @@ struct Sidebar: View {
             Button("Cancel", role: .cancel) { model.savingTemplate = nil }
         } message: { Text("Sections, headings, notes, palettes and arrows are kept. Every image becomes an empty slot of the same size.") }
         .sheet(isPresented: $model.templatePickerOpen) { TemplatePickerSheet().environmentObject(model) }
+        .sheet(item: $model.pendingFeedback) { p in FeedbackPreviewSheet(pending: p).environmentObject(model) }
     }
 
     private func symbol(for name: String) -> String {
@@ -7116,6 +7196,189 @@ struct TemplatePickerSheet: View {
                 Button("Delete Template", role: .destructive) { model.mutate("Delete Template") { $0.deleteTemplate(t.id) } }
             }
         }
+    }
+}
+
+/// Feedback files read but not applied (1.23).
+struct PendingFeedback: Identifiable {
+    struct File: Identifiable {
+        let id = UUID()
+        let feedback: ReviewGallery.Feedback
+        let preview: FeedbackPreview
+        let name: String
+    }
+    let id = UUID()
+    var files: [File]
+    var unreadable: Int
+}
+
+/// Tidy plus align, distribute and match size for the selected cards. One undo step each.
+struct ArrangeMenu: View {
+    @EnvironmentObject var model: StudioLibrary
+    let board: Moodboard
+    let selection: Set<UUID>
+    var inContextMenu = false
+
+    var body: some View {
+        if inContextMenu {
+            Menu("Arrange \(selection.count)") { ops }
+        } else {
+            Menu {
+                Button("Tidy Into Rows") { model.updateBoard(board.id, "Tidy Board") { $0.tidy() }; model.fitBoardRequest += 1 }
+                Divider()
+                if selection.count < 2 { Text("Select two or more cards to align") }
+                ops
+            } label: { Image(systemName: "rectangle.grid.2x2") }
+            .menuIndicator(.hidden).fixedSize().help("Tidy and arrange")
+        }
+    }
+
+    @ViewBuilder private var ops: some View {
+        Section("Align") {
+            ForEach([ArrangeOp.left, .centerX, .right, .top, .middle, .bottom], id: \.self) { item($0) }
+        }
+        Section("Distribute") { item(.distributeH); item(.distributeV) }
+        Section("Size") { item(.matchWidth); item(.matchHeight) }
+    }
+
+    private func item(_ op: ArrangeOp) -> some View {
+        let sel = selection, id = board.id
+        return Button { model.updateBoard(id, op.label) { $0.arrange(sel, op) } } label: { Label(op.label, systemImage: ArrangeMenu.symbol(op)) }
+            .disabled(sel.count < op.minimumCards)
+    }
+
+    static func symbol(_ op: ArrangeOp) -> String {
+        switch op {
+        case .left: return "align.horizontal.left"
+        case .centerX: return "align.horizontal.center"
+        case .right: return "align.horizontal.right"
+        case .top: return "align.vertical.top"
+        case .middle: return "align.vertical.center"
+        case .bottom: return "align.vertical.bottom"
+        case .distributeH: return "distribute.horizontal"
+        case .distributeV: return "distribute.vertical"
+        case .matchWidth: return "arrow.left.and.right"
+        case .matchHeight: return "arrow.up.and.down"
+        }
+    }
+}
+
+/// What a client's feedback file will do, before it does it.
+struct FeedbackPreviewSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let pending: PendingFeedback
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Import Client Feedback").font(.title3.weight(.bold))
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(pending.files) { f in file(f) }
+                }
+            }
+            HStack {
+                if pending.unreadable > 0 {
+                    Label("\(pending.unreadable) file\(pending.unreadable == 1 ? "" : "s") skipped: not ASSSETS feedback", systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(Theme.warning)
+                }
+                Spacer()
+                Button("Cancel") { model.pendingFeedback = nil }.keyboardShortcut(.cancelAction)
+                Button("Import") { model.applyPendingFeedback() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).tint(Theme.accent)
+                    .disabled(pending.files.allSatisfy { $0.preview.isEmpty })
+            }
+        }
+        .padding(20)
+        .frame(width: 720, height: 560)
+        .background(Theme.panel)
+    }
+
+    private var subtitle: String {
+        let n = pending.files.count
+        return n == 1 ? "Check what this file changes. Nothing is applied until you press Import." : "\(n) files. Nothing is applied until you press Import."
+    }
+
+    private func file(_ f: PendingFeedback.File) -> some View {
+        let p = f.preview
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(String(p.reviewer.prefix(1)).uppercased()).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 26, height: 26).background(Theme.accent, in: Circle())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(p.reviewer).font(.callout.weight(.semibold))
+                    Text(p.boardName.map { "Round on board \u{201C}\($0)\u{201D}" } ?? "Gallery \u{201C}\(p.title)\u{201D} · goes to Client Picks").font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                chip("\(p.picks)", "heart.fill", Color(red: 1, green: 0.36, blue: 0.54))
+                chip("\(p.approvals)", CardThreadBadge.symbol(.approved), CardThreadBadge.color(.approved))
+                chip("\(p.changeRequests)", CardThreadBadge.symbol(.changes), CardThreadBadge.color(.changes))
+                chip("\(p.notes)", "text.bubble.fill", Color(white: 0.75))
+            }
+            if p.replaces {
+                Label("\(p.reviewer) already sent feedback on this round. Importing replaces their earlier picks and notes.", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption2).foregroundStyle(Theme.warning)
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(p.rows.enumerated()), id: \.offset) { i, r in
+                    row(r)
+                    if i < p.rows.count - 1 { Divider().opacity(0.4) }
+                }
+            }
+            .background(Theme.raised, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline))
+        }
+    }
+
+    private func chip(_ n: String, _ symbol: String, _ c: Color) -> some View {
+        HStack(spacing: 3) { Image(systemName: symbol).font(.system(size: 9, weight: .bold)); Text(n).font(.caption2.monospacedDigit().weight(.semibold)) }
+            .foregroundStyle(c).padding(.horizontal, 7).padding(.vertical, 3)
+            .background(c.opacity(0.14), in: Capsule())
+    }
+
+    private func row(_ r: FeedbackPreview.Row) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Group {
+                if let id = r.asset, let a = model.catalog.assets.first(where: { $0.id == id }) {
+                    Thumbnail(asset: a, pixels: 160)
+                } else {
+                    Image(systemName: "questionmark.square.dashed").font(.system(size: 18)).foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.opacity(0.25))
+                }
+            }
+            .frame(width: 58, height: 42).clipShape(RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(r.title).font(.caption.weight(.semibold)).foregroundStyle(r.known ? .primary : .secondary).lineLimit(1)
+                    if r.favorite && r.known { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(Color(red: 1, green: 0.36, blue: 0.54)) }
+                }
+                if !r.note.isEmpty {
+                    Text("\u{201C}\(r.note)\u{201D}").font(.caption2).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+                if !r.known { Text("Not in this library, so it's skipped").font(.caption2).foregroundStyle(.tertiary) }
+            }
+            Spacer(minLength: 8)
+            if r.known, let to = r.to { statusChange(r.from, to) }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+    }
+
+    @ViewBuilder private func statusChange(_ from: CardStatus?, _ to: CardStatus) -> some View {
+        HStack(spacing: 5) {
+            if let from, from != to {
+                Text(from.label).font(.caption2.weight(.semibold)).foregroundStyle(CardThreadBadge.color(from))
+                Image(systemName: "arrow.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
+            }
+            Label(to.label, systemImage: CardThreadBadge.symbol(to)).font(.caption2.weight(.bold)).foregroundStyle(CardThreadBadge.color(to))
+            if from == to { Text("no change").font(.caption2).foregroundStyle(.tertiary) }
+            if from == nil { Text("no board").font(.caption2).foregroundStyle(.tertiary) }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(CardThreadBadge.color(to).opacity(0.1), in: Capsule())
     }
 }
 

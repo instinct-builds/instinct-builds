@@ -703,3 +703,29 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   gets a "Round summary (PDF)" button, so the client has both in one
   place.
 - Logic and tests: `BoardTemplate.swift`, `BoardTemplateTests.swift`.
+
+## 1.23.0: client approval from the gallery, import preview, Arrange
+
+- Every image in a shared review gallery now has Approve and Request
+  changes next to the heart and the note, on the grid and in the
+  lightbox (keys A and C). Press the same button again to clear it. The
+  choice is saved in the same "Download feedback" file as an optional
+  `status` field, so feedback files from older galleries still import,
+  and galleries shared before 1.23 keep working.
+- File > Import Client Feedback… now opens a preview first. For each file
+  it shows the reviewer, the board the round came from, and a count of
+  picks, approvals, change requests and notes. Each image gets a row with
+  its thumbnail and note, and any status change is shown as old -> new.
+  Images that aren't in the library are flagged as skipped. If that
+  reviewer already sent feedback on this round, the sheet says theirs
+  will be replaced. Nothing changes until you press Import.
+- On import, Approve / Request changes set the card's Approved / Changes
+  status on the round's board (the 1.21 status and filter), and the
+  client's note shows in the card's thread under their name.
+- Arrange: the board's tidy button is now a menu. It has Tidy Into Rows
+  plus, for two or more selected cards, align left / center / right /
+  top / middle / bottom, distribute horizontally / vertically (three or
+  more cards) and match widths / heights. Right-clicking a selection
+  gives the same options. Image cards keep their shape when matched,
+  frames move as cards, and each action is one undo step.
+- Logic and tests: `BoardFeedback.swift`, `BoardFeedbackTests.swift`.
