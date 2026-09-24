@@ -421,9 +421,32 @@ struct CompressorParams {
 // is pushed down above its threshold and lifted below it (upward, faded out
 // between -60 and -80 dBFS so silence and noise floors are not raised), then trimmed.
 class MultibandComp {
+    // Direct-form-II-transposed biquad in double precision (crossover sections).
+    struct BQ {
+        double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
+        void design(int kind, double sr, double hz) { // 0 low pass, 1 high pass, 2 all pass; Q = 1/sqrt(2)
+            const double w = 2.0 * M_PI * hz / sr, cw = std::cos(w), al = std::sin(w) / (2.0 * M_SQRT1_2), a0 = 1.0 + al;
+            if (kind == 0) { b0 = (1 - cw) / 2; b1 = 1 - cw; b2 = (1 - cw) / 2; }
+            else if (kind == 1) { b0 = (1 + cw) / 2; b1 = -(1 + cw); b2 = (1 + cw) / 2; }
+            else { b0 = 1 - al; b1 = -2 * cw; b2 = 1 + al; }
+            b0 /= a0; b1 /= a0; b2 /= a0; a1 = -2 * cw / a0; a2 = (1 - al) / a0;
+        }
+        inline double run(double x) { const double y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return y; }
+    };
 public:
     static constexpr int kBands = 3;
-    void init(double sr) { sr_ = sr; a1_ = coef(120.0); a2_ = coef(2500.0); setTimes(0.5); }
+    // Linkwitz-Riley 4th-order splits: the bands stay in phase with each other, so lifting or cutting
+    // one never cancels its neighbours; the low band passes the 2.5 kHz split's all-pass to stay aligned.
+    void init(double sr) {
+        sr_ = sr;
+        for (int c = 0; c < 2; ++c) {
+            for (int k = 0; k < 2; ++k) { lp1_[c][k].design(0, sr, 120.0); hp1_[c][k].design(1, sr, 120.0);
+                                          lp2_[c][k].design(0, sr, 2500.0); hp2_[c][k].design(1, sr, 2500.0); }
+            ap_[c].design(2, sr, 2500.0);
+            dryAp_[c][0].design(2, sr, 120.0); dryAp_[c][1].design(2, sr, 2500.0);
+        }
+        setTimes(0.5);
+    }
     void set(const CompressorParams& p) {
         p_ = p;
         setTimes(p.speed);
@@ -443,10 +466,9 @@ public:
     inline void process(float& l, float& r) {
         double in[2] = {l, r}, band[2][kBands];
         for (int c = 0; c < 2; ++c) {
-            s1_[c][0] += a1_ * (in[c] - s1_[c][0]); s1_[c][1] += a1_ * (s1_[c][0] - s1_[c][1]);
-            const double low = s1_[c][1], rest = in[c] - low;
-            s2_[c][0] += a2_ * (rest - s2_[c][0]); s2_[c][1] += a2_ * (s2_[c][0] - s2_[c][1]);
-            band[c][0] = low; band[c][1] = s2_[c][1]; band[c][2] = rest - s2_[c][1];
+            const double low = ap_[c].run(lp1_[c][1].run(lp1_[c][0].run(in[c])));
+            const double rest = hp1_[c][1].run(hp1_[c][0].run(in[c]));
+            band[c][0] = low; band[c][1] = lp2_[c][1].run(lp2_[c][0].run(rest)); band[c][2] = hp2_[c][1].run(hp2_[c][0].run(rest));
         }
         double out[2] = {0.0, 0.0};
         for (int b = 0; b < kBands; ++b) {
@@ -458,8 +480,11 @@ public:
             out[0] += band[0][b] * g; out[1] += band[1][b] * g;
         }
         const double mix = std::clamp(p_.mix, 0.0, 1.0);
-        l = (float)((1.0 - mix) * in[0] + mix * out[0]);
-        r = (float)((1.0 - mix) * in[1] + mix * out[1]);
+        if (mix >= 1.0) { l = (float)out[0]; r = (float)out[1]; return; }
+        // The dry side takes the crossovers' all-pass phase so a part-wet MIX never combs.
+        const double d0 = dryAp_[0][1].run(dryAp_[0][0].run(in[0])), d1 = dryAp_[1][1].run(dryAp_[1][0].run(in[1]));
+        l = (float)((1.0 - mix) * d0 + mix * out[0]);
+        r = (float)((1.0 - mix) * d1 + mix * out[1]);
     }
 private:
     double coef(double hz) const { return 1.0 - std::exp(-2.0 * M_PI * hz / sr_); }
@@ -478,9 +503,10 @@ private:
         }
         return 0.0;
     }
-    double sr_ = 44100.0, a1_ = 0.0, a2_ = 0.0, atk_ = 0.0, rel_ = 0.0, gAtk_ = 0.0, gRel_ = 0.0;
+    double sr_ = 44100.0, atk_ = 0.0, rel_ = 0.0, gAtk_ = 0.0, gRel_ = 0.0;
     double thrDb_ = -21.0, ratio_ = 3.5, upThrDb_ = -27.0, upRatio_ = 1.6, upMaxDb_ = 7.2;
-    double s1_[2][2] = {}, s2_[2][2] = {}, env_[kBands] = {}, gDb_[kBands] = {}, trim_[kBands] = {1.0, 1.0, 1.0};
+    BQ lp1_[2][2], hp1_[2][2], lp2_[2][2], hp2_[2][2], ap_[2], dryAp_[2][2];
+    double env_[kBands] = {}, gDb_[kBands] = {}, trim_[kBands] = {1.0, 1.0, 1.0};
     CompressorParams p_;
 };
 

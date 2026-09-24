@@ -91,9 +91,13 @@ int main() {
     {
         auto in = noise(44100, 0.3f, 11);
         FXParams t; t.comp.enabled = true; t.comp.mode = 1; t.comp.amount = 0.0; t.comp.upward = 0.0;
-        FXChain c = chain(t); St o = run(c, in, in);
-        double err = 0; for (int i = 0; i < 44100; ++i) err = std::max(err, (double)std::fabs(o.l[i] - in[i]));
-        check(err < 1e-5, "at zero depth the three bands sum back to the input (max error " + std::to_string(err) + ")");
+        // Linkwitz-Riley splits sum to an all-pass: flat magnitude at every frequency (phase turns near 120 Hz / 2.5 kHz).
+        double err = 0;
+        for (double hz : {40.0, 120.0, 400.0, 1200.0, 2500.0, 6000.0, 14000.0}) {
+            FXChain c = chain(t); auto s = sine(44100, hz, 0.3); St o = run(c, s, s);
+            err = std::max(err, std::fabs(20 * std::log10(rms(o.l, 22050, 44100) / rms(s, 22050, 44100))));
+        }
+        check(err < 0.1, "at zero depth the three bands sum back flat (worst " + std::to_string(err) + " dB, 40 Hz-14 kHz)");
         auto level = [&](double amp, double amount, double upward, double lowDb = 0) {
             FXParams f; f.comp.enabled = true; f.comp.mode = 1; f.comp.amount = amount; f.comp.upward = upward; f.comp.lowDb = lowDb;
             FXChain k = chain(f); auto s = sine(44100, 1000, amp); St r = run(k, s, s); return rms(r.l, 22050, 44100) / rms(s, 22050, 44100);
@@ -109,7 +113,9 @@ int main() {
         check(std::fabs(20 * std::log10(lowTrim(6.0)) - 6.0) < 1.5 && std::fabs(20 * std::log10(lowTrim(-6.0)) + 6.0) < 1.5, "LOW trims the low band (25 Hz: " + std::to_string(20 * std::log10(lowTrim(6.0))) + " dB)");
         FXParams dm; dm.comp.enabled = true; dm.comp.mode = 1; dm.comp.amount = 1.0; dm.comp.upward = 1.0; dm.comp.mix = 0.0;
         FXChain kd = chain(dm); St dr = run(kd, in, in);
-        check(dr.l == in, "MIX 0 is dry");
+        FXParams dn = dm; dn.comp.amount = 0.0; dn.comp.upward = 0.0; dn.comp.mix = 1.0; FXChain kn = chain(dn); St nr = run(kn, in, in);
+        double de = 0; for (int i = 0; i < 44100; ++i) de = std::max(de, (double)std::fabs(dr.l[i] - nr.l[i]));
+        check(de < 1e-5, "MIX 0 is dry (the unprocessed, phase-matched signal)");
         const auto& mb = kd.params().comp; (void)mb;
         MultibandComp m; m.init(44100); CompressorParams cp; cp.mode = 1; cp.amount = 0.6; cp.upward = 0.5; m.set(cp);
         check(m.staticGainDb(0) < -5 && m.staticGainDb(-60) > 2 && m.staticGainDb(-25) == 0.0 && m.staticGainDb(-100) == 0.0, "static curve: down above, up below, flat between, off at the floor");
