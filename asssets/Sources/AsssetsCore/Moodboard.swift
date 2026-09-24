@@ -93,6 +93,9 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
     public var sharedGalleries: [String]
     public var reviews: [BoardReview]
     public var versions: [BoardVersion]
+    /// Card approval and the studio's replies under client comments (1.21), keyed by board item id.
+    public var statuses: [UUID: CardStatus]
+    public var replies: [BoardReply]
 
     public static let minSize = 40.0
     public static let margin = 40.0
@@ -104,9 +107,10 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
                 sharedGalleries: [String] = [], reviews: [BoardReview] = [], versions: [BoardVersion] = []) {
         self.id = id; self.name = name; self.items = items; self.grid = grid; self.snap = snap; self.connectors = connectors
         self.sharedGalleries = sharedGalleries; self.reviews = reviews; self.versions = versions
+        self.statuses = [:]; self.replies = []
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap, connectors, sharedGalleries, reviews, versions }
+    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap, connectors, sharedGalleries, reviews, versions, statuses, replies }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -120,6 +124,8 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         sharedGalleries = (try? c.decodeIfPresent([String].self, forKey: .sharedGalleries)) ?? []
         reviews = (try? c.decodeIfPresent([BoardReview].self, forKey: .reviews)) ?? []
         versions = (try? c.decodeIfPresent([BoardVersion].self, forKey: .versions)) ?? []
+        statuses = ((try? c.decodeIfPresent([UUID: CardStatus].self, forKey: .statuses)) ?? [:]).filter { $0.value != .open }
+        replies = (try? c.decodeIfPresent([BoardReply].self, forKey: .replies)) ?? []
     }
 
     /// Back to front.
@@ -525,7 +531,7 @@ extension StudioCatalog {
         var map: [UUID: UUID] = [:]
         b.items = src.items.map { var it = $0; it.id = UUID(); map[$0.id] = it.id; return it }
         // A copy starts its own history: no shared galleries, client rounds or versions.
-        b.sharedGalleries = []; b.reviews = []; b.versions = []
+        b.sharedGalleries = []; b.reviews = []; b.versions = []; b.statuses = [:]; b.replies = []
         b.connectors = src.connectors.compactMap { c in
             guard let f = map[c.from], let t = map[c.to] else { return nil }
             return BoardConnector(from: f, to: t, label: c.label)

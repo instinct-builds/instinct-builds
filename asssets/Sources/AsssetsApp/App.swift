@@ -138,6 +138,12 @@ final class StudioLibrary: ObservableObject {
     @Published var boardReviewer: String?
     @Published var boardShowComments = true
     @Published var boardVersionsOpen = false
+    /// Approval (1.21): the status filter, the card whose thread is open, and who replies are signed as.
+    @Published var boardStatusFilter: CardStatus?
+    @Published var threadCard: UUID?
+    @Published var replyAuthor = UserDefaults.standard.string(forKey: "replyAuthor") ?? (NSFullUserName().isEmpty ? "Studio" : NSFullUserName()) {
+        didSet { UserDefaults.standard.set(replyAuthor, forKey: "replyAuthor") }
+    }
     @Published var fitBoardRequest = 0
     /// Inspector column on/off (1.17), remembered between launches.
     @Published var showInspector = UserDefaults.standard.object(forKey: "showInspector") as? Bool ?? true {
@@ -1445,7 +1451,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1804,6 +1810,21 @@ final class StudioLibrary: ObservableObject {
             } else if let b = catalog.board(id), let first = b.items.first(where: { $0.kind == .asset }) {
                 boardItem = first.id; if let a = first.assetID { selection = [a]; focusID = a }
             }
+        case "board-thread", "board-status":
+            let (id, stage) = makeDemoApproval()
+            show(board: id)
+            if demo == "board-thread" {
+                boardSelection = [stage]
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self.threadCard = stage }
+            } else {
+                boardStatusFilter = .approved
+                let out = supportRoot.appendingPathComponent("demo-summary.pdf"), png = supportRoot.appendingPathComponent("demo-summary.png")
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    let rows = await self.writeRoundSummary(id, to: out, png: png)
+                    try? "done rows=\(rows ?? -1)".write(to: self.supportRoot.appendingPathComponent("demo-summary.txt"), atomically: true, encoding: .utf8)
+                }
+            }
         case "board-review", "board-versions":
             let id = makeDemoReviewRound()
             show(board: id)
@@ -1862,7 +1883,7 @@ extension StudioLibrary {
     func show(board id: UUID) {
         guard catalog.board(id) != nil else { return }
         similarTo = nil; selectedSmart = nil; boardItem = nil; editingNote = nil; editingConnector = nil
-        if selectedBoard != id { boardClientOnly = false; boardReviewer = nil; boardVersionsOpen = false }
+        if selectedBoard != id { boardClientOnly = false; boardReviewer = nil; boardVersionsOpen = false; boardStatusFilter = nil; threadCard = nil }
         selectedBoard = id
         fitBoardRequest += 1
     }
@@ -1996,7 +2017,6 @@ extension StudioLibrary {
         }
     }
 
-    /// Demo board: mockups, textures and a loop with notes and a palette card, laid out by hand.
     /// The lobby board after a client round: two saved versions, a shared gallery and two reviewers' feedback files imported (1.20).
     func makeDemoReviewRound() -> UUID {
         let id = makeDemoBoard()
@@ -2035,6 +2055,29 @@ extension StudioLibrary {
         return id
     }
 
+    /// The client round with the studio's answers (1.21): statuses on four cards and replies under two comments.
+    func makeDemoApproval() -> (UUID, UUID) {
+        let id = makeDemoReviewRound()
+        guard let b = catalog.board(id) else { return (id, id) }
+        func card(_ f: String) -> UUID? {
+            b.items.first { it in it.kind == .asset && catalog.assets.first { $0.id == it.assetID }?.importedPath?.hasSuffix(f) == true }?.id
+        }
+        let plinth = card("cosmetic-plinth-mockup.png"), stage = card("device-stage-mockup.png"), gatefold = card("album-gatefold-mockup.png"), stone = card("sandstone-4k.png")
+        let stamp = { (m: Int) in ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(-m) * 60)) }
+        mutate { c in
+            _ = c.updateBoard(id) { b in
+                b.setStatus(.approved, for: Set([plinth, gatefold, stone].compactMap { $0 }))
+                if let stage {
+                    b.setStatus(.changes, for: [stage])
+                    b.addReply(to: stage, author: "Ari (studio)", text: "Fair - swapping the screen for the stone-frame version. New mock by Friday.", posted: stamp(40))
+                }
+                if let plinth { b.addReply(to: plinth, author: "Ari (studio)", text: "Locked in. Brass finish sample goes out Monday.", posted: stamp(32)) }
+            }
+        }
+        return (id, stage ?? id)
+    }
+
+    /// Demo board: mockups, textures and a loop with notes and a palette card, laid out by hand.
     func makeDemoBoard() -> UUID {
         let all = catalog.assets
         func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
@@ -2544,39 +2587,50 @@ struct BoardCanvas: View {
 
     private var subtitle: String {
         let n = "\(board.items.count) item\(board.items.count == 1 ? "" : "s")"
-        guard !board.reviews.isEmpty else { return n }
+        let approved = board.statusCounts[.approved] ?? 0
+        let tail = approved > 0 ? " · \(approved) approved" : ""
+        guard !board.reviews.isEmpty else { return n + tail }
         let picked = pins.values.filter(\.picked).count
-        return n + " · \(picked) picked by " + (model.boardReviewer ?? (board.reviewers.count == 1 ? board.reviewers[0] : "\(board.reviewers.count) reviewers"))
+        return n + " · \(picked) picked by " + (model.boardReviewer ?? (board.reviewers.count == 1 ? board.reviewers[0] : "\(board.reviewers.count) reviewers")) + tail
     }
 
     private var pins: [UUID: BoardPin] { board.pins(reviewer: model.boardReviewer) }
 
     private func dimmed(_ item: BoardItem) -> Bool {
-        guard model.boardClientOnly, !board.reviews.isEmpty else { return false }
         if item.kind == .frame || item.kind == .heading { return false }
+        if let f = model.boardStatusFilter, item.kind != .asset || board.status(of: item.id) != f { return true }
+        guard model.boardClientOnly, !board.reviews.isEmpty else { return false }
         return pins[item.id]?.picked != true
     }
 
-    /// Client picks and comments from imported feedback, drawn on the cards they belong to (1.20).
+    /// Client picks and comments from imported feedback (1.20), plus status and replies (1.21), drawn on the cards they belong to.
+    /// Clicking the badge opens the card's thread.
     @ViewBuilder private var pinLayer: some View {
-        if !board.reviews.isEmpty {
-            let all = pins
+        let all = pins
+        let threaded = board.threadedCards().union(model.threadCard.map { [$0] } ?? [])
+        if !threaded.isEmpty {
             let t = min(2.2, 1 / max(0.1, z))
-            ForEach(board.layered.filter { all[$0.id] != nil }) { item in
-                let r = itemRect(item), pin = all[item.id]!
-                if !(model.boardClientOnly && !pin.picked) {
-                    ClientPinBadge(pin: pin)
-                        .scaleEffect(CGFloat(t), anchor: .topTrailing)
-                        .frame(width: r.w - 8, alignment: .topTrailing)
-                        .offset(x: r.x, y: r.y + 8)
-                    if model.boardShowComments, !pin.comments.isEmpty {
-                        let scale = min(t, max(1, (r.w - 16) / 220))
-                        ClientCommentCallout(comments: pin.comments, width: max(120, (r.w - 16) / scale))
-                            .scaleEffect(CGFloat(scale), anchor: .bottomLeading)
-                            .frame(width: r.w - 16, height: r.h - 16, alignment: .bottomLeading)
-                            .offset(x: r.x + 8, y: r.y + 8)
-                            .allowsHitTesting(false)
+            ForEach(board.layered.filter { threaded.contains($0.id) }) { item in
+                let r = itemRect(item), pin = all[item.id]
+                let hidden = dimmed(item)
+                let replies = board.replies(for: item.id)
+                CardThreadBadge(pin: hidden ? nil : pin, status: board.status(of: item.id), replies: hidden ? 0 : replies.count)
+                    .opacity(hidden ? 0.35 : 1)
+                    .onTapGesture { model.threadCard = item.id }
+                    .popover(isPresented: Binding(get: { model.threadCard == item.id }, set: { if !$0 && model.threadCard == item.id { model.threadCard = nil } }),
+                             arrowEdge: .trailing) {
+                        CardThreadPanel(boardID: board.id, itemID: item.id).environmentObject(model)
                     }
+                    .scaleEffect(CGFloat(t), anchor: .topTrailing)
+                    .frame(width: r.w - 8, alignment: .topTrailing)
+                    .offset(x: r.x, y: r.y + 8)
+                if !hidden, model.boardShowComments, let pin, !pin.comments.isEmpty {
+                    let scale = min(t, max(1, (r.w - 16) / 220))
+                    ClientCommentCallout(comments: pin.comments, width: max(120, (r.w - 16) / scale), replies: replies.count)
+                        .scaleEffect(CGFloat(scale), anchor: .bottomLeading)
+                        .frame(width: r.w - 16, height: r.h - 16, alignment: .bottomLeading)
+                        .offset(x: r.x + 8, y: r.y + 8)
+                        .allowsHitTesting(false)
                 }
             }
         }
@@ -2587,6 +2641,12 @@ struct BoardCanvas: View {
             Button("Import Client Feedback…") { model.importFeedback() }
             Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
             Button(board.versions.isEmpty ? "Versions…" : "Versions (\(board.versions.count))…") { model.boardVersionsOpen = true }
+            Button("Export Round Summary PDF…") { model.exportRoundSummary(board.id) }
+            Divider()
+            Picker("Status", selection: $model.boardStatusFilter) {
+                Text("All Cards").tag(CardStatus?.none)
+                ForEach(CardStatus.allCases, id: \.self) { st in Text("\(st.label) (\(board.statusCounts[st] ?? 0))").tag(CardStatus?.some(st)) }
+            }
             if !board.reviews.isEmpty {
                 Divider()
                 Toggle("Picked by Client Only", isOn: $model.boardClientOnly)
@@ -2602,7 +2662,9 @@ struct BoardCanvas: View {
                 }
             }
         } label: {
-            if model.boardClientOnly {
+            if let f = model.boardStatusFilter {
+                Label(f.label, systemImage: CardThreadBadge.symbol(f)).foregroundStyle(CardThreadBadge.color(f))
+            } else if model.boardClientOnly {
                 Label(compact ? "Picked" : "Picked by Client", systemImage: "heart.fill").foregroundStyle(ClientPinBadge.pink)
             } else {
                 Image(systemName: board.reviews.isEmpty ? "person.2" : "person.2.fill")
@@ -2751,6 +2813,9 @@ struct BoardCanvas: View {
             Button("Send \(sel.count) to Back") { model.updateBoard(board.id, "Send to Back") { $0.sendToBack(sel) } }
             Button("Put in New Section") { model.addFrame() }
             if sel.count == 2 { Button("Connect with Arrow") { model.connectSelection() } }
+            Menu("Mark \(sel.count) as") {
+                ForEach(CardStatus.allCases, id: \.self) { st in Button(st.label) { model.updateBoard(board.id, "Mark \(st.label)") { $0.setStatus(st, for: sel) } } }
+            }
             Divider()
             Button("Remove \(sel.count) from Board", role: .destructive) { model.removeFromBoard(sel) }
         } else {
@@ -2762,6 +2827,15 @@ struct BoardCanvas: View {
             }
             switch item.kind {
             case .asset:
+                Menu("Status") {
+                    ForEach(CardStatus.allCases, id: \.self) { st in
+                        Button { model.updateBoard(board.id, "Mark \(st.label)") { $0.setStatus(st, for: [item.id]) } } label: {
+                            if board.status(of: item.id) == st { Label(st.label, systemImage: "checkmark") } else { Text(st.label) }
+                        }
+                    }
+                }
+                Button("Comments & Status…") { select(item); model.threadCard = item.id }
+                Divider()
                 Button("Add Palette Card") { model.addPaletteCard(for: item) }
                 if let a = item.assetID, let asset = model.catalog.assets.first(where: { $0.id == a }), let hex = asset.palette.first {
                     Button("Search Library by Its Color") { model.searchFromBoard(hex) }
@@ -6428,6 +6502,7 @@ struct ClientPinBadge: View {
 struct ClientCommentCallout: View {
     let comments: [BoardPin.Comment]
     let width: Double
+    var replies = 0
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             ForEach(Array(comments.prefix(2).enumerated()), id: \.offset) { _, c in
@@ -6440,7 +6515,10 @@ struct ClientCommentCallout: View {
                     }
                 }
             }
-            if comments.count > 2 { Text("+\(comments.count - 2) more").font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.6)) }
+            if comments.count > 2 || replies > 0 {
+                Text([comments.count > 2 ? "+\(comments.count - 2) more" : nil, replies > 0 ? "\(replies) \(replies == 1 ? "reply" : "replies")" : nil].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
+            }
         }
         .padding(8)
         .frame(width: width, alignment: .leading)
@@ -6530,6 +6608,276 @@ struct BoardVersionsPanel: View {
     }
 }
 
+
+// MARK: - Card approval and threads (1.21)
+
+/// The corner badge on a card: status, client picks and the reply count. Clicking it opens the thread.
+struct CardThreadBadge: View {
+    let pin: BoardPin?
+    let status: CardStatus
+    let replies: Int
+
+    static func color(_ s: CardStatus) -> Color {
+        switch s {
+        case .approved: return Theme.watch
+        case .changes: return Theme.warning
+        case .open: return Color(white: 0.6)
+        }
+    }
+    static func symbol(_ s: CardStatus) -> String {
+        switch s {
+        case .approved: return "checkmark.seal.fill"
+        case .changes: return "arrow.triangle.2.circlepath"
+        case .open: return "circle.dashed"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if status != .open {
+                HStack(spacing: 3) {
+                    Image(systemName: Self.symbol(status)).font(.system(size: 9, weight: .bold))
+                    Text(status.label).font(.system(size: 9, weight: .heavy))
+                }
+                .foregroundStyle(.black.opacity(0.85))
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .background(Self.color(status), in: Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.9), lineWidth: 1.2))
+            }
+            if let pin, pin.picked || !pin.comments.isEmpty { ClientPinBadge(pin: pin) }
+            if replies > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrowshape.turn.up.left.fill").font(.system(size: 8, weight: .bold))
+                    Text("\(replies)").font(.system(size: 9, weight: .heavy))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .background(Theme.accent, in: Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.9), lineWidth: 1.2))
+            }
+            if status == .open && (pin == nil || (!pin!.picked && pin!.comments.isEmpty)) && replies == 0 {
+                Color.clear.frame(width: 1, height: 20)   // an anchor for a thread opened from the menu
+            }
+        }
+        .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+        .contentShape(Rectangle())
+        .help("Comments & status")
+    }
+}
+
+/// A card's thread: status, what the client said, the studio's replies and a reply box.
+struct CardThreadPanel: View {
+    @EnvironmentObject var model: StudioLibrary
+    let boardID: UUID
+    let itemID: UUID
+    @State private var draft = ""
+    @State private var editing: UUID?
+    @State private var editDraft = ""
+
+    var body: some View {
+        let board = model.catalog.board(boardID)
+        let item = board?.items.first { $0.id == itemID }
+        let asset = item?.assetID.flatMap { id in model.catalog.assets.first { $0.id == id } }
+        let pin = board?.pins()[itemID]
+        let replies = board?.replies(for: itemID) ?? []
+        let status = board?.status(of: itemID) ?? .open
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                if let asset { Thumbnail(asset: asset, pixels: 120).frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 6)) }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(asset?.title ?? "Card").font(.headline).lineLimit(1)
+                    if let pin, pin.picked {
+                        Label("Picked by " + pin.pickedBy.joined(separator: ", "), systemImage: "heart.fill").font(.caption).foregroundStyle(ClientPinBadge.pink).lineLimit(1)
+                    } else {
+                        Text("Not picked").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            HStack(spacing: 6) {
+                ForEach(CardStatus.allCases, id: \.self) { st in
+                    Button { model.updateBoard(boardID, "Mark \(st.label)") { $0.setStatus(st, for: [itemID]) } } label: {
+                        Label(st.label, systemImage: CardThreadBadge.symbol(st)).font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 6)
+                            .foregroundStyle(status == st ? Color.black.opacity(0.85) : Color.primary)
+                            .background(status == st ? CardThreadBadge.color(st) : Theme.raised, in: RoundedRectangle(cornerRadius: 7))
+                    }.buttonStyle(.plain)
+                }
+            }
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if (pin?.comments ?? []).isEmpty && replies.isEmpty {
+                        Text("No comments yet. Replies stay with the board and go in the round summary.").font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(Array((pin?.comments ?? []).enumerated()), id: \.offset) { _, c in
+                        bubble(initials: ClientPinBadge.initials(c.reviewer), tint: ClientPinBadge.pink, who: c.reviewer, when: c.imported, text: c.text, indent: false)
+                    }
+                    ForEach(replies) { r in
+                        if editing == r.id {
+                            HStack {
+                                TextField("Reply", text: $editDraft, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...4)
+                                Button("Save") { model.updateBoard(boardID, "Edit Reply") { $0.editReply(r.id, text: editDraft) }; editing = nil }.controlSize(.small)
+                            }.padding(.leading, 22)
+                        } else {
+                            bubble(initials: ClientPinBadge.initials(r.author), tint: Theme.accent, who: r.author, when: BoardVersionsPanel.display(r.posted), text: r.text, indent: !(pin?.comments ?? []).isEmpty)
+                                .contextMenu {
+                                    Button("Edit") { editDraft = r.text; editing = r.id }
+                                    Button("Delete Reply", role: .destructive) { model.updateBoard(boardID, "Delete Reply") { $0.deleteReply(r.id) } }
+                                }
+                        }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.frame(maxHeight: 260)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .bottom, spacing: 6) {
+                    TextField(pin?.comments.isEmpty == false ? "Reply to \(pin!.comments[0].reviewer)…" : "Add a comment…", text: $draft, axis: .vertical)
+                        .textFieldStyle(.roundedBorder).lineLimit(1...4)
+                    Button("Reply", action: send).buttonStyle(.borderedProminent).tint(Theme.accent)
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .keyboardShortcut(.return, modifiers: .command)
+                }
+                HStack(spacing: 4) {
+                    Text("as").font(.caption2).foregroundStyle(.tertiary)
+                    TextField("Name", text: $model.replyAuthor).textFieldStyle(.plain).font(.caption2).foregroundStyle(.secondary).frame(width: 140)
+                }
+            }
+        }
+        .padding(14).frame(width: 360)
+    }
+
+    private func send() {
+        let text = draft, who = model.replyAuthor, stamp = BoardVersionsPanel.nowStamp()
+        model.updateBoard(boardID, "Reply") { $0.addReply(to: itemID, author: who, text: text, posted: stamp) }
+        draft = ""
+    }
+
+    private func bubble(initials: String, tint: Color, who: String, when: String, text: String, indent: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(initials).font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                .frame(width: 22, height: 22).background(tint.opacity(0.9), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(who).font(.caption.weight(.bold)).lineLimit(1)
+                    Text(when).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
+                Text(text).font(.callout).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.leading, indent ? 22 : 0)
+    }
+}
+
+/// The round summary as a printable page: light paper, one row per asset card (1.21).
+struct RoundSummaryPage: View {
+    let summary: RoundSummary
+    let images: [UUID: CGImage]
+    let date: String
+    static let width: CGFloat = 612
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("CLIENT ROUND SUMMARY").font(.system(size: 9, weight: .heavy)).tracking(1.5).foregroundStyle(Self.muted)
+                Text(summary.board).font(.system(size: 24, weight: .heavy)).foregroundStyle(Self.ink)
+                Text(([date] + (summary.reviewers.isEmpty ? [] : ["Reviewed by " + summary.reviewers.joined(separator: ", ")])).joined(separator: " · "))
+                    .font(.system(size: 10)).foregroundStyle(Self.muted)
+                HStack(spacing: 6) {
+                    ForEach([CardStatus.approved, .changes, .open], id: \.self) { st in
+                        chip("\(summary.counts[st] ?? 0) \(st.label)", st)
+                    }
+                }.padding(.top, 4)
+            }
+            .padding(.bottom, 14)
+            Rectangle().fill(Self.rule).frame(height: 1)
+            ForEach(Array(summary.rows.enumerated()), id: \.offset) { i, row in
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        Color(white: 0.92)
+                        if let a = row.asset, let img = images[a] { Image(decorative: img, scale: 1).resizable().scaledToFill() }
+                    }
+                    .frame(width: 92, height: 69).clipShape(RoundedRectangle(cornerRadius: 4))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text("\(i + 1). \(row.title)").font(.system(size: 12, weight: .bold)).foregroundStyle(Self.ink).lineLimit(1)
+                            Spacer(minLength: 4)
+                            chip(row.status.label, row.status)
+                        }
+                        if !row.pickedBy.isEmpty {
+                            Text("♥ Picked by " + row.pickedBy.joined(separator: ", ")).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(Color(red: 0.82, green: 0.2, blue: 0.4))
+                        }
+                        ForEach(Array(row.comments.enumerated()), id: \.offset) { _, c in line(c.reviewer, c.text, reply: false) }
+                        ForEach(row.replies) { r in line(r.author, r.text, reply: true) }
+                        if row.pickedBy.isEmpty && row.comments.isEmpty && row.replies.isEmpty {
+                            Text("No feedback").font(.system(size: 9.5)).foregroundStyle(Self.muted)
+                        }
+                    }
+                }
+                .padding(.vertical, 10)
+                Rectangle().fill(Self.rule).frame(height: 1)
+            }
+            Text("Made with ASSSETS").font(.system(size: 8, weight: .semibold)).foregroundStyle(Self.muted).padding(.top, 12)
+        }
+        .padding(40)
+        .frame(width: Self.width, alignment: .topLeading)
+        .background(Color.white)
+    }
+
+    static let ink = Color(white: 0.1), muted = Color(white: 0.45), rule = Color(white: 0.87)
+
+    private func chip(_ text: String, _ st: CardStatus) -> some View {
+        Text(text).font(.system(size: 9, weight: .heavy)).foregroundStyle(Self.ink)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(CardThreadBadge.color(st).opacity(st == .open ? 0.35 : 0.8), in: Capsule())
+    }
+
+    private func line(_ who: String, _ text: String, reply: Bool) -> some View {
+        (Text(reply ? "↳ \(who): " : "\(who): ").font(.system(size: 9.5, weight: .bold)) + Text(text).font(.system(size: 9.5)))
+            .foregroundStyle(reply ? Self.muted : Self.ink)
+            .padding(.leading, reply ? 10 : 0)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+extension StudioLibrary {
+    /// Renders the round summary to a PDF, with an optional PNG of the same page (CI keeps one).
+    func writeRoundSummary(_ id: UUID, to url: URL, png: URL? = nil) async -> Int? {
+        guard let summary = catalog.roundSummary(id) else { return nil }
+        var images: [UUID: CGImage] = [:]
+        for row in summary.rows {
+            guard let aid = row.asset, images[aid] == nil, let a = catalog.assets.first(where: { $0.id == aid }) else { continue }
+            images[aid] = await MediaRenderer.thumbnail(for: a, maxPixel: 320) ?? MediaRenderer.generated(a, width: 320)
+        }
+        let df = DateFormatter(); df.dateStyle = .long
+        let r = ImageRenderer(content: RoundSummaryPage(summary: summary, images: images, date: df.string(from: Date())))
+        r.proposedSize = ProposedViewSize(width: RoundSummaryPage.width, height: nil)
+        var ok = false
+        r.render { size, draw in
+            var box = CGRect(origin: .zero, size: size)
+            guard let ctx = CGContext(url as CFURL, mediaBox: &box, nil) else { return }
+            ctx.beginPDFPage(nil); draw(ctx); ctx.endPDFPage(); ctx.closePDF(); ok = true
+        }
+        if let png {
+            r.scale = 2
+            if let cg = r.cgImage, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) { try? data.write(to: png, options: .atomic) }
+        }
+        return ok ? summary.rows.count : nil
+    }
+
+    func exportRoundSummary(_ id: UUID) {
+        guard let board = catalog.board(id) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = board.name + " round summary.pdf"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { @MainActor in
+            if await self.writeRoundSummary(id, to: url) != nil { self.flash("Exported \(url.lastPathComponent)") } else { self.flash("Couldn't export the round summary") }
+        }
+    }
+}
 
 #else
 @main struct LinuxBuildStub { static func main() { print("ASSSETS requires macOS 14 or later.") } }

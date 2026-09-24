@@ -652,3 +652,26 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Older library files open unchanged; boards without rounds or versions
   look the same as in 1.19.
 - Logic and tests: `BoardReview.swift`, `BoardReviewTests.swift`.
+
+## 1.21.0: comments and approval on boards
+
+- Every card with client feedback, a status or replies has a badge in its
+  corner. Click it, or right-click the card and choose Comments & Status…,
+  to open the card's thread. The thread shows who picked it, the client's
+  comments, and your replies under them. Type in the reply box and press
+  Reply (or Command-Return). Replies are signed with the name under the
+  box. Right-click a reply to edit or delete it.
+- Status: mark a card Approved, Changes or Open in its thread, from the
+  Status submenu, or for a whole selection with "Mark N as". Approved
+  cards get a green badge and Changes cards get an amber one. The header
+  shows how many cards are approved.
+- The people menu has a Status filter (All Cards, Open, Approved,
+  Changes, each with its count). It fades every card that doesn't match
+  and works alongside Picked by Client Only.
+- Export Round Summary PDF… writes one page to send back to the client:
+  the board name, date, reviewers and status counts, then every image
+  card in reading order with its thumbnail, status, picks, comments and
+  replies.
+- Statuses and replies are saved with the board and survive restoring a
+  version. Duplicate Board starts without them.
+- Logic and tests: `BoardApproval.swift`, `BoardApprovalTests.swift`.

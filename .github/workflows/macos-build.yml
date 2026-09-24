@@ -192,6 +192,10 @@ jobs:
           unzip -l "$BG.zip" | tee "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"; grep -q 'board.png' "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"
           shoot board-review 1920x1200 board-review
           shoot board-versions 1920x1200 board-versions
+          shoot board-thread 1920x1200 board-thread
+          shoot board-status 1920x1200 board-status demo-summary.txt
+          cat "$SUP/demo-summary.txt"; grep -q '^done rows=[1-9]' "$SUP/demo-summary.txt" || { echo "round summary did not render"; exit 1; }
+          cp "$SUP/demo-summary.png" "ASSSETS-$ASSSETS_VERSION-round-summary.png"; cp "$SUP/demo-summary.pdf" "ASSSETS-$ASSSETS_VERSION-round-summary.pdf"
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"
@@ -230,6 +234,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-color-search.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-round-summary.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-gallery-listing.txt
 
   au:
