@@ -581,3 +581,84 @@ struct RollHistoryFilterTests {
         #expect(rolls.forCharacter("Wren").matching("2d6").isEmpty)
     }
 }
+
+@Suite("Session segments")
+struct SessionSegmentTests {
+    private var utc: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
+    }
+
+    private func stamped(_ expression: String, at: Date?) -> RollResult {
+        var r = RollResult(expression: expression, dice: [], modifier: 0, total: 10, alternateTotal: nil)
+        r.rolledAt = at
+        return r
+    }
+
+    private func at(_ cal: Calendar, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: 9, day: day, hour: hour, minute: minute))!
+    }
+
+    @Test func gapsWithinThresholdStayOneSession() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 17)),
+                     stamped("1d6", at: at(cal, 24, 16))]
+        let segments = sessionSegments(rolls, now: now, calendar: cal)
+        #expect(segments.count == 1)
+        #expect(segments[0].number == 1)
+        #expect(segments[0].title == "Session 1 - Today")
+        #expect(segments[0].rolls.map(\.expression) == ["d20", "2d6", "1d6"])
+    }
+
+    @Test func gapOverFourHoursSplitsSameDay() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 12))]
+        let segments = sessionSegments(rolls, now: now, calendar: cal)
+        #expect(segments.map(\.title) == ["Session 2 - Today", "Session 1 - Today"])
+        #expect(segments[0].rolls.map(\.expression) == ["d20"])
+        #expect(segments[1].rolls.map(\.expression) == ["2d6"])
+        // Exactly four hours is still the same session.
+        let tight = [stamped("d20", at: at(cal, 24, 16)),
+                     stamped("2d6", at: at(cal, 24, 12))]
+        #expect(sessionSegments(tight, now: now, calendar: cal).count == 1)
+    }
+
+    @Test func dayChangeSplitsEvenUnderGap() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 0, 30)),
+                     stamped("2d6", at: at(cal, 23, 23, 30))]
+        let segments = sessionSegments(rolls, now: now, calendar: cal)
+        #expect(segments.map(\.title) == ["Session 2 - Today", "Session 1 - Yesterday"])
+        #expect(segments.map(\.number) == [2, 1])
+    }
+
+    @Test func numberingRunsOldestFirstAcrossDays() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 23, 18)),
+                     stamped("1d6", at: at(cal, 21, 18))]
+        let segments = sessionSegments(rolls, now: now, calendar: cal)
+        #expect(segments.map(\.number) == [3, 2, 1])
+        #expect(segments[2].title == "Session 1 - \(RollResult.historyDateFormatter.string(from: at(cal, 21, 18)))")
+    }
+
+    @Test func undatedRollsKeepAnUnnumberedSegment() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: nil),
+                     stamped("1d6", at: nil)]
+        let segments = sessionSegments(rolls, now: now, calendar: cal)
+        #expect(segments.map(\.title) == ["Session 1 - Today", "Undated"])
+        #expect(segments.map(\.number) == [1, 0])
+        #expect(segments[1].rolls.map(\.expression) == ["2d6", "1d6"])
+        #expect(sessionSegments([], now: now, calendar: cal).isEmpty)
+    }
+}

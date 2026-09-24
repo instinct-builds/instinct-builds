@@ -167,11 +167,12 @@ extension DiceRollerView {
     }
 }
 
-/// The day-grouped history list with sticky date headers (2.38.0). Public
-/// so the render harness can snapshot it with a crafted roll set: rendering
-/// the full DiceRollerView at fitting size mis-measures the pinned
-/// sections (a nearly-10k-px window with the second group's rows clipped),
-/// so the group proof renders this list in a fixed frame instead.
+/// The session-divided history list with sticky headers (2.38.0 day
+/// groups, 2.48.0 session dividers). Public so the render harness can
+/// snapshot it with a crafted roll set: rendering the full DiceRollerView
+/// at fitting size mis-measures the pinned sections (a nearly-10k-px
+/// window with the second group's rows clipped), so the group proof
+/// renders this list in a fixed frame instead.
 public struct HistoryListView: View {
     let rolls: [RollResult]
 
@@ -189,16 +190,16 @@ public struct HistoryListView: View {
     public var body: some View {
         ScrollView {
             LazyVStack(spacing: Theme.Gap.sm, pinnedViews: [.sectionHeaders]) {
-                ForEach(Array(groupRollsByDay(rolls).enumerated()), id: \.offset) { _, group in
+                ForEach(Array(sessionSegments(rolls).enumerated()), id: \.offset) { _, session in
                     Section {
-                        ForEach(group.rolls.enumerated().map {
-                            IndexedRoll(id: "\(group.title)|\($0.offset)", roll: $0.element)
+                        ForEach(session.rolls.enumerated().map {
+                            IndexedRoll(id: "\(session.title)|\($0.offset)", roll: $0.element)
                         }) { item in
                             RollCard(roll: item.roll)
                         }
                     } header: {
                         HStack {
-                            Text(group.title)
+                            Text(session.title)
                                 .font(Theme.Typeface.caption.bold())
                                 .foregroundStyle(Theme.inkMuted)
                             Spacer()

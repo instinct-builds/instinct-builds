@@ -213,6 +213,65 @@ public func groupRollsByDay(_ rolls: [RollResult], now: Date = Date(),
     return groups
 }
 
+/// One session segment of the history (2.48.0): a run of neighbouring
+/// rolls with no day change and no gap over the session threshold.
+public struct RollSession: Equatable, Sendable {
+    /// 1-based session number, oldest session first; 0 for undated runs.
+    public let number: Int
+    /// "Session 3 - Today", "Session 1 - Sep 21, 2026", or "Undated".
+    public let title: String
+    /// Newest roll first, matching history order.
+    public var rolls: [RollResult]
+}
+
+/// Splits a newest-first history list into session segments (2.48.0): a
+/// new session starts when the calendar day changes between neighbours or
+/// the gap between them exceeds `gapHours` - so a table coming back after
+/// a long break sees its next roll open a fresh session, and day rollover
+/// always divides. Sessions never span days; the day title rides in the
+/// label, keeping the 2.38.0 day headers' information. Numbering runs
+/// oldest-first so a session keeps its number as newer sessions arrive.
+/// Undated legacy rolls keep their own segments, unnumbered.
+public func sessionSegments(_ rolls: [RollResult], now: Date = Date(),
+                            calendar: Calendar = .current,
+                            gapHours: Double = 4) -> [RollSession] {
+    let gap = gapHours * 3600
+    // Walk oldest-first so session numbers stay stable as new rolls land.
+    var segments: [[RollResult]] = []
+    var previous: RollResult?
+    for roll in rolls.reversed() {
+        let startsNew: Bool
+        if let prev = previous, let prevAt = prev.rolledAt, let at = roll.rolledAt {
+            startsNew = !calendar.isDate(prevAt, inSameDayAs: at)
+                || at.timeIntervalSince(prevAt) > gap
+        } else {
+            // Undated neighbours only continue an undated run.
+            startsNew = previous == nil || ((previous?.rolledAt == nil) != (roll.rolledAt == nil))
+        }
+        if startsNew {
+            segments.append([roll])
+        } else {
+            segments[segments.count - 1].append(roll)
+        }
+        previous = roll
+    }
+    var result: [RollSession] = []
+    var number = 0
+    for segment in segments {
+        if let at = segment[0].rolledAt {
+            number += 1
+            result.append(RollSession(number: number,
+                                      title: "Session \(number) - \(rollDayTitle(at, now: now, calendar: calendar))",
+                                      rolls: Array(segment.reversed())))
+        } else {
+            result.append(RollSession(number: 0, title: "Undated",
+                                      rolls: Array(segment.reversed())))
+        }
+    }
+    // Newest session first, matching history order.
+    return Array(result.reversed())
+}
+
 /// One row of the compact-PDF session-log appendix (2.39.0).
 public enum SessionLogRow: Equatable, Sendable {
     case dayHeader(String)

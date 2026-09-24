@@ -4,6 +4,16 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.48.0
+
+- **Session dividers in dice history**: the history list now splits into
+  numbered sessions under its sticky headers - "Session 2 - Today",
+  "Session 1 - Yesterday". A new session starts when the calendar day
+  rolls over or when neighbouring rolls sit more than four hours apart,
+  so coming back after a long break opens a fresh session on the next
+  roll. Numbering runs oldest-first, so a session keeps its number as
+  the night goes on.
+
 ## What's in 2.47.0
 
 - **Journal timestamps in exports**: stamped journal entries (auto-logged
