@@ -225,9 +225,20 @@ public struct RollSession: Equatable, Sendable {
     /// stamp, ISO-8601; nil for undated runs, which cannot be named.
     public let key: String?
     /// The user's free-text session note (2.71.0); nil when unset.
-    public let note: String? = nil
+    public let note: String?
     /// Newest roll first, matching history order.
     public var rolls: [RollResult]
+
+    /// Explicit so the note can default to nil - a let with an initial
+    /// value would drop out of the memberwise initializer entirely.
+    public init(number: Int, title: String, key: String?, note: String? = nil,
+                rolls: [RollResult]) {
+        self.number = number
+        self.title = title
+        self.key = key
+        self.note = note
+        self.rolls = rolls
+    }
 
     /// A copy carrying the user's custom session name (2.67.0); nil or
     /// blank keeps the generated title.
