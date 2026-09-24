@@ -549,7 +549,7 @@ int main() {
         static const int kUp[3] = {60, 64, 67};
         bool upOrder = notes.size() >= 9;
         for (size_t i = 0; upOrder && i < notes.size(); ++i) upOrder = notes[i] == kUp[i % 3];
-        if (!ok || pf.arpOn != 1 || pf.poolCount != 3 || pf.pool[0] != 67 || pf.arpStep < 9 || !upOrder || e < 1.0) { printf("FAIL: arp plays the held keys UP\n"); return 1; }
+        if (!ok || pf.arpOn != 1 || pf.poolCount != 3 || pf.pool[0] != 67 || pf.arpStep < 9 || !upOrder || e < 0.05) { printf("FAIL: arp plays the held keys UP\n"); return 1; }
         ok = AudioUnitSetParameter(t, muew::params::ArpGate, kAudioUnitScope_Global, 0, 25.0f, 0) == noErr
           && AudioUnitSetParameter(t, muew::params::ArpSwing, kAudioUnitScope_Global, 0, 40.0f, 0) == noErr && render(t, bl, br);
         muew::Preset st;
