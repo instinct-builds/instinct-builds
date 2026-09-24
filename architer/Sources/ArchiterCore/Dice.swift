@@ -104,6 +104,37 @@ public func groupRollsByDay(_ rolls: [RollResult], now: Date = Date(),
     return groups
 }
 
+/// One row of the compact-PDF session-log appendix (2.39.0).
+public enum SessionLogRow: Equatable, Sendable {
+    case dayHeader(String)
+    case roll(String)
+}
+
+/// Chronological session-log rows for the compact-PDF appendix: oldest
+/// rolls first, grouped under the same day titles as the on-screen
+/// history (2.38.0), so the printed record reads like the session played.
+/// Undated legacy rolls lead under "Undated".
+public func sessionLogRows(_ rolls: [RollResult], now: Date = Date(),
+                           calendar: Calendar = .current) -> [SessionLogRow] {
+    groupRollsByDay(Array(rolls.reversed()), now: now, calendar: calendar).flatMap { group in
+        [SessionLogRow.dayHeader(group.title)] + group.rolls.map { SessionLogRow.roll($0.historyLine) }
+    }
+}
+
+public extension RollResult {
+    /// One session-log line (2.39.0, extracted from historyText):
+    /// "[HH:mm] Stealth check: 25 (1d20+7)" when labeled, "[HH:mm] 2d6+3: 13"
+    /// when not; pre-2.35.0 rolls without a stamp keep the 2.32.0 format.
+    var historyLine: String {
+        let stamp = rolledAt
+            .map { "[\(RollResult.historyTimeFormatter.string(from: $0))] " } ?? ""
+        if let label {
+            return "\(stamp)\(label): \(total) (\(expression))"
+        }
+        return "\(stamp)\(expression): \(total)"
+    }
+}
+
 public extension Array where Element == RollResult {
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
@@ -115,16 +146,7 @@ public extension Array where Element == RollResult {
     /// "Stealth check: 25 (1d20+7)" when labeled, "2d6+3: 13" when not.
     /// Pairs with forCharacter/matching - export exactly what you see.
     var historyText: String {
-        reversed().map { roll in
-            // 2.35.0: "[HH:mm] " time column when the roll was timestamped;
-            // pre-2.35.0 rolls keep the 2.32.0 format.
-            let stamp = roll.rolledAt
-                .map { "[\(RollResult.historyTimeFormatter.string(from: $0))] " } ?? ""
-            if let label = roll.label {
-                return "\(stamp)\(label): \(roll.total) (\(roll.expression))"
-            }
-            return "\(stamp)\(roll.expression): \(roll.total)"
-        }.joined(separator: "\n")
+        reversed().map { $0.historyLine }.joined(separator: "\n")
     }
 
     /// Rolls whose label or expression contains the query, case- and

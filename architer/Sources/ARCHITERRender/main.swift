@@ -92,12 +92,15 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Seeded after the sheet render so the resisted total lands in dice
     // history without lowering the sheet's HP bar.
     model.rollIncomingDamage("2d6+3", type: .fire)
-    // 2.38.0 proof: backdate the two oldest rolls so the history groups
-    // into Today / Yesterday under its sticky headers.
-    if model.rollHistory.count >= 2,
+    // 2.38.0 proof: backdate the three oldest rolls so the history groups
+    // into Today / Yesterday under its sticky headers. The third-oldest is
+    // the character's own check, which also puts a Yesterday group into the
+    // 2.39.0 session-log appendix proof below.
+    if model.rollHistory.count >= 3,
        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) {
         model.rollHistory[model.rollHistory.count - 1].rolledAt = yesterday
         model.rollHistory[model.rollHistory.count - 2].rolledAt = yesterday.addingTimeInterval(3600)
+        model.rollHistory[model.rollHistory.count - 3].rolledAt = yesterday.addingTimeInterval(7200)
     }
     renderPNG(
         DiceRollerView()
@@ -137,7 +140,10 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Exports as files.
     let pdf = SheetPDFExporter.export(character)
     try? pdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet.pdf"))
-    let compactPdf = SheetPDFExporter.export(character, style: .compact)
+    // 2.39.0 proof: the compact export carries the character's session-log
+    // appendix (Today + Yesterday groups from the backdated rolls above).
+    let compactPdf = SheetPDFExporter.export(character, style: .compact,
+                                             sessionRolls: model.rollHistory.forCharacter(character.name))
     try? compactPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact.pdf"))
     let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
     try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))

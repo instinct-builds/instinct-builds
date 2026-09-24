@@ -228,6 +228,66 @@ struct RollDayGroupTests {
     }
 }
 
+@Suite("Session-log appendix rows")
+struct SessionLogRowTests {
+    private func stamped(_ expression: String, label: String?, at: Date?) -> RollResult {
+        var r = RollResult(expression: expression, dice: [], modifier: 0, total: 10, alternateTotal: nil)
+        r.label = label
+        r.rolledAt = at
+        return r
+    }
+
+    private var utc: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
+    }
+
+    private func line(_ label: String, _ expression: String, at: Date) -> String {
+        "[\(RollResult.historyTimeFormatter.string(from: at))] \(label): 10 (\(expression))"
+    }
+
+    @Test func chronologicalDayGroupsOldestRollsFirst() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 18)))
+        let earlierToday = now.addingTimeInterval(-7200)
+        let yesterday = try #require(cal.date(byAdding: .day, value: -1, to: now))
+        let earlierYesterday = yesterday.addingTimeInterval(-7200)
+        // History order is newest first, as stored.
+        let rolls = [
+            stamped("1d20", label: "newer today", at: now),
+            stamped("2d6", label: "older today", at: earlierToday),
+            stamped("1d8", label: "newer yesterday", at: yesterday),
+            stamped("1d6", label: "older yesterday", at: earlierYesterday),
+            stamped("1d4", label: "legacy", at: nil),
+        ]
+        let rows = sessionLogRows(rolls, now: now, calendar: cal)
+        #expect(rows == [
+            .dayHeader("Undated"),
+            .roll("legacy: 10 (1d4)"),
+            .dayHeader("Yesterday"),
+            .roll(line("older yesterday", "1d6", at: earlierYesterday)),
+            .roll(line("newer yesterday", "1d8", at: yesterday)),
+            .dayHeader("Today"),
+            .roll(line("older today", "2d6", at: earlierToday)),
+            .roll(line("newer today", "1d20", at: now)),
+        ])
+        #expect(sessionLogRows([], now: now, calendar: cal).isEmpty)
+    }
+
+    @Test func historyLineFormats() throws {
+        let cal = utc
+        let t = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 9, minute: 42)))
+        let stampedUnlabeled = stamped("2d6+3", label: nil, at: t)
+        #expect(stampedUnlabeled.historyLine ==
+            "[\(RollResult.historyTimeFormatter.string(from: t))] 2d6+3: 10")
+        #expect(stamped("2d6+3", label: nil, at: nil).historyLine == "2d6+3: 10")
+        #expect(stamped("1d20+7", label: "Stealth", at: nil).historyLine == "Stealth: 10 (1d20+7)")
+        #expect(stamped("1d20+7", label: "Stealth", at: t).historyLine ==
+            "[\(RollResult.historyTimeFormatter.string(from: t))] Stealth: 10 (1d20+7)")
+    }
+}
+
 @Suite("Roll history filtering")
 struct RollHistoryFilterTests {
     private func roll(_ expression: String, label: String? = nil, character: String? = nil) -> RollResult {

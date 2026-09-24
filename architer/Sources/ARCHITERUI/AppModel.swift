@@ -60,6 +60,16 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let compactPDFHideEmptyRowsKey = "architer.compactPDFHideEmptyRows"
+    /// Compact-PDF option (2.39.0): append the exported character's roll
+    /// history as a day-grouped session-log appendix. Off by default - the
+    /// compact layout is for cheap printing, so extra pages are opt-in.
+    @Published public var compactPDFSessionLog: Bool =
+        UserDefaults.standard.bool(forKey: AppModel.compactPDFSessionLogKey) {
+        didSet {
+            UserDefaults.standard.set(compactPDFSessionLog, forKey: AppModel.compactPDFSessionLogKey)
+        }
+    }
+    private static let compactPDFSessionLogKey = "architer.compactPDFSessionLog"
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
     @Published public var showCompendium = false
@@ -478,7 +488,9 @@ public final class AppModel: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             try? SheetPDFExporter.export(sel, style: .compact,
                                          orientation: landscape ? .landscape : .portrait,
-                                         collapseEmptyInventory: compactPDFHideEmptyRows).write(to: url)
+                                         collapseEmptyInventory: compactPDFHideEmptyRows,
+                                         sessionRolls: compactPDFSessionLog
+                                             ? rollHistory.forCharacter(sel.name) : []).write(to: url)
         }
     }
 

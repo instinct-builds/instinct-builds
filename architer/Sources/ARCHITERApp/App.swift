@@ -31,6 +31,7 @@ struct ARCHITERApp: App {
                     .keyboardShortcut("p", modifiers: [.command])
                 Button("Export Compact PDF (Landscape)…") { model.exportCompactPDF(landscape: true) }
                 Toggle("Compact PDF: Hide Empty Rows", isOn: $model.compactPDFHideEmptyRows)
+                Toggle("Compact PDF: Session Log Appendix", isOn: $model.compactPDFSessionLog)
                 Divider()
                 Button("Export Character File…") { model.exportCharacterJSON() }
                 Button("Import Character File…") { model.importCharacterJSON() }

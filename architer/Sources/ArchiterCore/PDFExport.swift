@@ -148,9 +148,14 @@ public enum SheetPDFExporter {
 
     /// collapseEmptyInventory (2.34.0): compact exports drop zero-quantity
     /// inventory rows and note the hidden count. Ignored by the full layout.
+    /// sessionRolls (2.39.0): the exported character's roll history. Compact
+    /// exports append it as a chronological, day-grouped session-log
+    /// appendix starting on its own page; empty means no appendix. Ignored
+    /// by the full layout.
     public static func export(_ c: Character, style: LayoutStyle = .full,
                               orientation: PageOrientation = .portrait,
-                              collapseEmptyInventory: Bool = false) -> Data {
+                              collapseEmptyInventory: Bool = false,
+                              sessionRolls: [RollResult] = []) -> Data {
         let compact = style == .compact
         let pageSize: PDFDocument.PageSize = orientation == .landscape
             ? PDFDocument.PageSize(width: PDFDocument.PageSize.letter.height,
@@ -565,6 +570,33 @@ public enum SheetPDFExporter {
         // A trailing held-back section header (an empty final section).
         cursor.flushPendingSection()
 
+        // Session-log appendix (2.39.0), compact only: the character's rolls
+        // as a chronological, day-grouped record on its own page, so the
+        // sheet and the log file separately at the table.
+        if compact && !sessionRolls.isEmpty {
+            let rows = sessionLogRows(sessionRolls)
+            if !rows.isEmpty {
+                cursor.newPage()
+                cursor.section("Session Log", margin: margin)
+                for row in rows {
+                    switch row {
+                    case .dayHeader(let title):
+                        // A day header keeps at least its first roll line
+                        // with it.
+                        cursor.ensure(23)
+                        cursor.put(margin, title, size: 8, face: .bold, gray: 0.25)
+                        cursor.advance(12)
+                    case .roll(let text):
+                        for line in wrap(text, width: contentW - 10, size: 8) {
+                            cursor.ensure(11)
+                            cursor.put(margin + 10, line, size: 8, gray: 0.15)
+                            cursor.advance(11)
+                        }
+                    }
+                }
+            }
+        }
+
         // Cursor owns the working copy; take it back before finishing.
         doc = cursor.doc
 
@@ -660,6 +692,20 @@ public enum SheetPDFExporter {
             y = regionLowestY
             columns = 1
             column = 0
+        }
+
+        /// Hard page break (2.39.0 session-log appendix): the next content
+        /// starts a fresh page regardless of remaining space, collapsing any
+        /// column flow.
+        mutating func newPage() {
+            flushPendingSection()
+            regionLowestY = min(regionLowestY, y)
+            columns = 1
+            column = 0
+            page = doc.addPage()
+            regionLowestY = doc.pageSize.height - 54
+            regionTopY = doc.pageSize.height - 54
+            y = doc.pageSize.height - 54
         }
 
         /// Height of a fresh column (or page, when single-column).
