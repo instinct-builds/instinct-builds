@@ -531,7 +531,7 @@ static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter; }
 - (NSRect)fxDetailToggle { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 25, 46, 16); }
 - (NSRect)fxDetailRow:(int)i {
     NSRect r = [self fxDetailPanel];
-    if (FxVisualPage(fxDetail)) return NSMakeRect(r.origin.x + 12, NSMaxY(r) - 56 - i * 19, 252, 17);
+    if (FxVisualPage(fxDetail)) return NSMakeRect(r.origin.x + 12, NSMaxY(r) - 52 - i * 17, 252, 16); // 8 rows clear the footer
     return NSMakeRect(r.origin.x + 12, NSMaxY(r) - 58 - i * 24, r.size.width - 24, 20);
 }
 - (NSRect)fxDetailBar:(int)i {
@@ -1481,7 +1481,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     snprintf(det[5], 40, "%+.0f %+.0f %+.0f dB", f.eq.lowDb, f.eq.midDb, f.eq.highDb);
     snprintf(det[6], 40, "%.2f Hz  FB %.0f", f.phaser.rateHz, f.phaser.feedback * 100);
     snprintf(det[7], 40, "%.2f Hz  FB %.0f", f.flanger.rateHz, f.flanger.feedback * 100);
-    snprintf(det[8], 40, "\u00B1%.0f ct  DIM %.0f", Hyper::peakCents(0, f.hyper.rateHz, f.hyper.detune), f.hyper.dimension * 100);
+    { double pk = 0; for (int v = 0; v < Hyper::kVoices; ++v) pk = std::max(pk, Hyper::peakCents(v, f.hyper.rateHz, f.hyper.detune));
+      snprintf(det[8], 40, "\u00B1%.0f ct  DIM %.0f", pk, f.hyper.dimension * 100); } // same peak as the HYPER page
     snprintf(det[9], 40, "%s", ui::filterFxModeName(f.filter.mode));
     static const char* names[kFxUnits] = {"DIST", "CHORUS", "DELAY", "COMP", "REVERB", "EQ", "PHASER", "FLANGER", "HYPER", "FILTER"};
     static const char* ringLabel[kFxUnits] = {"DRIVE", "MIX", "MIX", "AMOUNT", "MIX", "", "MIX", "MIX", "MIX", "CUTOFF"};
@@ -1530,7 +1531,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             o.lineWidth = dropFx == s ? 2 : 1; [o stroke];
         }
         CGFloat alpha = moving ? 0.35 : 1.0;
-        Text(S(names[i]), NSMakeRect(r.origin.x + 6, NSMaxY(r) - 17, r.size.width - 20, 12), 7.5,
+        Text(S(names[i]), NSMakeRect(r.origin.x + 6, NSMaxY(r) - 17, r.size.width - 14, 12), strlen(names[i]) > 6 ? 7.0 : 7.5,
              [(on ? acc : C(0x5f6b7b)) colorWithAlphaComponent:alpha], NSFontWeightBold);
         NSRect led = [self fxLed:s];
         FillRound(NSMakeRect(NSMidX(led) - 3, NSMidY(led) - 3, 6, 6), 3, [(on ? acc : C(0x303947)) colorWithAlphaComponent:alpha]);
@@ -2183,8 +2184,12 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     NSBezierPath* edge = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(P, 0.5, 0.5) xRadius:10 yRadius:10];
     [C(kFxAccent[u], 0.45) setStroke]; edge.lineWidth = 1; [edge stroke];
     FillRound(NSMakeRect(P.origin.x + 12, NSMaxY(P) - 22, 3, 12), 1.5, acc);
-    Text(S(ui::fxUnitTitle(u)), NSMakeRect(P.origin.x + 21, NSMaxY(P) - 24, 120, 15), 11, acc, NSFontWeightBold);
-    Text([NSString stringWithFormat:@"SLOT %d OF %d", f.order.slotOf(u) + 1, kFxUnits], NSMakeRect(P.origin.x + 128, NSMaxY(P) - 22.5, 90, 12), 8,
+    NSString* title = S(ui::fxUnitTitle(u));
+    const CGFloat titleW = [title sizeWithAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:11 weight:NSFontWeightBold]}].width;
+    Text(title, NSMakeRect(P.origin.x + 21, NSMaxY(P) - 24, std::max<CGFloat>(120, titleW + 4), 15), 11, acc, NSFontWeightBold);
+    // 0.27.0: the slot label follows the title so long titles never run into it.
+    Text([NSString stringWithFormat:@"SLOT %d OF %d", f.order.slotOf(u) + 1, kFxUnits],
+         NSMakeRect(P.origin.x + std::max<CGFloat>(128, 21 + titleW + 14), NSMaxY(P) - 22.5, 90, 12), 8,
          C(0x5f6b7b), NSFontWeightSemibold);
     NSRect tg = [self fxDetailToggle];
     FillRound(tg, 8, on ? C(kFxAccent[u], 0.22) : C(0x232b36));

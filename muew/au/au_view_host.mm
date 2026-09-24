@@ -973,7 +973,7 @@ int main() {
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
             auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); };
-            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 56 - 19 * row + 8.5); }; // compact rows
+            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 52 - 17 * row + 8); }; // compact rows (fix1: 17 pt pitch)
             const NSPoint toggle = NSMakePoint(36 + 424 - 84 + 23, 48 + 200 - 25 + 8);
             muew::Preset st0; State(st0);
             const int hs = st0.fx.order.slotOf(muew::FxHyper), fs = st0.fx.order.slotOf(muew::FxFilter);
