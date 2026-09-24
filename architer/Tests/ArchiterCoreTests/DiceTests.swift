@@ -47,7 +47,13 @@ struct DiceRollingTests {
         var g1 = SeededGenerator(seed: 42)
         var g2 = SeededGenerator(seed: 42)
         let e = try DiceExpression.parse("3d6+2")
-        #expect(e.roll(using: &g1) == e.roll(using: &g2))
+        // rolledAt stamps at roll time (2.35.0) and is not part of the
+        // determinism contract - normalize it before comparing.
+        var r1 = e.roll(using: &g1)
+        var r2 = e.roll(using: &g2)
+        r1.rolledAt = nil
+        r2.rolledAt = nil
+        #expect(r1 == r2)
     }
 
     @Test func totalsStayInRange() throws {
