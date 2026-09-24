@@ -1,6 +1,7 @@
 #pragma once
 #include "voice.h"
 #include "fx.h"
+#include "arp.h"
 #include <vector>
 #include <algorithm>
 #include <memory>
@@ -41,6 +42,7 @@ public:
             held_ = 0;
         }
         voiceMode_ = mode;
+        setArp(p);
         polyVoices_ = std::clamp(p.polyVoices, 1, (int)voices_.size());
         glideOn_ = p.glideTime > 0.0;
         glideLegato_ = p.glideLegato;
@@ -105,7 +107,7 @@ public:
     }
 
     // Host tempo (BPM) for tempo-synced LFOs; 120 until a host reports one.
-    void setTempo(double bpm) { for (auto& v : voices_) v.setTempo(bpm); fx_.setTempo(bpm); }
+    void setTempo(double bpm) { tempo_ = bpm > 0 ? bpm : 120.0; for (auto& v : voices_) v.setTempo(bpm); fx_.setTempo(bpm); }
 
     // ---- 0.24.0 MIDI performance ----
     void setModWheel(double v) { perf_.wheel = std::clamp(v, 0.0, 1.0); }
@@ -119,7 +121,12 @@ public:
         if (down == sustain_) return;
         sustain_ = down;
         if (down) return;
-        for (int n = 0; n < 128; ++n) if (sustained_[n]) { sustained_[n] = false; if (!keyDown_[n]) release(n); }
+        for (int n = 0; n < 128; ++n) if (sustained_[n]) {
+            sustained_[n] = false;
+            if (keyDown_[n]) continue;
+            if (arpOn_) { if (!arpLatch_) poolRemove(n); }
+            else release(n);
+        }
     }
     bool sustain() const { return sustain_; }
     // All notes off (CC 123 / 120): releases every voice, pedal included.
@@ -127,22 +134,34 @@ public:
         sustain_ = false;
         for (int n = 0; n < 128; ++n) { sustained_[n] = false; keyDown_[n] = false; }
         held_ = 0;
+        pool_ = 0; arpSounding_ = 0; arpPos_ = 0; arpStep_ = 0; arpIdx_ = 0; arpClock_ = 0;
         for (auto& v : voices_) if (v.isActive()) v.noteOff();
     }
     const Performance& performance() const { return perf_; }
     int lastNote() const { return lastNote_; }
 
     void noteOn(int note, float velocity) {
+        if (arpOn_) { arpKeyOn(note, velocity); return; }
         if (note >= 0 && note < 128) { keyDown_[note] = true; sustained_[note] = false; }
         noteOnImpl(note, velocity);
     }
     void noteOff(int note) {
+        if (arpOn_) { arpKeyOff(note); return; }
         if (note >= 0 && note < 128) {
             keyDown_[note] = false;
             if (sustain_) { sustained_[note] = true; return; }
         }
         release(note);
     }
+
+    // ---- 0.25.0 arpeggiator inspection (tests, UI) ----
+    bool arpOn() const { return arpOn_; }
+    int arpPoolCount() const { return pool_; }
+    int arpPoolNote(int i) const { return poolNote_[std::clamp(i, 0, arp::kPool - 1)]; }
+    int arpStep() const { return arpStep_; }
+    int arpPosition() const { return arpPos_; } // samples into the current step
+    int arpCycleIndex() const { return arpLastIdx_; }
+    int arpSoundingNote() const { return arpSounding_ ? arpNotes_[0] : -1; }
 
 private:
     void linkPerformance() { for (auto& v : voices_) v.setPerformance(&perf_); }
@@ -189,6 +208,7 @@ public:
 
     void render(float* out, int frames) {
         for (int i = 0; i < frames; ++i) {
+            if (arpOn_) arpTick();
             float mix = mixVoices();
             out[i] = std::tanh(mix * 1.6f);  // soft clip / master
         }
@@ -198,6 +218,7 @@ public:
     void renderStereo(float* interleaved, int frames) {
         for (int i = 0; i < frames; ++i) {
             float l, r;
+            if (arpOn_) arpTick();
             mixVoicesStereo(l, r);
             fx_.process(l, r);
             interleaved[i * 2]     = std::tanh(l * 1.6f);
@@ -209,6 +230,7 @@ public:
     void renderPlanar(float* left, float* right, int frames) {
         for (int i = 0; i < frames; ++i) {
             float l, r;
+            if (arpOn_) arpTick();
             mixVoicesStereo(l, r);
             fx_.process(l, r);
             left[i]  = std::tanh(l * 1.6f);
@@ -284,6 +306,112 @@ private:
         for (int i = 0; i < held_; ++i) if (heldNote_[i] != note) { heldNote_[w] = heldNote_[i]; heldVel_[w] = heldVel_[i]; ++w; }
         held_ = w;
     }
+    // ---- 0.25.0 arpeggiator ----
+    // Keys fill a pool (press order); the arp clock plays the pool's notes one
+    // step at a time through the normal voice path (poly, mono or legato).
+    void setArp(const VoiceParams& p) {
+        const bool on = p.arpOn;
+        arpMode_ = std::clamp(p.arpMode, 0, arp::kModes - 1);
+        arpOct_ = std::clamp(p.arpOctaves, 1, 4);
+        arpRate_ = std::clamp(p.arpRate, 0, arp::kRates - 1);
+        arpGate_ = std::clamp(p.arpGate, 0.05, 1.0);
+        arpSwing_ = std::clamp(p.arpSwing, 0.0, 0.5);
+        const bool latch = p.arpLatch;
+        if (arpLatch_ && !latch) { // latch off: drop keys that are no longer held
+            int w = 0;
+            for (int i = 0; i < pool_; ++i) { const int n = poolNote_[i]; if (keyDown_[n] || sustained_[n]) { poolNote_[w] = n; poolVel_[w] = poolVel_[i]; ++w; } }
+            pool_ = w;
+        }
+        arpLatch_ = latch;
+        if (on == arpOn_) return;
+        arpOn_ = on;
+        arpRelease();
+        if (on) { // keys already down join the pool; direct notes stop
+            for (int n = 0; n < 128; ++n) if (keyDown_[n] || sustained_[n]) release(n);
+            pool_ = 0;
+            for (int n = 0; n < 128; ++n) if ((keyDown_[n] || sustained_[n]) && pool_ < arp::kPool) { poolNote_[pool_] = n; poolVel_[pool_] = 0.8f; ++pool_; }
+        } else {
+            pool_ = 0;
+        }
+        arpPos_ = 0; arpStep_ = 0; arpIdx_ = 0; arpClock_ = 0;
+    }
+    void arpKeyOn(int note, float vel) {
+        if (note < 0 || note >= 128) return;
+        bool anyDown = false;
+        for (int n = 0; n < 128 && !anyDown; ++n) anyDown = keyDown_[n];
+        if (arpLatch_ && !anyDown) pool_ = 0; // a fresh chord replaces the latched one
+        keyDown_[note] = true; sustained_[note] = false;
+        if (pool_ == 0) { arpPos_ = 0; arpStep_ = 0; arpIdx_ = 0; arpClock_ = 0; }
+        for (int i = 0; i < pool_; ++i) if (poolNote_[i] == note) { poolVel_[i] = vel; return; }
+        if (pool_ == arp::kPool) poolRemove(poolNote_[0]);
+        poolNote_[pool_] = note; poolVel_[pool_] = vel; ++pool_;
+    }
+    void arpKeyOff(int note) {
+        if (note < 0 || note >= 128) return;
+        keyDown_[note] = false;
+        if (arpLatch_) return;
+        if (sustain_) { sustained_[note] = true; return; }
+        poolRemove(note);
+    }
+    void poolRemove(int note) {
+        int w = 0;
+        for (int i = 0; i < pool_; ++i) if (poolNote_[i] != note) { poolNote_[w] = poolNote_[i]; poolVel_[w] = poolVel_[i]; ++w; }
+        pool_ = w;
+    }
+    float poolVelocity(int note) const {
+        const int pc = ((note % 12) + 12) % 12;
+        for (int i = 0; i < pool_; ++i) if (poolNote_[i] == note) return poolVel_[i];
+        for (int i = 0; i < pool_; ++i) if (poolNote_[i] % 12 == pc) return poolVel_[i]; // octave copies
+        return pool_ ? poolVel_[0] : 0.8f;
+    }
+    void arpRelease() {
+        for (int i = 0; i < arpSounding_; ++i) release(arpNotes_[i]);
+        arpSounding_ = 0;
+    }
+    void arpTick() {
+        if (pool_ == 0) {
+            if (arpSounding_) arpRelease();
+            arpPos_ = 0; arpStep_ = 0; arpIdx_ = 0; arpClock_ = 0;
+            return;
+        }
+        if (arpPos_ == 0) {
+            arpRelease();
+            arpLen_ = arp::stepSamplesAt(arpClock_, sr_, tempo_, arpRate_, arpSwing_, arpStep_);
+            arpClock_ += arp::stepLength(sr_, tempo_, arpRate_, arpSwing_, arpStep_);
+            arpGateLen_ = arpGate_ >= 1.0 ? arpLen_ : std::max(1, (int)std::lround(arpLen_ * arpGate_));
+            if (arpMode_ == arp::Chord) {
+                const int o = arpStep_ % arpOct_;
+                for (int i = 0; i < pool_ && arpSounding_ < arp::kPool; ++i) arpNotes_[arpSounding_++] = std::min(127, poolNote_[i] + 12 * o);
+                arpLastIdx_ = o;
+            } else if (arpMode_ == arp::Random) {
+                const int n = arp::sequence(arp::Up, poolNote_, pool_, arpOct_, seq_);
+                rng_ ^= rng_ << 13; rng_ ^= rng_ >> 17; rng_ ^= rng_ << 5;
+                arpLastIdx_ = (int)(rng_ % (uint32_t)n);
+                arpNotes_[arpSounding_++] = seq_[arpLastIdx_];
+            } else {
+                const int n = arp::sequence(arpMode_, poolNote_, pool_, arpOct_, seq_);
+                arpLastIdx_ = arpIdx_ % n;
+                arpNotes_[arpSounding_++] = seq_[arpLastIdx_];
+                arpIdx_ = arpLastIdx_ + 1;
+            }
+            for (int i = 0; i < arpSounding_; ++i) noteOnImpl(arpNotes_[i], poolVelocity(arpNotes_[i]));
+        }
+        ++arpPos_;
+        if (arpPos_ == arpGateLen_ && arpGateLen_ < arpLen_) arpRelease();
+        if (arpPos_ >= arpLen_) { arpPos_ = 0; ++arpStep_; }
+    }
+    bool arpOn_ = false, arpLatch_ = false;
+    int arpMode_ = 0, arpOct_ = 1, arpRate_ = 3;
+    double arpGate_ = 0.5, arpSwing_ = 0.0, tempo_ = 120.0, arpClock_ = 0.0;
+    int poolNote_[arp::kPool] = {};
+    float poolVel_[arp::kPool] = {};
+    int pool_ = 0;
+    int arpNotes_[arp::kPool] = {};
+    int arpSounding_ = 0;
+    int arpPos_ = 0, arpLen_ = 1, arpGateLen_ = 1, arpStep_ = 0, arpIdx_ = 0, arpLastIdx_ = 0;
+    uint32_t rng_ = 0x2545f491u;
+    std::array<int, arp::kSeq> seq_{};
+
     Performance perf_;                              // 0.24.0
     bool sustain_ = false, sustained_[128] = {}, keyDown_[128] = {};
     static constexpr int kHeld = 32;

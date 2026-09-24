@@ -144,6 +144,14 @@ struct VoiceParams {
     int uniPhase = 0;           // 0 spread (fixed phases, retriggered), 1 random per note
     // 0.24.0: pitch bend range in semitones (both directions).
     int bendRange = 2;
+    // 0.25.0 arpeggiator (see arp.h). Off: the synth plays keys directly.
+    bool arpOn = false;
+    int arpMode = 0;            // arp::Mode
+    int arpOctaves = 1;         // 1..4
+    int arpRate = 3;            // arp rate index, 3 = 1/16
+    double arpGate = 0.5;       // 0.05..1 of a step (1 = tied)
+    double arpSwing = 0.0;      // 0..0.5 (straight .. 75/25)
+    bool arpLatch = false;      // keep playing after the keys come up
 };
 
 constexpr int kMaxUnison = 8;

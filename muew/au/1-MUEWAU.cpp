@@ -95,6 +95,10 @@ struct MUEWInstance {
     std::atomic<float> perfWheel{0}, perfAT{0}, perfBend{0};
     std::atomic<int> perfNote{-1};
     std::atomic<unsigned> perfSustain{0};
+    // 0.25.0: arp state after each block (editor step display).
+    std::atomic<unsigned> arpOn{0};
+    std::atomic<int> arpStep{0}, arpIndex{0}, arpNote{-1}, arpPoolN{0};
+    std::atomic<int> arpPool[8] = {};
     std::atomic<bool> paramsDirty{false};
 
     MUEWInstance() { syncParamsFromState(); }
@@ -508,7 +512,9 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
             break;
         case kMUEWProperty_Performance: // 0.24.0
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(MUEWPerformance)) {
-                MUEWPerformance pf{u->perfWheel.load(), u->perfAT.load(), u->perfBend.load(), u->perfNote.load(), u->perfSustain.load()};
+                MUEWPerformance pf{u->perfWheel.load(), u->perfAT.load(), u->perfBend.load(), u->perfNote.load(), u->perfSustain.load(),
+                                   u->arpOn.load(), u->arpStep.load(), u->arpIndex.load(), u->arpNote.load(), u->arpPoolN.load(), {}};
+                for (int i = 0; i < 8; ++i) pf.pool[i] = u->arpPool[i].load();
                 *static_cast<MUEWPerformance*>(outData) = pf;
                 *ioDataSize = sizeof(MUEWPerformance);
                 return noErr;
@@ -694,6 +700,12 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         const auto& pf = u->synth.performance();
         u->perfWheel = (float)pf.wheel; u->perfAT = (float)pf.aftertouch; u->perfBend = (float)pf.bend;
         u->perfNote = u->synth.lastNote(); u->perfSustain = u->synth.sustain() ? 1u : 0u;
+    }
+    if (u->synth.arpOn() || u->arpOn.load()) { // 0.25.0 arp display
+        const auto& sy = u->synth;
+        u->arpOn = sy.arpOn() ? 1u : 0u; u->arpStep = sy.arpStep(); u->arpIndex = sy.arpCycleIndex(); u->arpNote = sy.arpSoundingNote();
+        const int n = sy.arpPoolCount(); u->arpPoolN = n;
+        for (int i = 0; i < 8; ++i) u->arpPool[i] = i < n ? sy.arpPoolNote(i) : -1;
     }
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));
     for (auto& e : u->events) e.offset -= inNumberFrames;

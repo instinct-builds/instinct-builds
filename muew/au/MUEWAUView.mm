@@ -89,14 +89,14 @@ struct AUEditorHost : MUEWEditorHost {
 
 // Owns the AU binding and follows host-side changes (host preset menu,
 // project recall) by watching the AU's state generation.
-@interface MUEWAUEditorContainer_0_24 : MUEWEditorView {
+@interface MUEWAUEditorContainer_0_25 : MUEWEditorView {
 @public
     AUEditorHost* auHost;
     NSTimer* follow;
 }
 @end
 
-@implementation MUEWAUEditorContainer_0_24
+@implementation MUEWAUEditorContainer_0_25
 - (void)syncFromAU:(BOOL)force {
     if (!auHost) return;
     UInt32 g = ReadGeneration(auHost->au);
@@ -122,6 +122,8 @@ struct AUEditorHost : MUEWEditorHost {
     if (AudioUnitGetProperty(auHost->au, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &size) != noErr) return;
     muew::Performance p; p.wheel = pf.wheel; p.aftertouch = pf.aftertouch; p.bend = pf.bend;
     [self showPerformance:p note:(int)pf.lastNote sustain:pf.sustain != 0];
+    int pool[8]; for (int i = 0; i < 8; ++i) pool[i] = (int)pf.pool[i];
+    [self showArpOn:pf.arpOn != 0 pool:pool count:(int)pf.poolCount index:(int)pf.arpIndex note:(int)pf.arpNote step:(int)pf.arpStep]; // 0.25.0
 }
 // The sound the editor is showing, as preset text (read by the CI harness
 // through KVC to prove host automation reaches the open editor).
@@ -133,7 +135,7 @@ struct AUEditorHost : MUEWEditorHost {
     [follow invalidate];
     follow = nil;
     if (self.window && auHost) {
-        __weak MUEWAUEditorContainer_0_24* weakSelf = self;
+        __weak MUEWAUEditorContainer_0_25* weakSelf = self;
         // 30 Hz: host automation moves the knobs smoothly. Only the generation
         // number is read unless the sound actually changed.
         follow = [NSTimer scheduledTimerWithTimeInterval:1.0 / 30.0 repeats:YES block:^(NSTimer* t) {
@@ -148,15 +150,15 @@ struct AUEditorHost : MUEWEditorHost {
 }
 @end
 
-@interface MUEWViewFactory_0_24 : NSObject <AUCocoaUIBase>
+@interface MUEWViewFactory_0_25 : NSObject <AUCocoaUIBase>
 @end
 
-@implementation MUEWViewFactory_0_24
+@implementation MUEWViewFactory_0_25
 - (unsigned)interfaceVersion { return 0; }
 - (NSString*)description { return @"MUEW Editor"; }
 - (NSView*)uiViewForAudioUnit:(AudioUnit)inAudioUnit withSize:(NSSize)inPreferredSize {
     (void)inPreferredSize; // fixed-size editor
-    MUEWAUEditorContainer_0_24* v = [[MUEWAUEditorContainer_0_24 alloc] initWithFrame:NSMakeRect(0, 0, 1000, 680)];
+    MUEWAUEditorContainer_0_25* v = [[MUEWAUEditorContainer_0_25 alloc] initWithFrame:NSMakeRect(0, 0, 1000, 680)];
     v->auHost = new AUEditorHost(inAudioUnit);
     v->host = v->auHost;
     [v syncFromAU:YES];

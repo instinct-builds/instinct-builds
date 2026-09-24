@@ -21,9 +21,16 @@ struct MUEWPerformance {
     Float32 bend;        // -1..1
     SInt32 lastNote;     // -1 before any note
     UInt32 sustain;      // 1 while the pedal is down
+    // 0.25.0 arpeggiator (editor step display)
+    UInt32 arpOn;        // 1 while the arp is on
+    SInt32 arpStep;      // steps played since the pool filled
+    SInt32 arpIndex;     // position in the cycle of the last step
+    SInt32 arpNote;      // note sounding now, -1 between gates
+    SInt32 poolCount;    // held (or latched) keys
+    SInt32 pool[8];      // the first 8, in press order
 };
 
 // Objective-C class the AU names in kAudioUnitProperty_CocoaUI. Versioned so
 // two MUEW builds loaded in one host never collide.
-#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_24"
+#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_25"
 #define MUEW_AU_BUNDLE_ID "co.instinct.muew.au"

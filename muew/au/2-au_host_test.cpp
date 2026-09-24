@@ -273,7 +273,7 @@ int main() {
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
-        static_assert(mp::Count == 32, "0.23.0 publishes 32 parameters");
+        static_assert(mp::Count == 34, "0.25.0 publishes 34 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
             printf("FAIL: reselect Init Saw\n"); return 1;
         }
@@ -522,6 +522,48 @@ int main() {
         if (!ok || held < 1e-3 || released > 1e-7 || playing < 1e-3 || off > 1e-7) { printf("FAIL: sustain pedal / all notes off\n"); return 1; }
         AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
         printf("MIDI performance (bend, wheel, pressure, sustain, CC123): ok\n");
+    }
+
+    // 0.25.0 arpeggiator: held keys play UP at 1/16 (120 BPM without host
+    // tempo), the performance property reports the pool and the sounding step,
+    // ARP GATE / SWING are automatable, key up stops it.
+    {
+        muew::Preset p = muew::factoryPresets()[0];
+        p.voice.osc2Level = 0; p.voice.osc1Shape = 0; p.voice.filterCutoff = 16000; p.voice.ampR = 0.02; p.routes.clear(); p.fx = muew::FXParams{};
+        p.voice.arpOn = true; p.voice.arpMode = 0; p.voice.arpRate = 3; p.voice.arpGate = 0.5;
+        AudioUnit t = openUnit();
+        std::vector<float> bl(512), br(512);
+        bool ok = t && setState(t, p) && render(t, bl, br);
+        for (int k : {67, 60, 64}) ok = ok && MusicDeviceMIDIEvent(t, 0x90, k, 100, 0) == noErr;
+        std::vector<int> notes; int last = -2; double e = 0; MUEWPerformance pf{};
+        for (int i = 0; ok && i < 120; ++i) { // 1.39 s = 11 steps
+            ok = render(t, bl, br); e += energy(bl, 0, bl.size());
+            UInt32 sz = sizeof(pf);
+            ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+            if (pf.arpNote >= 0 && pf.arpNote != last) notes.push_back(pf.arpNote);
+            last = pf.arpNote;
+        }
+        printf("arp: on %u, pool %d (%d %d %d), step %d, notes", (unsigned)pf.arpOn, (int)pf.poolCount, (int)pf.pool[0], (int)pf.pool[1], (int)pf.pool[2], (int)pf.arpStep);
+        for (int n : notes) printf(" %d", n);
+        printf(", energy %.3f\n", e);
+        static const int kUp[3] = {60, 64, 67};
+        bool upOrder = notes.size() >= 9;
+        for (size_t i = 0; upOrder && i < notes.size(); ++i) upOrder = notes[i] == kUp[i % 3];
+        if (!ok || pf.arpOn != 1 || pf.poolCount != 3 || pf.pool[0] != 67 || pf.arpStep < 9 || !upOrder || e < 1.0) { printf("FAIL: arp plays the held keys UP\n"); return 1; }
+        ok = AudioUnitSetParameter(t, muew::params::ArpGate, kAudioUnitScope_Global, 0, 25.0f, 0) == noErr
+          && AudioUnitSetParameter(t, muew::params::ArpSwing, kAudioUnitScope_Global, 0, 40.0f, 0) == noErr && render(t, bl, br);
+        muew::Preset st;
+        if (!ok || !getState(t, st) || std::fabs(st.voice.arpGate - 0.25) > 1e-6 || std::fabs(st.voice.arpSwing - 0.4) > 1e-6
+            || st.serialize().find("\narp 1 0 1 3 0.25 0.4 0\n") == std::string::npos) { printf("FAIL: ARP GATE / SWING parameters\n"); return 1; }
+        for (int k : {67, 60, 64}) ok = ok && MusicDeviceMIDIEvent(t, 0x80, k, 0, 0) == noErr;
+        for (int i = 0; ok && i < 40; ++i) ok = render(t, bl, br);
+        UInt32 sz = sizeof(pf);
+        ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+        const double after = energy(bl, 0, bl.size());
+        printf("arp: after key up pool %d note %d energy %.8f\n", (int)pf.poolCount, (int)pf.arpNote, after);
+        if (!ok || pf.poolCount != 0 || pf.arpNote != -1 || after > 1e-7) { printf("FAIL: arp stops when the keys come up\n"); return 1; }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("arpeggiator (UP 1/16, pool, gate / swing automation, key up): ok\n");
     }
 
     // Cocoa editor is advertised with a loadable bundle and class name.

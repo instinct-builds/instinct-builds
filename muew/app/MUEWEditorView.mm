@@ -79,8 +79,9 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
+        arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
-        filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 1);
+        filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
         browserOpen = false; bscroll = 0;
@@ -236,6 +237,141 @@ static void ValuePill(NSRect r, NSString* label, NSString* value, double level, 
     if (level > 0) FillRound(NSMakeRect(track.origin.x, track.origin.y, std::max(2.0, track.size.width * std::clamp(level, 0.0, 1.0)), track.size.height), 0.75, accent);
     TextA(label, NSMakeRect(r.origin.x + 4, r.origin.y + 4.5, r.size.width - 8, 10), 6.5, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentLeft);
     TextA(value, NSMakeRect(r.origin.x + 4, r.origin.y + 4.5, r.size.width - 8, 10), 7, active ? accent : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
+}
+// ---- 0.25.0 ARP page ----
+static NSString* NoteName(int n) {
+    static const char* k[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    n = std::clamp(n, 0, 127);
+    return [NSString stringWithFormat:@"%s%d", k[n % 12], n / 12 - 2]; // C3 = 60
+}
+static void Stepper(NSRect r, NSString* label, NSString* value, NSColor* accent, bool active) {
+    FillRound(r, 4, C(0x0f141b));
+    TextA(@"\u2039", NSMakeRect(r.origin.x + 1, r.origin.y + 2.5, 10, 12), 10, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA(@"\u203A", NSMakeRect(NSMaxX(r) - 11, r.origin.y + 2.5, 10, 12), 10, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA(label, NSMakeRect(r.origin.x + 12, r.origin.y + 5, r.size.width - 24, 10), 6.5, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentLeft);
+    TextA(value, NSMakeRect(r.origin.x + 12, r.origin.y + 4.5, r.size.width - 24, 10), 7.5, active ? accent : C(0x8793a3), NSFontWeightBold, NSTextAlignmentRight);
+}
+static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString stringWithFormat:@"%.0f%%", 50 + std::clamp(s, 0.0, 0.5) * 50]; }
+- (void)drawArpPage {
+    const VoiceParams& v = current.voice;
+    NSColor* pink = C(0xf06fb0);
+    const bool on = v.arpOn;
+    TextA([NSString stringWithFormat:@"%s \u00B7 %s", arp::modeName(v.arpMode), arp::rateName(v.arpRate)], NSMakeRect(696, [self top] - 27, 72, 14), 8,
+          on ? pink : C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentRight);
+    NSRect o = [self arpOnRect];
+    FillRound(o, 4, on ? pink : C(0x0f141b));
+    TextA(on ? @"ARP ON" : @"ARP OFF", NSMakeRect(o.origin.x, o.origin.y + 5, o.size.width, 10), 6.5, on ? C(0x0b0e13) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    FillRound(NSMakeRect(540, [self top] - 58, 230, 18), 5, C(0x0f141b));
+    NSString* names[arp::kModes] = {@"UP", @"DOWN", @"UP/DN", @"ORDER", @"RAND", @"CHORD"};
+    for (int m = 0; m < arp::kModes; ++m) {
+        NSRect r = [self arpModeRect:m];
+        const bool sel = std::clamp(v.arpMode, 0, arp::kModes - 1) == m;
+        if (sel) FillRound(NSInsetRect(r, 0.5, 0.5), 4, on ? pink : C(0x3a4452));
+        TextA(names[m], NSMakeRect(r.origin.x, r.origin.y + 5, r.size.width, 10), 6.5, sel ? C(0x0b0e13) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    Stepper([self arpOctRect], @"OCT", [NSString stringWithFormat:@"%d", std::clamp(v.arpOctaves, 1, 4)], pink, on);
+    Stepper([self arpRateRect], @"RATE", [NSString stringWithUTF8String:arp::rateName(v.arpRate)], pink, on);
+    NSRect la = [self arpLatchRect];
+    FillRound(la, 4, v.arpLatch ? [pink colorWithAlphaComponent:.22] : C(0x0f141b));
+    TextA(@"LATCH", NSMakeRect(la.origin.x, la.origin.y + 5, la.size.width, 10), 6.5, v.arpLatch ? pink : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    const int held = arpLiveOn ? arpLivePoolN : 0;
+    TextA(held ? [NSString stringWithFormat:@"%d KEY%s", held, held == 1 ? "" : "S"] : @"NO KEYS", NSMakeRect(724, [self top] - 79, 44, 10), 6.5,
+          held ? pink : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
+    ValuePill([self arpGateRect], @"GATE", v.arpGate >= 1 ? @"TIE" : [NSString stringWithFormat:@"%.0f%%", v.arpGate * 100], (v.arpGate - 0.05) / 0.95, pink, on);
+    ValuePill([self arpSwingRect], @"SWING", ArpSwingValue(v.arpSwing), v.arpSwing / 0.5, pink, on && v.arpSwing > 0);
+    [self drawArpGrid];
+}
+- (void)drawArpGrid {
+    const VoiceParams& v = current.voice;
+    NSColor* pink = C(0xf06fb0);
+    NSRect g = [self arpGrid];
+    FillRound(g, 5, C(0x0f141b));
+    // The keys: the AU's pool when it is holding some, otherwise a C major triad as a preview.
+    int pool[8] = {60, 64, 67}; int pn = 3;
+    const bool live = arpLiveOn && arpLivePoolN > 0 && v.arpOn;
+    if (live) { pn = std::min(arpLivePoolN, 8); for (int i = 0; i < pn; ++i) pool[i] = arpLivePool[i]; }
+    const int oct = std::clamp(v.arpOctaves, 1, 4);
+    const int mode = std::clamp(v.arpMode, 0, arp::kModes - 1);
+    std::array<int, arp::kSeq> seq{};
+    int n = mode == arp::Chord ? oct : arp::sequence(mode == arp::Random ? arp::Up : mode, pool, pn, oct, seq);
+    const int cols = std::clamp(n, 1, 16);
+    int lo = 127, hi = 0;
+    for (int i = 0; i < pn; ++i) { lo = std::min(lo, pool[i]); hi = std::max(hi, pool[i] + 12 * (oct - 1)); }
+    if (hi - lo < 12) hi = lo + 12;
+    const NSRect ga = NSMakeRect(g.origin.x + 26, g.origin.y + 18, g.size.width - 34, g.size.height - 26);
+    const CGFloat cw = ga.size.width / cols, rowH = ga.size.height / (hi - lo + 1);
+    // Octave lines and note names.
+    for (int k = lo; k <= hi; ++k) if (k % 12 == 0 || k == lo || k == hi) {
+        const CGFloat y = ga.origin.y + (k - lo) * rowH + rowH / 2;
+        if (k % 12 == 0) FillRound(NSMakeRect(ga.origin.x, y - 0.25, ga.size.width, 0.5), 0, C(0x232b36));
+        if (k == lo || k == hi) TextA(NoteName(k), NSMakeRect(g.origin.x + 2, y - 4.5, 22, 9), 6, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
+    }
+    // Beat marks under the steps.
+    const double stepsPerBeat = 1.0 / arp::rateBeats(v.arpRate);
+    for (int c = 0; c < cols; ++c) {
+        const bool beat = std::fmod(c, stepsPerBeat) < 1e-6;
+        FillRound(NSMakeRect(ga.origin.x + c * cw + 1, g.origin.y + 7, cw - 2, beat ? 3 : 1.5), 0.75, beat ? C(0x3a4452) : C(0x232b36));
+    }
+    const int cur = live ? arpLiveIndex : -1;
+    const bool sounding = live && arpLiveNote >= 0;
+    const double gate = std::clamp(v.arpGate, 0.05, 1.0), swing = std::clamp(v.arpSwing, 0.0, 0.5);
+    for (int c = 0; c < cols; ++c) {
+        const CGFloat x0 = ga.origin.x + c * cw + ((c & 1) ? swing * cw : 0);
+        const CGFloat w = std::max(3.0, (cw - 2) * gate * ((c & 1) ? 1 - swing : 1));
+        const bool isCur = mode != arp::Random && c == cur;
+        if (isCur) FillRound(NSMakeRect(ga.origin.x + c * cw, ga.origin.y - 2, cw, ga.size.height + 4), 3, [pink colorWithAlphaComponent:sounding ? .16 : .08]);
+        auto cell = [&](int note) {
+            const CGFloat y = ga.origin.y + (note - lo) * rowH;
+            NSColor* col = !v.arpOn ? C(0x3a4452) : mode == arp::Random ? [pink colorWithAlphaComponent:.35]
+                         : isCur ? pink : [pink colorWithAlphaComponent:live ? .55 : .4];
+            FillRound(NSMakeRect(x0 + 1, y + 0.5, w, std::max(2.5, rowH - 1)), 1.5, col);
+        };
+        if (mode == arp::Chord) { for (int i = 0; i < pn; ++i) cell(std::min(127, pool[i] + 12 * c)); }
+        else cell(seq[c]);
+    }
+    if (n > cols) TextA([NSString stringWithFormat:@"+%d", n - cols], NSMakeRect(NSMaxX(g) - 30, NSMaxY(g) - 12, 26, 9), 6.5, C(0x6f7b8b), NSFontWeightBold, NSTextAlignmentRight);
+    NSString* note = !v.arpOn ? @"ARP OFF: KEYS PLAY DIRECTLY" : !live ? @"HOLD KEYS TO PLAY \u00B7 PREVIEW: C E G"
+                   : mode == arp::Random ? [NSString stringWithFormat:@"RANDOM FROM %d NOTES", n] : sounding ? [NSString stringWithFormat:@"STEP %d / %d \u00B7 %@", cur + 1, n, NoteName(arpLiveNote)]
+                   : [NSString stringWithFormat:@"STEP %d / %d", cur + 1, n];
+    TextA(note, NSMakeRect(g.origin.x + 26, NSMaxY(g) - 12, 200, 9), 6.5, v.arpOn ? C(0x8793a3) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
+}
+- (BOOL)arpMouseDown:(NSPoint)p {
+    VoiceParams& v = current.voice;
+    if (NSPointInRect(p, [self arpOnRect])) { v.arpOn = !v.arpOn; [self voiceParamEdited:-1]; return YES; }
+    for (int m = 0; m < arp::kModes; ++m)
+        if (NSPointInRect(p, [self arpModeRect:m])) { v.arpMode = m; [self voiceParamEdited:-1]; return YES; }
+    NSRect oc = [self arpOctRect], rt = [self arpRateRect];
+    if (NSPointInRect(p, oc)) { v.arpOctaves = std::clamp(v.arpOctaves + (p.x < NSMidX(oc) ? -1 : 1), 1, 4); [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, rt)) { v.arpRate = std::clamp(v.arpRate + (p.x < NSMidX(rt) ? -1 : 1), 0, arp::kRates - 1); [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, [self arpLatchRect])) { v.arpLatch = !v.arpLatch; [self voiceParamEdited:-1]; return YES; }
+    for (int k = 0; k < 2; ++k) {
+        NSRect r = k ? [self arpSwingRect] : [self arpGateRect];
+        if (!NSPointInRect(p, NSInsetRect(r, 0, -3))) continue;
+        const double x = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
+        if (host) host->parameterGesture(k ? params::ArpSwing : params::ArpGate, true);
+        if (k) v.arpSwing = std::round(x * 50) / 100.0; else v.arpGate = 0.05 + std::round(x * 95) / 100.0;
+        arpDrag = k; dragValue = x;
+        [self voiceParamEdited:k ? params::ArpSwing : params::ArpGate];
+        return YES;
+    }
+    return NSPointInRect(p, [self arpGrid]);
+}
+- (void)showArpOn:(bool)on pool:(const int*)pool count:(int)n index:(int)index note:(int)note step:(int)step {
+    n = std::clamp(n, 0, 8);
+    bool same = on == arpLiveOn && n == arpLivePoolN && index == arpLiveIndex && note == arpLiveNote && step == arpLiveStep;
+    for (int i = 0; same && i < n; ++i) same = pool[i] == arpLivePool[i];
+    if (same) return;
+    arpLiveOn = on; arpLivePoolN = n; arpLiveIndex = index; arpLiveNote = note; arpLiveStep = step;
+    for (int i = 0; i < n; ++i) arpLivePool[i] = pool[i];
+    if (filterPage == 2) [self setNeedsDisplayInRect:NSMakeRect(480, [self top] - 260, 300, 250)];
+}
+- (NSString*)muewArpText {
+    const VoiceParams& v = current.voice;
+    NSMutableString* s = [NSMutableString stringWithFormat:@"page=%d on=%d mode=%s oct=%d rate=%s gate=%.2f swing=%.2f latch=%d live=%d pool=", filterPage, v.arpOn ? 1 : 0,
+        arp::modeName(v.arpMode), v.arpOctaves, arp::rateName(v.arpRate), v.arpGate, v.arpSwing, v.arpLatch ? 1 : 0, arpLiveOn ? 1 : 0];
+    for (int i = 0; i < arpLivePoolN; ++i) [s appendFormat:@"%s%d", i ? "," : "", arpLivePool[i]];
+    [s appendFormat:@" index=%d note=%d", arpLiveIndex, arpLiveNote];
+    return s;
 }
 - (void)drawVoiceStrip {
     const VoiceParams& v = current.voice;
@@ -414,7 +550,16 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)remapChip:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 17, 40, 13); }
 - (NSRect)oscTitle:(int)o { return NSMakeRect(o ? 256 : 50, [self top] - 47, 186, 16); }
 - (NSRect)wtPosBar:(int)o { NSRect r = [self oscDisplay:o]; return NSMakeRect(r.origin.x + 10, r.origin.y + 5, r.size.width - 20, 7); }
-- (NSRect)filterTab:(int)i { return NSMakeRect(i ? 556 : 492, [self top] - 29, i ? 92 : 60, 17); }
+- (NSRect)filterTab:(int)i { return i == 2 ? NSMakeRect(652, [self top] - 29, 40, 17) : NSMakeRect(i ? 556 : 492, [self top] - 29, i ? 92 : 60, 17); }
+// 0.25.0 ARP page (FILTER panel tab 3).
+- (NSRect)arpOnRect { return NSMakeRect(492, [self top] - 58, 44, 18); }
+- (NSRect)arpModeRect:(int)m { return NSMakeRect(542 + m * 38, [self top] - 58, 36, 18); }
+- (NSRect)arpOctRect { return NSMakeRect(492, [self top] - 84, 74, 18); }
+- (NSRect)arpRateRect { return NSMakeRect(572, [self top] - 84, 88, 18); }
+- (NSRect)arpLatchRect { return NSMakeRect(666, [self top] - 84, 54, 18); }
+- (NSRect)arpGateRect { return NSMakeRect(492, [self top] - 108, 135, 16); }
+- (NSRect)arpSwingRect { return NSMakeRect(633, [self top] - 108, 135, 16); }
+- (NSRect)arpGrid { return NSMakeRect(492, [self top] - 246, 276, 128); }
 - (NSRect)f2Display { return NSMakeRect(686, [self top] - 138, 86, 94); }
 - (NSRect)f2TypeRect { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x, NSMaxY(r) - 18, r.size.width, 18); }
 - (NSRect)f2RouteRect:(int)i { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x + 5 + i * 39, r.origin.y + 4, 37, 13); }
@@ -1110,18 +1255,21 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
     // Filter + amp: two pages behind header tabs (0.10.0).
     {
-        NSArray* tabs = @[@"FILTER 1", @"FILTER 2 + SUB"];
-        for (int i = 0; i < 2; ++i) {
+        NSArray* tabs = @[@"FILTER 1", @"FILTER 2 + SUB", @"ARP"];
+        for (int i = 0; i < 3; ++i) {
             NSRect r = [self filterTab:i];
             bool on = filterPage == i;
-            bool live = i == 1 && (v.filter2Type != 0 || v.subLevel > 0 || v.noiseLevel > 0);
-            FillRound(r, 4, on ? C(0xf2ab55, .22) : C(0x1b222c));
-            TextA(tabs[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 11), 8, on ? C(0xf2ab55) : C(0x8793a3),
+            NSColor* ac = i == 2 ? C(0xf06fb0) : C(0xf2ab55);
+            bool live = i == 1 ? (v.filter2Type != 0 || v.subLevel > 0 || v.noiseLevel > 0) : i == 2 ? v.arpOn : false;
+            FillRound(r, 4, on ? [ac colorWithAlphaComponent:.22] : C(0x1b222c));
+            TextA(tabs[i], NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 11), 8, on ? ac : C(0x8793a3),
                   NSFontWeightBold, NSTextAlignmentCenter);
-            if (live && !on) FillRound(NSMakeRect(NSMaxX(r) - 7, NSMaxY(r) - 7, 4, 4), 2, C(0xf2ab55));
+            if (live && !on) FillRound(NSMakeRect(NSMaxX(r) - 7, NSMaxY(r) - 7, 4, 4), 2, ac);
         }
     }
-    if (filterPage == 0) {
+    if (filterPage == 2) {
+        [self drawArpPage];
+    } else if (filterPage == 0) {
         [self filter1Controls];
         [self knob:ui::Cutoff accent:C(0xf2ab55)];
         [self knob:ui::Resonance accent:C(0xf2ab55)];
@@ -2329,13 +2477,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
 
 // FILTER panel page tabs and the FILTER 2 + SUB page's click controls.
 - (BOOL)filterPanelMouseDown:(NSPoint)p event:(NSEvent*)e {
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 3; ++i)
         if (NSPointInRect(p, [self filterTab:i])) {
             filterPage = i;
             [MUEWDefaults() setInteger:i forKey:@"MUEWFilterPage"];
             [self setNeedsDisplay:YES];
             return YES;
         }
+    if (filterPage == 2) return [self arpMouseDown:p]; // 0.25.0
     if (filterPage == 0) { // 0.21.0: model arrows, DRIVE / KEYTRACK / MORPH bars, response display
         VoiceParams& v = current.voice;
         NSRect mr = [self f1ModelRect];
@@ -2831,6 +2980,13 @@ static int SortForColumn(int c) {
         return;
     }
     if (msegEdit >= 0 && (msegPt >= 0 || msegSeg >= 0 || msegLoopEdge >= 0)) { [self msegDragTo:p shift:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return; }
+    if (arpDrag >= 0) { // 0.25.0 ARP GATE / SWING pills: the full width is the whole range
+        NSRect r = arpDrag ? [self arpSwingRect] : [self arpGateRect];
+        const double x = std::clamp(dragValue + (p.x - dragStart.x) / (r.size.width * scale / 150.0), 0.0, 1.0);
+        if (arpDrag) current.voice.arpSwing = std::round(x * 50) / 100.0; else current.voice.arpGate = 0.05 + std::round(x * 95) / 100.0;
+        [self voiceParamEdited:arpDrag ? params::ArpSwing : params::ArpGate];
+        return;
+    }
     if (voiceDrag >= 0) { // 0.23.0 GLIDE / BLEND bars: the full bar width is the whole range
         NSRect r = voiceDrag ? [self blendBar] : [self glideBar];
         const double x = std::clamp(dragValue + (p.x - dragStart.x) / (r.size.width * scale / 150.0), 0.0, 1.0);
@@ -2952,6 +3108,8 @@ static int SortForColumn(int c) {
     }
     if (voiceDrag >= 0 && host) host->parameterGesture(voiceDrag ? params::UnisonBlend : params::GlideTime, false);
     voiceDrag = -1;
+    if (arpDrag >= 0 && host) host->parameterGesture(arpDrag ? params::ArpSwing : params::ArpGate, false);
+    arpDrag = -1;
     dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
     msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);

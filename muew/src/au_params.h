@@ -23,6 +23,7 @@ enum ID {
     SubLevel, NoiseLevel, NoiseTone, Filter2Cutoff, Filter2Reso, // 0.10.0
     PhaserMix, FlangerMix, // 0.13.0
     GlideTime, UnisonBlend, // 0.23.0
+    ArpGate, ArpSwing,      // 0.25.0
     Count
 };
 
@@ -69,6 +70,8 @@ inline const Def& def(int id) {
         {"Flanger Mix", Percent, 0, 100, false},
         {"Glide Time", Seconds, 0, 5, false},
         {"Unison Blend", Percent, 0, 100, false},
+        {"Arp Gate", Percent, 5, 100, false},
+        {"Arp Swing", Percent, 0, 50, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -105,6 +108,8 @@ inline double& field(Preset& p, int id) {
     case FlangerMix: return p.fx.flanger.mix;
     case GlideTime: return p.voice.glideTime;
     case UnisonBlend: return p.voice.uniBlend;
+    case ArpGate: return p.voice.arpGate;
+    case ArpSwing: return p.voice.arpSwing;
     default: return p.fx.reverb.mix;
     }
 }

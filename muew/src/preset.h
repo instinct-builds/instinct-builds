@@ -45,6 +45,7 @@ struct PresetInfo {
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
+//                  0.25.0 adds optional `arp <on> <mode> <octaves> <rate> <gate> <swing> <latch>`.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.22.0 adds optional `filterr <f1mix> <f2mix> <balance> <f2morph>`; filter2 types 6-8.
@@ -200,6 +201,14 @@ struct Preset {
             else if (key == "lfo2") ls >> voice.lfo2Rate >> voice.lfo2Shape;
             else if (key == "warp1") ls >> voice.osc1WarpMode >> voice.osc1Warp;
             else if (key == "warp2") ls >> voice.osc2WarpMode >> voice.osc2Warp;
+            else if (key == "arp") { // 0.25.0: on mode octaves rate gate swing latch
+                int on = 0, m = 0, oc = 1, r = 3, la = 0; double g = 0.5, sw = 0;
+                if (ls >> on >> m >> oc >> r >> g >> sw >> la && std::isfinite(g) && std::isfinite(sw)) {
+                    voice.arpOn = on != 0; voice.arpMode = std::clamp(m, 0, arp::kModes - 1); voice.arpOctaves = std::clamp(oc, 1, 4);
+                    voice.arpRate = std::clamp(r, 0, arp::kRates - 1); voice.arpGate = std::clamp(g, 0.05, 1.0);
+                    voice.arpSwing = std::clamp(sw, 0.0, 0.5); voice.arpLatch = la != 0;
+                }
+            }
             else if (key == "perf") { int b = 2; if (ls >> b) voice.bendRange = std::clamp(b, 0, 24); } // 0.24.0
             else if (key == "voice") { // 0.23.0: mode poly-voices glide-time glide-legato unison-phase
                 int m = 0, n = 16, gl = 0, ph = 0; double g = 0;
@@ -495,6 +504,8 @@ struct Preset {
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;
         if (a.bendRange != b.bendRange) return false; // 0.24.0
+        if (a.arpOn != b.arpOn || a.arpMode != b.arpMode || a.arpOctaves != b.arpOctaves || a.arpRate != b.arpRate
+            || a.arpGate != b.arpGate || a.arpSwing != b.arpSwing || a.arpLatch != b.arpLatch) return false; // 0.25.0
         if (a.voiceMode != b.voiceMode || a.polyVoices != b.polyVoices || a.glideTime != b.glideTime || a.glideLegato != b.glideLegato || a.uniPhase != b.uniPhase) return false; // 0.23.0
         if (a.filter1Mix != b.filter1Mix || a.filter2Mix != b.filter2Mix || a.filterBalance != b.filterBalance || a.filter2Morph != b.filter2Morph) return false; // 0.22.0
         if (a.filterDrive != b.filterDrive || a.filterKeytrack != b.filterKeytrack || a.filterMorph != b.filterMorph) return false; // 0.21.0
@@ -571,6 +582,9 @@ private:
             o << "\n";
         }
         if (v.bendRange != 2) o << "perf " << v.bendRange << "\n"; // 0.24.0
+        if (v.arpOn || v.arpMode != 0 || v.arpOctaves != 1 || v.arpRate != 3 || v.arpGate != 0.5 || v.arpSwing != 0 || v.arpLatch) // 0.25.0
+            o << "arp " << (v.arpOn ? 1 : 0) << " " << v.arpMode << " " << v.arpOctaves << " " << v.arpRate << " " << v.arpGate << " " << v.arpSwing
+              << " " << (v.arpLatch ? 1 : 0) << "\n";
         if (v.voiceMode != 0 || v.polyVoices != 16 || v.glideTime != 0 || v.glideLegato || v.uniPhase != 0) // 0.23.0
             o << "voice " << v.voiceMode << " " << v.polyVoices << " " << v.glideTime << " " << (v.glideLegato ? 1 : 0) << " " << v.uniPhase << "\n";
         if (v.filter1Mix != 1 || v.filter2Mix != 1 || v.filterBalance != 0.5 || v.filter2Morph != 0) // 0.22.0

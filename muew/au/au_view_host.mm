@@ -884,6 +884,59 @@ int main() {
                   "controls return to rest and BEND +-2 drops the perf line");
             fflush(stdout);
         });
+        After(7.04, ^{ // 0.25.0 ARP page: ARP ON, UP/DN, 2 octaves, LATCH, GATE 62%, SWING 62%; hold C E G and let go
+            CGFloat t = view.bounds.size.height - 100;
+            SEL arpSel = NSSelectorFromString(@"muewArpText");
+            auto arpText = [&]() -> std::string { if (![view respondsToSelector:arpSel]) return ""; NSString* a = [view valueForKey:@"muewArpText"]; return a.UTF8String ?: ""; };
+            Click(view, w, NSMakePoint(652 + 20, t - 29 + 8.5));          // ARP tab
+            Click(view, w, NSMakePoint(492 + 22, t - 58 + 9));            // ARP ON
+            Click(view, w, NSMakePoint(542 + 2 * 38 + 18, t - 58 + 9));   // UP/DN
+            Click(view, w, NSMakePoint(492 + 74 - 6, t - 84 + 9));        // OCT > : 2
+            Click(view, w, NSMakePoint(666 + 27, t - 84 + 9));            // LATCH
+            Click(view, w, NSMakePoint(492 + 0.6 * 135, t - 108 + 8));    // GATE at 60% of the pill: 62%
+            Click(view, w, NSMakePoint(633 + 0.5 * 135, t - 108 + 8));    // SWING at 50%: 0.25 (62%)
+            muew::Preset st;
+            const bool ok = State(st);
+            AudioUnitParameterValue gv = -1, sv = -1;
+            AudioUnitGetParameter(gUnit, muew::params::ArpGate, kAudioUnitScope_Global, 0, &gv);
+            AudioUnitGetParameter(gUnit, muew::params::ArpSwing, kAudioUnitScope_Global, 0, &sv);
+            printf("arp: on %d mode %d oct %d rate %d gate %.2f (param %.1f) swing %.2f (param %.1f) latch %d\n", st.voice.arpOn ? 1 : 0, st.voice.arpMode,
+                   st.voice.arpOctaves, st.voice.arpRate, st.voice.arpGate, gv, st.voice.arpSwing, sv, st.voice.arpLatch ? 1 : 0);
+            Check(ok && st.voice.arpOn && st.voice.arpMode == 2 && st.voice.arpOctaves == 2 && st.voice.arpRate == 3 && std::fabs(st.voice.arpGate - 0.62) < 1e-6
+                  && std::fabs(st.voice.arpSwing - 0.25) < 1e-6 && st.voice.arpLatch && st.serialize().find("\narp 1 2 2 3 0.62 0.25 1\n") != std::string::npos,
+                  "ARP ON, UP/DN, 2 OCT, LATCH, GATE 62% and SWING reached the AU's sound");
+            Check(std::fabs(gv - 62) < 0.01 && std::fabs(sv - 25) < 0.01, "Arp Gate and Arp Swing AU parameters follow the page");
+            for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x90, k, 100, 0);
+            for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x80, k, 0, 0);   // LATCH keeps them
+            for (int i = 0; i < 40; ++i) RenderBlock();   // 20480 samples: 3-4 steps
+            for (int i = 0; i < 50 && arpText().find("live=1 pool=60,64,67") == std::string::npos; ++i)
+                [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+            // Stop between steps with a note sounding so the shot shows the playing step.
+            for (int i = 0; i < 40; ++i) {
+                MUEWPerformance pf{}; UInt32 size = sizeof(pf);
+                AudioUnitGetProperty(gUnit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &size);
+                if (pf.arpNote >= 0 && pf.arpIndex >= 3) break;
+                RenderBlock(256);
+            }
+            for (int i = 0; i < 10; ++i) [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+            MUEWPerformance pf{}; UInt32 size = sizeof(pf);
+            AudioUnitGetProperty(gUnit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &size);
+            const std::string txt = arpText();
+            printf("arp: AU on %u pool %d step %d index %d note %d; editor %s\n", (unsigned)pf.arpOn, (int)pf.poolCount, (int)pf.arpStep, (int)pf.arpIndex, (int)pf.arpNote, txt.c_str());
+            Check(pf.arpOn == 1 && pf.poolCount == 3 && pf.arpStep >= 3 && pf.arpNote >= 60 && txt.find("page=2 on=1 mode=UP/DN oct=2 rate=1/16 gate=0.62 swing=0.25 latch=1 live=1 pool=60,64,67") == 0,
+                  "the latched chord plays; the ARP page shows the AU's pool and step");
+            Snapshot(view, "MUEW_ARP_PNG", "ARP page snapshot written");
+            // Back: LATCH off (drops the released keys), ARP OFF, FILTER 1 page.
+            Click(view, w, NSMakePoint(666 + 27, t - 84 + 9));
+            Click(view, w, NSMakePoint(492 + 22, t - 58 + 9));
+            RenderBlock();
+            muew::Preset back;
+            Check(State(back) && !back.voice.arpOn && !back.voice.arpLatch, "ARP OFF and LATCH off reached the AU");
+            Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));
+            MusicDeviceMIDIEvent(gUnit, 0xB0, 123, 0, 0);
+            RenderBlock();
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });
@@ -923,7 +976,7 @@ int main() {
             Snapshot(view, "MUEW_BROWSER_PNG", "full browser snapshot written");
         });
         After(9.0, ^{
-            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack + chain reorder + detail editor, mod matrix, wavetable editor, filter 2 + sub page, MIDI performance and full browser\n");
+            printf(gFailures ? "FAIL: AU editor host test\n" : "PASS: AU editor hosted; host->editor, editor->AU, automation, macros, user presets, unison, FX rack + chain reorder + detail editor, mod matrix, wavetable editor, filter 2 + sub page, MIDI performance, arpeggiator and full browser\n");
             fflush(stdout);
             exit(gFailures ? 1 : 0);
         });

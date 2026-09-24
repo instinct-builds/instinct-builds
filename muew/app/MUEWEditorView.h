@@ -73,6 +73,11 @@ struct MUEWEditorHost {
     muew::Performance perfShown; // 0.24.0 live MIDI performance (AU meters)
     int perfNote;
     bool perfSustain;
+    // 0.25.0 ARP page: GATE (0) / SWING (1) pill being dragged (-1 none), and the arp as the AU last played it.
+    int arpDrag;
+    bool arpLiveOn;
+    int arpLiveIndex, arpLiveNote, arpLiveStep, arpLivePoolN;
+    int arpLivePool[8];
     int voiceDrag;   // 0.23.0 voice strip: GLIDE (0) or BLEND (1) bar being dragged, -1 none
     int lfoXDrag;    // 0.18.0 LFO editor: PHASE/DELAY/RISE pill being dragged (0-2), -1 none
     int routeDrag;
@@ -95,7 +100,7 @@ struct MUEWEditorHost {
     double wtLastVal;
     bool wtDrawing;
     int wtPosDrag;
-    // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE).
+    // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE, 2 = ARP since 0.25.0).
     int filterPage;
     // 0.11.0 full browser: open flag, sort order (ui::SortMode), star
     // ratings by slug, and the table scroll offset.
@@ -117,4 +122,6 @@ struct MUEWEditorHost {
 - (BOOL)importPresetFile:(NSString*)path;
 // 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
 - (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus;
+// 0.25.0: the arp as the AU is playing it, for the ARP page's step display.
+- (void)showArpOn:(bool)on pool:(const int*)pool count:(int)n index:(int)index note:(int)note step:(int)step;
 @end
