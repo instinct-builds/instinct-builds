@@ -145,7 +145,14 @@ struct SessionRecapTests {
         #expect(entry.isCollapsed == true)
         #expect(entry.title == "Session 2 - Today")
         #expect(entry.createdAt == now)
-        #expect(entry.text.hasPrefix("[" + RollResult.historyTimeFormatter.string(from: morning)))
+        // 2.73.0: the body opens with the stats line; the rolls still
+        // follow oldest first under it.
+        #expect(entry.text.hasPrefix("2 rolls"))
+        let morningLine = "[" + RollResult.historyTimeFormatter.string(from: morning)
+        let nowLine = "[" + RollResult.historyTimeFormatter.string(from: now)
+        let morningAt = entry.text.range(of: morningLine)
+        let nowAt = entry.text.range(of: nowLine)
+        #expect(morningAt != nil && nowAt != nil && morningAt!.lowerBound < nowAt!.lowerBound)
     }
 
     @Test func sessionDigestHonorsCustomTitle() throws {

@@ -386,12 +386,16 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// Digest body text for a session (2.62.0), oldest roll first in
     /// both layouts. Condensed is one line per roll; byActor groups the
     /// lines under each roller in first-appearance order, with rolls
-    /// made under no character filed under "Table".
+    /// made under no character filed under "Table". 2.73.0: the body
+    /// opens with the session's stats line (2.69.0) and its note
+    /// (2.71.0) when set, so a filed digest reads standalone.
     public static func digestBody(session: RollSession, format: DigestFormat) -> String {
         let rolls = session.rolls.reversed()
+        var head = sessionStats(session).line
+        if let note = session.note { head += "\n" + note }
         switch format {
         case .condensed:
-            return rolls.map { $0.historyLine }.joined(separator: "\n")
+            return head + "\n\n" + rolls.map { $0.historyLine }.joined(separator: "\n")
         case .byActor:
             var order: [String] = []
             var grouped: [String: [String]] = [:]
@@ -400,7 +404,7 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
                 if grouped[actor] == nil { order.append(actor) }
                 grouped[actor, default: []].append(roll.historyLine)
             }
-            return order.map { actor in
+            return head + "\n\n" + order.map { actor in
                 ([actor + ":"] + (grouped[actor] ?? [])).joined(separator: "\n")
             }.joined(separator: "\n\n")
         }

@@ -1122,14 +1122,21 @@ struct JournalTests {
         // r3 has no character - filed under Table.
         let session = RollSession(number: 2, title: "Session 2 - Today", key: nil, rolls: [r3, r2, r1])
         let condensed = JournalEntry.digestBody(session: session, format: .condensed)
-        #expect(condensed.components(separatedBy: "\n").count == 3)
+        // 2.73.0: the body opens with the stats line, then a blank line.
+        #expect(condensed.hasPrefix("3 rolls \u{00B7} high 21 \u{00B7} low 5\n\n"))
+        #expect(condensed.components(separatedBy: "\n").count == 5)
         #expect(!condensed.contains("Wren:"))
         let grouped = JournalEntry.digestBody(session: session, format: .byActor)
         let groups = grouped.components(separatedBy: "\n\n")
-        #expect(groups.count == 2)
-        #expect(groups[0].hasPrefix("Wren:"))
-        #expect(groups[0].components(separatedBy: "\n").count == 3)
-        #expect(groups[1].hasPrefix("Table:"))
+        #expect(groups.count == 3)
+        #expect(groups[0] == "3 rolls \u{00B7} high 21 \u{00B7} low 5")
+        #expect(groups[1].hasPrefix("Wren:"))
+        #expect(groups[1].components(separatedBy: "\n").count == 3)
+        #expect(groups[2].hasPrefix("Table:"))
+        // A noted session adds its note under the stats line.
+        let noted = JournalEntry.digestBody(session: session.noted("The bridge over the Ember"),
+                                            format: .condensed)
+        #expect(noted.hasPrefix("3 rolls \u{00B7} high 21 \u{00B7} low 5\nThe bridge over the Ember\n\n"))
         // The digest init defaults to condensed and honors the format.
         #expect(JournalEntry(sessionDigest: session).text == condensed)
         #expect(JournalEntry(sessionDigest: session, format: .byActor).text == grouped)
