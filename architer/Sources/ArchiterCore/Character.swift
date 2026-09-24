@@ -335,14 +335,18 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// Display-only collapse state (2.51.0); nil/false renders expanded.
     /// Exports and the session recap always carry the full text.
     public var isCollapsed: Bool? = nil
+    /// Pin state (2.61.0); nil/false is unpinned. Pinned entries hold
+    /// the top journal slots and are read-only until unpinned.
+    public var isPinned: Bool? = nil
 
     public init(date: String = "", title: String = "", text: String = "",
-                createdAt: Date? = nil, isCollapsed: Bool? = nil) {
+                createdAt: Date? = nil, isCollapsed: Bool? = nil, isPinned: Bool? = nil) {
         self.date = date
         self.title = title
         self.text = text
         self.createdAt = createdAt
         self.isCollapsed = isCollapsed
+        self.isPinned = isPinned
     }
 
     public init(from decoder: Decoder) throws {
@@ -353,6 +357,7 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
         text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
         isCollapsed = try c.decodeIfPresent(Bool.self, forKey: .isCollapsed)
+        isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned)
     }
 
     /// Digest entry for a roll session (2.49.0): one entry holding the
@@ -636,6 +641,20 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         journal.append(JournalEntry(fromTemplate: template))
     }
 
+    /// Pin or unpin a journal entry (2.61.0). Pinning moves it to the
+    /// head of the journal, piling after any already-pinned entries;
+    /// unpinning clears the flag (nil, so saves keep the old shape) and
+    /// leaves the entry where it sits. Unknown ids are a no-op.
+    public mutating func setJournalEntryPinned(_ id: UUID, _ pinned: Bool) {
+        guard let i = journal.firstIndex(where: { $0.id == id }) else { return }
+        journal[i].isPinned = pinned ? true : nil
+        if pinned {
+            let entry = journal.remove(at: i)
+            let head = journal.prefix { $0.isPinned == true }.count
+            journal.insert(entry, at: head)
+        }
+    }
+
     /// Collapse or expand every long journal entry at once (2.53.0) -
     /// the journal header's one-tap scan control. Collapsing sets true;
     /// expanding restores the default nil. Short entries are untouched:
@@ -652,7 +671,11 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// and the session recap all follow it.
     public mutating func moveJournalEntry(_ id: UUID, by offset: Int) {
         guard offset != 0, let from = journal.firstIndex(where: { $0.id == id }) else { return }
-        let to = max(0, min(journal.count - 1, from + offset))
+        // 2.61.0: pinned entries are fixed; other entries cannot move
+        // above the pinned block at the head.
+        guard journal[from].isPinned != true else { return }
+        let pinnedCount = journal.prefix { $0.isPinned == true }.count
+        let to = max(pinnedCount, min(journal.count - 1, from + offset))
         guard to != from else { return }
         let entry = journal.remove(at: from)
         journal.insert(entry, at: to)

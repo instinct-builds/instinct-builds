@@ -253,13 +253,16 @@ public struct JournalBlock: View {
                 if matches(entry, query: query) {
                 let long = entry.isLong
                 let collapsed = (entry.isCollapsed ?? false) && long
+                let pinned = entry.isPinned ?? false
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         TextField("Date", text: $entry.date)
                             .textFieldStyle(InsetFieldStyle())
                             .frame(width: 110)
+                            .disabled(pinned)
                         TextField("Title", text: $entry.title)
                             .textFieldStyle(InsetFieldStyle())
+                            .disabled(pinned)
                         // 2.57.0: bulk at a glance - lines for multiline,
                         // words for single-line entries.
                         if let size = entry.sizeLabel {
@@ -277,6 +280,14 @@ public struct JournalBlock: View {
                             .foregroundStyle(Theme.inkFaint)
                             .help(collapsed ? "Expand entry" : "Collapse entry")
                         }
+                        // 2.61.0: pin fixes the entry at the top,
+                        // read-only until unpinned.
+                        Button { character.setJournalEntryPinned(entry.id, !pinned) } label: {
+                            Image(systemName: pinned ? "pin.fill" : "pin")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(pinned ? Theme.accent : Theme.inkFaint)
+                        .help(pinned ? "Unpin entry (editable again)" : "Pin entry to the top, read-only")
                         // 2.55.0: copy this one entry (head + body).
                         Button { model.copyJournalEntryToPasteboard(entry) } label: {
                             Image(systemName: "doc.on.doc")
@@ -293,6 +304,8 @@ public struct JournalBlock: View {
                         .help("Duplicate this entry")
                         // 2.50.0: nudge entries into the user's order;
                         // exports and the session recap follow it.
+                        // Pinned entries (2.61.0) skip move and delete.
+                        if !pinned {
                         Button { character.moveJournalEntry(entry.id, by: -1) }
                             label: { Image(systemName: "chevron.up") }
                             .buttonStyle(.plain)
@@ -308,6 +321,7 @@ public struct JournalBlock: View {
                         Button(role: .destructive) {
                             character.journal.removeAll { $0.id == entry.id }
                         } label: { Image(systemName: "minus.circle") }
+                        }
                     }
                     // 2.60.0: while the filter is active, body hits
                     // surface as a highlighted snippet - no need to
@@ -339,6 +353,7 @@ public struct JournalBlock: View {
                         TextEditor(text: $entry.text)
                             .frame(minHeight: 44)
                             .font(.callout)
+                            .disabled(pinned)
                     }
                 }
                 .padding(.vertical, 2)

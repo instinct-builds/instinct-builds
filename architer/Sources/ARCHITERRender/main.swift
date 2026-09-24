@@ -293,6 +293,19 @@ func run(model: AppModel, character: Character, outDir: String) {
                     .environmentObject(model),
                 width: width, name: "journal-templates", outDir: outDir)
         }
+        // 2.61.0 proof: pin the combat debrief - it jumps to the top
+        // with a filled brass pin, its fields go read-only, and its
+        // move/delete buttons drop off the row.
+        if let tplId = sel.journal.last(where: { $0.title == "Combat debrief" })?.id {
+            sel.setJournalEntryPinned(tplId, true)
+            model.selected?.wrappedValue = sel
+            renderPNG(
+                JournalBlock(character: .constant(sel))
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: width, name: "journal-pinned", outDir: outDir)
+        }
     }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.

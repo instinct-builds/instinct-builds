@@ -1075,6 +1075,39 @@ struct JournalTests {
         #expect(JournalEntry(text: "").matchingLines("x") == [])
     }
 
+    @Test func journalPinFixesEntryAtTop() throws {
+        var c = Character(name: "Wren Halloway")
+        c.journal = [JournalEntry(title: "A"), JournalEntry(title: "B"), JournalEntry(title: "C")]
+        #expect(c.journal[1].isPinned == nil)
+        let b = c.journal[1].id
+        c.setJournalEntryPinned(b, true)
+        #expect(c.journal[0].id == b)
+        #expect(c.journal[0].isPinned == true)
+        // Pinned entries ignore reorder moves.
+        c.moveJournalEntry(b, by: 1)
+        #expect(c.journal[0].id == b)
+        // Other entries cannot move above the pinned block.
+        let cId = c.journal[2].id
+        c.moveJournalEntry(cId, by: -1)
+        #expect(c.journal[1].id == cId)
+        c.moveJournalEntry(cId, by: -1)
+        #expect(c.journal[1].id == cId)
+        #expect(c.journal[0].id == b)
+        // Unpin clears the flag to nil and frees the entry.
+        c.setJournalEntryPinned(b, false)
+        #expect(c.journal[0].isPinned == nil)
+        c.moveJournalEntry(b, by: 1)
+        #expect(c.journal[1].id == b)
+        // A second pin piles after the first.
+        c.setJournalEntryPinned(cId, true)
+        c.setJournalEntryPinned(b, true)
+        #expect(c.journal[0].id == cId)
+        #expect(c.journal[1].id == b)
+        // Unknown ids are a no-op.
+        c.setJournalEntryPinned(UUID(), true)
+        #expect(c.journal.count == 3)
+    }
+
     @Test func journalEntrySizeLabel() throws {
         #expect(JournalEntry(text: "").sizeLabel == nil)
         #expect(JournalEntry(text: "   \n  ").sizeLabel == nil)
