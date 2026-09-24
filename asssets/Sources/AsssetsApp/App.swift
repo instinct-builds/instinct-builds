@@ -1826,7 +1826,8 @@ final class StudioLibrary: ObservableObject {
             var id: UUID?
             mutate { id = $0.createBoard(from: BoardTemplate.brandID, named: "Cafe Rebrand") }
             if let id {
-                let files = ["sandstone-4k.png", "paper-grain-4k.png", "prismatic-foil-4k.png", "album-gatefold-mockup.png", "cosmetic-plinth-mockup.png"]
+                // Reading order fills A hero, B hero, A detail; the two fills then take A detail 2 and B detail 1.
+                let files = ["terrazzo-texture.png", "bauhaus-vector-01.svg", "marble-veins-texture.png", "watercolor-wash-texture.png", "bauhaus-vector-02.svg"]
                 let ids = files.compactMap { f in catalog.assets.first { $0.importedPath?.hasSuffix(f) == true }?.id }
                 let aspects = ids.map { i in Moodboard.aspect(resolution: catalog.assets.first { $0.id == i }?.resolution ?? "") }
                 mutate { c in
@@ -1838,8 +1839,8 @@ final class StudioLibrary: ObservableObject {
                         }
                         let notes = b.items.filter { $0.kind == .note }.map(\.id)
                         if notes.count >= 2 {
-                            b.setText(notes[0], "Direction A: warm stone and paper, quiet and tactile.")
-                            b.setText(notes[1], "Direction B: foil and bold type, louder at the counter.")
+                            b.setText(notes[0], "Direction A: stone, marble and wash, quiet and tactile.")
+                            b.setText(notes[1], "Direction B: bold shapes and color, louder at the counter.")
                         }
                     }
                 }
@@ -7074,7 +7075,7 @@ struct TemplatePickerSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 760, height: 520)
+        .frame(width: 760, height: 600)
         .background(Theme.panel)
     }
 
@@ -7090,7 +7091,7 @@ struct TemplatePickerSheet: View {
     private func card(_ t: BoardTemplate) -> some View {
         Button { model.newBoard(fromTemplate: t.id) } label: {
             VStack(alignment: .leading, spacing: 6) {
-                TemplatePreview(template: t).frame(height: 130)
+                TemplatePreview(template: t).frame(height: 104)
                 if renaming == t.id {
                     TextField("Name", text: $draft).textFieldStyle(.roundedBorder).onSubmit {
                         model.mutate("Rename Template") { $0.renameTemplate(t.id, to: draft) }; renaming = nil
