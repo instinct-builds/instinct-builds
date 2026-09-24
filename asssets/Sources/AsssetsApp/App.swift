@@ -2034,7 +2034,7 @@ final class StudioLibrary: ObservableObject {
                 ("Plinth Campaign.png", UsageRights(license: .client, source: "Maison Vale brand team", credit: "Courtesy of Maison Vale", uses: "This campaign only")),
                 ("Wire Terrazzo.png", UsageRights(license: .editorial, source: "Wirepress", credit: "Photo: Dev Arora / Wirepress", uses: "News and commentary only")),
             ]
-            for (f, r) in rights { if let a = find(f) { setRights(r, for: [a.id]) } }
+            for (f, r) in rights { if let a = find(f) { setRights(r, for: [a.id], quiet: true) } }
             var id = UUID()
             mutate { c in
                 id = c.createBoard(named: "Hotel Pitch")
@@ -2075,6 +2075,7 @@ final class StudioLibrary: ObservableObject {
                 // As if ASSSETS was last opened 20 days ago: Harbor Night's license ended in between.
                 show(collection: StudioCatalog.inboxCollection)
                 checkRightsSinceLastLaunch(since: inDays(-20))
+                if let a = find("Harbor Night.png") { selection = [a.id]; focusID = a.id }
             default:
                 show(board: id)
                 let out = supportRoot.appendingPathComponent("demo-share-credits", isDirectory: true)
@@ -2241,11 +2242,12 @@ extension StudioLibrary {
     }
 
     /// Saves usage rights and writes them to the sidecar of the user's own files.
-    func setRights(_ r: UsageRights?, for ids: Set<UUID>) {
+    func setRights(_ r: UsageRights?, for ids: Set<UUID>, quiet: Bool = false) {
         var n = 0
         mutate("Edit Rights") { n = $0.setRights(r, for: ids) }
         guard n > 0 else { return }
         writeMetadata(ids, quiet: true)
+        if quiet { return }
         flash(r?.isEmpty ?? true ? "Cleared rights" : "Saved rights\(catalog.assets.contains { ids.contains($0.id) && !$0.isStarter && $0.importedPath != nil } ? " · written to the .xmp sidecar" : "")")
     }
 
@@ -3966,7 +3968,7 @@ struct StudioView: View {
             if let toast = model.toast {
                 Text(toast).font(.callout.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 9)
                     .background(.ultraThinMaterial, in: Capsule()).overlay(Capsule().stroke(Theme.hairline))
-                    .padding(.bottom, 22).transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 62).transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.toast)
@@ -7810,14 +7812,13 @@ struct RightsNoticeBanner: View {
                 Text(issues.prefix(3).map(\.title).joined(separator: ", ") + (issues.count > 3 ? " and \(issues.count - 3) more" : ""))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            .layoutPriority(1)
             Spacer(minLength: 8)
             Button("Review") {
                 if let smart = model.catalog.smartCollections.first(where: { $0.rules.rights == .expired }) { model.show(smart: smart.id) }
                 model.selection = Set(issues.map(\.asset)); model.focusID = issues.first?.asset
                 model.rightsNotice = nil
             }
-            .buttonStyle(.borderedProminent).tint(Theme.danger).controlSize(.small)
+            .buttonStyle(.borderedProminent).tint(Theme.danger).controlSize(.small).fixedSize().layoutPriority(2)
             Button { model.rightsNotice = nil } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
                 .buttonStyle(.plain).foregroundStyle(.secondary).help("Dismiss")
         }
@@ -7895,7 +7896,7 @@ struct BulkRightsSection: View {
                 }
             } else if withEnd > 0 {
                 HStack(spacing: 6) {
-                    Button { model.extendRights(Set(ids)) } label: { Label("Extend \(withEnd) by 1 Year", systemImage: "calendar.badge.plus") }
+                    Button { model.extendRights(Set(ids)) } label: { Label(withEnd == assets.count ? "Extend All 1 Year" : "Extend \(withEnd) Dated 1 Year", systemImage: "calendar.badge.plus") }
                     Button { model.markRenewed(Set(ids)) } label: { Label("Mark Renewed", systemImage: "arrow.clockwise.circle") }
                 }
                 .buttonStyle(.bordered).controlSize(.small).font(.caption)
@@ -7946,7 +7947,7 @@ struct RightsReportPage: View {
     let page: Int
     let pages: Int
     static let size = CGSize(width: 792, height: 612)
-    static let rowsPerPage = 13
+    static let rowsPerPage = 9   // rows can wrap to three lines (source + uses)
     static let ink = Color(white: 0.1), muted = Color(white: 0.45), rule = Color(white: 0.87)
     // Title, Status, License, Credit, Source / uses, Ends
     static let widths: [CGFloat] = [140, 100, 78, 140, 140, 70]
@@ -7985,7 +7986,7 @@ struct RightsReportPage: View {
                     Text(r.license).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(1).frame(width: Self.widths[2], alignment: .leading)
                     Text(r.credit).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(2).frame(width: Self.widths[3], alignment: .leading)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(r.source).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(1)
+                        Text(r.source).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         Text(r.uses).font(.system(size: 7.5)).foregroundStyle(Self.muted).lineLimit(1)
                     }.frame(width: Self.widths[4], alignment: .leading)
                     VStack(alignment: .leading, spacing: 1) {
