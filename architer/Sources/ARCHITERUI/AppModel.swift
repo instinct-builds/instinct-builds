@@ -288,21 +288,21 @@ public final class AppModel: ObservableObject {
     /// now; older rolls fall back to a plain reroll of the expression
     /// under the recorded display label. Incoming damage is not
     /// rerollable - rolling again is not taking more damage.
-    public func rollAgain(_ roll: RollResult) {
-        guard let spec = roll.reroll else {
-            if let label = roll.label { rollLabeled(label, roll.expression) }
-            else { roll(roll.expression) }
+    public func rollAgain(_ source: RollResult) {
+        guard let spec = source.reroll else {
+            if let label = source.label { rollLabeled(label, source.expression) }
+            else { roll(source.expression) }
             return
         }
         switch spec.kind {
         case .plain:
-            if let base = spec.baseLabel { rollLabeled(base, roll.expression) }
-            else { roll(roll.expression) }
+            if let base = spec.baseLabel { rollLabeled(base, source.expression) }
+            else { roll(source.expression) }
         case .check:
-            rollCheck(spec.baseLabel ?? roll.label ?? "Check",
+            rollCheck(spec.baseLabel ?? source.label ?? "Check",
                       bonus: spec.checkBonus ?? 0, mode: spec.mode ?? .normal)
         case .outgoingDamage:
-            recordDamageRoll(spec.baseLabel ?? roll.label ?? "Damage", roll.expression,
+            recordDamageRoll(spec.baseLabel ?? source.label ?? "Damage", source.expression,
                              type: spec.damageType.flatMap { DamageType(rawValue: $0) })
         case .incomingDamage:
             break
