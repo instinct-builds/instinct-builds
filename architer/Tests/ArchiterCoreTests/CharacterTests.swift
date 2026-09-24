@@ -983,6 +983,19 @@ struct JournalTests {
         #expect(c.journal.map(\.title) == ["A", "C", "B"])
     }
 
+    @Test func collapseStateDecodesAndRoundTrips() throws {
+        // The pre-2.51.0 saved shape: no isCollapsed key at all.
+        let json = #"{\"date\":\"Session 1\",\"title\":\"Start\",\"text\":\"It began.\"}"#
+        let legacy = try JSONDecoder().decode(JournalEntry.self, from: Data(json.utf8))
+        #expect(legacy.isCollapsed == nil)
+        // A collapsed entry round-trips with its state.
+        var e = JournalEntry(title: "Long", text: "one\ntwo")
+        e.isCollapsed = true
+        let decoded = try JSONDecoder().decode(JournalEntry.self, from: JSONEncoder().encode(e))
+        #expect(decoded == e)
+        #expect(decoded.isCollapsed == true)
+    }
+
     @Test func journalRoundTripsAndDefaults() throws {
         var c = Character(name: "Test")
         #expect(c.journal.isEmpty)

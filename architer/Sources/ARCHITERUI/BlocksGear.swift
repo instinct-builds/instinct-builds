@@ -212,6 +212,8 @@ struct JournalBlock: View {
     var body: some View {
         BlockCard(title: "Journal") {
             ForEach($character.journal) { $entry in
+                let long = entry.text.contains("\n") || entry.text.count > 80
+                let collapsed = (entry.isCollapsed ?? false) && long
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         TextField("Date", text: $entry.date)
@@ -219,6 +221,16 @@ struct JournalBlock: View {
                             .frame(width: 110)
                         TextField("Title", text: $entry.title)
                             .textFieldStyle(InsetFieldStyle())
+                        // 2.51.0: long entries collapse to a one-line
+                        // preview; the state persists on the entry.
+                        if long {
+                            Button { entry.isCollapsed = !collapsed } label: {
+                                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.inkFaint)
+                            .help(collapsed ? "Expand entry" : "Collapse entry")
+                        }
                         // 2.50.0: nudge entries into the user's order;
                         // exports and the session recap follow it.
                         Button { character.moveJournalEntry(entry.id, by: -1) }
@@ -237,9 +249,17 @@ struct JournalBlock: View {
                             character.journal.removeAll { $0.id == entry.id }
                         } label: { Image(systemName: "minus.circle") }
                     }
-                    TextEditor(text: $entry.text)
-                        .frame(minHeight: 44)
-                        .font(.callout)
+                    if collapsed {
+                        Text(entry.text.replacingOccurrences(of: "\n", with: "  "))
+                            .font(.callout)
+                            .foregroundStyle(Theme.inkFaint)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    } else {
+                        TextEditor(text: $entry.text)
+                            .frame(minHeight: 44)
+                            .font(.callout)
+                    }
                 }
                 .padding(.vertical, 2)
             }

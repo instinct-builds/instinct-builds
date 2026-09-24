@@ -287,13 +287,17 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// When the entry was created (2.46.0); nil for pre-2.46.0 entries,
     /// which decode unchanged and sit out of "today" session recaps.
     public var createdAt: Date? = nil
+    /// Display-only collapse state (2.51.0); nil/false renders expanded.
+    /// Exports and the session recap always carry the full text.
+    public var isCollapsed: Bool? = nil
 
     public init(date: String = "", title: String = "", text: String = "",
-                createdAt: Date? = nil) {
+                createdAt: Date? = nil, isCollapsed: Bool? = nil) {
         self.date = date
         self.title = title
         self.text = text
         self.createdAt = createdAt
+        self.isCollapsed = isCollapsed
     }
 
     public init(from decoder: Decoder) throws {
@@ -303,6 +307,7 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
+        isCollapsed = try c.decodeIfPresent(Bool.self, forKey: .isCollapsed)
     }
 }
 
