@@ -2972,7 +2972,8 @@ struct SidebarRow: View {
             Text(title).font(.system(size: 12.5, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.tail).layoutPriority(1)
             Spacer(minLength: 6)
             if let count {
-                Text("\(count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                // Never wraps: the title truncates first (1.18 caught "11" stacking as 1/1 beside a long board name).
+                Text("\(count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1).fixedSize()
                     .padding(.horizontal, 6).padding(.vertical, 2).background(Color.white.opacity(0.06), in: Capsule())
             }
         }
