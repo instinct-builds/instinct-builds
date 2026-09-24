@@ -415,7 +415,15 @@ public func namedDayGroups(_ rolls: [RollResult], names: [String: String],
     guard !names.isEmpty else { return groups }
     // Sessions never span days, so each named session lands in exactly
     // one group; oldest-first by session number for a stable header.
-    let named = sessionSegments(rolls, now: now, calendar: calendar)
+    // 2.76.0: segment in the newest-first order the pane uses - the
+    // export's oldest-first order collapsed a whole day into one
+    // "session" keyed by its newest roll, so pane-set names silently
+    // missed their export headers whenever the named session had
+    // several rolls.
+    let newestFirst = rolls.sorted {
+        ($0.rolledAt ?? .distantPast) > ($1.rolledAt ?? .distantPast)
+    }
+    let named = sessionSegments(newestFirst, now: now, calendar: calendar)
         .compactMap { session -> (dayTitle: String, number: Int, name: String)? in
             guard let key = session.key,
                   let name = names[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -438,6 +446,34 @@ public func namedDayGroups(_ rolls: [RollResult], names: [String: String],
     }
 }
 
+/// Day-summary for export day headers (2.76.0): "2 sessions \u{00B7} 9 rolls"
+/// - the day's session count from the same segmentation as the history
+/// pane, plus its roll count. Undated runs have no sessions, so an
+/// undated group reports rolls only.
+public func daySummary(_ group: RollDayGroup, now: Date = Date(),
+                       calendar: Calendar = .current) -> String {
+    let rollPart = group.rolls.count == 1 ? "1 roll" : "\(group.rolls.count) rolls"
+    // Sort newest-first: export callers hand groups in either order,
+    // and sessionSegments reads a newest-first list.
+    let stamped = group.rolls.sorted {
+        ($0.rolledAt ?? .distantPast) > ($1.rolledAt ?? .distantPast)
+    }
+    let sessions = sessionSegments(stamped, now: now, calendar: calendar)
+        .filter { $0.number > 0 }
+    guard !sessions.isEmpty else { return rollPart }
+    let sessionPart = sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"
+    return sessionPart + " \u{00B7} " + rollPart
+}
+
+/// Export day groups with each header carrying its day summary (2.76.0):
+/// "Today - Night watch - 2 sessions \u{00B7} 9 rolls". The history pane's
+/// session dividers are untouched - this is the export header form.
+public func summarizedDayGroups(_ groups: [RollDayGroup], now: Date = Date(),
+                                calendar: Calendar = .current) -> [RollDayGroup] {
+    groups.map { RollDayGroup(title: $0.title + " - " + daySummary($0, now: now, calendar: calendar),
+                              rolls: $0.rolls) }
+}
+
 /// One row of the compact-PDF session-log appendix (2.39.0).
 public enum SessionLogRow: Equatable, Sendable {
     case dayHeader(String)
@@ -449,11 +485,14 @@ public enum SessionLogRow: Equatable, Sendable {
 /// history (2.38.0), so the printed record reads like the session played.
 /// Undated legacy rolls lead under "Undated".
 /// 2.68.0: pass the user's custom session names to annotate day headers.
+/// 2.76.0: every day header also carries the day's summary.
 public func sessionLogRows(_ rolls: [RollResult], names: [String: String] = [:],
                            notes: [String: String] = [:],
                            now: Date = Date(),
                            calendar: Calendar = .current) -> [SessionLogRow] {
-    namedDayGroups(Array(rolls.reversed()), names: names, notes: notes, now: now, calendar: calendar).flatMap { group in
+    summarizedDayGroups(namedDayGroups(Array(rolls.reversed()), names: names, notes: notes,
+                                       now: now, calendar: calendar),
+                        now: now, calendar: calendar).flatMap { group in
         [SessionLogRow.dayHeader(group.title)] + group.rolls.map { SessionLogRow.roll($0.historyLine) }
     }
 }
@@ -499,14 +538,16 @@ public func sessionLogText(character: String, range: SessionLogRange,
 /// Markdown session log (2.44.0): the same day-grouped rolls as one
 /// table per day, for DMs who keep Obsidian/Notion notes. The Roll
 /// column carries the label with its expression; pipes in labels are
-/// escaped so a table never breaks.
+/// escaped so a table never breaks. 2.76.0: day headings carry the
+/// day's summary.
 public func sessionLogMarkdown(character: String, range: SessionLogRange,
-                               groups: [RollDayGroup]) -> String {
+                               groups: [RollDayGroup], now: Date = Date(),
+                               calendar: Calendar = .current) -> String {
     var lines = ["# \(character) - Session Log (\(range.displayName))", ""]
     if groups.isEmpty || groups.allSatisfy(\.rolls.isEmpty) {
         lines.append("No rolls in range.")
     } else {
-        for group in groups {
+        for group in summarizedDayGroups(groups, now: now, calendar: calendar) {
             lines.append("## \(group.title)")
             lines.append("")
             lines.append("| Time | Roll | Total |")

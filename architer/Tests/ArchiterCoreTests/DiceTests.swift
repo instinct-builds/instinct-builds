@@ -285,7 +285,7 @@ struct SessionLogMarkdownTests {
         #expect(text == """
         # Wren Halloway - Session Log (All rolls)
 
-        ## Today
+        ## Today - 1 session \u{00B7} 2 rolls
 
         | Time | Roll | Total |
         | --- | --- | --- |
@@ -473,12 +473,12 @@ struct SessionLogRowTests {
         ]
         let rows = sessionLogRows(rolls, now: now, calendar: cal)
         #expect(rows == [
-            .dayHeader("Undated"),
+            .dayHeader("Undated - 1 roll"),
             .roll("legacy: 10 (1d4)"),
-            .dayHeader("Yesterday"),
+            .dayHeader("Yesterday - 1 session \u{00B7} 2 rolls"),
             .roll(line("older yesterday", "1d6", at: earlierYesterday)),
             .roll(line("newer yesterday", "1d8", at: yesterday)),
-            .dayHeader("Today"),
+            .dayHeader("Today - 1 session \u{00B7} 2 rolls"),
             .roll(line("older today", "2d6", at: earlierToday)),
             .roll(line("newer today", "1d20", at: now)),
         ])
@@ -737,8 +737,30 @@ struct SessionSegmentTests {
         let rolls = [stamped("d20", at: at(cal, 24, 18))]
         let key = sessionSegments(rolls, now: now, calendar: cal)[0].key!
         let rows = sessionLogRows(rolls, names: [key: "Night watch"], now: now, calendar: cal)
-        #expect(rows.first == .dayHeader("Today - Night watch"))
-        #expect(sessionLogRows(rolls, now: now, calendar: cal).first == .dayHeader("Today"))
+        #expect(rows.first == .dayHeader("Today - Night watch - 1 session \u{00B7} 1 roll"))
+        #expect(sessionLogRows(rolls, now: now, calendar: cal).first == .dayHeader("Today - 1 session \u{00B7} 1 roll"))
+    }
+
+    // 2.76.0: export day headers carry the day's summary - the session
+    // count from the same segmentation as the pane, plus the roll
+    // count - and a pane-set name lands deterministically even when the
+    // named session has several rolls (the export's oldest-first order
+    // used to collapse the day into one "session" keyed by its newest
+    // roll, silently dropping the annotation).
+    @Test func dayHeadersCarrySummariesAndPaneNames() throws {
+        let cal = utc
+        let now = at(cal, 24, 21)
+        // Three sessions today, newest first as history stores them:
+        // a two-roll morning and two lone later rolls (gaps over 4h).
+        let rolls = [stamped("d20", at: at(cal, 24, 20)),
+                     stamped("2d6", at: at(cal, 24, 15)),
+                     stamped("1d8", at: at(cal, 24, 10)),
+                     stamped("d4", at: at(cal, 24, 9))]
+        let sessions = sessionSegments(rolls, now: now, calendar: cal)
+        #expect(sessions.count == 3)
+        let key = try #require(sessions[0].key)
+        let rows = sessionLogRows(rolls, names: [key: "Night watch"], now: now, calendar: cal)
+        #expect(rows.first == .dayHeader("Today - Night watch - 3 sessions \u{00B7} 4 rolls"))
     }
 
     // 2.69.0: the divider stats line - count and high/low over totals,
