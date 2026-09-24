@@ -2397,7 +2397,7 @@ struct BoardCanvas: View {
                 model.editingConnector = nil
             }
             .fixedSize()
-            .position(x: (l.x1 + l.x2) / 2, y: (l.y1 + l.y2) / 2)
+            .position(x: spot(l, c).x, y: spot(l, c).y)
             .onTapGesture(count: 2) { model.editingConnector = c.id }
             .contextMenu {
                 Button(c.label.isEmpty ? "Add Label" : "Edit Label") { model.editingConnector = c.id }
@@ -2407,6 +2407,11 @@ struct BoardCanvas: View {
             }
             .help(c.label.isEmpty ? "Double-click to label this arrow" : c.label)
         }
+    }
+
+    private func spot(_ l: (x1: Double, y1: Double, x2: Double, y2: Double), _ c: BoardConnector) -> (x: Double, y: Double) {
+        if model.editingConnector == c.id { return (x: (l.x1 + l.x2) / 2, y: (l.y1 + l.y2) / 2) }
+        return Moodboard.labelSpot(l, labelWidth: ArrowLabel.width(c.label))
     }
 
     /// The arrow being dragged out of a card, and the card it would land on.
@@ -2838,8 +2843,9 @@ struct BoardArrows: View {
                 .stroke(color, style: StrokeStyle(lineWidth: 2.2 * k, lineCap: .round))
             ArrowHead(x1: x1, y1: y1, x2: x2, y2: y2, head: 13 * k).fill(color)
             if showLabels && !c.label.isEmpty {
+                let p = Moodboard.labelSpot((x1, y1, x2, y2), labelWidth: ArrowLabel.width(c.label))
                 ArrowLabel(text: c.label, editing: false, hot: false) { _ in }
-                    .fixedSize().position(x: (x1 + x2) / 2, y: (y1 + y2) / 2)
+                    .fixedSize().position(x: p.x, y: p.y)
             }
         }
     }
@@ -2874,6 +2880,9 @@ struct ArrowLabel: View {
                 .overlay(Capsule().stroke(hot ? Theme.accent : Color.white.opacity(0.28), lineWidth: 1))
         }
     }
+    /// Rough capsule width for placing the label (12 pt semibold plus padding); a dot when empty.
+    static func width(_ text: String) -> Double { text.isEmpty ? 21 : Double(text.count) * 6.9 + 22 }
+
     private func finish(_ s: String) {
         guard !done else { return }
         done = true
@@ -2915,9 +2924,14 @@ struct CropSheet: View {
                 Thumbnail(asset: state.asset, pixels: 1400).frame(width: box.width, height: box.height)
                 let c = state.crop
                 let r = CGRect(x: c.x * box.width, y: c.y * box.height, width: c.w * box.width, height: c.h * box.height)
-                // Dim what the card will not show.
-                Path { p in p.addRect(CGRect(origin: .zero, size: box)); p.addRect(r) }
-                    .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true)).allowsHitTesting(false)
+                // Dim what the card will not show: four bands around the crop.
+                Group {
+                    Rectangle().frame(width: box.width, height: r.minY)
+                    Rectangle().frame(width: box.width, height: max(0, box.height - r.maxY)).offset(y: r.maxY)
+                    Rectangle().frame(width: r.minX, height: r.height).offset(y: r.minY)
+                    Rectangle().frame(width: max(0, box.width - r.maxX), height: r.height).offset(x: r.maxX, y: r.minY)
+                }
+                .foregroundStyle(Color.black.opacity(0.62)).allowsHitTesting(false)
                 Rectangle().stroke(Color.white, lineWidth: 1.5)
                     .overlay(thirds)
                     .frame(width: r.width, height: r.height).offset(x: r.minX, y: r.minY)
@@ -2965,6 +2979,11 @@ struct CropSheet: View {
         .padding(20)
         .frame(width: 580)
         .background(Theme.backdrop)
+        .onAppear {
+            // Light up the shape that matches an existing crop.
+            let c = state.crop, shown = state.natural * c.w / c.h
+            if c.w < 0.999 || c.h < 0.999 { lock = Self.shapes.compactMap(\.1).first { abs($0 - shown) < 0.01 } }
+        }
         .environment(\.colorScheme, .dark)
     }
 

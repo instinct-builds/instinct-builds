@@ -279,6 +279,14 @@ struct BoardAnnotationTests {
         _ = f
     }
 
+    @Test func labelsMoveOffShortArrows() {
+        #expect(Moodboard.labelSpot((x1: 0, y1: 0, x2: 400, y2: 0), labelWidth: 80) == (200, 0))           // long: on the line
+        #expect(Moodboard.labelSpot((x1: 0, y1: 100, x2: 60, y2: 100), labelWidth: 80) == (30, 84))       // short flat: above
+        #expect(Moodboard.labelSpot((x1: 60, y1: 100, x2: 0, y2: 100), labelWidth: 80) == (30, 84))       // either direction
+        let v = Moodboard.labelSpot((x1: 50, y1: 0, x2: 50, y2: 60), labelWidth: 80)
+        #expect(v == (-6, 30))                                                                              // short vertical: to the left
+    }
+
     @Test func headings() {
         var b = Moodboard(name: "H")
         let h = b.addHeading("Direction A")

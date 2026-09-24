@@ -433,6 +433,19 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         return (s.x, s.y, e.x, e.y)
     }
 
+    /// Where an arrow's label sits: on the middle of the line, or beside it (above, for a flat arrow) when the line is
+    /// too short to show past both ends of the label.
+    public static func labelSpot(_ l: (x1: Double, y1: Double, x2: Double, y2: Double), labelWidth: Double, clearance: Double = 44) -> (x: Double, y: Double) {
+        let mx = (l.x1 + l.x2) / 2, my = (l.y1 + l.y2) / 2
+        let dx = l.x2 - l.x1, dy = l.y2 - l.y1, len = (dx * dx + dy * dy).squareRoot()
+        guard len > 0, len < labelWidth + clearance else { return (mx, my) }
+        // Unit normal pointing up (or left for a vertical line), far enough to clear the line.
+        var nx = dy / len, ny = -dx / len
+        if ny > 0 || (ny == 0 && nx > 0) { nx = -nx; ny = -ny }
+        let push = 16 + abs(nx) * labelWidth / 2
+        return (mx + nx * push, my + ny * push)
+    }
+
     /// The topmost card (not a frame) under a point: where a dragged arrow lands.
     public func item(at x: Double, _ y: Double, excluding: UUID? = nil) -> UUID? {
         layered.reversed().first { $0.kind != .frame && $0.id != excluding && $0.rect.contains(x: x, y: y) }?.id
