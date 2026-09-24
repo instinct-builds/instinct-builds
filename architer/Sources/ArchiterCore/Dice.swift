@@ -285,6 +285,36 @@ public func sessionSegments(_ rolls: [RollResult], now: Date = Date(),
     return Array(result.reversed())
 }
 
+/// Day groups for session-log exports (2.68.0): the 2.38.0 day groups
+/// with each header carrying the custom session names (2.67.0)
+/// contributing rolls to that day, oldest session first - so an exported
+/// log reads like the named history pane. Days with no named session
+/// keep their plain title; undated rolls are never annotated.
+public func namedDayGroups(_ rolls: [RollResult], names: [String: String],
+                           now: Date = Date(),
+                           calendar: Calendar = .current) -> [RollDayGroup] {
+    let groups = groupRollsByDay(rolls, now: now, calendar: calendar)
+    guard !names.isEmpty else { return groups }
+    // Sessions never span days, so each named session lands in exactly
+    // one group; oldest-first by session number for a stable header.
+    let named = sessionSegments(rolls, now: now, calendar: calendar)
+        .compactMap { session -> (dayTitle: String, number: Int, name: String)? in
+            guard let key = session.key,
+                  let name = names[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty,
+                  let at = session.rolls.last?.rolledAt else { return nil }
+            return (rollDayTitle(at, now: now, calendar: calendar), session.number, name)
+        }
+        .sorted { $0.number < $1.number }
+    guard !named.isEmpty else { return groups }
+    return groups.map { group in
+        let dayNames = named.filter { $0.dayTitle == group.title }.map { $0.name }
+        guard !dayNames.isEmpty else { return group }
+        return RollDayGroup(title: group.title + " - " + dayNames.joined(separator: " \u{00B7} "),
+                            rolls: group.rolls)
+    }
+}
+
 /// One row of the compact-PDF session-log appendix (2.39.0).
 public enum SessionLogRow: Equatable, Sendable {
     case dayHeader(String)
@@ -295,9 +325,11 @@ public enum SessionLogRow: Equatable, Sendable {
 /// rolls first, grouped under the same day titles as the on-screen
 /// history (2.38.0), so the printed record reads like the session played.
 /// Undated legacy rolls lead under "Undated".
-public func sessionLogRows(_ rolls: [RollResult], now: Date = Date(),
+/// 2.68.0: pass the user's custom session names to annotate day headers.
+public func sessionLogRows(_ rolls: [RollResult], names: [String: String] = [:],
+                           now: Date = Date(),
                            calendar: Calendar = .current) -> [SessionLogRow] {
-    groupRollsByDay(Array(rolls.reversed()), now: now, calendar: calendar).flatMap { group in
+    namedDayGroups(Array(rolls.reversed()), names: names, now: now, calendar: calendar).flatMap { group in
         [SessionLogRow.dayHeader(group.title)] + group.rolls.map { SessionLogRow.roll($0.historyLine) }
     }
 }

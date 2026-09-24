@@ -706,4 +706,38 @@ struct SessionSegmentTests {
         let digest = JournalEntry(sessionDigest: session, now: now)
         #expect(digest.title == "Ember Warrens delve")
     }
+
+    // 2.68.0: named sessions annotate their day's export header, oldest
+    // session first; days with no named session keep the plain title.
+    @Test func namedDayGroupsCarrySessionNames() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18)),
+                     stamped("2d6", at: at(cal, 24, 12)),
+                     stamped("1d6", at: at(cal, 23, 18))]
+        let sessions = sessionSegments(rolls, now: now, calendar: cal)
+        var names: [String: String] = [:]
+        names[sessions[0].key!] = "Night watch"
+        names[sessions[1].key!] = "Morning crawl"
+        let groups = namedDayGroups(rolls, names: names, now: now, calendar: cal)
+        #expect(groups.map(\.title) == ["Today - Morning crawl \u{00B7} Night watch", "Yesterday"])
+        #expect(groups[0].rolls.map(\.expression) == ["d20", "2d6"])
+        // An empty map and unnamed sessions annotate nothing.
+        #expect(namedDayGroups(rolls, names: [:], now: now, calendar: cal).map(\.title)
+                == ["Today", "Yesterday"])
+        let partial = namedDayGroups(rolls, names: [sessions[0].key!: "Night watch"],
+                                     now: now, calendar: cal)
+        #expect(partial[0].title == "Today - Night watch")
+    }
+
+    // 2.68.0: the text/PDF row builder carries the annotated header.
+    @Test func sessionLogRowsAnnotateNamedDays() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        let rolls = [stamped("d20", at: at(cal, 24, 18))]
+        let key = sessionSegments(rolls, now: now, calendar: cal)[0].key!
+        let rows = sessionLogRows(rolls, names: [key: "Night watch"], now: now, calendar: cal)
+        #expect(rows.first == .dayHeader("Today - Night watch"))
+        #expect(sessionLogRows(rolls, now: now, calendar: cal).first == .dayHeader("Today"))
+    }
 }

@@ -151,12 +151,14 @@ public enum SheetPDFExporter {
     /// sessionRolls (2.39.0): the exported character's roll history. Compact
     /// exports append it as a chronological, day-grouped session-log
     /// appendix starting on its own page; empty means no appendix. Ignored
-    /// by the full layout.
+    /// by the full layout. sessionNames (2.68.0): custom session names
+    /// annotate the appendix's day headers, matching the history pane.
     public static func export(_ c: Character, style: LayoutStyle = .full,
                               orientation: PageOrientation = .portrait,
                               collapseEmptyInventory: Bool = false,
                               sessionRolls: [RollResult] = [],
-                              journalTimestamps: Bool = true) -> Data {
+                              journalTimestamps: Bool = true,
+                              sessionNames: [String: String] = [:]) -> Data {
         let compact = style == .compact
         let pageSize: PDFDocument.PageSize = orientation == .landscape
             ? PDFDocument.PageSize(width: PDFDocument.PageSize.letter.height,
@@ -576,7 +578,7 @@ public enum SheetPDFExporter {
         // as a chronological, day-grouped record on its own page, so the
         // sheet and the log file separately at the table.
         if compact && !sessionRolls.isEmpty {
-            let rows = sessionLogRows(sessionRolls)
+            let rows = sessionLogRows(sessionRolls, names: sessionNames)
             if !rows.isEmpty {
                 cursor.newPage()
                 cursor.section("Session Log", margin: margin)

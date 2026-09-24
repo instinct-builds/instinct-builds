@@ -203,22 +203,28 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Exports as files.
     let pdf = SheetPDFExporter.export(character)
     try? pdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet.pdf"))
+    // 2.68.0 proof: name today's session - the session-log exports and
+    // the compact-PDF appendix carry the custom name in their day header.
+    if let key = model.namedSessions(model.rollHistory).first?.key {
+        model.renameSession(key, to: "Ember Warrens delve")
+    }
     // 2.39.0/2.41.0 proof: the compact export carries the character's
     // session-log appendix, ranged to Today - the Yesterday group is
     // filtered out, the rerolled 4d6kh3 stays.
     let compactPdf = SheetPDFExporter.export(character, style: .compact,
-                                             sessionRolls: model.rollHistory.forCharacter(character.name).within(.today))
+                                             sessionRolls: model.rollHistory.forCharacter(character.name).within(.today),
+                                             sessionNames: model.sessionNames)
     try? compactPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact.pdf"))
     // 2.42.0 proof: the same rolls as a plain-text session log, honoring
     // the same range - Today only, day-grouped, no PDF.
     let logRolls = model.rollHistory.forCharacter(character.name).within(.today)
     let logText = sessionLogText(character: character.name, range: .today,
-                                 rows: sessionLogRows(logRolls))
+                                 rows: sessionLogRows(logRolls, names: model.sessionNames))
     try? logText.write(to: URL(fileURLWithPath: "\(outDir)/session-log.txt"),
                        atomically: true, encoding: .utf8)
     // 2.44.0 proof: the same Today rolls as a Markdown table.
     let logMd = sessionLogMarkdown(character: character.name, range: .today,
-                                   groups: groupRollsByDay(Array(logRolls.reversed())))
+                                   groups: namedDayGroups(Array(logRolls.reversed()), names: model.sessionNames))
     try? logMd.write(to: URL(fileURLWithPath: "\(outDir)/session-log.md"),
                      atomically: true, encoding: .utf8)
     // 2.49.0 proof: digest the newest session into the journal as one

@@ -644,7 +644,7 @@ public final class AppModel: ObservableObject {
     public func exportSessionLog() {
         guard let sel = selected?.wrappedValue else { return }
         let rolls = rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange)
-        let rows = sessionLogRows(rolls)
+        let rows = sessionLogRows(rolls, names: sessionNames)
         savePanel(text: sessionLogText(character: sel.name,
                                        range: compactPDFSessionLogRange, rows: rows),
                   name: "\(sel.name)-session-log.txt")
@@ -655,7 +655,7 @@ public final class AppModel: ObservableObject {
     public func exportSessionLogMarkdown() {
         guard let sel = selected?.wrappedValue else { return }
         let rolls = rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange)
-        let groups = groupRollsByDay(Array(rolls.reversed()))
+        let groups = namedDayGroups(Array(rolls.reversed()), names: sessionNames)
         savePanel(text: sessionLogMarkdown(character: sel.name,
                                            range: compactPDFSessionLogRange, groups: groups),
                   name: "\(sel.name)-session-log.md")
@@ -680,7 +680,8 @@ public final class AppModel: ObservableObject {
                                          collapseEmptyInventory: compactPDFHideEmptyRows,
                                          sessionRolls: compactPDFSessionLog
                                              ? rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange) : [],
-                                         journalTimestamps: exportJournalTimestamps).write(to: url)
+                                         journalTimestamps: exportJournalTimestamps,
+                                         sessionNames: sessionNames).write(to: url)
         }
     }
 
