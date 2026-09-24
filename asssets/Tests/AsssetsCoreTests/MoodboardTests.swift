@@ -237,3 +237,101 @@ struct BoardEditingTests {
 }
 
 extension BoardItem { var maxXY: (Double, Double) { (x + w, y + h) } }
+
+@Suite("Board annotation")
+struct BoardAnnotationTests {
+    @Test func connectorsJoinFollowAndClean() throws {
+        var b = Moodboard(name: "A"); b.snap = false
+        let a = b.addNote("a", at: (x: 0, y: 0)), c = b.addNote("c", at: (x: 400, y: 0)), f = b.addFrame("F")
+        b.resize(a, w: 100, h: 100); b.resize(c, w: 100, h: 100)
+        let made = b.connect(a, c, label: "leads to")
+        let k = try #require(made)
+        let dupes = [b.connect(c, a), b.connect(a, a), b.connect(a, f), b.connect(a, UUID())]
+        #expect(dupes.allSatisfy { $0 == nil })
+        #expect(b.connectors(touching: a).map(\.id) == [k])
+        let line = try #require(Moodboard.connectorLine(from: b.items[0].rect, to: b.items[1].rect))
+        #expect(line.x1 == 106 && line.y1 == 50 && line.x2 == 394 && line.y2 == 50)
+        b.reverseConnector(k)
+        #expect(b.connectors[0].from == c && b.connectors[0].to == a)
+        b.setConnectorLabel(k, "  feeds  ")
+        #expect(b.connectors[0].label == "feeds")
+        // Round trip, then a dangling arrow is dropped on load.
+        let data = try JSONEncoder().encode(b)
+        #expect(try JSONDecoder().decode(Moodboard.self, from: data).connectors == b.connectors)
+        var dangling = b; dangling.connectors.append(BoardConnector(from: a, to: UUID()))
+        #expect(try JSONDecoder().decode(Moodboard.self, from: JSONEncoder().encode(dangling)).connectors == b.connectors)
+        b.remove([c])
+        #expect(b.connectors.isEmpty)
+    }
+
+    @Test func connectorGeometry() {
+        let a = BoardRect(x: 0, y: 0, w: 100, h: 100)
+        // Diagonal: leaves through the corner region on the nearer side.
+        let p = Moodboard.edgePoint(of: a, toward: (x: 250, y: 150))
+        #expect(p.x == 100 && abs(p.y - 75) < 1e-9)
+        #expect(Moodboard.connectorLine(from: a, to: BoardRect(x: 50, y: 50, w: 100, h: 100)) == nil)       // overlapping
+        #expect(Moodboard.connectorLine(from: a, to: BoardRect(x: 104, y: 0, w: 100, h: 100)) == nil)       // gaps cross
+        let v = Moodboard.connectorLine(from: a, to: BoardRect(x: 0, y: 300, w: 100, h: 100))!
+        #expect(v.x1 == 50 && v.y1 == 106 && v.x2 == 50 && v.y2 == 294)
+        var b = Moodboard(name: "H"); b.snap = false
+        let n = b.addNote("n", at: (x: 0, y: 0)), f = b.addFrame("F", rect: BoardRect(x: 0, y: 0, w: 600, h: 600))
+        #expect(b.item(at: 10, 10) == n && b.item(at: 500, 500) == nil && b.item(at: 10, 10, excluding: n) == nil)
+        _ = f
+    }
+
+    @Test func headings() {
+        var b = Moodboard(name: "H")
+        let h = b.addHeading("Direction A")
+        let it = b.items.first { $0.id == h }!
+        #expect(it.kind == .heading && it.w == 520 && it.h == 60)
+        #expect(Moodboard.headingFontSize(height: 60) == 37 && Moodboard.headingFontSize(height: 10) == 14 && Moodboard.headingFontSize(height: 900) == 120)
+        b.resize(h, w: 300, h: 100)
+        #expect(b.items.first { $0.id == h }!.h == 100) // headings resize freely
+    }
+
+    @Test func cropKeepsWidthAndTakesShape() throws {
+        var b = Moodboard(name: "C"); b.snap = false
+        let a = b.addAsset(UUID(), aspect: 1.5, width: 300, at: (x: 0, y: 0))   // 300 x 200
+        #expect(b.naturalAspect(a) == 1.5)
+        b.setCrop(a, Moodboard.centeredCrop(aspect: 1, natural: 1.5))
+        var it = try #require(b.items.first { $0.id == a })
+        #expect(it.w == 300 && it.h == 300)
+        #expect(abs(it.crop!.x - 1.0 / 6) < 1e-9 && abs(it.crop!.w - 2.0 / 3) < 1e-9 && it.crop!.h == 1)
+        #expect(abs(b.naturalAspect(a)! - 1.5) < 1e-9)
+        // Resizing keeps the cropped shape; a new crop starts from the whole image again.
+        b.resize(a, w: 150, h: 999)
+        it = b.items.first { $0.id == a }!
+        #expect(it.w == 150 && it.h == 150)
+        b.setCrop(a, BoardRect(x: 0, y: 0, w: 1, h: 0.5))
+        #expect(b.items.first { $0.id == a }!.h == 50)
+        b.setCrop(a, nil)
+        it = b.items.first { $0.id == a }!
+        #expect(it.crop == nil && it.h == 100)
+        // Clamping and round trip.
+        #expect(BoardItem.validCrop(BoardRect(x: 0.9, y: -1, w: 0.5, h: 0.01)) == BoardRect(x: 0.5, y: 0, w: 0.5, h: 0.05))
+        #expect(BoardItem.validCrop(BoardRect(x: 0, y: 0, w: 1, h: 1)) == nil)
+        b.setCrop(a, BoardRect(x: 0.25, y: 0.25, w: 0.5, h: 0.5))
+        let back = try JSONDecoder().decode(Moodboard.self, from: JSONEncoder().encode(b))
+        #expect(back.items[0].crop == BoardRect(x: 0.25, y: 0.25, w: 0.5, h: 0.5))
+        #expect(Moodboard.centeredCrop(aspect: 3, natural: 1.5) == BoardRect(x: 0, y: 0.25, w: 1, h: 0.5))
+        // Notes can't be cropped.
+        let n = b.addNote("n")
+        b.setCrop(n, BoardRect(x: 0, y: 0, w: 0.5, h: 0.5))
+        #expect(b.items.first { $0.id == n }!.crop == nil)
+    }
+
+    @Test func duplicateKeepsArrows() throws {
+        var c = StudioCatalog()
+        let id = c.createBoard(named: "Arrows")
+        c.updateBoard(id) { b in
+            let x = b.addNote("x"), y = b.addNote("y", at: (x: 600, y: 0))
+            b.connect(x, y, label: "then")
+        }
+        let dup = c.duplicateBoard(id)
+        let d = try #require(dup)
+        let copy = try #require(c.board(d))
+        #expect(copy.connectors.count == 1 && copy.connectors[0].label == "then")
+        #expect(Set(copy.items.map(\.id)).isSuperset(of: [copy.connectors[0].from, copy.connectors[0].to]))
+        #expect(copy.connectors[0].id != c.board(id)!.connectors[0].id)
+    }
+}

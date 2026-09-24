@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Moodboards (1.16): free canvases of assets, notes and palette cards
 
-public struct BoardRect: Equatable, Sendable {
+public struct BoardRect: Codable, Equatable, Sendable {
     public var x: Double, y: Double, w: Double, h: Double
     public init(x: Double, y: Double, w: Double, h: Double) { self.x = x; self.y = y; self.w = w; self.h = h }
     public var maxX: Double { x + w }
@@ -27,7 +27,7 @@ public struct BoardGuides: Equatable, Sendable {
 }
 
 public struct BoardItem: Codable, Equatable, Identifiable, Sendable {
-    public enum Kind: String, Codable, Sendable { case asset, note, palette, frame }
+    public enum Kind: String, Codable, Sendable { case asset, note, palette, frame, heading }
     public var id: UUID
     public var kind: Kind
     /// The library asset shown (asset cards) or the asset the colors came from (palette cards).
@@ -36,15 +36,17 @@ public struct BoardItem: Codable, Equatable, Identifiable, Sendable {
     public var colors: [String]
     public var x: Double, y: Double, w: Double, h: Double
     public var z: Int
+    /// Asset cards only (1.19): the part of the image shown, as fractions (0-1) of its width and height. Nil shows all of it.
+    public var crop: BoardRect?
 
     public init(id: UUID = UUID(), kind: Kind, assetID: UUID? = nil, text: String = "", colors: [String] = [],
-                x: Double, y: Double, w: Double, h: Double, z: Int = 0) {
+                x: Double, y: Double, w: Double, h: Double, z: Int = 0, crop: BoardRect? = nil) {
         self.id = id; self.kind = kind; self.assetID = assetID; self.text = text; self.colors = colors
-        self.x = x; self.y = y; self.w = w; self.h = h; self.z = z
+        self.x = x; self.y = y; self.w = w; self.h = h; self.z = z; self.crop = crop
     }
     public var rect: BoardRect { BoardRect(x: x, y: y, w: w, h: h) }
 
-    enum CodingKeys: String, CodingKey { case id, kind, assetID, text, colors, x, y, w, h, z }
+    enum CodingKeys: String, CodingKey { case id, kind, assetID, text, colors, x, y, w, h, z, crop }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -57,7 +59,26 @@ public struct BoardItem: Codable, Equatable, Identifiable, Sendable {
         w = max(Moodboard.minSize, (try? c.decode(Double.self, forKey: .w)) ?? 200)
         h = max(Moodboard.minSize, (try? c.decode(Double.self, forKey: .h)) ?? 150)
         z = (try? c.decode(Int.self, forKey: .z)) ?? 0
+        crop = ((try? c.decodeIfPresent(BoardRect.self, forKey: .crop)) ?? nil).flatMap(BoardItem.validCrop)
     }
+
+    /// Clamped into the image, at least 5% on each side; nil when it is the whole image or unusable.
+    public static func validCrop(_ r: BoardRect) -> BoardRect? {
+        guard r.x.isFinite, r.y.isFinite, r.w.isFinite, r.h.isFinite else { return nil }
+        let w = min(1, max(0.05, r.w)), h = min(1, max(0.05, r.h))
+        let x = min(1 - w, max(0, r.x)), y = min(1 - h, max(0, r.y))
+        if w > 0.999 && h > 0.999 { return nil }
+        return BoardRect(x: x, y: y, w: w, h: h)
+    }
+}
+
+/// An arrow from one card to another (1.19), drawn edge to edge and following both cards.
+public struct BoardConnector: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var from: UUID
+    public var to: UUID
+    public var label: String
+    public init(id: UUID = UUID(), from: UUID, to: UUID, label: String = "") { self.id = id; self.from = from; self.to = to; self.label = label }
 }
 
 public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
@@ -66,6 +87,8 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
     public var items: [BoardItem]
     public var grid: Double
     public var snap: Bool
+    /// Arrows between cards (1.19).
+    public var connectors: [BoardConnector]
 
     public static let minSize = 40.0
     public static let margin = 40.0
@@ -73,11 +96,11 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
     /// New cards flow left to right and wrap past this width.
     public static let flowWidth = 1400.0
 
-    public init(id: UUID = UUID(), name: String, items: [BoardItem] = [], grid: Double = 20, snap: Bool = true) {
-        self.id = id; self.name = name; self.items = items; self.grid = grid; self.snap = snap
+    public init(id: UUID = UUID(), name: String, items: [BoardItem] = [], grid: Double = 20, snap: Bool = true, connectors: [BoardConnector] = []) {
+        self.id = id; self.name = name; self.items = items; self.grid = grid; self.snap = snap; self.connectors = connectors
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap }
+    enum CodingKeys: String, CodingKey { case id, name, items, grid, snap, connectors }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -85,6 +108,9 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         items = (try? c.decodeIfPresent([BoardItem].self, forKey: .items)) ?? []
         grid = min(80, max(4, (try? c.decode(Double.self, forKey: .grid)) ?? 20))
         snap = (try? c.decode(Bool.self, forKey: .snap)) ?? true
+        // Arrows whose cards are gone are dropped on load.
+        let ids = Set(items.map(\.id))
+        connectors = ((try? c.decodeIfPresent([BoardConnector].self, forKey: .connectors)) ?? []).filter { ids.contains($0.from) && ids.contains($0.to) && $0.from != $0.to }
     }
 
     /// Back to front.
@@ -198,11 +224,14 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
     public mutating func remove(_ ids: Set<UUID>) -> Int {
         let before = items.count
         items.removeAll { ids.contains($0.id) }
+        connectors.removeAll { ids.contains($0.from) || ids.contains($0.to) }
         return before - items.count
     }
     /// Asset cards for assets that left the library go too; palette cards keep their colors.
     public mutating func forgetAssets(_ ids: Set<UUID>) {
-        items.removeAll { $0.kind == .asset && ($0.assetID.map(ids.contains) ?? false) }
+        let gone = Set(items.filter { $0.kind == .asset && ($0.assetID.map(ids.contains) ?? false) }.map(\.id))
+        items.removeAll { gone.contains($0.id) }
+        connectors.removeAll { gone.contains($0.from) || gone.contains($0.to) }
         for i in items.indices where items[i].kind == .palette && (items[i].assetID.map(ids.contains) ?? false) { items[i].assetID = nil }
     }
 
@@ -350,6 +379,89 @@ public struct Moodboard: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
+    // MARK: Annotation (1.19): arrows, headings, crops
+
+    /// A heading: large type straight on the canvas, no card behind it.
+    @discardableResult
+    public mutating func addHeading(_ text: String, at point: (x: Double, y: Double)? = nil) -> UUID {
+        add(BoardItem(kind: .heading, text: text, x: 0, y: 0, w: 520, h: 60), at: point)
+    }
+
+    /// Heading type size follows the box height, so resizing a heading scales its text.
+    public static func headingFontSize(height h: Double) -> Double { min(120, max(14, (h * 0.62).rounded())) }
+
+    /// Adds an arrow from `a` to `b`. Nil for a card to itself, a missing card, a frame, or a pair already joined either way.
+    @discardableResult
+    public mutating func connect(_ a: UUID, _ b: UUID, label: String = "") -> UUID? {
+        guard a != b, let fa = items.first(where: { $0.id == a }), let fb = items.first(where: { $0.id == b }),
+              fa.kind != .frame, fb.kind != .frame,
+              !connectors.contains(where: { ($0.from == a && $0.to == b) || ($0.from == b && $0.to == a) }) else { return nil }
+        let c = BoardConnector(from: a, to: b, label: String(label.prefix(80)))
+        connectors.append(c)
+        return c.id
+    }
+    public mutating func disconnect(_ id: UUID) { connectors.removeAll { $0.id == id } }
+    public mutating func setConnectorLabel(_ id: UUID, _ label: String) {
+        guard let i = connectors.firstIndex(where: { $0.id == id }) else { return }
+        connectors[i].label = String(label.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+    }
+    public mutating func reverseConnector(_ id: UUID) {
+        guard let i = connectors.firstIndex(where: { $0.id == id }) else { return }
+        let f = connectors[i].from; connectors[i].from = connectors[i].to; connectors[i].to = f
+    }
+    /// Every item's rectangle by id, for drawing arrows.
+    public var rects: [UUID: BoardRect] { Dictionary(items.map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a }) }
+    public func connectors(touching id: UUID) -> [BoardConnector] { connectors.filter { $0.from == id || $0.to == id } }
+
+    /// Where a line from the middle of `r` toward `p` leaves the rectangle, pushed out by `gap`.
+    public static func edgePoint(of r: BoardRect, toward p: (x: Double, y: Double), gap: Double = 0) -> (x: Double, y: Double) {
+        let dx = p.x - r.midX, dy = p.y - r.midY
+        guard dx != 0 || dy != 0 else { return (r.midX, r.midY) }
+        let tx = dx == 0 ? Double.infinity : (r.w / 2) / abs(dx), ty = dy == 0 ? Double.infinity : (r.h / 2) / abs(dy)
+        let t = min(tx, ty)
+        let len = (dx * dx + dy * dy).squareRoot()
+        let g = gap / len
+        return (r.midX + dx * (t + g), r.midY + dy * (t + g))
+    }
+
+    /// Start and end of an arrow between two rectangles, edge to edge; nil when they overlap (nothing to draw).
+    public static func connectorLine(from a: BoardRect, to b: BoardRect, gap: Double = 6) -> (x1: Double, y1: Double, x2: Double, y2: Double)? {
+        guard !a.intersects(b) else { return nil }
+        let s = edgePoint(of: a, toward: (b.midX, b.midY), gap: gap), e = edgePoint(of: b, toward: (a.midX, a.midY), gap: gap)
+        // Gaps can cross when the cards nearly touch.
+        if (e.x - s.x) * (b.midX - a.midX) + (e.y - s.y) * (b.midY - a.midY) <= 0 { return nil }
+        return (s.x, s.y, e.x, e.y)
+    }
+
+    /// The topmost card (not a frame) under a point: where a dragged arrow lands.
+    public func item(at x: Double, _ y: Double, excluding: UUID? = nil) -> UUID? {
+        layered.reversed().first { $0.kind != .frame && $0.id != excluding && $0.rect.contains(x: x, y: y) }?.id
+    }
+
+    /// The largest crop of `aspect` (width / height of the shown part) centered in an image of `natural` aspect.
+    public static func centeredCrop(aspect: Double, natural: Double) -> BoardRect {
+        guard aspect > 0, natural > 0 else { return BoardRect(x: 0, y: 0, w: 1, h: 1) }
+        if aspect >= natural { let h = natural / aspect; return BoardRect(x: 0, y: (1 - h) / 2, w: 1, h: h) }
+        let w = aspect / natural
+        return BoardRect(x: (1 - w) / 2, y: 0, w: w, h: 1)
+    }
+
+    /// Width / height of an asset card's whole image, recovered from the card's shape and its crop.
+    public func naturalAspect(_ id: UUID) -> Double? {
+        guard let it = items.first(where: { $0.id == id }), it.kind == .asset else { return nil }
+        let c = it.crop ?? BoardRect(x: 0, y: 0, w: 1, h: 1)
+        return (it.w / max(1, it.h)) * (c.h / c.w)
+    }
+
+    /// Crops an asset card without touching the file. The card keeps its width and takes the crop's shape.
+    public mutating func setCrop(_ id: UUID, _ crop: BoardRect?) {
+        guard let natural = naturalAspect(id), let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let c = crop.flatMap(BoardItem.validCrop)
+        let shown = natural * (c?.w ?? 1) / (c?.h ?? 1)
+        items[i].crop = c
+        items[i].h = max(Self.minSize, (items[i].w / max(0.05, shown)).rounded())
+    }
+
     /// The area an export covers: everything plus a margin.
     public var exportRect: BoardRect {
         guard let b = bounds else { return BoardRect(x: 0, y: 0, w: 800, h: 600) }
@@ -388,7 +500,12 @@ extension StudioCatalog {
         while taken.contains(name) { name = "\(src.name) copy \(n)"; n += 1 }
         var b = src
         b.id = UUID(); b.name = name
-        b.items = src.items.map { var it = $0; it.id = UUID(); return it }
+        var map: [UUID: UUID] = [:]
+        b.items = src.items.map { var it = $0; it.id = UUID(); map[$0.id] = it.id; return it }
+        b.connectors = src.connectors.compactMap { c in
+            guard let f = map[c.from], let t = map[c.to] else { return nil }
+            return BoardConnector(from: f, to: t, label: c.label)
+        }
         if let i = boards.firstIndex(where: { $0.id == id }) { boards.insert(b, at: i + 1) } else { boards.append(b) }
         return b.id
     }

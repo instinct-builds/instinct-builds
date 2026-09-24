@@ -182,6 +182,11 @@ jobs:
           shoot focus 1920x1200 focus
           shoot present 1920x1200 present
           shoot board-edit 1920x1200 board-edit
+          shoot board-annotate 1920x1200 board-annotate demo-annotate.txt
+          cat "$SUP/demo-annotate.txt"; grep -q '^done .* arrows=3' "$SUP/demo-annotate.txt" || { echo "annotated board export did not finish"; exit 1; }
+          cp "$SUP/demo-annotate.png" "ASSSETS-$ASSSETS_VERSION-annotate-render.png"
+          shoot board-crop 1920x1200 board-crop
+          shoot present-annotate 1920x1200 present-annotate
           shoot board-gallery 1920x1200 board-gallery-app demo-board-gallery/gallery-done.txt
           BG=$(ls -d "$SUP/demo-board-gallery/"*Review | head -1); test -s "$BG/board.png"; grep -q '"spots"' "$BG/index.html" || { echo "board gallery has no board"; exit 1; }
           unzip -l "$BG.zip" | tee "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"; grep -q 'board.png' "ASSSETS-$ASSSETS_VERSION-board-gallery-listing.txt"

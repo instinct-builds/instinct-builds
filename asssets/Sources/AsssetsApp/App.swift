@@ -125,6 +125,11 @@ final class StudioLibrary: ObservableObject {
     }
     /// A drag the board demo shows mid-flight (ids, dx, dy) so CI can capture the guides.
     var demoDrag: (Set<UUID>, Double, Double)?
+    /// An arrow the annotate demo shows mid-drag (from card, board point) so CI can capture it.
+    var demoLink: (UUID, Double, Double)?
+    /// The crop sheet (1.19) and the arrow whose label is being typed.
+    @Published var cropping: CropState?
+    @Published var editingConnector: UUID?
     @Published var editingNote: UUID?
     @Published var renamingBoard: UUID?
     @Published var boardZoom = 1.0
@@ -1424,7 +1429,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1787,6 +1792,28 @@ final class StudioLibrary: ObservableObject {
             let id = makeDemoSections()
             show(board: id)
             boardSelection = demoDrag?.0 ?? []   // show() cleared it
+        case "board-annotate", "board-crop", "present-annotate":
+            let (id, picked, plinth) = makeDemoAnnotated()
+            show(board: id)
+            if demo == "board-annotate" {
+                boardSelection = [picked]
+                let out = supportRoot.appendingPathComponent("demo-annotate.png")
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    let size = await self.writeBoard(id, pdf: false, to: out)
+                    let arrows = self.catalog.board(id)?.connectors.count ?? 0
+                    try? "done \(Int(size?.width ?? 0))x\(Int(size?.height ?? 0)) arrows=\(arrows)".write(to: self.supportRoot.appendingPathComponent("demo-annotate.txt"), atomically: true, encoding: .utf8)
+                }
+            } else if demo == "board-crop" {
+                demoLink = nil
+                if let it = catalog.board(id)?.items.first(where: { $0.id == plinth }) {
+                    boardSelection = [plinth]
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.beginCrop(it) }
+                }
+            } else {
+                demoLink = nil
+                startPresenting(id)
+            }
         case "vectors":
             selectedKind = .vector
             if let v = filtered.first(where: { $0.isStarter }) { selection = [v.id]; focusID = v.id }
@@ -1813,7 +1840,7 @@ extension StudioLibrary {
 
     func show(board id: UUID) {
         guard catalog.board(id) != nil else { return }
-        similarTo = nil; selectedSmart = nil; boardItem = nil; editingNote = nil
+        similarTo = nil; selectedSmart = nil; boardItem = nil; editingNote = nil; editingConnector = nil
         selectedBoard = id
         fitBoardRequest += 1
     }
@@ -1907,7 +1934,8 @@ extension StudioLibrary {
         var images: [UUID: CGImage] = [:]
         for it in board.items where it.kind == .asset {
             guard let aid = it.assetID, let a = catalog.assets.first(where: { $0.id == aid }) else { continue }
-            let px = Int(max(it.w, it.h) * 2)
+            let zoomIn = it.crop.map { 1 / min($0.w, $0.h) } ?? 1
+            let px = Int(min(4000, max(it.w, it.h) * 2 * zoomIn))
             let thumb = await MediaRenderer.thumbnail(for: a, maxPixel: px)
             images[aid] = thumb ?? MediaRenderer.generated(a, width: px)
         }
@@ -2036,6 +2064,83 @@ extension StudioLibrary {
     }
 }
 
+// MARK: - Board annotation (1.19)
+
+extension StudioLibrary {
+    func addHeading() {
+        guard let id = selectedBoard else { return }
+        var made = UUID()
+        updateBoard(id, "Add Heading") { made = $0.addHeading("") }
+        boardItem = made; editingNote = made
+    }
+
+    /// Two selected cards: an arrow in reading order (left to right, then down). Reverse it from the arrow's menu.
+    func connectSelection() {
+        guard let b = currentBoard, boardSelection.count == 2 else { return }
+        let pair = b.readingOrder.filter { boardSelection.contains($0.id) }.map(\.id)
+        guard pair.count == 2 else { return }
+        connect(pair[0], to: pair[1])
+    }
+
+    func connect(_ a: UUID, to b: UUID) {
+        guard let id = selectedBoard else { return }
+        var made: UUID?
+        updateBoard(id, "Add Arrow") { made = $0.connect(a, b) }
+        if made == nil { flash("Those two are already joined") }
+    }
+
+    func beginCrop(_ item: BoardItem) {
+        guard let id = selectedBoard, let b = catalog.board(id), let natural = b.naturalAspect(item.id),
+              let aid = item.assetID, let a = catalog.assets.first(where: { $0.id == aid }) else { return }
+        cropping = CropState(board: id, item: item.id, asset: a, natural: natural, crop: item.crop ?? BoardRect(x: 0, y: 0, w: 1, h: 1))
+    }
+
+    func applyCrop(_ st: CropState) {
+        let crop = st.crop, item = st.item
+        updateBoard(st.board, "Crop") { $0.setCrop(item, crop) }
+        cropping = nil
+    }
+
+    /// Demo: headings, cropped cards and labeled arrows; returns the board, the card to select and the plinth card.
+    func makeDemoAnnotated() -> (UUID, UUID, UUID) {
+        let files = ["cosmetic-plinth-mockup.png", "device-stage-mockup.png", "album-gatefold-mockup.png", "sandstone-4k.png", "prismatic-foil-4k.png"]
+        var found: [String: StudioAsset] = [:]
+        for f in files { found[f] = catalog.assets.first { $0.importedPath?.hasSuffix(f) == true } }
+        let byFile = found
+        var id = UUID(), picked = UUID(), plinth = UUID(), note = UUID()
+        mutate { c in
+            id = c.createBoard(named: "Lobby Direction A")
+            _ = c.updateBoard(id) { b in
+                b.snap = false
+                func put(_ f: String, _ x: Double, _ y: Double, _ w: Double, crop aspect: Double?) -> UUID? {
+                    guard let a = byFile[f] else { return nil }
+                    let natural = Moodboard.aspect(resolution: a.resolution)
+                    let card = b.addAsset(a.id, aspect: natural, width: w, at: (x: x, y: y))
+                    if let aspect { b.setCrop(card, Moodboard.centeredCrop(aspect: aspect, natural: natural)) }
+                    return card
+                }
+                b.addHeading("Lobby refresh - direction A", at: (x: 60, y: 36))
+                if let i = b.items.indices.last { b.items[i].w = 820; b.items[i].h = 64 }
+                let p = put("cosmetic-plinth-mockup.png", 60, 150, 300, crop: 0.8)
+                let d = put("device-stage-mockup.png", 470, 150, 340, crop: 16.0 / 9)
+                let s = put("sandstone-4k.png", 920, 150, 200, crop: 0.75)
+                let g = put("album-gatefold-mockup.png", 920, 470, 200, crop: 1)
+                b.addHeading("Finishes", at: (x: 920, y: 104))
+                if let i = b.items.indices.last { b.items[i].w = 220; b.items[i].h = 36 }
+                note = b.addNote("Screens sit in warm stone frames. Keep the glow low.", at: (x: 470, y: 470))
+                if let p, let d { b.connect(p, d, label: "screen art") }
+                if let d, let s { b.connect(d, s, label: "frame finish") }
+                if let s, let g { b.connect(s, g) }
+                if let p { plinth = p }
+                if let d { picked = d }
+            }
+        }
+        // The device card's arrow handle caught mid-drag over the note.
+        if let b = catalog.board(id), let n = b.items.first(where: { $0.id == note }) { demoLink = (picked, n.x + n.w * 0.55, n.y + n.h * 0.45) }
+        return (id, picked, plinth)
+    }
+}
+
 // MARK: - Present and share boards (1.17)
 
 extension StudioLibrary {
@@ -2126,6 +2231,8 @@ struct PresentView: View {
                                 if let i = order.firstIndex(where: { $0.id == item.id }) { model.presentIndex = model.presentIndex == i ? -1 : i }
                             }
                     }
+                    BoardArrows(connectors: board.connectors, rects: board.rects, showLabels: true)
+                        .opacity(focus == nil ? 1 : 0.18).allowsHitTesting(false)
                 }
                 .frame(width: canvasW, height: canvasH, alignment: .topLeading)
                 .scaleEffect(CGFloat(f.scale), anchor: .topLeading)
@@ -2153,6 +2260,7 @@ struct PresentView: View {
         case .note: return item.text.split(separator: "\n").first.map(String.init) ?? "Note"
         case .palette: return "Palette · " + item.colors.joined(separator: " ")
         case .frame: return "Section · " + (item.text.isEmpty ? "Untitled" : item.text)
+        case .heading: return item.text.isEmpty ? "Heading" : item.text
         }
     }
 
@@ -2184,6 +2292,8 @@ struct BoardCanvas: View {
     @State private var sizing: (id: UUID, dw: Double, dh: Double)?
     @State private var marquee: BoardRect?
     @State private var marqueeBase: Set<UUID> = []
+    /// An arrow being dragged out of a card's handle: source card and the pointer in board space.
+    @State private var linking: (from: UUID, x: Double, y: Double)?
     @State private var viewport: CGSize = .zero
     @State private var dropTargeted = false
     /// Off after a manual zoom; while on, the board refits when the view changes size (inspector, window).
@@ -2214,6 +2324,8 @@ struct BoardCanvas: View {
                             .gesture(marqueeGesture)
                             .onTapGesture { model.boardSelection = []; model.editingNote = nil }
                         ForEach(board.layered) { item in card(item) }
+                        connectorLayer
+                        linkLine
                         guideLines
                         if let m = marquee {
                             Rectangle().fill(Theme.accent.opacity(0.08))
@@ -2239,6 +2351,7 @@ struct BoardCanvas: View {
                     if let d = model.demoDrag {
                         drag = (d.0, board.movingSet(d.0), board.guides(moving: d.0, dx: d.1, dy: d.2, threshold: 6 / max(0.1, z)))
                     }
+                    if let l = model.demoLink, board.items.contains(where: { $0.id == l.0 }) { linking = (l.0, l.1, l.2) }
                 }
                 .onChange(of: geo.size) { _, s in viewport = s; if autoFit { fit() } }
                 .onChange(of: model.fitBoardRequest) { _, _ in autoFit = true; fit() }
@@ -2260,6 +2373,72 @@ struct BoardCanvas: View {
                 model.boardSelection = marqueeBase.union(board.items(in: r))
             }
             .onEnded { _ in marquee = nil; syncInspector() }
+    }
+
+    /// Arrows use the same live rects as the cards, so they follow a drag or resize as it happens.
+    private var liveRects: [UUID: BoardRect] {
+        Dictionary(board.items.map { ($0.id, itemRect($0)) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    @ViewBuilder private var connectorLayer: some View {
+        let rects = liveRects
+        BoardArrows(connectors: board.connectors, rects: rects, highlight: model.boardSelection, lineScale: 1 / max(0.1, z))
+            .allowsHitTesting(false)
+        ForEach(board.connectors) { c in connectorKnob(c, rects: rects) }
+    }
+
+    /// The arrow's middle: its label, or a small dot to grab. Double-click to label; right-click to reverse or delete.
+    @ViewBuilder private func connectorKnob(_ c: BoardConnector, rects: [UUID: BoardRect]) -> some View {
+        if let a = rects[c.from], let b = rects[c.to], let l = Moodboard.connectorLine(from: a, to: b) {
+            let boardID = board.id
+            ArrowLabel(text: c.label, editing: model.editingConnector == c.id,
+                       hot: model.boardSelection.contains(c.from) || model.boardSelection.contains(c.to)) { text in
+                if text != c.label { model.updateBoard(boardID, "Label Arrow") { $0.setConnectorLabel(c.id, text) } }
+                model.editingConnector = nil
+            }
+            .fixedSize()
+            .position(x: (l.x1 + l.x2) / 2, y: (l.y1 + l.y2) / 2)
+            .onTapGesture(count: 2) { model.editingConnector = c.id }
+            .contextMenu {
+                Button(c.label.isEmpty ? "Add Label" : "Edit Label") { model.editingConnector = c.id }
+                Button("Reverse Arrow") { model.updateBoard(boardID, "Reverse Arrow") { $0.reverseConnector(c.id) } }
+                Divider()
+                Button("Delete Arrow", role: .destructive) { model.updateBoard(boardID, "Delete Arrow") { $0.disconnect(c.id) } }
+            }
+            .help(c.label.isEmpty ? "Double-click to label this arrow" : c.label)
+        }
+    }
+
+    /// The arrow being dragged out of a card, and the card it would land on.
+    @ViewBuilder private var linkLine: some View {
+        if let l = linking, let src = board.items.first(where: { $0.id == l.from }) {
+            let s = Moodboard.edgePoint(of: itemRect(src), toward: (x: l.x, y: l.y), gap: 6)
+            let t = 1 / max(0.1, z)
+            if let target = board.item(at: l.x, l.y, excluding: l.from), let it = board.items.first(where: { $0.id == target }) {
+                let r = itemRect(it)
+                RoundedRectangle(cornerRadius: 13).stroke(Theme.accent, lineWidth: 3 * t)
+                    .frame(width: r.w + 10, height: r.h + 10).offset(x: r.x - 5, y: r.y - 5).allowsHitTesting(false)
+            }
+            ArrowLine(x1: s.x, y1: s.y, x2: l.x, y2: l.y, head: 12 * max(1, t))
+                .stroke(Theme.accent, style: StrokeStyle(lineWidth: 2 * max(1, t), lineCap: .round, dash: [7, 5]))
+                .allowsHitTesting(false)
+            ArrowHead(x1: s.x, y1: s.y, x2: l.x, y2: l.y, head: 12 * max(1, t)).fill(Theme.accent).allowsHitTesting(false)
+        }
+    }
+
+    /// Drag from here to another card to draw an arrow.
+    private func linkHandle(_ item: BoardItem) -> some View {
+        Image(systemName: "arrow.right").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+            .frame(width: 18, height: 18).background(Theme.accent, in: Circle())
+            .overlay(Circle().stroke(.white, lineWidth: 1.5))
+            .offset(x: 26)
+            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .named(Self.space))
+                .onChanged { v in linking = (item.id, Double(v.location.x), Double(v.location.y)) }
+                .onEnded { v in
+                    linking = nil
+                    if let t = board.item(at: Double(v.location.x), Double(v.location.y), excluding: item.id) { model.connect(item.id, to: t) }
+                })
+            .help("Drag to another card to draw an arrow")
     }
 
     @ViewBuilder private var guideLines: some View {
@@ -2304,6 +2483,7 @@ struct BoardCanvas: View {
             .layoutPriority(1)
             Spacer(minLength: compact ? 4 : 8)
             Button { model.addNote() } label: { Image(systemName: "note.text.badge.plus") }.help("Add a note")
+            Button { model.addHeading() } label: { Image(systemName: "textformat.size") }.help("Add a heading")
             Button { model.addFrame() } label: { Image(systemName: "rectangle.dashed") }.help(model.boardSelection.isEmpty ? "Add a section" : "Put the selection in a section")
             Button { model.updateBoard(board.id, "Tidy Board") { $0.tidy() }; model.fitBoardRequest += 1 } label: { Image(systemName: "rectangle.grid.2x2") }.help("Tidy into rows")
             Toggle(isOn: Binding(get: { board.snap }, set: { v in model.updateBoard(board.id, v ? "Snap On" : "Snap Off") { $0.snap = v } })) { Image(systemName: "grid") }
@@ -2363,6 +2543,9 @@ struct BoardCanvas: View {
                         .help("Drag to resize")
                 }
             }
+            .overlay(alignment: .trailing) {
+                if selected && model.boardSelection.count == 1 && item.kind != .frame && linking == nil { linkHandle(item) }
+            }
             .offset(x: r.x, y: r.y)
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
                 .onChanged { v in
@@ -2380,7 +2563,7 @@ struct BoardCanvas: View {
                     model.updateBoard(board.id, d.ids.count > 1 ? "Move \(d.ids.count) Cards" : "Move") { $0.moveGroup(d.ids, dx: d.guides.dx, dy: d.guides.dy); $0.bringToFront(d.ids) }
                 })
             .onTapGesture(count: 2) {
-                if item.kind == .note || item.kind == .frame { select(item); model.editingNote = item.id }
+                if item.kind == .note || item.kind == .frame || item.kind == .heading { select(item); model.editingNote = item.id }
                 else if item.kind == .asset, let a = item.assetID { select(item); model.viewerID = a }
             }
             .onTapGesture {
@@ -2413,6 +2596,7 @@ struct BoardCanvas: View {
             Button("Bring \(sel.count) to Front") { model.updateBoard(board.id, "Bring to Front") { $0.bringToFront(sel) } }
             Button("Send \(sel.count) to Back") { model.updateBoard(board.id, "Send to Back") { $0.sendToBack(sel) } }
             Button("Put in New Section") { model.addFrame() }
+            if sel.count == 2 { Button("Connect with Arrow") { model.connectSelection() } }
             Divider()
             Button("Remove \(sel.count) from Board", role: .destructive) { model.removeFromBoard(sel) }
         } else {
@@ -2429,6 +2613,10 @@ struct BoardCanvas: View {
                     Button("Search Library by Its Color") { model.searchFromBoard(hex) }
                 }
                 if let a = item.assetID { Button("Quick Look") { model.viewerID = a } }
+                Button("Crop…") { select(item); model.beginCrop(item) }
+                if item.crop != nil { Button("Show Whole Image") { model.updateBoard(board.id, "Reset Crop") { $0.setCrop(item.id, nil) } } }
+            case .heading:
+                Button("Edit Heading") { select(item); model.editingNote = item.id }
             case .note:
                 Button("Edit Note") { select(item); model.editingNote = item.id }
             case .palette:
@@ -2441,6 +2629,13 @@ struct BoardCanvas: View {
             case .frame:
                 Button("Rename Section") { select(item); model.editingNote = item.id }
                 Button("Select Contents") { model.boardSelection = board.contents(ofFrame: item.id); syncInspector() }
+            }
+            let arrows = board.connectors(touching: item.id)
+            if !arrows.isEmpty {
+                let gone = Set(arrows.map(\.id))
+                Button(arrows.count == 1 ? "Remove Its Arrow" : "Remove Its \(arrows.count) Arrows") {
+                    model.updateBoard(board.id, "Remove Arrows") { b in b.connectors.removeAll { gone.contains($0.id) } }
+                }
             }
             Divider()
             Button(item.kind == .frame ? "Remove Section (Keep Cards)" : "Remove from Board", role: .destructive) { model.removeFromBoard([item.id]) }
@@ -2485,7 +2680,7 @@ struct BoardItemView: View {
     @State private var hovering = false
 
     var body: some View {
-        if item.kind == .frame {
+        if item.kind == .frame || item.kind == .heading {
             content
         } else {
             content
@@ -2500,7 +2695,9 @@ struct BoardItemView: View {
         case .asset:
             ZStack(alignment: .bottomLeading) {
                 if let asset {
-                    Thumbnail(asset: asset, pixels: Int(min(2400, max(item.w, item.h) * detail)))
+                    CroppedFill(crop: item.crop) {
+                        Thumbnail(asset: asset, pixels: Int(min(3200, max(item.w, item.h) * detail / min(item.crop?.w ?? 1, item.crop?.h ?? 1))))
+                    }
                 } else { Theme.panel }
                 if let asset, hovering || selected {
                     Text(asset.title).font(.caption.weight(.semibold)).lineLimit(1).padding(.horizontal, 8).padding(.vertical, 5)
@@ -2527,7 +2724,286 @@ struct BoardItemView: View {
             }
             .onAppear { draft = item.text }
             .onChange(of: editing) { _, e in if e { draft = item.text } }
+        case .heading:
+            BoardHeading(text: item.text, height: item.h, selected: selected, editing: editing, draft: $draft) { text in
+                guard let b = model.selectedBoard else { return }
+                if text != item.text { model.updateBoard(b, "Edit Heading") { $0.setText(item.id, text) } }
+                model.editingNote = nil
+            }
+            .onAppear { draft = item.text }
+            .onChange(of: editing) { _, e in if e { draft = item.text } }
         }
+    }
+}
+
+/// Large type straight on the canvas (1.19). The text size follows the box height.
+struct BoardHeading: View {
+    let text: String
+    let height: Double
+    let selected: Bool
+    let editing: Bool
+    @Binding var draft: String
+    let commit: (String) -> Void
+    @FocusState private var focused: Bool
+    var body: some View {
+        let size = CGFloat(Moodboard.headingFontSize(height: height))
+        ZStack(alignment: .leading) {
+            if selected {
+                RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            }
+            if editing {
+                TextField("Heading", text: $draft).textFieldStyle(.plain).font(.system(size: size, weight: .heavy))
+                    .foregroundStyle(.white).focused($focused).onAppear { focused = true }.onSubmit { commit(draft) }
+                    .onChange(of: focused) { _, f in if !f { commit(draft) } }
+                    .onExitCommand { commit(draft) }
+                    .padding(.horizontal, 8)
+            } else {
+                Text(text.isEmpty ? "Heading" : text).font(.system(size: size, weight: .heavy))
+                    .foregroundStyle(Color.white.opacity(text.isEmpty ? 0.35 : 0.94)).lineLimit(1).minimumScaleFactor(0.4)
+                    .padding(.horizontal, 8)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Shows the `crop` part of its content (1.19): the content is laid out at full size and shifted so the crop fills the frame.
+struct CroppedFill<Content: View>: View {
+    let crop: BoardRect?
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        if let c = crop {
+            GeometryReader { geo in
+                let fw = geo.size.width / CGFloat(c.w), fh = geo.size.height / CGFloat(c.h)
+                content().frame(width: fw, height: fh).offset(x: -CGFloat(c.x) * fw, y: -CGFloat(c.y) * fh)
+            }
+            .clipped()
+        } else {
+            content()
+        }
+    }
+}
+
+/// A straight arrow shaft that stops where the head starts.
+struct ArrowLine: Shape {
+    let x1: Double, y1: Double, x2: Double, y2: Double, head: Double
+    func path(in rect: CGRect) -> Path {
+        let dx = x2 - x1, dy = y2 - y1, len = max(0.001, (dx * dx + dy * dy).squareRoot())
+        let back = min(len, head * 0.8)
+        var p = Path()
+        p.move(to: CGPoint(x: x1, y: y1))
+        p.addLine(to: CGPoint(x: x2 - dx / len * back, y: y2 - dy / len * back))
+        return p
+    }
+}
+
+struct ArrowHead: Shape {
+    let x1: Double, y1: Double, x2: Double, y2: Double, head: Double
+    func path(in rect: CGRect) -> Path {
+        let dx = x2 - x1, dy = y2 - y1, len = max(0.001, (dx * dx + dy * dy).squareRoot())
+        let ux = dx / len, uy = dy / len
+        let bx = x2 - ux * head, by = y2 - uy * head, half = head * 0.5
+        var p = Path()
+        p.move(to: CGPoint(x: x2, y: y2))
+        p.addLine(to: CGPoint(x: bx - uy * half, y: by + ux * half))
+        p.addLine(to: CGPoint(x: bx + uy * half, y: by - ux * half))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// Arrows between cards (1.19). One view for the canvas, Present and export so they always match.
+struct BoardArrows: View {
+    let connectors: [BoardConnector]
+    let rects: [UUID: BoardRect]
+    var highlight: Set<UUID> = []
+    /// Keeps lines readable when the canvas is zoomed out.
+    var lineScale = 1.0
+    /// Board point drawn at the top-left corner (export crops to the content).
+    var originX = 0.0, originY = 0.0
+    var showLabels = false
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(connectors) { c in arrow(c) }
+        }
+    }
+    @ViewBuilder private func arrow(_ c: BoardConnector) -> some View {
+        if let a = rects[c.from], let b = rects[c.to], let l = Moodboard.connectorLine(from: a, to: b) {
+            let hot = highlight.contains(c.from) || highlight.contains(c.to)
+            let color = hot ? Theme.accent : Color(red: 0.86, green: 0.84, blue: 0.95).opacity(0.78)
+            let k = max(1, lineScale)
+            let x1 = l.x1 - originX, y1 = l.y1 - originY, x2 = l.x2 - originX, y2 = l.y2 - originY
+            ArrowLine(x1: x1, y1: y1, x2: x2, y2: y2, head: 13 * k)
+                .stroke(color, style: StrokeStyle(lineWidth: 2.2 * k, lineCap: .round))
+            ArrowHead(x1: x1, y1: y1, x2: x2, y2: y2, head: 13 * k).fill(color)
+            if showLabels && !c.label.isEmpty {
+                ArrowLabel(text: c.label, editing: false, hot: false) { _ in }
+                    .fixedSize().position(x: (x1 + x2) / 2, y: (y1 + y2) / 2)
+            }
+        }
+    }
+}
+
+/// An arrow's label capsule; an unlabeled arrow shows a dot to grab.
+struct ArrowLabel: View {
+    let text: String
+    let editing: Bool
+    let hot: Bool
+    let commit: (String) -> Void
+    @State private var draft = ""
+    @State private var done = false
+    @FocusState private var focused: Bool
+    var body: some View {
+        if editing {
+            TextField("Label", text: $draft).textFieldStyle(.plain).font(.system(size: 12, weight: .semibold))
+                .frame(width: 150).focused($focused)
+                .onAppear { draft = text; done = false; focused = true }
+                .onSubmit { finish(draft) }
+                .onExitCommand { finish(text) }
+                .onChange(of: focused) { _, f in if !f { finish(draft) } }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Theme.panel, in: Capsule()).overlay(Capsule().stroke(Theme.accent, lineWidth: 1.5))
+        } else if text.isEmpty {
+            Circle().fill(hot ? Theme.accent : Color.white.opacity(0.55)).frame(width: 9, height: 9)
+                .padding(6).contentShape(Circle())
+        } else {
+            Text(text).font(.system(size: 12, weight: .semibold)).lineLimit(1).foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Color(red: 0.1, green: 0.1, blue: 0.145), in: Capsule())
+                .overlay(Capsule().stroke(hot ? Theme.accent : Color.white.opacity(0.28), lineWidth: 1))
+        }
+    }
+    private func finish(_ s: String) {
+        guard !done else { return }
+        done = true
+        commit(s)
+    }
+}
+
+// MARK: - Crop sheet (1.19)
+
+struct CropState: Identifiable {
+    let id = UUID()
+    let board: UUID
+    let item: UUID
+    let asset: StudioAsset
+    /// Width / height of the whole image.
+    let natural: Double
+    var crop: BoardRect
+}
+
+/// Non-destructive crop for an asset card: drag the frame to move it, the corner to size it, or pick a shape.
+struct CropSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State var state: CropState
+    @State private var start: BoardRect?
+    private static let shapes: [(String, Double?)] = [("Free", nil), ("1:1", 1), ("4:5", 0.8), ("4:3", 4.0 / 3), ("3:2", 1.5), ("16:9", 16.0 / 9)]
+    @State private var lock: Double?
+
+    var body: some View {
+        let box = fitted(CGSize(width: 520, height: 330))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "crop").foregroundStyle(Theme.accent)
+                Text("Crop Card").font(.system(size: 15, weight: .bold))
+                Text(state.asset.title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                Text("The file is not changed").font(.caption).foregroundStyle(.tertiary)
+            }
+            ZStack(alignment: .topLeading) {
+                Thumbnail(asset: state.asset, pixels: 1400).frame(width: box.width, height: box.height)
+                let c = state.crop
+                let r = CGRect(x: c.x * box.width, y: c.y * box.height, width: c.w * box.width, height: c.h * box.height)
+                // Dim what the card will not show.
+                Path { p in p.addRect(CGRect(origin: .zero, size: box)); p.addRect(r) }
+                    .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true)).allowsHitTesting(false)
+                Rectangle().stroke(Color.white, lineWidth: 1.5)
+                    .overlay(thirds)
+                    .frame(width: r.width, height: r.height).offset(x: r.minX, y: r.minY)
+                    .contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: 1).onChanged { v in
+                        let s0 = start ?? state.crop; if start == nil { start = s0 }
+                        var n = s0
+                        n.x = min(1 - n.w, max(0, s0.x + Double(v.translation.width / box.width)))
+                        n.y = min(1 - n.h, max(0, s0.y + Double(v.translation.height / box.height)))
+                        state.crop = n
+                    }.onEnded { _ in start = nil })
+                RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 14, height: 14)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(.white, lineWidth: 1.5))
+                    .offset(x: r.maxX - 7, y: r.maxY - 7)
+                    .gesture(DragGesture(minimumDistance: 1).onChanged { v in
+                        let s0 = start ?? state.crop; if start == nil { start = s0 }
+                        state.crop = resized(s0, dw: Double(v.translation.width / box.width), dh: Double(v.translation.height / box.height))
+                    }.onEnded { _ in start = nil })
+                    .help("Drag to size the crop")
+            }
+            .frame(width: box.width, height: box.height)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .frame(maxWidth: .infinity)
+            HStack(spacing: 6) {
+                ForEach(Self.shapes, id: \.0) { shape in
+                    let (name, aspect) = shape
+                    Button(name) {
+                        lock = aspect
+                        if let aspect { state.crop = Moodboard.centeredCrop(aspect: aspect, natural: state.natural) }
+                    }
+                    .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(lock == aspect ? Theme.accent.opacity(0.35) : Color.white.opacity(0.07), in: Capsule())
+                }
+                Spacer()
+                Text(sizeText).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            HStack {
+                Button("Whole Image") { lock = nil; state.crop = BoardRect(x: 0, y: 0, w: 1, h: 1) }
+                Spacer()
+                Button("Cancel") { model.cropping = nil }.keyboardShortcut(.cancelAction)
+                Button("Crop Card") { model.applyCrop(state) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(20)
+        .frame(width: 580)
+        .background(Theme.backdrop)
+        .environment(\.colorScheme, .dark)
+    }
+
+    private var thirds: some View {
+        GeometryReader { g in
+            Path { p in
+                for i in 1...2 {
+                    let x = g.size.width * CGFloat(i) / 3, y = g.size.height * CGFloat(i) / 3
+                    p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: g.size.height))
+                    p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: g.size.width, y: y))
+                }
+            }
+            .stroke(Color.white.opacity(0.35), lineWidth: 0.8)
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// The image fitted inside `limit`, keeping its shape.
+    private func fitted(_ limit: CGSize) -> CGSize {
+        let n = CGFloat(max(0.1, state.natural))
+        return n >= limit.width / limit.height ? CGSize(width: limit.width, height: (limit.width / n).rounded())
+                                               : CGSize(width: (limit.height * n).rounded(), height: limit.height)
+    }
+
+    /// Corner drag, keeping the picked shape when one is locked.
+    private func resized(_ s0: BoardRect, dw: Double, dh: Double) -> BoardRect {
+        var w = min(1 - s0.x, max(0.05, s0.w + dw)), h = min(1 - s0.y, max(0.05, s0.h + dh))
+        if let lock {
+            // Shown aspect = (w * natural) / h.
+            let hw = w * state.natural / lock
+            if hw <= 1 - s0.y { h = max(0.05, hw) } else { h = 1 - s0.y; w = h * lock / state.natural }
+        }
+        return BoardRect(x: s0.x, y: s0.y, w: w, h: h)
+    }
+
+    private var sizeText: String {
+        let c = state.crop
+        let shown = state.natural * c.w / c.h
+        return c.w > 0.999 && c.h > 0.999 ? "Whole image" : String(format: "%.0f%% × %.0f%% · %.2f:1", c.w * 100, c.h * 100, shown)
     }
 }
 
@@ -2612,9 +3088,10 @@ struct BoardExportView: View {
             Color(red: 0.045, green: 0.05, blue: 0.08)
             ForEach(board.layered) { item in
                 piece(item).frame(width: item.w, height: item.h)
-                    .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
+                    .shadow(color: .black.opacity(item.kind == .heading ? 0 : 0.4), radius: 8, y: 4)
                     .offset(x: item.x - rect.x, y: item.y - rect.y)
             }
+            BoardArrows(connectors: board.connectors, rects: board.rects, originX: rect.x, originY: rect.y, showLabels: true)
         }
         .frame(width: rect.w, height: rect.h, alignment: .topLeading)
         .environment(\.colorScheme, .dark)
@@ -2623,8 +3100,9 @@ struct BoardExportView: View {
         switch item.kind {
         case .asset:
             Group {
-                if let id = item.assetID, let cg = images[id] { Image(decorative: cg, scale: 1).resizable().scaledToFill() }
-                else { Color.gray.opacity(0.2) }
+                if let id = item.assetID, let cg = images[id] {
+                    CroppedFill(crop: item.crop) { Image(decorative: cg, scale: 1).resizable().scaledToFill() }
+                } else { Color.gray.opacity(0.2) }
             }
             .frame(width: item.w, height: item.h).clipShape(RoundedRectangle(cornerRadius: 10))
         case .note:
@@ -2633,6 +3111,8 @@ struct BoardExportView: View {
             BoardPalette(colors: item.colors)
         case .frame:
             BoardFrame(label: item.text, selected: false, editing: false, draft: .constant(item.text)) { _ in }
+        case .heading:
+            BoardHeading(text: item.text, height: item.h, selected: false, editing: false, draft: .constant(item.text)) { _ in }
         }
     }
 }
@@ -2688,6 +3168,7 @@ struct StudioView: View {
             Button("Cancel", role: .cancel) { model.pendingRemoval = [] }
         } message: { Text("Files on disk stay where they are.") }
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
+        .sheet(item: $model.cropping) { st in CropSheet(state: st).environmentObject(model) }
         .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
         .sheet(item: $model.presetExport) { st in PresetExportSheet(state: st).environmentObject(model) }
         .sheet(item: $model.batchRename) { st in BatchRenameSheet(state: st).environmentObject(model) }

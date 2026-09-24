@@ -608,3 +608,23 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Logic and tests: frames, moving sets, marquee hit testing, guides,
   group z-order, tidy and duplicate in `Moodboard.swift`,
   `MoodboardTests.swift`.
+
+## 1.19.0: board annotation
+
+- Arrows: select one card and drag its arrow handle onto another card, or
+  select two cards and choose Connect with Arrow. Arrows run edge to edge
+  and follow both cards as you move or resize them. Double-click an
+  arrow's middle to label it; right-click it to reverse or delete it.
+  Removing a card removes its arrows, and Duplicate Board keeps them.
+- Headings: the text-size button adds large type straight on the canvas,
+  with no card behind it. Resizing a heading scales its text, and
+  double-clicking edits it.
+- Crop: right-click an image card and choose Crop… to pick the part it
+  shows. Drag the frame to move it or the corner to size it, or pick a
+  shape (1:1, 4:5, 4:3, 3:2, 16:9). The file is never changed, and Show
+  Whole Image undoes the crop. The card keeps its width and takes the
+  crop's shape.
+- Arrows, labels, headings and crops show in Present, PNG/PDF export and
+  shared review galleries.
+- Logic and tests: connectors, edge geometry, hit testing, headings and
+  crop math in `Moodboard.swift`, `MoodboardTests.swift`.
