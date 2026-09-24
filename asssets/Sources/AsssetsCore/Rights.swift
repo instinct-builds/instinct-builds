@@ -165,10 +165,19 @@ public struct RightsIssue: Equatable, Sendable {
     public var status: RightsStatus
 }
 
+/// A license document named in a credits page (1.27). `href` is set when the file travels with the bundle.
+public struct CreditFile: Codable, Equatable, Sendable {
+    public var name: String
+    public var href: String?
+    public init(name: String, href: String? = nil) { self.name = name; self.href = href }
+}
+
 public struct CreditLine: Codable, Equatable, Sendable {
     public var credit: String
     public var license: String
     public var titles: [String]
+    /// License documents on file for the assets this line covers (1.27); nil when none.
+    public var files: [CreditFile]? = nil
     public init(credit: String, license: String, titles: [String]) { self.credit = credit; self.license = license; self.titles = titles }
 }
 
@@ -224,11 +233,20 @@ extension StudioCatalog {
             guard !credit.isEmpty else { continue }
             if let i = out.firstIndex(where: { $0.credit == credit && $0.license == r.license.rawValue }) {
                 if !out[i].titles.contains(a.title) { out[i].titles.append(a.title) }
+                addFiles(a, &out[i])
             } else {
-                out.append(CreditLine(credit: credit, license: r.license.rawValue, titles: [a.title]))
+                var line = CreditLine(credit: credit, license: r.license.rawValue, titles: [a.title])
+                addFiles(a, &line)
+                out.append(line)
             }
         }
         return out
+    }
+
+    private func addFiles(_ a: StudioAsset, _ line: inout CreditLine) {
+        for d in a.licenseDocs.compactMap(licenseDoc) where !(line.files ?? []).contains(where: { $0.name == d.name }) {
+            line.files = (line.files ?? []) + [CreditFile(name: d.name)]
+        }
     }
 
     /// Adds the three rights smart collections once, for new and upgraded libraries alike.

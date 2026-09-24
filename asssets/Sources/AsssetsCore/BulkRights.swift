@@ -141,18 +141,22 @@ public struct RightsReport: Equatable, Sendable {
         public var expires: String
         public var renewed: String
         public var status: String
+        /// Attached license documents, by name (1.27).
+        public var licenseFiles: [String] = []
         /// 0 expired, 1 editorial, 2 expiring, 3 missing, 4 OK. Lower sorts first.
         public var rank: Int
     }
     public var title: String
     public var date: String
     public var rows: [Row]
+    /// Every license document the rows mention, in first-use order (1.27).
+    public var docs: [LicenseDoc] = []
 
     public var counts: (problems: Int, expiring: Int, missing: Int, ok: Int) {
         (rows.filter { $0.rank <= 1 }.count, rows.filter { $0.rank == 2 }.count, rows.filter { $0.rank == 3 }.count, rows.filter { $0.rank == 4 }.count)
     }
 
-    public static let columns = ["Title", "File", "Status", "License", "Credit", "Source", "Allowed uses", "Ends", "Renewed"]
+    public static let columns = ["Title", "File", "Status", "License", "Credit", "Source", "Allowed uses", "Ends", "Renewed", "License files"]
 
     /// RFC 4180 CSV with a header row; fields with commas, quotes or line breaks are quoted.
     public var csv: String {
@@ -160,7 +164,7 @@ public struct RightsReport: Equatable, Sendable {
             s.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" }) ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s
         }
         var lines = [Self.columns.joined(separator: ",")]
-        for r in rows { lines.append([r.title, r.file, r.status, r.license, r.credit, r.source, r.uses, r.expires, r.renewed].map(q).joined(separator: ",")) }
+        for r in rows { lines.append([r.title, r.file, r.status, r.license, r.credit, r.source, r.uses, r.expires, r.renewed, r.licenseFiles.joined(separator: "; ")].map(q).joined(separator: ",")) }
         return lines.joined(separator: "\r\n") + "\r\n"
     }
 }
@@ -178,7 +182,8 @@ extension StudioCatalog {
             let bundled = r == nil && st == .ok
             return RightsReport.Row(asset: a.id, title: a.title, file: a.importedPath.map { ($0 as NSString).lastPathComponent } ?? (a.sourceKey.map { _ in "Bundled with ASSSETS" } ?? ""),
                                     license: r?.license.rawValue ?? (bundled ? "Bundled" : ""), credit: r?.credit ?? "", source: r?.source ?? "",
-                                    uses: r?.uses ?? "", expires: r?.expires ?? "", renewed: r?.renewed ?? "", status: st.label, rank: rank)
+                                    uses: r?.uses ?? "", expires: r?.expires ?? "", renewed: r?.renewed ?? "", status: st.label,
+                                    licenseFiles: a.licenseDocs.compactMap { licenseDoc($0)?.name }, rank: rank)
         }
         let sorted = rows.enumerated().sorted { x, y in
             let a = x.element, b = y.element
@@ -188,6 +193,6 @@ extension StudioCatalog {
             let t = a.title.localizedStandardCompare(b.title)
             return t == .orderedSame ? x.offset < y.offset : t == .orderedAscending
         }.map(\.element)
-        return RightsReport(title: title, date: today, rows: sorted)
+        return RightsReport(title: title, date: today, rows: sorted, docs: licenseDocs(forAll: sorted.map(\.asset)))
     }
 }

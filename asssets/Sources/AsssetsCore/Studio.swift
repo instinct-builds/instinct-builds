@@ -68,6 +68,8 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     public var label: ColorLabel? = nil
     /// Usage rights and credit (1.25); nil when nobody entered any.
     public var rights: UsageRights? = nil
+    /// License documents attached to this asset (1.27), ids into `StudioCatalog.licenseDocs`.
+    public var licenseDocs: [UUID] = []
 
     public init(id: UUID = UUID(), title: String, kind: MediaKind, tags: [String], collection: String,
                 palette: [String], seed: Int, favorite: Bool = false, importedPath: String? = nil,
@@ -77,7 +79,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         self.resolution = resolution; self.sourceKey = sourceKey
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights }
+    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights, licenseDocs }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -99,6 +101,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         rating = min(5, max(0, try c.decodeIfPresent(Int.self, forKey: .rating) ?? 0))
         label = try? c.decodeIfPresent(ColorLabel.self, forKey: .label)
         rights = try? c.decodeIfPresent(UsageRights.self, forKey: .rights)
+        licenseDocs = (try? c.decodeIfPresent([UUID].self, forKey: .licenseDocs)) ?? []
     }
 
     /// Auto tags still waiting for the user: not already a real tag, not dismissed.
@@ -147,8 +150,12 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var boards: [Moodboard] = []
     /// Board templates the user saved (1.22). The built-in ones live in code, see `BoardTemplate.builtIns`.
     public var templates: [BoardTemplate] = []
+    /// License documents stored in the library (1.27).
+    public var licenseDocs: [LicenseDoc] = []
+    /// Saved rights presets (1.27).
+    public var rightsPresets: [RightsPreset] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates, licenseDocs, rightsPresets }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -164,6 +171,8 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         recentColors = ((try? c.decodeIfPresent([String].self, forKey: .recentColors)) ?? []).compactMap(ColorSearch.normalize)
         boards = (try? c.decodeIfPresent([Moodboard].self, forKey: .boards)) ?? []
         templates = ((try? c.decodeIfPresent([BoardTemplate].self, forKey: .templates)) ?? []).filter { !$0.builtIn }
+        licenseDocs = (try? c.decodeIfPresent([LicenseDoc].self, forKey: .licenseDocs)) ?? []
+        rightsPresets = (try? c.decodeIfPresent([RightsPreset].self, forKey: .rightsPresets)) ?? []
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {

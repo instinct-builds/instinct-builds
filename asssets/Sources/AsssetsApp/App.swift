@@ -9,6 +9,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
 import PDFKit
+import QuickLook
 import AsssetsCore
 
 @main
@@ -150,6 +151,16 @@ final class StudioLibrary: ObservableObject {
     @Published var rightsNotice: [RightsIssue]?
     /// Warning shown before expired or editorial-only assets go into client work (1.25).
     @Published var rightsWarning: RightsWarning?
+    /// License file shown in Quick Look (1.27).
+    @Published var quickLookURL: URL?
+    /// "Save as Preset" sheet (1.27).
+    @Published var presetDraft: PresetDraft?
+    /// Copy license files into shared galleries (1.27). Off by default: license paperwork can carry prices.
+    @Published var includeLicenseFiles = UserDefaults.standard.bool(forKey: "includeLicenseFiles") {
+        didSet { UserDefaults.standard.set(includeLicenseFiles, forKey: "includeLicenseFiles") }
+    }
+    /// Demo only: inspector section to scroll to (1.27).
+    var inspectorAnchor: String?
     /// Add a credits page to galleries, round summaries and contact sheets (1.25).
     @Published var includeCredits = UserDefaults.standard.object(forKey: "includeCredits") as? Bool ?? true {
         didSet { UserDefaults.standard.set(includeCredits, forKey: "includeCredits") }
@@ -215,7 +226,10 @@ final class StudioLibrary: ObservableObject {
         let list = ids ?? (selection.isEmpty ? [] : filtered.map(\.id).filter(selection.contains))
         let usable = list.filter { id in catalog.assets.first { $0.id == id }?.kind != .audio }
         guard !usable.isEmpty else { flash("Select images, textures, vectors or mockups to export"); return }
-        if !checked { guardRights(usable, action: "Export") { self.openPresetExport(usable, title: title, checked: true) }; return }
+        if !checked {
+            guardRights(usable, action: "Export", skip: { self.openPresetExport($0, title: title, checked: true) }) { self.openPresetExport(usable, title: title, checked: true) }
+            return
+        }
         presetExport = PresetExportState(ids: usable, title: title ?? (usable.count == 1 ? "1 asset" : "\(usable.count) assets"))
     }
 
@@ -288,11 +302,24 @@ final class StudioLibrary: ObservableObject {
         guard !assets.isEmpty else { flash("Select images, textures, vectors, mockups or clips for a gallery"); return }
         if fixedDir == nil, !checked {
             let fixedList = assets.map(\.id)
-            guardRights(fixedList, action: "Share gallery") { self.exportGallery(fixedList, title: title, to: nil, board: board, summaryPDF: summaryPDF, checked: true) }
+            guardRights(fixedList, action: "Share gallery", skip: board == nil ? { self.exportGallery($0, title: title, to: nil, board: nil, summaryPDF: summaryPDF, checked: true) } : nil) {
+                self.exportGallery(fixedList, title: title, to: nil, board: board, summaryPDF: summaryPDF, checked: true)
+            }
             return
         }
-        let creditLines = credits(assets.map(\.id))
+        var creditLines = credits(assets.map(\.id))
+        // License files travel with the gallery only when the user opted in (1.27).
+        var licenseCopies: [(URL, String)] = []
+        if includeLicenseFiles, includeCredits {
+            let docs = catalog.licenseDocs(forAll: assets.map(\.id)).filter { FileManager.default.fileExists(atPath: licenseURL($0).path) }
+            let byName = Dictionary(docs.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+            for d in docs { licenseCopies.append((licenseURL(d), "licenses/" + d.stored)) }
+            for i in creditLines.indices {
+                creditLines[i].files = creditLines[i].files?.map { f in CreditFile(name: f.name, href: byName[f.name].map { "licenses/" + $0.stored }) }
+            }
+        }
         let name = title ?? (selection.count > 1 || ids != nil ? browsingTitle : "Review")
+        let galleryCredits = creditLines, galleryLicenses = licenseCopies
         var parent = fixedDir
         if parent == nil {
             let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
@@ -334,10 +361,14 @@ final class StudioLibrary: ObservableObject {
                 let spots = ReviewGallery.spots(for: board.layout, including: Set(items.compactMap { UUID(uuidString: $0.id) }))
                 boardView = .init(image: "board.png", width: board.width, height: board.height, spots: spots)
             }
+            if !galleryLicenses.isEmpty {
+                try? fm.createDirectory(at: folder.appendingPathComponent("licenses"), withIntermediateDirectories: true)
+                for (src, rel) in galleryLicenses { try? fm.copyItem(at: src, to: folder.appendingPathComponent(rel)) }
+            }
             var summaryName: String?
             if let summaryPDF, (try? fm.copyItem(at: summaryPDF, to: folder.appendingPathComponent("round-summary.pdf"))) != nil { summaryName = "round-summary.pdf" }
             var manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView, summary: summaryName)
-            if !creditLines.isEmpty { manifest.credits = creditLines }
+            if !galleryCredits.isEmpty { manifest.credits = galleryCredits }
             let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
             // A zip next to the folder, ready to send.
             let zip = parent.appendingPathComponent(folderName + ".zip")
@@ -569,7 +600,7 @@ final class StudioLibrary: ObservableObject {
         startWatching()
         refreshAutoTags()
         applyLaunchArguments()
-        if !isDemo { checkRightsSinceLastLaunch() }
+        if !isDemo { checkRightsSinceLastLaunch(); pruneLicenseFiles() }
         installKeyMonitor()
     }
 
@@ -1092,7 +1123,10 @@ final class StudioLibrary: ObservableObject {
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = ids.compactMap { byID[$0] }
         guard !assets.isEmpty else { flash("Nothing to put on a contact sheet"); return }
-        if !checked { guardRights(ids, action: "Contact sheet") { self.openContactSheet(ids: ids, title: title, checked: true) }; return }
+        if !checked {
+            guardRights(ids, action: "Contact sheet", skip: { self.openContactSheet(ids: $0, title: title, checked: true) }) { self.openContactSheet(ids: ids, title: title, checked: true) }
+            return
+        }
         let creditLines = credits(assets.map(\.id))
         flash("Laying out \(assets.count) assets…")
         Task { @MainActor in
@@ -1230,7 +1264,12 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// System share menu (AirDrop, Mail, Messages, Notes...) with the same files a drag-out would give.
-    func share(_ ids: Set<UUID>, anchor: NSView? = nil) {
+    func share(_ ids: Set<UUID>, anchor: NSView? = nil, checked: Bool = false) {
+        if !checked {
+            let order = filtered.map(\.id).filter(ids.contains) + ids.filter { id in !filtered.contains { $0.id == id } }
+            guardRights(order, action: "Share", skip: { self.share(Set($0), anchor: nil, checked: true) }) { self.share(ids, anchor: anchor, checked: true) }
+            return
+        }
         let urls = dragFiles(for: ids)
         guard !urls.isEmpty else { flash("Nothing to share"); return }
         let picker = NSSharingServicePicker(items: urls)
@@ -1427,9 +1466,13 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// Export to a folder the user picks. Never overwrites: clashes get "Name 2.png" like Finder.
-    func exportToFolder(_ ids: Set<UUID>, mode: DragOut.ExportMode) {
+    func exportToFolder(_ ids: Set<UUID>, mode: DragOut.ExportMode, checked: Bool = false) {
         let picked = catalog.assets.filter { ids.contains($0.id) }
         guard !picked.isEmpty else { return }
+        if !checked {
+            guardRights(picked.map(\.id), action: "Export", skip: { self.exportToFolder(Set($0), mode: mode, checked: true) }) { self.exportToFolder(ids, mode: mode, checked: true) }
+            return
+        }
         if picked.count == 1, let a = picked.first {
             // One asset: a save panel with the planned name, same rules as the folder export.
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-export/\(UUID().uuidString)", isDirectory: true)
@@ -2007,7 +2050,8 @@ final class StudioLibrary: ObservableObject {
                 show(board: id)
                 boardSelection = []
             }
-        case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts":
+        case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
+             "license-files", "rights-presets", "export-guard":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2035,6 +2079,19 @@ final class StudioLibrary: ObservableObject {
                 ("Wire Terrazzo.png", UsageRights(license: .editorial, source: "Wirepress", credit: "Photo: Dev Arora / Wirepress", uses: "News and commentary only")),
             ]
             for (f, r) in rights { if let a = find(f) { setRights(r, for: [a.id], quiet: true) } }
+            // License paperwork (1.27): the Northlight order covers both Northlight photos; Harbor's invoice sits with Harbor Night.
+            let docs = makeDemoLicenseFiles()
+            let northlight = [find("Northlight Lobby.png"), find("Atrium Cork Wall.png")].compactMap { $0?.id }
+            let order = docs["order"].map { attachLicenseFiles([$0], to: northlight, quiet: true) } ?? []
+            if let r = docs["receipt"], let lobby = northlight.first { attachLicenseFiles([r], to: [lobby], quiet: true) }
+            if let h = docs["harbor"], let a = find("Harbor Night.png") { attachLicenseFiles([h], to: [a.id], quiet: true) }
+            mutate { c in
+                c.saveRightsPreset(name: "Northlight · NL-20417", rights: UsageRights(license: .licensed, source: "Northlight Images · order NL-20417",
+                                   credit: "Photo: {title} / Northlight", uses: "Web and social"), termYears: 1, docs: order.map(\.id))
+                c.saveRightsPreset(name: "Maison Vale", rights: UsageRights(license: .client, source: "Maison Vale brand team",
+                                   credit: "Courtesy of Maison Vale", uses: "This campaign only"))
+                c.saveRightsPreset(name: "Own work", rights: UsageRights(license: .own, credit: "Studio"))
+            }
             var id = UUID()
             mutate { c in
                 id = c.createBoard(named: "Hotel Pitch")
@@ -2071,6 +2128,20 @@ final class StudioLibrary: ObservableObject {
                     let pages = await self.writeRightsReport(report, pdf: pdf, csv: csv, png: png)
                     try? "done pages=\(pages) rows=\(report.rows.count)".write(to: self.supportRoot.appendingPathComponent("demo-rights-report.txt"), atomically: true, encoding: .utf8)
                 }
+            case "license-files":
+                show(collection: StudioCatalog.inboxCollection)
+                if let a = find("Northlight Lobby.png") { selection = [a.id]; focusID = a.id }
+                inspectorAnchor = "license-files"
+            case "rights-presets":
+                // Three new files that need rights: one click on a preset fills them in.
+                show(collection: StudioCatalog.inboxCollection)
+                let three = ["Northlight Lobby.png", "Atrium Cork Wall.png", "Stage Mockup.png"].compactMap { find($0)?.id }
+                selection = Set(three); focusID = three.first
+            case "export-guard":
+                show(collection: StudioCatalog.inboxCollection)
+                let ids = filtered.map(\.id)
+                selection = Set(ids)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self.exportToFolder(Set(ids), mode: .asShown) }
             case "rights-alerts":
                 // As if ASSSETS was last opened 20 days ago: Harbor Night's license ended in between.
                 show(collection: StudioCatalog.inboxCollection)
@@ -2236,9 +2307,11 @@ extension StudioLibrary {
     }
 
     /// Runs `proceed` right away when every asset is cleared for use; otherwise asks first (1.25).
-    func guardRights(_ ids: [UUID], action: String, proceed: @escaping () -> Void) {
-        let issues = catalog.rightsIssues(ids)
-        if issues.isEmpty { proceed() } else { rightsWarning = RightsWarning(action: action, issues: issues, proceed: proceed) }
+    /// With `skip`, the warning also offers to go ahead with only the cleared assets (1.27).
+    func guardRights(_ ids: [UUID], action: String, skip: (([UUID]) -> Void)? = nil, proceed: @escaping () -> Void) {
+        let check = catalog.rightsCheck(ids)
+        if check.issues.isEmpty { proceed() }
+        else { rightsWarning = RightsWarning(action: action, issues: check.issues, cleared: check.cleared, proceed: proceed, skip: check.cleared.isEmpty ? nil : skip) }
     }
 
     /// Saves usage rights and writes them to the sidecar of the user's own files.
@@ -2284,12 +2357,17 @@ extension StudioLibrary {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = DragOut.safeName(title + " rights report") + ".pdf"
-        panel.message = "A CSV with the same rows is saved next to the PDF."
+        panel.message = report.docs.isEmpty ? "A CSV with the same rows is saved next to the PDF."
+                                            : "A CSV with the same rows and a folder with the \(report.docs.count) license file\(report.docs.count == 1 ? "" : "s") are saved next to the PDF."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let csv = url.deletingPathExtension().appendingPathExtension("csv")
         Task { @MainActor in
             let pages = await self.writeRightsReport(report, pdf: url, csv: csv)
-            if pages > 0 { self.flash("Saved rights report: \(report.rows.count) assets, \(pages) page\(pages == 1 ? "" : "s") + CSV"); NSWorkspace.shared.activateFileViewerSelecting([url, csv]) }
+            let folder = self.copyLicenseFiles(report.docs, nextTo: url)
+            if pages > 0 {
+                self.flash("Saved rights report: \(report.rows.count) assets, \(pages) page\(pages == 1 ? "" : "s") + CSV\(folder != nil ? " + \(report.docs.count) license file\(report.docs.count == 1 ? "" : "s")" : "")")
+                NSWorkspace.shared.activateFileViewerSelecting([url, csv] + (folder.map { [$0] } ?? []))
+            }
             else { self.flash("Couldn't write the rights report") }
         }
     }
@@ -2324,6 +2402,149 @@ extension StudioLibrary {
         guard let since, since < today else { return }
         let lapsed = catalog.expired(since: since, today: today)
         if !lapsed.isEmpty { rightsNotice = lapsed }
+    }
+
+    // MARK: License files and rights presets (1.27)
+
+    var licensesRoot: URL { supportRoot.appendingPathComponent("Licenses", isDirectory: true) }
+    func licenseURL(_ d: LicenseDoc) -> URL { licensesRoot.appendingPathComponent(d.stored) }
+
+    func chooseLicenseFiles(for ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        let p = NSOpenPanel(); p.allowsMultipleSelection = true; p.canChooseDirectories = false; p.canChooseFiles = true
+        p.prompt = "Attach"
+        p.message = "Choose the license, order or receipt for \(ids.count == 1 ? "this asset" : "these \(ids.count) assets"). A copy is kept in the library."
+        guard p.runModal() == .OK else { return }
+        attachLicenseFiles(p.urls, to: ids)
+    }
+
+    /// Copies files into the library's Licenses folder and attaches them. The originals stay where they are.
+    @discardableResult
+    func attachLicenseFiles(_ urls: [URL], to ids: [UUID], quiet: Bool = false) -> [LicenseDoc] {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: licensesRoot, withIntermediateDirectories: true)
+        var docs: [LicenseDoc] = []
+        for u in urls where !u.hasDirectoryPath {
+            let size = (try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            let d = LicenseDoc(name: u.lastPathComponent, bytes: size)
+            if (try? fm.copyItem(at: u, to: licenseURL(d))) != nil { docs.append(d) }
+        }
+        guard !docs.isEmpty else { if !quiet { flash("Couldn't copy \(urls.count == 1 ? "that file" : "those files") into the library") }; return [] }
+        mutate("Attach License File") { c in for d in docs { c.addLicenseDoc(d, to: ids) } }
+        if !quiet {
+            flash("Attached \(docs.count == 1 ? docs[0].name : "\(docs.count) license files") to \(ids.count == 1 ? "this asset" : "\(ids.count) assets")")
+        }
+        return docs
+    }
+
+    func attachExistingLicenseDoc(_ id: UUID, to ids: [UUID]) {
+        var n = 0
+        mutate("Attach License File") { n = $0.attachLicenseDoc(id, to: ids) }
+        if n > 0, let d = catalog.licenseDoc(id) { flash("Attached \(d.name) to \(n) more asset\(n == 1 ? "" : "s")") }
+    }
+
+    /// Detaches only; the stored copy is deleted on the next launch if nothing uses it, so ⌘Z still works.
+    func detachLicenseDoc(_ id: UUID, from ids: [UUID]) {
+        var n = 0
+        mutate("Remove License File") { n = $0.detachLicenseDoc(id, from: ids) }
+        if n > 0 { flash("Removed the license file from \(n == 1 ? "this asset" : "\(n) assets") · ⌘Z to undo") }
+    }
+
+    func quickLook(_ d: LicenseDoc) {
+        let u = licenseURL(d)
+        if FileManager.default.fileExists(atPath: u.path) { quickLookURL = u } else { flash("\(d.name) is missing from the library") }
+    }
+
+    func revealLicense(_ d: LicenseDoc) { NSWorkspace.shared.activateFileViewerSelecting([licenseURL(d)]) }
+
+    func pruneLicenseFiles() {
+        var gone: [LicenseDoc] = []
+        mutate { gone = $0.pruneLicenseDocs() }
+        for d in gone { try? FileManager.default.removeItem(at: licenseURL(d)) }
+    }
+
+    /// Demo only: an order confirmation PDF, an email receipt and an invoice PDF, all made up for the demo library.
+    func makeDemoLicenseFiles() -> [String: URL] {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-demo-licenses", isDirectory: true)
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var out: [String: URL] = [:]
+        func pdf(_ name: String, _ page: DemoLicensePage) -> URL? {
+            let url = dir.appendingPathComponent(name)
+            let r = ImageRenderer(content: page)
+            r.proposedSize = ProposedViewSize(width: 612, height: 792)
+            var ok = false
+            r.render { _, draw in
+                var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+                guard let ctx = CGContext(url as CFURL, mediaBox: &box, nil) else { return }
+                ctx.beginPDFPage(nil); draw(ctx); ctx.endPDFPage(); ctx.closePDF(); ok = true
+            }
+            return ok ? url : nil
+        }
+        out["order"] = pdf("NL-20417 order confirmation.pdf", DemoLicensePage(vendor: "Northlight Images", doc: "Order confirmation NL-20417",
+            lines: [("Northlight Lobby", "Web, social and print pitch decks", "$240.00"), ("Atrium Cork Wall", "Web and social", "$180.00")],
+            terms: "Licensed for the client named on the order. One year from the order date. Credit the photographer as shown."))
+        out["harbor"] = pdf("Harbor Stock invoice 88-114.pdf", DemoLicensePage(vendor: "Harbor Stock", doc: "Invoice 88-114",
+            lines: [("Harbor Night", "Web only", "$95.00")], terms: "Web use only. License ends on the date shown on the image record."))
+        let eml = dir.appendingPathComponent("Northlight receipt.eml")
+        let mail = "From: orders@northlight.example\r\nTo: studio@example.com\r\nSubject: Your Northlight receipt NL-20417\r\nDate: Mon, 7 Sep 2026 10:12:00 +0000\r\n\r\nThanks for your order. Receipt for NL-20417: 2 images, $420.00 paid by card.\r\n"
+        if (try? mail.write(to: eml, atomically: true, encoding: .utf8)) != nil { out["receipt"] = eml }
+        return out
+    }
+
+    /// "<report> license files" folder next to a rights report; nil when there is nothing to copy.
+    func copyLicenseFiles(_ docs: [LicenseDoc], nextTo report: URL) -> URL? {
+        let fm = FileManager.default
+        let present = docs.filter { fm.fileExists(atPath: licenseURL($0).path) }
+        guard !present.isEmpty else { return nil }
+        let parent = report.deletingLastPathComponent()
+        let taken = Set((try? fm.contentsOfDirectory(atPath: parent.path)) ?? [])
+        let folder = parent.appendingPathComponent(DragOut.uniqueName(report.deletingPathExtension().lastPathComponent + " license files", taken: taken), isDirectory: true)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        var names = Set<String>()
+        for d in present {
+            let n = DragOut.uniqueName(DragOut.safeName((d.name as NSString).deletingPathExtension), taken: names)
+            names.insert(n)
+            let ext = (d.name as NSString).pathExtension
+            try? fm.copyItem(at: licenseURL(d), to: folder.appendingPathComponent(ext.isEmpty ? n : n + "." + ext))
+        }
+        return folder
+    }
+
+    /// Opens "Save as Preset" with what the selection shares: every field that matches, files attached to all of them.
+    func startPresetDraft(from ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        if ids.count == 1 {
+            guard let d = catalog.presetDraft(from: ids[0]) else { flash("Add rights to this asset first, then save them as a preset"); return }
+            presetDraft = PresetDraft(name: d.name, rights: d.rights, termYears: nil, docs: d.docs, count: 1)
+            return
+        }
+        let c = catalog.commonRights(ids)
+        let r = UsageRights(license: c.license.value ?? .licensed, source: c.source.value ?? "", credit: c.credit.value ?? "",
+                            uses: c.uses.value ?? "", expires: c.expires.value ?? nil)
+        let docs = catalog.licenseDocCoverage(ids).filter { $0.count == ids.count }.map(\.doc.id)
+        presetDraft = PresetDraft(name: r.source.isEmpty ? r.license.rawValue : r.source, rights: r, termYears: nil, docs: docs, count: ids.count)
+    }
+
+    func savePreset(_ d: PresetDraft) {
+        var id: UUID?
+        mutate("Save Rights Preset") { id = $0.saveRightsPreset(name: d.name, rights: d.rights, termYears: d.termYears, docs: d.includeFiles ? d.docs : []) }
+        presetDraft = nil
+        if id != nil { flash("Saved preset \(d.name.trimmingCharacters(in: .whitespaces))") }
+    }
+
+    func applyPreset(_ pid: UUID, to ids: [UUID]) {
+        guard let p = catalog.rightsPreset(pid), !ids.isEmpty else { return }
+        var n = 0
+        mutate("Apply \(p.name)") { n = $0.applyRightsPreset(pid, to: ids) }
+        if n > 0 { writeMetadata(Set(ids), quiet: true) }
+        flash(n == 0 ? "\(p.name) is already on \(ids.count == 1 ? "this asset" : "these assets")" : "Applied \(p.name) to \(n) asset\(n == 1 ? "" : "s") · ⌘Z to undo")
+    }
+
+    func deletePreset(_ pid: UUID) {
+        let name = catalog.rightsPreset(pid)?.name ?? "preset"
+        mutate("Delete Preset") { $0.deleteRightsPreset(pid) }
+        flash("Deleted preset \(name) · ⌘Z to undo")
     }
 
     /// Swaps outdated cards to the newest version in their stack (1.24): all of them, or just `only`.
@@ -2436,8 +2657,9 @@ extension StudioLibrary {
         return CGSize(width: cg.width, height: cg.height)
     }
 
-    func exportBoard(_ id: UUID, pdf: Bool) {
+    func exportBoard(_ id: UUID, pdf: Bool, checked: Bool = false) {
         guard let board = catalog.board(id) else { return }
+        if !checked { guardRights(board.items.compactMap(\.assetID), action: pdf ? "Export PDF" : "Export PNG") { self.exportBoard(id, pdf: pdf, checked: true) }; return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [pdf ? UTType.pdf : UTType.png]
         panel.nameFieldStringValue = board.name + (pdf ? ".pdf" : ".png")
@@ -3139,6 +3361,7 @@ struct BoardCanvas: View {
             Button(board.versions.isEmpty ? "Versions…" : "Versions (\(board.versions.count))…") { model.boardVersionsOpen = true }
             Button("Export Round Summary PDF…") { model.exportRoundSummary(board.id) }
             Toggle("Include Credits Page", isOn: $model.includeCredits)
+            Toggle("Include License Files in Galleries", isOn: $model.includeLicenseFiles).disabled(!model.includeCredits)
             Button("Rights Report (PDF + CSV)…") { model.exportRightsReport(board.items.compactMap(\.assetID), title: board.name) }
             let newer = model.catalog.outdatedCards(on: board.id).count
             if newer > 0 { Button("Update All to Newest (\(newer))") { model.updateToNewest(board.id) } }
@@ -3931,16 +4154,9 @@ struct StudioView: View {
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
         .sheet(item: $model.cropping) { st in CropSheet(state: st).environmentObject(model) }
         .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
-        .alert(model.rightsWarning.map { w in "\(w.issues.count) \(w.issues.count == 1 ? "asset has" : "assets have") rights problems" } ?? "",
-               isPresented: Binding(get: { model.rightsWarning != nil }, set: { if !$0 { model.rightsWarning = nil } }),
-               presenting: model.rightsWarning) { w in
-            Button("\(w.action) Anyway") { model.rightsWarning = nil; w.proceed() }
-            Button("Cancel", role: .cancel) { model.rightsWarning = nil }
-        } message: { w in
-            Text(w.issues.prefix(6).map { "\($0.title): \($0.status.label)" }.joined(separator: "\n")
-                 + (w.issues.count > 6 ? "\n…and \(w.issues.count - 6) more" : "")
-                 + "\n\nCheck the license before this goes to a client.")
-        }
+        .sheet(item: $model.rightsWarning) { w in RightsWarningSheet(warning: w).environmentObject(model) }
+        .sheet(item: $model.presetDraft) { d in PresetSaveSheet(draft: d).environmentObject(model) }
+        .quickLookPreview($model.quickLookURL)
         .sheet(item: $model.presetExport) { st in PresetExportSheet(state: st).environmentObject(model) }
         .sheet(item: $model.batchRename) { st in BatchRenameSheet(state: st).environmentObject(model) }
         .sheet(isPresented: Binding(get: { model.duplicates != nil }, set: { if !$0 { model.duplicates = nil } })) {
@@ -5629,6 +5845,10 @@ struct Inspector: View {
                 }
                 .onAppear {
                     // Demo only: bring the tag rows into view for the suggested-tags screenshot.
+                    if let anchor = model.inspectorAnchor {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { withAnimation { proxy.scrollTo(anchor, anchor: .top) } }
+                        return
+                    }
                     guard model.scrollInspectorToTags else { return }
                     let target = asset.clientNotes.isEmpty ? "inspector-tags" : "inspector-notes"
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { withAnimation { proxy.scrollTo(target, anchor: .top) } }
@@ -7422,7 +7642,8 @@ struct RoundSummaryPage: View {
                     Text("CREDITS").font(.system(size: 9, weight: .heavy)).tracking(1.5).foregroundStyle(Self.muted)
                     ForEach(Array(credits.enumerated()), id: \.offset) { _, c in
                         (Text(c.credit).font(.system(size: 9.5, weight: .bold)).foregroundColor(Self.ink)
-                         + Text("  \(c.license) · \(c.titles.joined(separator: ", "))").font(.system(size: 9.5)).foregroundColor(Self.muted))
+                         + Text("  \(c.license) · \(c.titles.joined(separator: ", "))").font(.system(size: 9.5)).foregroundColor(Self.muted)
+                         + Text((c.files ?? []).isEmpty ? "" : "  📎 " + (c.files ?? []).map(\.name).joined(separator: ", ")).font(.system(size: 9)).foregroundColor(Self.muted))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -7855,6 +8076,7 @@ struct BulkRightsSection: View {
                         .padding(.horizontal, 7).padding(.vertical, 2).background(Theme.danger.opacity(0.15), in: Capsule())
                 }
             }
+            RightsPresetBar(ids: ids)
             Menu {
                 ForEach(RightsLicense.allCases) { l in Button { license = l } label: { Label(l.rawValue, systemImage: l.symbol) } }
             } label: {
@@ -7901,6 +8123,7 @@ struct BulkRightsSection: View {
                 }
                 .buttonStyle(.bordered).controlSize(.small).font(.caption)
             }
+            LicenseFilesBlock(ids: ids).padding(.top, 2)
         }
         .onAppear { if loadedFor != Set(ids) { reset() } }
         .onChange(of: ids) { _, _ in reset() }
@@ -7981,6 +8204,10 @@ struct RightsReportPage: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(r.title).font(.system(size: 9.5, weight: .bold)).foregroundStyle(Self.ink).lineLimit(1)
                         Text(r.file).font(.system(size: 7.5)).foregroundStyle(Self.muted).lineLimit(1)
+                        if let f = r.licenseFiles.first {
+                            Text("📎 " + f + (r.licenseFiles.count > 1 ? " +\(r.licenseFiles.count - 1)" : ""))
+                                .font(.system(size: 7, weight: .semibold)).foregroundStyle(Color(red: 0.42, green: 0.27, blue: 0.85)).lineLimit(1).truncationMode(.middle)
+                        }
                     }.frame(width: Self.widths[0], alignment: .leading)
                     Text(r.status).font(.system(size: 8.5, weight: .bold)).foregroundStyle(statusColor(r.rank)).lineLimit(2).frame(width: Self.widths[1], alignment: .leading)
                     Text(r.license).font(.system(size: 8.5)).foregroundStyle(Self.ink).lineLimit(1).frame(width: Self.widths[2], alignment: .leading)
@@ -7999,7 +8226,7 @@ struct RightsReportPage: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Text("Made with ASSSETS · CSV with the same rows saved alongside").font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
+                Text("Made with ASSSETS · CSV with the same rows saved alongside" + (report.docs.isEmpty ? "" : " · \(report.docs.count) license file\(report.docs.count == 1 ? "" : "s") on record")).font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
                 Spacer()
                 Text("\(page) of \(pages)").font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
             }
@@ -8028,7 +8255,299 @@ struct RightsWarning: Identifiable {
     let id = UUID()
     let action: String
     let issues: [RightsIssue]
+    var cleared: [UUID] = []
     let proceed: () -> Void
+    /// Goes ahead with only the cleared assets; nil when that isn't offered.
+    var skip: (([UUID]) -> Void)? = nil
+}
+
+/// A made-up license document for the demo library (1.27).
+struct DemoLicensePage: View {
+    let vendor: String
+    let doc: String
+    let lines: [(String, String, String)]
+    let terms: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(vendor.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(2).foregroundStyle(Color(red: 0.3, green: 0.2, blue: 0.7))
+            Text(doc).font(.system(size: 22, weight: .bold))
+            Text("Sample document made for the ASSSETS demo library").font(.system(size: 9)).foregroundStyle(.gray)
+            Divider()
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
+                HStack { VStack(alignment: .leading) { Text(l.0).bold(); Text(l.1).font(.system(size: 10)).foregroundStyle(.gray) }; Spacer(); Text(l.2).monospacedDigit() }
+            }
+            Divider()
+            Text(terms).font(.system(size: 10)).foregroundStyle(.gray)
+            Spacer()
+        }
+        .foregroundStyle(Color(white: 0.1))
+        .padding(48).frame(width: 612, height: 792, alignment: .topLeading).background(Color.white)
+    }
+}
+
+struct PresetDraft: Identifiable {
+    let id = UUID()
+    var name: String
+    var rights: UsageRights
+    var termYears: Int?
+    var docs: [UUID]
+    var count: Int
+    var includeFiles = true
+}
+
+/// Shown before expired or editorial-only assets leave the app (1.25, redesigned in 1.27).
+struct RightsWarningSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let warning: RightsWarning
+
+    var body: some View {
+        let n = warning.issues.count
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.shield.fill").font(.system(size: 26)).foregroundStyle(Theme.danger)
+                    .frame(width: 44, height: 44).background(Theme.danger.opacity(0.14), in: RoundedRectangle(cornerRadius: 11))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(n) \(n == 1 ? "asset isn't" : "assets aren't") cleared for client use").font(.system(size: 17, weight: .bold))
+                    Text("Check the license before this goes to a client.\(warning.cleared.isEmpty ? "" : " The other \(warning.cleared.count) \(warning.cleared.count == 1 ? "is" : "are") fine.")")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(warning.issues, id: \.asset) { issue in row(issue) }
+                }
+            }
+            .frame(maxHeight: 230)
+            HStack(spacing: 10) {
+                Button("Cancel") { model.rightsWarning = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                if let skip = warning.skip {
+                    Button("Leave Out \(n) · \(warning.action) \(warning.cleared.count)") {
+                        let ids = warning.cleared; model.rightsWarning = nil
+                        DispatchQueue.main.async { skip(ids) }
+                    }
+                    .help("Go ahead with only the assets that are cleared")
+                }
+                Button("\(warning.action) Anyway") {
+                    let go = warning.proceed; model.rightsWarning = nil
+                    DispatchQueue.main.async { go() }
+                }
+                .buttonStyle(.borderedProminent).tint(Theme.danger).keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.large)
+        }
+        .padding(22)
+        .frame(width: 520)
+        .background(Theme.panel)
+    }
+
+    private func row(_ issue: RightsIssue) -> some View {
+        let asset = model.catalog.assets.first { $0.id == issue.asset }
+        let files = model.catalog.licenseDocs(for: issue.asset)
+        return HStack(spacing: 10) {
+            if let asset { Thumbnail(asset: asset, pixels: 120).frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 7)) }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(issue.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Text([asset?.rights?.source, asset?.rights?.uses].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ").ifEmpty("No source entered"))
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            if let f = files.first {
+                Button { model.quickLook(f) } label: { Image(systemName: "paperclip").font(.system(size: 11, weight: .semibold)) }
+                    .buttonStyle(.plain).foregroundStyle(Theme.accent).help("Open \(f.name)")
+            }
+            Text(issue.status.label).font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.danger).lineLimit(1).fixedSize()
+                .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.danger.opacity(0.15), in: Capsule())
+        }
+        .padding(8)
+        .background(Theme.raised, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.hairline))
+    }
+}
+
+extension String {
+    func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
+}
+
+/// License documents on one asset or across a selection (1.27). Click opens Quick Look; drop files to attach.
+struct LicenseFilesBlock: View {
+    @EnvironmentObject var model: StudioLibrary
+    let ids: [UUID]
+    @State private var targeted = false
+
+    var body: some View {
+        let coverage = model.catalog.licenseDocCoverage(ids)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                InspectorLabel(text: "LICENSE FILES")
+                Spacer()
+                if !coverage.isEmpty { Text("\(coverage.count)").font(.caption2.weight(.bold)).foregroundStyle(.secondary) }
+            }
+            ForEach(coverage, id: \.doc.id) { item in row(item.doc, count: item.count) }
+            Button { model.chooseLicenseFiles(for: ids) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "paperclip").font(.system(size: 11, weight: .semibold))
+                    Text(coverage.isEmpty ? "Attach license, order or receipt…" : "Attach Another…").font(.caption.weight(.semibold))
+                    Spacer()
+                    Text("or drop files").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(targeted ? Theme.accent.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.accent.opacity(targeted ? 0.8 : 0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+            let target = ids, lib = model
+            for p in providers where p.canLoadObject(ofClass: URL.self) {
+                _ = p.loadObject(ofClass: URL.self) { u, _ in
+                    guard let u else { return }
+                    DispatchQueue.main.async { lib.attachLicenseFiles([u], to: target) }
+                }
+            }
+            return true
+        }
+    }
+
+    private func row(_ d: LicenseDoc, count: Int) -> some View {
+        let partial = ids.count > 1 && count < ids.count
+        return HStack(spacing: 9) {
+            Image(systemName: d.symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                .frame(width: 28, height: 28).background(Theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(d.name).font(.caption.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                Text(ids.count > 1 ? "\(d.kind.rawValue) · on \(count) of \(ids.count)" : "\(d.kind.rawValue) · \(d.sizeLabel) · added \(d.added)")
+                    .font(.system(size: 10)).foregroundStyle(partial ? Theme.warning : .secondary).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if partial {
+                Button { model.attachExistingLicenseDoc(d.id, to: ids) } label: { Text("Add to all").font(.system(size: 10, weight: .bold)) }
+                    .buttonStyle(.plain).foregroundStyle(Theme.accent).fixedSize()
+            }
+            Image(systemName: "eye").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+        .contentShape(Rectangle())
+        .onTapGesture { model.quickLook(d) }
+        .help("Quick Look \(d.name)")
+        .contextMenu {
+            Button("Quick Look") { model.quickLook(d) }
+            Button("Show in Finder") { model.revealLicense(d) }
+            Divider()
+            Button(ids.count == 1 ? "Remove from This Asset" : "Remove from All \(ids.count)", role: .destructive) { model.detachLicenseDoc(d.id, from: ids) }
+        }
+    }
+}
+
+/// Saved rights presets as one-click chips (1.27).
+struct RightsPresetBar: View {
+    @EnvironmentObject var model: StudioLibrary
+    let ids: [UUID]
+
+    var body: some View {
+        let presets = model.catalog.rightsPresets
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(presets) { p in
+                    Button { model.applyPreset(p.id, to: ids) } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: p.rights.license.symbol).font(.system(size: 10, weight: .semibold))
+                            Text(p.name).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                            if !p.docs.isEmpty { Image(systemName: "paperclip").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary) }
+                        }
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(Theme.accent.opacity(0.16), in: Capsule())
+                        .overlay(Capsule().stroke(Theme.accent.opacity(0.4)))
+                        .fixedSize()
+                    }
+                    .buttonStyle(.plain)
+                    .help("Apply \(p.name) to \(ids.count == 1 ? "this asset" : "all \(ids.count)"): \(p.summary(docCount: p.docs.count))")
+                    .contextMenu {
+                        Button("Apply to \(ids.count == 1 ? "This Asset" : "All \(ids.count)")") { model.applyPreset(p.id, to: ids) }
+                        Divider()
+                        Button("Delete Preset", role: .destructive) { model.deletePreset(p.id) }
+                    }
+                }
+                Button { model.startPresetDraft(from: ids) } label: {
+                    Label(presets.isEmpty ? "Save as Preset" : "Save…", systemImage: "plus").font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .overlay(Capsule().stroke(Theme.hairline))
+                        .fixedSize()
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+                .help("Save these rights\(ids.count > 1 ? " (fields they share)" : "") and license files as a preset")
+            }
+        }
+    }
+}
+
+struct PresetSaveSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State var draft: PresetDraft
+
+    var body: some View {
+        let docs = draft.docs.compactMap { model.catalog.licenseDoc($0) }
+        let replacing = model.catalog.rightsPresets.contains { $0.name.caseInsensitiveCompare(draft.name.trimmingCharacters(in: .whitespaces)) == .orderedSame }
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Save Rights Preset").font(.system(size: 20, weight: .bold))
+                Text(draft.count == 1 ? "From this asset's rights" : "From the fields all \(draft.count) assets share").font(.caption).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                InspectorLabel(text: "NAME")
+                TextField("e.g. Northlight · order NL-20417", text: $draft.name).textFieldStyle(.roundedBorder)
+                if replacing { Text("Replaces the preset with this name").font(.caption2).foregroundStyle(Theme.warning) }
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                InspectorLabel(text: "SAVES")
+                line("License", draft.rights.license.rawValue)
+                line("Source", draft.rights.source)
+                line("Credit", draft.rights.credit)
+                line("Allowed uses", draft.rights.uses)
+            }
+            .padding(10).background(Theme.raised, in: RoundedRectangle(cornerRadius: 9))
+            HStack {
+                InspectorLabel(text: "END DATE")
+                Spacer()
+                Picker("", selection: $draft.termYears) {
+                    Text(draft.rights.expires.map { "Keep \($0)" } ?? "No end date").tag(Int?.none)
+                    Text("1 year from when applied").tag(Int?.some(1))
+                    Text("2 years from when applied").tag(Int?.some(2))
+                    Text("3 years from when applied").tag(Int?.some(3))
+                }
+                .labelsHidden().frame(width: 230)
+            }
+            if !docs.isEmpty {
+                Toggle(isOn: $draft.includeFiles) {
+                    Text("Attach \(docs.count == 1 ? docs[0].name : "\(docs.count) license files") whenever it's applied").font(.caption).lineLimit(1).truncationMode(.middle)
+                }
+                .toggleStyle(.checkbox)
+            }
+            HStack {
+                Button("Cancel") { model.presetDraft = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(replacing ? "Replace Preset" : "Save Preset") { model.savePreset(draft) }
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .controlSize(.large)
+        }
+        .padding(22)
+        .frame(width: 460)
+        .background(Theme.panel)
+    }
+
+    private func line(_ k: String, _ v: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(k).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).frame(width: 84, alignment: .leading)
+            Text(v.isEmpty ? "—" : v).font(.caption).foregroundStyle(v.isEmpty ? .tertiary : .primary).lineLimit(2)
+            Spacer(minLength: 0)
+        }
+    }
 }
 
 /// Usage rights for one asset (1.25): license, source, credit, allowed uses, end date.
@@ -8055,6 +8574,7 @@ struct RightsSection: View {
                 Spacer()
                 statusChip(status)
             }
+            RightsPresetBar(ids: [asset.id])
             if asset.rights == nil, asset.isStarter || asset.sourceKey?.hasPrefix("generated:") == true, !dirty {
                 Text("Bundled with ASSSETS. Add a credit or terms here if you change it.").font(.caption2).foregroundStyle(.secondary)
             }
@@ -8107,6 +8627,7 @@ struct RightsSection: View {
                     .buttonStyle(.plain).keyboardShortcut(.return, modifiers: [.command])
                 }
             }
+            LicenseFilesBlock(ids: [asset.id]).padding(.top, 4).id("license-files")
         }
         .onAppear { if loadedFor != asset.id { load() } }
         .onChange(of: asset.id) { _, _ in load() }

@@ -158,7 +158,7 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 .spot.picked{border-color:var(--pick)}.spot .heart{top:6px;right:6px;width:26px;height:26px;line-height:26px;font-size:13px;pointer-events:none}footer{color:var(--faint);font-size:12px;text-align:center;padding:0 0 28px}
 #credits{display:none;margin:22px 32px 0;border:1px solid var(--line);border-radius:14px;background:var(--raised);padding:18px 22px}#credits.on{display:block}
 #credits h2{margin:0 0 4px;font-size:17px}#credits .cs{color:var(--dim);font-size:12.5px;margin-bottom:12px}.cr{display:grid;grid-template-columns:minmax(180px,1fr) 130px 2fr;gap:14px;padding:10px 0;border-top:1px solid var(--line);font-size:13px}
-.cr b{font-weight:650}.cr .lic{color:var(--dim);font-size:12px}.cr .what{color:var(--dim)}.lbcredit{color:var(--dim);font-size:12px;margin-top:-4px}
+.lf{display:block;margin-top:3px;font-size:11px;color:var(--accent,#a78bfa);text-decoration:none;word-break:break-word}a.lf:hover{text-decoration:underline}.cr b{font-weight:650}.cr .lic{color:var(--dim);font-size:12px}.cr .what{color:var(--dim)}.lbcredit{color:var(--dim);font-size:12px;margin-top:-4px}
 </style></head><body>
 <header><div><div class="brand">ASSSETS</div><h1 id="title"></h1><div class="sub" id="sub"></div></div><div class="spacer"></div>
 <a class="filter" id="summary" target="_blank" hidden>Round summary (PDF)</a><button class="filter" id="creditsBtn" hidden>Credits</button><button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
@@ -219,7 +219,7 @@ a.download=(M.title+' feedback'+(out.reviewer?' - '+out.reviewer:'')).replace(/[
 if(M.summary){const a=$('summary');a.href=encodeURI(M.summary);a.hidden=false}
 if(M.credits&&M.credits.length){const b=$('creditsBtn');b.hidden=false;b.textContent='Credits ('+M.credits.length+')';
 $('creditsSub').textContent='Images in this gallery by other people or agencies, and how they are licensed. Keep these credits with any use.';
-M.credits.forEach(c=>{const r=document.createElement('div');r.className='cr';const a=document.createElement('b');a.textContent=c.credit;const l=document.createElement('div');l.className='lic';l.textContent=c.license;
+M.credits.forEach(c=>{const r=document.createElement('div');r.className='cr';const a=document.createElement('b');a.textContent=c.credit;const l=document.createElement('div');l.className='lic';l.textContent=c.license;(c.files||[]).forEach(f=>{const e=document.createElement(f.href?'a':'div');e.className='lf';e.textContent='\u{1F4CE} '+f.name;if(f.href){e.href=f.href;e.target='_blank'}l.appendChild(e)});
 const w=document.createElement('div');w.className='what';w.textContent=c.titles.join(', ');r.append(a,l,w);$('creditRows').appendChild(r)});
 b.onclick=()=>{const on=$('credits').classList.toggle('on');b.classList.toggle('on',on);if(on)$('credits').scrollIntoView({behavior:'smooth'})};
 if(q.get('demo')==='credits'){$('credits').classList.add('on');b.classList.add('on')}}

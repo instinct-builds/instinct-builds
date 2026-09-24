@@ -231,6 +231,12 @@ jobs:
           cp "$SUP/demo-rights-report.csv" "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt"; head -3 "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt"
           grep -q 'Harbor Night' "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt" || { echo "rights report CSV is missing rows"; exit 1; }
           shoot rights-alerts 1920x1200 rights-alerts
+          grep -q 'License files' "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt" && grep -q 'NL-20417 order confirmation.pdf' "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt" || { echo "rights report CSV does not list license files"; exit 1; }
+          grep -q '"files":\[' "$SC/index.html" || { echo "gallery credits do not name license files"; exit 1; }
+          ls -l "$SUP/Licenses" | tee "ASSSETS-$ASSSETS_VERSION-licenses-listing.txt"; test "$(ls "$SUP/Licenses" | wc -l)" -ge 3 || { echo "license files were not stored"; exit 1; }
+          shoot license-files 1920x1200 license-files
+          shoot rights-presets 1920x1200 rights-presets
+          shoot export-guard 1920x1200 export-guard
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"
@@ -271,6 +277,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-licenses-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-round-summary.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-share-round-listing.txt

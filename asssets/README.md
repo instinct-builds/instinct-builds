@@ -778,6 +778,13 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   Include Credits Page in the board Export menu.
 - Logic and tests: `Rights.swift`, `RightsTests.swift`.
 
+## 1.27.0: license files and rights presets
+
+- **License files.** Attach the paperwork behind a license (order PDF, receipt, email export) to one asset or a whole selection: use the button in the Rights section or drop files onto it. ASSSETS keeps a copy in the library, so the original can move. Click a file to open it in Quick Look. In the batch inspector, each file shows how many of the selected assets it's attached to, with "Add to all".
+- **In reports and bundles.** The Rights Report lists each asset's license files in the PDF and in a "License files" CSV column. Exporting a report also copies the files into a folder next to it. Gallery, round summary and credits pages name the files on record. Galleries only include the files themselves when you turn on "Include License Files in Galleries", because license paperwork can carry prices.
+- **Rights presets.** Save an asset's rights, or the fields a selection shares, as a preset with its license files, then apply it with one click from the chips at the top of the Rights section. A preset can set the end date 1-3 years from the day it's applied. The credit supports {title} and {n}.
+- **Export guard.** Sharing, exporting (files, presets, boards), contact sheets and galleries now all check rights first. A sheet lists what's expired or editorial-only and offers Cancel, "Leave Out N" (go ahead with only the cleared assets) or "Export Anyway".
+
 ## 1.26.0: bulk rights, renewals and the rights report
 
 - Select several assets and the inspector shows RIGHTS for all of them.
