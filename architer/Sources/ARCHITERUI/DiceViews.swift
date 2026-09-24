@@ -142,6 +142,10 @@ public struct DiceRollerView: View {
                         .foregroundStyle(Theme.inkMuted)
                 }
                 Spacer()
+                // 2.45.0 auto-log: every roll also lands in the journal.
+                Toggle("Journal", isOn: $model.autoLogRollsToJournal)
+                    .controlSize(.small)
+                    .help("Automatically add every roll to the journal")
                 Button("Copy") { model.copyRollsToPasteboard(visibleHistory) }
                     .controlSize(.small)
                     .disabled(visibleHistory.isEmpty)
@@ -354,13 +358,16 @@ struct RollCard: View {
                         }
                     }
             }
-            Button {
-                model.addRollToJournal(roll)
-            } label: { Image(systemName: "square.and.pencil") }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.inkFaint)
-                .help("Add this roll to the journal")
-                .disabled(model.selected == nil)
+            // 2.45.0: with auto-log on the roll is already journaled.
+            if !model.autoLogRollsToJournal {
+                Button {
+                    model.addRollToJournal(roll)
+                } label: { Image(systemName: "square.and.pencil") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.inkFaint)
+                    .help("Add this roll to the journal")
+                    .disabled(model.selected == nil)
+            }
             if let alt = roll.alternateTotal {
                 Text("\(alt)")
                     .font(Theme.Typeface.caption.monospacedDigit())

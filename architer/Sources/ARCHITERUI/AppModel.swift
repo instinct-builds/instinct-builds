@@ -79,6 +79,17 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let compactPDFSessionLogRangeKey = "architer.compactPDFSessionLogRange"
+    /// Auto-log rolls to the journal (2.45.0): when on, every roll that
+    /// lands in history also lands in the selected character's journal,
+    /// making the journal a true session record. Off by default; the
+    /// per-card pencil hides while it is on (the roll is already there).
+    @Published public var autoLogRollsToJournal: Bool =
+        UserDefaults.standard.bool(forKey: AppModel.autoLogRollsToJournalKey) {
+        didSet {
+            UserDefaults.standard.set(autoLogRollsToJournal, forKey: AppModel.autoLogRollsToJournalKey)
+        }
+    }
+    private static let autoLogRollsToJournalKey = "architer.autoLogRollsToJournal"
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
     @Published public var showCompendium = false
@@ -244,6 +255,7 @@ public final class AppModel: ObservableObject {
         rollHistory.insert(r, at: 0)
         if rollHistory.count > 200 { rollHistory.removeLast(rollHistory.count - 200) }
         rollHistoryStore.save(rollHistory)
+        if autoLogRollsToJournal { addRollToJournal(r) }
     }
 
     public func roll(_ expression: String) {

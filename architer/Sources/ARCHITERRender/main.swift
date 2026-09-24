@@ -47,6 +47,9 @@ func renderPNG<V: View>(_ view: V, width: CGFloat, name: String, outDir: String,
 func run(model: AppModel, character: Character, outDir: String) {
     // Seed roll history so the dice render and the sheet's inline dice block
     // exercise the roll cards (kept/dropped chips, advantage, crit glow).
+    // 2.45.0 proof: auto-log on - all 12 rolls below also land in the
+    // journal, so the exported PDF gains a JOURNAL section.
+    model.autoLogRollsToJournal = true
     model.roll("4d6kh3")
     model.roll("2d6+3")
     model.rollCheck("Stealth check", bonus: 7, mode: .advantage)

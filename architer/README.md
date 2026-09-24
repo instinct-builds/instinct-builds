@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.45.0
+
+- **Auto-log rolls to the journal**: a Journal toggle in the dice history
+  header makes every roll that lands in history also land in the selected
+  character's journal - a true session record. While it is on, the
+  per-card journal pencil hides (the roll is already there). Persisted,
+  off by default.
+
 ## What's in 2.44.0
 
 - **Session-log Markdown export**: File > Export Session Log (Markdown)
