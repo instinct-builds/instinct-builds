@@ -196,12 +196,6 @@ func run(model: AppModel, character: Character, outDir: String) {
                                    groups: groupRollsByDay(Array(logRolls.reversed())))
     try? logMd.write(to: URL(fileURLWithPath: "\(outDir)/session-log.md"),
                      atomically: true, encoding: .utf8)
-    // 2.66.0 proof: the journal-timestamp export option - the same
-    // sheet's markdown with per-entry times dropped (the pristine
-    // sample-sheet.md above keeps the default and stays byte-stable).
-    try? SheetExporter.exportMarkdown(character, journalTimestamps: false)
-        .write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-notime.md"),
-               atomically: true, encoding: .utf8)
     // 2.49.0 proof: digest the newest session into the journal as one
     // entry - the recap below then carries it, titled by the session.
     if let session = sessionSegments(model.rollHistory).first {
@@ -343,6 +337,17 @@ func run(model: AppModel, character: Character, outDir: String) {
                              rolls: model.rollHistory)
     try? recap.write(to: URL(fileURLWithPath: "\(outDir)/session-recap.txt"),
                      atomically: true, encoding: .utf8)
+    // 2.66.0 proof: the journal-timestamp option on a journal that
+    // actually carries stamps - the same journal exported with the
+    // default stamped heads and with times dropped.
+    if let sel = model.selected?.wrappedValue {
+        try? SheetExporter.exportMarkdown(sel)
+            .write(to: URL(fileURLWithPath: "\(outDir)/journal-withtime.md"),
+                   atomically: true, encoding: .utf8)
+        try? SheetExporter.exportMarkdown(sel, journalTimestamps: false)
+            .write(to: URL(fileURLWithPath: "\(outDir)/journal-notime.md"),
+                   atomically: true, encoding: .utf8)
+    }
     let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
     try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))
     // 2.34.0 proof: compact export with zero-quantity rows collapsed.
