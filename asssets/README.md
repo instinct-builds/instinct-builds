@@ -752,3 +752,28 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   one. Arrows between copied cards come along. Pasting on the same board
   steps down and right each time.
 - Logic and tests: `BoardFollow.swift`, `BoardFollowTests.swift`.
+
+## 1.25.0: usage rights and credits
+
+- The inspector has a RIGHTS section: license (Own work, Licensed,
+  Client-supplied, Editorial-only), credit line, source, allowed uses and
+  an optional end date. A chip shows where it stands: Rights OK, Rights
+  end in N days, Rights expired, Editorial only or No rights info. Save
+  Rights (⌘↩) stores it and writes it to the file's .xmp sidecar
+  (photoshop:Credit, dc:source, xmpRights:UsageTerms and Marked, plus
+  asssets:License and asssets:RightsExpires). Everything else in an
+  existing sidecar is kept. Files that arrive with these fields fill in
+  their rights on import.
+- New smart collections: Rights Expiring (ends within 30 days), Rights
+  Expired and No Rights Info. They are added once to new and existing
+  libraries; deleting one keeps it deleted. Smart rules can also filter
+  on rights.
+- Batch export, contact sheets, review galleries and Share Round ask
+  first when an asset is expired or editorial-only, listing each one.
+  Adding such an asset to a board says so, and board cards that use one
+  show a red chip. Click the chip to open the asset.
+- Credits: review galleries get a Credits button and panel, and each
+  image shows its credit in the lightbox. Round summary PDFs end with a
+  credits list, and contact sheets get a credits page. Turn it off with
+  Include Credits Page in the board Export menu.
+- Logic and tests: `Rights.swift`, `RightsTests.swift`.

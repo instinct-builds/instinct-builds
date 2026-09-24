@@ -10,10 +10,12 @@ public struct FileMetadata: Equatable, Sendable {
     /// 1-5 stars; -1 means rejected (Lightroom and Bridge convention); nil when absent.
     public var rating: Int?
     public var label: ColorLabel?
-    public init(title: String? = nil, keywords: [String] = [], rating: Int? = nil, label: ColorLabel? = nil) {
-        self.title = title; self.keywords = keywords; self.rating = rating; self.label = label
+    /// Usage rights and credit (1.25).
+    public var rights: UsageRights?
+    public init(title: String? = nil, keywords: [String] = [], rating: Int? = nil, label: ColorLabel? = nil, rights: UsageRights? = nil) {
+        self.title = title; self.keywords = keywords; self.rating = rating; self.label = label; self.rights = rights
     }
-    public var isEmpty: Bool { (title ?? "").isEmpty && keywords.isEmpty && rating == nil && label == nil }
+    public var isEmpty: Bool { (title ?? "").isEmpty && keywords.isEmpty && rating == nil && label == nil && (rights?.isEmpty ?? true) }
 
     /// Fills gaps from another source (sidecar first, then embedded XMP, then IPTC).
     public func filling(from other: FileMetadata) -> FileMetadata {
@@ -22,6 +24,7 @@ public struct FileMetadata: Equatable, Sendable {
         for k in other.keywords where !m.keywords.contains(where: { $0.caseInsensitiveCompare(k) == .orderedSame }) { m.keywords.append(k) }
         if m.rating == nil { m.rating = other.rating }
         if m.label == nil { m.label = other.label }
+        if m.rights?.isEmpty ?? true { m.rights = other.rights }
         return m
     }
 }
@@ -52,7 +55,21 @@ public enum XmpMetadata {
             m.rating = n < 0 ? -1 : (n == 0 ? nil : min(5, n))
         }
         m.label = value("xmp:Label", in: xmp).flatMap(label(named:))
+        m.rights = rights(in: xmp)
         return m
+    }
+
+    /// Credit (photoshop:Credit), allowed uses (xmpRights:UsageTerms), source (dc:source, photoshop:Source),
+    /// license and end date (asssets:License, asssets:RightsExpires). A copyright notice (dc:rights) fills an empty credit.
+    static func rights(in xmp: String) -> UsageRights? {
+        let credit = value("photoshop:Credit", in: xmp) ?? listItems(in: element("dc:rights", in: xmp) ?? "").first ?? ""
+        let uses = listItems(in: element("xmpRights:UsageTerms", in: xmp) ?? "").first ?? value("xmpRights:UsageTerms", in: xmp) ?? ""
+        let source = value("dc:source", in: xmp) ?? value("photoshop:Source", in: xmp) ?? ""
+        var license = value("asssets:License", in: xmp).flatMap(RightsLicense.named)
+        if license == nil, let marked = value("xmpRights:Marked", in: xmp)?.lowercased(), marked == "true" { license = .licensed }
+        let r = UsageRights(license: license ?? .own, source: source, credit: credit, uses: uses,
+                            expires: value("asssets:RightsExpires", in: xmp))
+        return r.isEmpty ? nil : r
     }
 
     /// Value of a simple property written either as an attribute (prop="v") or an element (<prop>v</prop>).
@@ -167,6 +184,14 @@ public enum XmpMetadata {
         }
         if let r = m.rating { out += "\n   <xmp:Rating>\(r)</xmp:Rating>" }
         if let l = m.label { out += "\n   <xmp:Label>\(l.name)</xmp:Label>" }
+        if let r = m.rights, !r.isEmpty {
+            out += "\n   <asssets:License>\(escape(r.license.rawValue))</asssets:License>"
+            if r.license != .own { out += "\n   <xmpRights:Marked>True</xmpRights:Marked>" }
+            if !r.credit.isEmpty { out += "\n   <photoshop:Credit>\(escape(r.credit))</photoshop:Credit>" }
+            if !r.source.isEmpty { out += "\n   <dc:source>\(escape(r.source))</dc:source>" }
+            if !r.uses.isEmpty { out += "\n   <xmpRights:UsageTerms><rdf:Alt><rdf:li xml:lang=\"x-default\">\(escape(r.uses))</rdf:li></rdf:Alt></xmpRights:UsageTerms>" }
+            if let e = r.expires { out += "\n   <asssets:RightsExpires>\(e)</asssets:RightsExpires>" }
+        }
         return out
     }
 
@@ -176,7 +201,7 @@ public enum XmpMetadata {
         <?xpacket begin="\u{FEFF}" id="W5M0MpCehiHzreSzNTczkc9d"?>
         <x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="ASSSETS">
          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-          <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">\(fields(m))
+          <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/"\(rightsNamespaces(m))>\(fields(m))
           </rdf:Description>
          </rdf:RDF>
         </x:xmpmeta>
@@ -184,11 +209,20 @@ public enum XmpMetadata {
         """
     }
 
+    static let rightsNS: [(String, String)] = [("photoshop", "http://ns.adobe.com/photoshop/1.0/"), ("xmpRights", "http://ns.adobe.com/xap/1.0/rights/"),
+                                               ("asssets", "https://asssets.app/ns/1.0/")]
+    static func rightsNamespaces(_ m: FileMetadata, skipping tag: String = "") -> String {
+        guard let r = m.rights, !r.isEmpty else { return "" }
+        return rightsNS.filter { !tag.contains("xmlns:\($0.0)=") }.map { " xmlns:\($0.0)=\"\($0.1)\"" }.joined()
+    }
+
     /// Replaces title, keywords, rating and label in an existing sidecar and keeps everything else
     /// (develop settings, camera data, other namespaces). Falls back to a fresh packet if it can't find a description.
     public static func update(_ existing: String, with m: FileMetadata) -> String {
         var s = existing
-        for name in ["dc:title", "dc:subject", "xmp:Rating", "xmp:Label"] {
+        // Rights fields are only replaced when ASSSETS has rights to write, so credits another app wrote survive.
+        let rightsNames = (m.rights?.isEmpty ?? true) ? [] : ["asssets:License", "asssets:RightsExpires", "photoshop:Credit", "dc:source", "xmpRights:UsageTerms", "xmpRights:Marked"]
+        for name in ["dc:title", "dc:subject", "xmp:Rating", "xmp:Label"] + rightsNames {
             while let open = s.range(of: "<" + name + ">") ?? s.range(of: "<" + name + " "),
                   let close = s.range(of: "</" + name + ">", range: open.upperBound..<s.endIndex) {
                 var lo = open.lowerBound
@@ -211,6 +245,7 @@ public enum XmpMetadata {
         var tag = String(s[open.lowerBound..<(selfClosing ? s.index(before: gt) : gt)])
         if !tag.contains("xmlns:dc=") { tag += " xmlns:dc=\"http://purl.org/dc/elements/1.1/\"" }
         if !tag.contains("xmlns:xmp=") { tag += " xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"" }
+        tag += rightsNamespaces(m, skipping: tag)
         tagEnd = s.index(after: gt)
         let replacement = tag + ">" + fields(m) + (selfClosing ? "\n  </rdf:Description>" : "")
         s.replaceSubrange(open.lowerBound..<tagEnd, with: replacement)
@@ -240,6 +275,7 @@ extension StudioCatalog {
             else { assets[i].rating = min(5, r) }
         }
         if assets[i].label == nil, let l = m.label { assets[i].label = l }
+        if assets[i].rights == nil, let r = m.rights, !r.isEmpty { assets[i].rights = r }
         return assets[i] != before
     }
 
@@ -248,7 +284,7 @@ extension StudioCatalog {
         guard let a = assets.first(where: { $0.id == id }) else { return nil }
         let rejected = a.tags.contains(Self.rejectTag)
         return FileMetadata(title: a.title, keywords: a.tags.filter { !Self.isSystemTag($0) && $0 != Self.rejectTag },
-                            rating: rejected ? -1 : (a.rating > 0 ? a.rating : nil), label: a.label)
+                            rating: rejected ? -1 : (a.rating > 0 ? a.rating : nil), label: a.label, rights: a.rights)
     }
 
     /// Every keyword with how many assets carry it, most used first.

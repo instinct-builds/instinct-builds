@@ -214,6 +214,16 @@ jobs:
           shoot board-updated 1920x1200 board-updated
           shoot inspector-on-boards 1920x1200 inspector-on-boards
           shoot board-paste 1920x1200 board-paste
+          shoot rights-inspector 1920x1200 rights-inspector
+          shoot rights-expiring 1920x1200 rights-expiring
+          shoot board-rights 1920x1200 board-rights
+          shoot share-credits 1920x1200 share-credits demo-share-credits/gallery-done.txt
+          SC=$(ls -d "$SUP/demo-share-credits/"*Review | head -1); grep -q '"credits":\[' "$SC/index.html" || { echo "gallery has no credits"; exit 1; }
+          grep -q 'Lena Ortiz' "$SC/index.html" || { echo "gallery credits missing Northlight line"; exit 1; }
+          ls "$HOME/Pictures/Client Drops/" | tee "ASSSETS-$ASSSETS_VERSION-rights-drop.txt"; cat "$HOME/Pictures/Client Drops/Northlight Lobby.xmp" | tee "ASSSETS-$ASSSETS_VERSION-rights-sidecar.xmp.txt"; grep -q 'photoshop:Credit' "ASSSETS-$ASSSETS_VERSION-rights-sidecar.xmp.txt"
+          SCU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$SC/index.html")
+          "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-credits.png" "$SCU?demo=credits" || true
+          test -s "ASSSETS-$ASSSETS_VERSION-gallery-credits.png"
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"

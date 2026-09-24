@@ -66,6 +66,8 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     public var rating = 0
     /// Color label (1.11).
     public var label: ColorLabel? = nil
+    /// Usage rights and credit (1.25); nil when nobody entered any.
+    public var rights: UsageRights? = nil
 
     public init(id: UUID = UUID(), title: String, kind: MediaKind, tags: [String], collection: String,
                 palette: [String], seed: Int, favorite: Bool = false, importedPath: String? = nil,
@@ -75,7 +77,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         self.resolution = resolution; self.sourceKey = sourceKey
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label }
+    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -96,6 +98,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         unstacked = try c.decodeIfPresent(Bool.self, forKey: .unstacked) ?? false
         rating = min(5, max(0, try c.decodeIfPresent(Int.self, forKey: .rating) ?? 0))
         label = try? c.decodeIfPresent(ColorLabel.self, forKey: .label)
+        rights = try? c.decodeIfPresent(UsageRights.self, forKey: .rights)
     }
 
     /// Auto tags still waiting for the user: not already a real tag, not dismissed.
@@ -132,6 +135,8 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var smartCollections: [StudioSmartCollection] = []
     /// Whether the starter smart collections were offered already.
     public var smartSeeded = false
+    /// Whether the rights smart collections (1.25) were added already.
+    public var rightsSeeded = false
     /// Folders ASSSETS watches for new files (1.2). New files land in the Inbox collection.
     public var watchFolders: [String] = []
     /// Grid sort per collection or smart collection (1.12); missing means date added.
@@ -143,7 +148,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     /// Board templates the user saved (1.22). The built-in ones live in code, see `BoardTemplate.builtIns`.
     public var templates: [BoardTemplate] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, watchFolders, viewSorts, recentColors, boards, templates }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -153,6 +158,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         dismissedKeys = try c.decodeIfPresent([String].self, forKey: .dismissedKeys) ?? []
         smartCollections = try c.decodeIfPresent([StudioSmartCollection].self, forKey: .smartCollections) ?? []
         smartSeeded = try c.decodeIfPresent(Bool.self, forKey: .smartSeeded) ?? false
+        rightsSeeded = try c.decodeIfPresent(Bool.self, forKey: .rightsSeeded) ?? false
         watchFolders = try c.decodeIfPresent([String].self, forKey: .watchFolders) ?? []
         viewSorts = ((try? c.decodeIfPresent([String: String].self, forKey: .viewSorts)) ?? [:]).compactMapValues(AssetSort.init(rawValue:))
         recentColors = ((try? c.decodeIfPresent([String].self, forKey: .recentColors)) ?? []).compactMap(ColorSearch.normalize)

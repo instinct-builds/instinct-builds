@@ -88,6 +88,7 @@ enum Theme {
     static let hairline = Color.white.opacity(0.085)
     static let smart = Color(red: 0.36, green: 0.82, blue: 0.95)
     static let warning = Color(red: 1.0, green: 0.72, blue: 0.28)
+    static let danger = Color(red: 0.95, green: 0.3, blue: 0.33)
     static let watch = Color(red: 0.45, green: 0.9, blue: 0.62)
     static let backdrop = LinearGradient(colors: [Color(red: 0.045, green: 0.05, blue: 0.08), Color(red: 0.075, green: 0.05, blue: 0.115)], startPoint: .top, endPoint: .bottom)
     static let sidebar = LinearGradient(colors: [Color(red: 0.04, green: 0.043, blue: 0.07), Color(red: 0.03, green: 0.032, blue: 0.05)], startPoint: .top, endPoint: .bottom)
@@ -145,6 +146,12 @@ final class StudioLibrary: ObservableObject {
     @Published var savingTemplate: UUID?
     /// Client feedback read but not applied yet (1.23): the import preview sheet shows it.
     @Published var pendingFeedback: PendingFeedback?
+    /// Warning shown before expired or editorial-only assets go into client work (1.25).
+    @Published var rightsWarning: RightsWarning?
+    /// Add a credits page to galleries, round summaries and contact sheets (1.25).
+    @Published var includeCredits = UserDefaults.standard.object(forKey: "includeCredits") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(includeCredits, forKey: "includeCredits") }
+    }
     /// Cards copied with ⌘C on a board (1.24); ⌘V pastes them on any board.
     @Published var cardClipboard: BoardClipboard?
     @Published var threadCard: UUID?
@@ -202,10 +209,11 @@ final class StudioLibrary: ObservableObject {
 
     var pickIDs: [UUID] { catalog.assets.filter { $0.tags.contains(StudioCatalog.pickTag) }.map(\.id) }
 
-    func openPresetExport(_ ids: [UUID]? = nil, title: String? = nil) {
+    func openPresetExport(_ ids: [UUID]? = nil, title: String? = nil, checked: Bool = false) {
         let list = ids ?? (selection.isEmpty ? [] : filtered.map(\.id).filter(selection.contains))
         let usable = list.filter { id in catalog.assets.first { $0.id == id }?.kind != .audio }
         guard !usable.isEmpty else { flash("Select images, textures, vectors or mockups to export"); return }
+        if !checked { guardRights(usable, action: "Export") { self.openPresetExport(usable, title: title, checked: true) }; return }
         presetExport = PresetExportState(ids: usable, title: title ?? (usable.count == 1 ? "1 asset" : "\(usable.count) assets"))
     }
 
@@ -270,12 +278,18 @@ final class StudioLibrary: ObservableObject {
     @Published var galleryRunning = false
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
-    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil) {
+    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil, checked: Bool = false) {
         let galleryID = UUID().uuidString, boardID = board?.layout.id
         let list = ids ?? filtered.map(\.id).filter(selection.contains)
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = list.compactMap { byID[$0] }.filter { $0.kind != .audio }
         guard !assets.isEmpty else { flash("Select images, textures, vectors, mockups or clips for a gallery"); return }
+        if fixedDir == nil, !checked {
+            let fixedList = assets.map(\.id)
+            guardRights(fixedList, action: "Share gallery") { self.exportGallery(fixedList, title: title, to: nil, board: board, summaryPDF: summaryPDF, checked: true) }
+            return
+        }
+        let creditLines = credits(assets.map(\.id))
         let name = title ?? (selection.count > 1 || ids != nil ? browsingTitle : "Review")
         var parent = fixedDir
         if parent == nil {
@@ -308,8 +322,10 @@ final class StudioLibrary: ObservableObject {
                 }
                 guard MediaRenderer.writePreset(img, output: sized(2000), to: folder.appendingPathComponent("images/\(stem).jpg")),
                       MediaRenderer.writePreset(img, output: sized(640), to: folder.appendingPathComponent("thumbs/\(stem).jpg")) else { continue }
-                items.append(.init(id: a.id.uuidString, title: a.title, kind: a.kind.singular, resolution: a.resolution, palette: a.palette,
-                                   tags: a.tags, image: "images/\(stem).jpg", thumb: "thumbs/\(stem).jpg"))
+                var item = ReviewGallery.Item(id: a.id.uuidString, title: a.title, kind: a.kind.singular, resolution: a.resolution, palette: a.palette,
+                                              tags: a.tags, image: "images/\(stem).jpg", thumb: "thumbs/\(stem).jpg")
+                if let c = a.rights?.credit.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { item.credit = c }
+                items.append(item)
             }
             var boardView: ReviewGallery.Board?
             if let board, (try? board.png.write(to: folder.appendingPathComponent("board.png"))) != nil {
@@ -318,7 +334,8 @@ final class StudioLibrary: ObservableObject {
             }
             var summaryName: String?
             if let summaryPDF, (try? fm.copyItem(at: summaryPDF, to: folder.appendingPathComponent("round-summary.pdf"))) != nil { summaryName = "round-summary.pdf" }
-            let manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView, summary: summaryName)
+            var manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView, summary: summaryName)
+            if !creditLines.isEmpty { manifest.credits = creditLines }
             let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
             // A zip next to the folder, ready to send.
             let zip = parent.appendingPathComponent(folderName + ".zip")
@@ -585,6 +602,7 @@ final class StudioLibrary: ObservableObject {
             c.seedSmartCollections()
         }
         enrichStarterMetadata(&c, userFilesOnly: true)
+        c.seedRightsCollections()
         catalog = c
         save()
         focusID = catalog.assets.first?.id
@@ -727,7 +745,7 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// Writes "<name>.xmp" next to each of the user's files. Existing sidecars keep everything but our four fields.
-    func writeMetadata(_ ids: Set<UUID>) {
+    func writeMetadata(_ ids: Set<UUID>, quiet: Bool = false) {
         let fm = FileManager.default
         var written = 0, skipped = 0, failed = 0
         for a in catalog.assets where ids.contains(a.id) {
@@ -736,6 +754,7 @@ final class StudioLibrary: ObservableObject {
             let text = (try? String(contentsOfFile: side, encoding: .utf8)).map { XmpMetadata.update($0, with: m) } ?? XmpMetadata.packet(m)
             if (try? text.write(toFile: side, atomically: true, encoding: .utf8)) != nil { written += 1 } else { failed += 1 }
         }
+        if quiet { return }
         var msg = written == 0 ? "No sidecars written" : "Wrote \(written) .xmp sidecar\(written == 1 ? "" : "s"). Originals untouched."
         if skipped > 0 { msg += " \(skipped) bundled or missing skipped." }
         if failed > 0 { msg += " \(failed) could not be written." }
@@ -1066,16 +1085,18 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// Renders the PDF to a temp file and opens the preview sheet; saving happens from there.
-    func openContactSheet(ids: [UUID], title: String) {
+    func openContactSheet(ids: [UUID], title: String, checked: Bool = false) {
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = ids.compactMap { byID[$0] }
         guard !assets.isEmpty else { flash("Nothing to put on a contact sheet"); return }
+        if !checked { guardRights(ids, action: "Contact sheet") { self.openContactSheet(ids: ids, title: title, checked: true) }; return }
+        let creditLines = credits(assets.map(\.id))
         flash("Laying out \(assets.count) assets…")
         Task { @MainActor in
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-sheet/\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let url = dir.appendingPathComponent(DragOut.safeName(title + " Contact Sheet") + ".pdf")
-            let ok = await ContactSheetRenderer.render(title: title, assets: assets, to: url)
+            let ok = await ContactSheetRenderer.render(title: title, assets: assets, to: url, credits: creditLines)
             guard ok else { flash("Could not render the contact sheet"); return }
             sheetPreview = SheetPreview(title: title, ids: assets.map(\.id), pdf: url)
         }
@@ -1498,7 +1519,7 @@ final class StudioLibrary: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         let demo = value("-asssets-demo")
-        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" && demo != "board-templates" && demo != "board-template" && demo != "share-round" && demo != "feedback-preview" && demo != "feedback-imported" && demo != "board-arrange" && demo != "board-arrange-before" && demo != "board-versions-follow" && demo != "board-updated" && demo != "board-paste" }
+        if demo != nil { isDemo = true; showInspector = demo != "focus" && demo != "board-edit" && demo != "board-annotate" && demo != "board-crop" && demo != "present-annotate" && demo != "board-review" && demo != "board-versions" && demo != "board-thread" && demo != "board-status" && demo != "board-templates" && demo != "board-template" && demo != "share-round" && demo != "feedback-preview" && demo != "feedback-imported" && demo != "board-arrange" && demo != "board-arrange-before" && demo != "board-versions-follow" && demo != "board-updated" && demo != "board-paste" && demo != "rights-expiring" && demo != "board-rights" && demo != "share-credits" }
         if demo != nil { UserDefaults.standard.set(demo == "watch" ? "MEDIA|SMART COLLECTIONS" : demo == "keywords" ? "COLLECTIONS|SMART COLLECTIONS" : "", forKey: SidebarSections.key) }
         switch demo {
         case "batch":
@@ -1983,6 +2004,60 @@ final class StudioLibrary: ObservableObject {
                 show(board: id)
                 boardSelection = []
             }
+        case "rights-inspector", "rights-expiring", "board-rights", "share-credits":
+            // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
+            // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
+            let fm = FileManager.default
+            let drop = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Client Drops", isDirectory: true)
+            try? fm.removeItem(at: drop)
+            try? fm.createDirectory(at: drop, withIntermediateDirectories: true)
+            let files: [(String, String)] = [("marble-veins-texture.png", "Northlight Lobby.png"), ("cork-board-texture.png", "Atrium Cork Wall.png"),
+                                             ("night-grid-4k.png", "Harbor Night.png"), ("cosmetic-plinth-mockup.png", "Plinth Campaign.png"),
+                                             ("terrazzo-texture.png", "Wire Terrazzo.png"), ("device-stage-mockup.png", "Stage Mockup.png")]
+            for (src, dst) in files where fm.fileExists(atPath: starterRoot.appendingPathComponent(src).path) {
+                try? fm.copyItem(at: starterRoot.appendingPathComponent(src), to: drop.appendingPathComponent(dst))
+            }
+            watch([drop.path])
+            scanWatchFolders()
+            let all = catalog.assets
+            func find(_ f: String) -> StudioAsset? { all.first { $0.importedPath?.hasSuffix(f) == true } }
+            func inDays(_ d: Int) -> String { UsageRights.day(Calendar.current.date(byAdding: .day, value: d, to: Date()) ?? Date()) }
+            let rights: [(String, UsageRights)] = [
+                ("Northlight Lobby.png", UsageRights(license: .licensed, source: "Northlight Images · order NL-20417", credit: "Photo: Lena Ortiz / Northlight",
+                                                     uses: "Web, social and print pitch decks", expires: inDays(12))),
+                ("Atrium Cork Wall.png", UsageRights(license: .licensed, source: "Northlight Images · order NL-20417", credit: "Photo: Sam Reyes / Northlight",
+                                                     uses: "Web and social", expires: inDays(26))),
+                ("Harbor Night.png", UsageRights(license: .licensed, source: "Harbor Stock", credit: "Harbor Stock / K. Maru", uses: "Web only", expires: inDays(-9))),
+                ("Plinth Campaign.png", UsageRights(license: .client, source: "Maison Vale brand team", credit: "Courtesy of Maison Vale", uses: "This campaign only")),
+                ("Wire Terrazzo.png", UsageRights(license: .editorial, source: "Wirepress", credit: "Photo: Dev Arora / Wirepress", uses: "News and commentary only")),
+            ]
+            for (f, r) in rights { if let a = find(f) { setRights(r, for: [a.id]) } }
+            var id = UUID()
+            mutate { c in
+                id = c.createBoard(named: "Hotel Pitch")
+                _ = c.updateBoard(id) { b in
+                    b.addHeading("Hotel pitch · lobby and atrium", at: (x: 40, y: 20))
+                    let place: [(String, Double, Double, Double)] = [("Northlight Lobby.png", 40, 130, 330), ("Harbor Night.png", 410, 130, 430),
+                                                                     ("Wire Terrazzo.png", 880, 130, 300), ("Plinth Campaign.png", 40, 520, 330),
+                                                                     ("Atrium Cork Wall.png", 410, 520, 300)]
+                    for (f, x, y, w) in place { if let a = find(f) { _ = b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y)) } }
+                }
+            }
+            switch demo {
+            case "rights-inspector":
+                show(collection: StudioCatalog.inboxCollection)
+                if let a = find("Northlight Lobby.png") { selection = [a.id]; focusID = a.id }
+            case "rights-expiring":
+                if let smart = catalog.smartCollections.first(where: { $0.name == "Rights Expiring" }) { show(smart: smart.id) }
+            case "board-rights":
+                show(board: id)
+            default:
+                show(board: id)
+                let out = supportRoot.appendingPathComponent("demo-share-credits", isDirectory: true)
+                try? fm.removeItem(at: out)
+                try? fm.createDirectory(at: out, withIntermediateDirectories: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
+            }
         case "board-thread", "board-status":
             let (id, stage) = makeDemoApproval()
             show(board: id)
@@ -2083,7 +2158,12 @@ extension StudioLibrary {
         // Empty template slots fill first (1.22).
         mutate("Add to Board") { n = $0.placeOnBoard(id, assets: ordered, at: point) }
         let name = catalog.board(id)?.name ?? "board"
-        flash(n == 0 ? "Already on \(name)" : "Added \(n) to \(name)")
+        let issues = n == 0 ? [] : catalog.rightsIssues(ordered)
+        if let first = issues.first {
+            flash("Added \(n) to \(name) · \(issues.count == 1 ? first.title + ": " + first.status.label.lowercased() : "\(issues.count) have expired or editorial-only rights")")
+        } else {
+            flash(n == 0 ? "Already on \(name)" : "Added \(n) to \(name)")
+        }
     }
 
     func newBoard(fromTemplate tid: UUID) {
@@ -2105,11 +2185,15 @@ extension StudioLibrary {
     }
 
     /// Share Round (1.22): the board's review gallery with the round summary PDF inside the same zip.
-    func shareRound(_ id: UUID, to fixedDir: URL? = nil) {
+    func shareRound(_ id: UUID, to fixedDir: URL? = nil, checked: Bool = false) {
+        if fixedDir == nil, !checked, let b = catalog.board(id) {
+            guardRights(b.items.compactMap(\.assetID), action: "Share Round") { self.shareRound(id, to: nil, checked: true) }
+            return
+        }
         let pdf = FileManager.default.temporaryDirectory.appendingPathComponent("round-summary-\(UUID().uuidString).pdf")
         Task { @MainActor in
             guard await self.writeRoundSummary(id, to: pdf) != nil else { self.flash("Couldn't make the round summary"); return }
-            self.shareBoardGallery(id, to: fixedDir, summaryPDF: pdf)
+            self.shareBoardGallery(id, to: fixedDir, summaryPDF: pdf, checked: true)
         }
     }
 
@@ -2125,6 +2209,23 @@ extension StudioLibrary {
         if selectedBoard == id { show(collection: StudioCatalog.allAssets) }
         flash("Deleted \(name) · ⌘Z to undo")
     }
+
+    /// Runs `proceed` right away when every asset is cleared for use; otherwise asks first (1.25).
+    func guardRights(_ ids: [UUID], action: String, proceed: @escaping () -> Void) {
+        let issues = catalog.rightsIssues(ids)
+        if issues.isEmpty { proceed() } else { rightsWarning = RightsWarning(action: action, issues: issues, proceed: proceed) }
+    }
+
+    /// Saves usage rights and writes them to the sidecar of the user's own files.
+    func setRights(_ r: UsageRights?, for ids: Set<UUID>) {
+        var n = 0
+        mutate("Edit Rights") { n = $0.setRights(r, for: ids) }
+        guard n > 0 else { return }
+        writeMetadata(ids, quiet: true)
+        flash(r?.isEmpty ?? true ? "Cleared rights" : "Saved rights\(catalog.assets.contains { ids.contains($0.id) && !$0.isStarter && $0.importedPath != nil } ? " · written to the .xmp sidecar" : "")")
+    }
+
+    func credits(_ ids: [UUID]) -> [CreditLine] { includeCredits ? catalog.credits(for: ids) : [] }
 
     /// Swaps outdated cards to the newest version in their stack (1.24): all of them, or just `only`.
     func updateToNewest(_ boardID: UUID, only: Set<UUID>? = nil) {
@@ -2517,7 +2618,7 @@ extension StudioLibrary {
     }
 
     /// Review gallery of the board's assets (reading order) with the rendered board on top.
-    func shareBoardGallery(_ id: UUID, to fixedDir: URL? = nil, summaryPDF: URL? = nil) {
+    func shareBoardGallery(_ id: UUID, to fixedDir: URL? = nil, summaryPDF: URL? = nil, checked: Bool = false) {
         guard let board = catalog.board(id) else { return }
         var seen = Set<UUID>()
         let ids = board.readingOrder.compactMap { $0.kind == .asset ? $0.assetID : nil }.filter { seen.insert($0).inserted }
@@ -2525,7 +2626,7 @@ extension StudioLibrary {
         Task { @MainActor in
             guard let rendered = await self.renderBoard(id), let cg = rendered.0.cgImage,
                   let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { self.flash("Couldn't render \(board.name)"); return }
-            self.exportGallery(ids, title: board.name, to: fixedDir, board: (png, cg.width, cg.height, board), summaryPDF: summaryPDF)
+            self.exportGallery(ids, title: board.name, to: fixedDir, board: (png, cg.width, cg.height, board), summaryPDF: summaryPDF, checked: checked)
         }
     }
 }
@@ -2851,32 +2952,47 @@ struct BoardCanvas: View {
         return pins[item.id]?.picked != true
     }
 
-    /// "Final available" on cards showing an older version (1.24). Clicking it updates that card.
+    /// Chips on the card's top-left corner: "Final available" on cards showing an older version (1.24, click to update)
+    /// and a red rights chip on cards whose asset is expired or editorial-only (1.25, click to open the asset).
     @ViewBuilder private var versionLayer: some View {
         let outdated = model.catalog.outdatedCards(on: board.id)
-        if !outdated.isEmpty {
+        let rights = model.catalog.rightsProblems(on: board.id)
+        if !outdated.isEmpty || !rights.isEmpty {
             let t = min(2.2, 1 / max(0.1, z))
-            ForEach(board.layered.filter { outdated[$0.id] != nil && !dimmed($0) }) { item in
+            ForEach(board.layered.filter { (outdated[$0.id] != nil || rights[$0.id] != nil) && !dimmed($0) }) { item in
                 let r = itemRect(item)
-                let label = outdated[item.id].map { VersionStacks.rank($0).1 } ?? "Newer"
+                let label = outdated[item.id].map { VersionStacks.rank($0).1 }
+                let longest = max(label.map { $0.count + 10 } ?? 0, rights[item.id].map { $0.label.count } ?? 0)
                 // Keep it within the left half of the card so it never meets the thread badge on the right.
-                let bt = min(t, max(0.45, (r.w * 0.5 - 8) / (Double(label.count) * 7.5 + 78)))
-                Button { model.updateToNewest(board.id, only: [item.id]) } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.circle.fill")
-                        Text("\(label) available")
+                let bt = min(t, max(0.45, (r.w * 0.5 - 8) / (Double(longest) * 7.5 + 40)))
+                VStack(alignment: .leading, spacing: 5) {
+                    if let label {
+                        Button { model.updateToNewest(board.id, only: [item.id]) } label: {
+                            chip("arrow.up.circle.fill", "\(label) available", Theme.warning, Color.black.opacity(0.85))
+                        }
+                        .buttonStyle(.plain).help("Update this card to \(label)")
                     }
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.black.opacity(0.85))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Theme.warning, in: Capsule())
-                    .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                    if let st = rights[item.id] {
+                        Button { if let a = item.assetID { model.selection = [a]; model.focusID = a; model.showInspector = true } } label: {
+                            chip(st == .editorial ? "newspaper.fill" : "exclamationmark.octagon.fill", st.label, Theme.danger, .white)
+                        }
+                        .buttonStyle(.plain).help("Check the license before this goes to a client")
+                    }
                 }
-                .buttonStyle(.plain).fixedSize().help("Update this card to \(label)")
+                .fixedSize()
                 .scaleEffect(CGFloat(bt), anchor: .topLeading)
                 .frame(width: max(1, r.w - 16), alignment: .topLeading)
                 .offset(x: r.x + 8, y: r.y + 8)
             }
         }
+    }
+
+    private func chip(_ symbol: String, _ text: String, _ bg: Color, _ fg: Color) -> some View {
+        HStack(spacing: 4) { Image(systemName: symbol); Text(text) }
+            .font(.system(size: 11, weight: .bold)).foregroundStyle(fg)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(bg, in: Capsule())
+            .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
     }
 
     /// Client picks and comments from imported feedback (1.20), plus status and replies (1.21), drawn on the cards they belong to.
@@ -2921,6 +3037,7 @@ struct BoardCanvas: View {
             Button("Share as Review Gallery…") { model.shareBoardGallery(board.id) }
             Button(board.versions.isEmpty ? "Versions…" : "Versions (\(board.versions.count))…") { model.boardVersionsOpen = true }
             Button("Export Round Summary PDF…") { model.exportRoundSummary(board.id) }
+            Toggle("Include Credits Page", isOn: $model.includeCredits)
             let newer = model.catalog.outdatedCards(on: board.id).count
             if newer > 0 { Button("Update All to Newest (\(newer))") { model.updateToNewest(board.id) } }
             Button("Share Round (Gallery + Summary)…") { model.shareRound(board.id) }
@@ -3709,6 +3826,16 @@ struct StudioView: View {
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
         .sheet(item: $model.cropping) { st in CropSheet(state: st).environmentObject(model) }
         .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
+        .alert(model.rightsWarning.map { w in "\(w.issues.count) \(w.issues.count == 1 ? "asset has" : "assets have") rights problems" } ?? "",
+               isPresented: Binding(get: { model.rightsWarning != nil }, set: { if !$0 { model.rightsWarning = nil } }),
+               presenting: model.rightsWarning) { w in
+            Button("\(w.action) Anyway") { model.rightsWarning = nil; w.proceed() }
+            Button("Cancel", role: .cancel) { model.rightsWarning = nil }
+        } message: { w in
+            Text(w.issues.prefix(6).map { "\($0.title): \($0.status.label)" }.joined(separator: "\n")
+                 + (w.issues.count > 6 ? "\n…and \(w.issues.count - 6) more" : "")
+                 + "\n\nCheck the license before this goes to a client.")
+        }
         .sheet(item: $model.presetExport) { st in PresetExportSheet(state: st).environmentObject(model) }
         .sheet(item: $model.batchRename) { st in BatchRenameSheet(state: st).environmentObject(model) }
         .sheet(isPresented: Binding(get: { model.duplicates != nil }, set: { if !$0 { model.duplicates = nil } })) {
@@ -4910,7 +5037,7 @@ enum ContactSheetRenderer {
         return CGImageSourceCreateImageAtIndex(src, 0, nil)
     }
 
-    static func render(title: String, assets: [StudioAsset], to url: URL) async -> Bool {
+    static func render(title: String, assets: [StudioAsset], to url: URL, credits: [CreditLine] = []) async -> Bool {
         var images: [UUID: CGImage] = [:]
         for a in assets {
             var img: CGImage?
@@ -4949,7 +5076,7 @@ enum ContactSheetRenderer {
             ctx.restoreGState()
         }
         let date = Date().formatted(date: .long, time: .omitted)
-        let total = sheet.totalPages
+        let total = sheet.totalPages + (credits.isEmpty ? 0 : 1)
 
         // Cover
         ctx.beginPDFPage(nil)
@@ -4998,6 +5125,24 @@ enum ContactSheetRenderer {
                     fill(CGRect(x: cell.x + 8 + Double(j) * segW, y: H - (capTop + 27) - 3, width: segW - 1, height: 3), NSColor(hex: hex) ?? .gray)
                 }
             }
+            ctx.endPDFPage()
+        }
+        // Credits (1.25): who made what, and how it is licensed.
+        if !credits.isEmpty {
+            ctx.beginPDFPage(nil)
+            fill(CGRect(x: 0, y: 0, width: W, height: H), bg)
+            text(title, 36, 30, size: 15, weight: .bold, width: 500)
+            text("\(total) of \(total)", W - 236, 32, size: 9, color: NSColor(white: 1, alpha: 0.45), width: 200, align: .right)
+            text("CREDITS", 36, 76, size: 9, weight: .bold, color: accent, kern: 1.6)
+            var y = 100.0
+            for c in credits where y < H - 70 {
+                text(c.credit, 36, y, size: 11, weight: .semibold, width: 220)
+                text(c.license, 264, y + 1, size: 9, color: NSColor(white: 1, alpha: 0.55), width: 110)
+                text(c.titles.joined(separator: ", "), 380, y + 1, size: 9, color: NSColor(white: 1, alpha: 0.7), width: W - 416)
+                y += 26
+                fill(CGRect(x: 36, y: H - y + 8, width: W - 72, height: 0.5), NSColor(white: 1, alpha: 0.1))
+            }
+            text("Keep these credits with any use of the images.", 36, H - 40, size: 8, color: NSColor(white: 1, alpha: 0.35))
             ctx.endPDFPage()
         }
         ctx.closePDF()
@@ -5275,6 +5420,7 @@ struct Inspector: View {
                 ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        RightsSection(asset: asset)
                         OnBoardsSection(asset: asset)
                         if asset.stackID != nil { VersionStrip(asset: asset) }
                         if asset.kind != .audio { SimilarStrip(asset: asset) }
@@ -7103,6 +7249,7 @@ struct RoundSummaryPage: View {
     let summary: RoundSummary
     let images: [UUID: CGImage]
     let date: String
+    var credits: [CreditLine] = []
     static let width: CGFloat = 612
 
     var body: some View {
@@ -7146,6 +7293,17 @@ struct RoundSummaryPage: View {
                 .padding(.vertical, 10)
                 Rectangle().fill(Self.rule).frame(height: 1)
             }
+            if !credits.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("CREDITS").font(.system(size: 9, weight: .heavy)).tracking(1.5).foregroundStyle(Self.muted)
+                    ForEach(Array(credits.enumerated()), id: \.offset) { _, c in
+                        (Text(c.credit).font(.system(size: 9.5, weight: .bold)).foregroundColor(Self.ink)
+                         + Text("  \(c.license) · \(c.titles.joined(separator: ", "))").font(.system(size: 9.5)).foregroundColor(Self.muted))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, 14)
+            }
             Text("Made with ASSSETS").font(.system(size: 8, weight: .semibold)).foregroundStyle(Self.muted).padding(.top, 12)
         }
         .padding(40)
@@ -7179,7 +7337,8 @@ extension StudioLibrary {
             images[aid] = await MediaRenderer.thumbnail(for: a, maxPixel: 320) ?? MediaRenderer.generated(a, width: 320)
         }
         let df = DateFormatter(); df.dateStyle = .long
-        let r = ImageRenderer(content: RoundSummaryPage(summary: summary, images: images, date: df.string(from: Date())))
+        let creditLines = credits(summary.rows.compactMap(\.asset))
+        let r = ImageRenderer(content: RoundSummaryPage(summary: summary, images: images, date: df.string(from: Date()), credits: creditLines))
         r.proposedSize = ProposedViewSize(width: RoundSummaryPage.width, height: nil)
         var ok = false
         r.render { size, draw in
@@ -7514,6 +7673,119 @@ struct FeedbackPreviewSheet: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(CardThreadBadge.color(to).opacity(0.1), in: Capsule())
+    }
+}
+
+struct RightsWarning: Identifiable {
+    let id = UUID()
+    let action: String
+    let issues: [RightsIssue]
+    let proceed: () -> Void
+}
+
+/// Usage rights for one asset (1.25): license, source, credit, allowed uses, end date.
+struct RightsSection: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    @State private var draft = UsageRights()
+    @State private var ends = false
+    @State private var endDate = Date()
+    @State private var loadedFor: UUID?
+
+    private var edited: UsageRights {
+        var r = draft
+        r.expires = ends ? UsageRights.day(endDate) : nil
+        return r
+    }
+    private var dirty: Bool { edited != (asset.rights ?? UsageRights()) }
+
+    var body: some View {
+        let status = asset.rightsStatus()
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                InspectorLabel(text: "RIGHTS")
+                Spacer()
+                statusChip(status)
+            }
+            if asset.rights == nil, asset.isStarter || asset.sourceKey?.hasPrefix("generated:") == true, !dirty {
+                Text("Bundled with ASSSETS. Add a credit or terms here if you change it.").font(.caption2).foregroundStyle(.secondary)
+            }
+            Menu {
+                ForEach(RightsLicense.allCases) { l in
+                    Button { draft.license = l } label: { Label(l.rawValue, systemImage: l.symbol) }
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: draft.license.symbol).foregroundStyle(Theme.accent)
+                    Text(draft.license.rawValue).font(.caption.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            field("Credit", "e.g. Photo: Lena Ortiz / Northlight", $draft.credit)
+            field("Source", "Agency, client or link", $draft.source)
+            field("Allowed uses", "e.g. Web and social, 1 year", $draft.uses)
+            HStack(spacing: 8) {
+                Toggle("Ends", isOn: $ends).toggleStyle(.switch).controlSize(.mini).font(.caption.weight(.semibold))
+                if ends {
+                    DatePicker("", selection: $endDate, displayedComponents: .date).labelsHidden().datePickerStyle(.field).controlSize(.small)
+                } else {
+                    Text("No end date").font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            if dirty {
+                HStack {
+                    Button("Revert") { load() }.buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { model.setRights(edited, for: [asset.id]) } label: {
+                        Text("Save Rights").font(.caption.weight(.bold)).padding(.horizontal, 12).padding(.vertical, 5)
+                            .background(Theme.accent, in: Capsule()).foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain).keyboardShortcut(.return, modifiers: [.command])
+                }
+            }
+        }
+        .onAppear { if loadedFor != asset.id { load() } }
+        .onChange(of: asset.id) { _, _ in load() }
+        .onChange(of: asset.rights) { _, _ in load() }
+    }
+
+    private func load() {
+        loadedFor = asset.id
+        draft = asset.rights ?? UsageRights()
+        ends = draft.expires != nil
+        endDate = draft.expires.flatMap { UsageRights.localDate($0) } ?? Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+    }
+
+    private func field(_ title: String, _ prompt: String, _ text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            TextField(prompt, text: text)
+                .textFieldStyle(.plain).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+                .onSubmit { if dirty { model.setRights(edited, for: [asset.id]) } }
+        }
+    }
+
+    @ViewBuilder private func statusChip(_ st: RightsStatus) -> some View {
+        let c: Color = {
+            switch st {
+            case .ok: return Theme.watch
+            case .expiring: return Theme.warning
+            case .expired, .editorial: return Theme.danger
+            case .missing: return Color.white.opacity(0.5)
+            }
+        }()
+        Text(st.label).font(.system(size: 10, weight: .bold)).foregroundStyle(c)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(c.opacity(0.15), in: Capsule())
     }
 }
 

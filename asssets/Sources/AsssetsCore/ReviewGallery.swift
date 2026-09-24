@@ -23,6 +23,8 @@ public enum ReviewGallery {
         public var tags: [String]
         public var image: String         // relative path, e.g. "images/01.jpg"
         public var thumb: String
+        /// Credit line from the asset's usage rights (1.25).
+        public var credit: String? = nil
         public init(id: String, title: String, kind: String, resolution: String, palette: [String], tags: [String], image: String, thumb: String) {
             self.id = id; self.title = title; self.kind = kind; self.resolution = resolution; self.palette = palette; self.tags = tags; self.image = image; self.thumb = thumb
         }
@@ -37,6 +39,8 @@ public enum ReviewGallery {
         public var board: Board?
         /// Set when the round summary PDF ships alongside (1.22 Share Round): its file name in the folder.
         public var summary: String?
+        /// Credits page (1.25): one line per credit with what it covers. nil or empty hides it.
+        public var credits: [CreditLine]? = nil
         public init(gallery: String = UUID().uuidString, title: String, created: String, items: [Item], board: Board? = nil, summary: String? = nil) {
             self.gallery = gallery; self.title = title; self.created = created; self.items = items; self.board = board; self.summary = summary
         }
@@ -152,14 +156,18 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 .bwrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#0b0c12}.bwrap img{width:100%;display:block}
 .spot{position:absolute;border:2px solid transparent;border-radius:10px;cursor:zoom-in;transition:border-color .12s,background .12s}.spot:hover{border-color:var(--accent);background:rgba(140,97,255,.12)}
 .spot.picked{border-color:var(--pick)}.spot .heart{top:6px;right:6px;width:26px;height:26px;line-height:26px;font-size:13px;pointer-events:none}footer{color:var(--faint);font-size:12px;text-align:center;padding:0 0 28px}
+#credits{display:none;margin:22px 32px 0;border:1px solid var(--line);border-radius:14px;background:var(--raised);padding:18px 22px}#credits.on{display:block}
+#credits h2{margin:0 0 4px;font-size:17px}#credits .cs{color:var(--dim);font-size:12.5px;margin-bottom:12px}.cr{display:grid;grid-template-columns:minmax(180px,1fr) 130px 2fr;gap:14px;padding:10px 0;border-top:1px solid var(--line);font-size:13px}
+.cr b{font-weight:650}.cr .lic{color:var(--dim);font-size:12px}.cr .what{color:var(--dim)}.lbcredit{color:var(--dim);font-size:12px;margin-top:-4px}
 </style></head><body>
 <header><div><div class="brand">ASSSETS</div><h1 id="title"></h1><div class="sub" id="sub"></div></div><div class="spacer"></div>
-<a class="filter" id="summary" target="_blank" hidden>Round summary (PDF)</a><button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
+<a class="filter" id="summary" target="_blank" hidden>Round summary (PDF)</a><button class="filter" id="creditsBtn" hidden>Credits</button><button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
 <button class="primary" id="download">Download feedback</button></header>
+<section id="credits"><h2>Credits</h2><div class="cs" id="creditsSub"></div><div id="creditRows"></div></section>
 <section id="board"><div class="lbl">BOARD · CLICK ANY IMAGE TO REVIEW IT</div><div class="bwrap" id="bwrap"></div></section>
 <main id="grid"></main>
 <div id="lb"><div class="stage"><button class="close" id="close" title="Close (Esc)">✕</button><img id="lbimg" alt=""></div>
-<aside><h2 id="lbtitle"></h2><div class="r" id="lbres"></div><div class="sw" id="lbsw"></div>
+<aside><h2 id="lbtitle"></h2><div class="r" id="lbres"></div><div class="lbcredit" id="lbcredit"></div><div class="sw" id="lbsw"></div>
 <button class="pickbtn" id="lbpick">♥ Favorite</button><div class="lbl">DECISION</div><div class="st big" id="lbst"><button class="ap" id="lbap">✓ Approve</button><button class="ch" id="lbch">↺ Request changes</button></div><div class="lbl">NOTE</div><textarea id="lbnote" placeholder="What works, what to change…"></textarea>
 <div class="lbl">TAGS</div><div class="tags" id="lbtags"></div><div class="nav"><button id="prev">← Prev</button><button id="next">Next →</button></div>
 <div class="hint">← → browse · F favorite · A approve · C changes · Esc close. Your picks and notes stay in this browser until you download them.</div></aside></div>
@@ -195,7 +203,7 @@ M.board.spots.forEach(sp=>{const i=M.items.findIndex(it=>it.id===sp.id);if(i<0)r
 d.style.left=(sp.x*100)+'%';d.style.top=(sp.y*100)+'%';d.style.width=(sp.w*100)+'%';d.style.height=(sp.h*100)+'%';d.title=M.items[i].title;d.onclick=()=>open(i);
 if(s.favorite){const h=document.createElement('span');h.className='heart';h.textContent='♥';d.appendChild(h)}
 if(s.status){const k=document.createElement('span');k.className='chip '+s.status;k.textContent=LBL[s.status];d.appendChild(k)}w.appendChild(d)})}
-function open(i){cur=i;const it=M.items[i],s=st(it.id);$('lbimg').src=it.image;$('lbtitle').textContent=it.title;$('lbres').textContent=it.kind+' · '+it.resolution;swatches($('lbsw'),it.palette);
+function open(i){cur=i;const it=M.items[i],s=st(it.id);$('lbimg').src=it.image;$('lbtitle').textContent=it.title;$('lbres').textContent=it.kind+' · '+it.resolution;swatches($('lbsw'),it.palette);$('lbcredit').textContent=it.credit?'Credit: '+it.credit:'';
 $('lbtags').innerHTML='';it.tags.slice(0,12).forEach(t=>{const s2=document.createElement('span');s2.textContent=t;$('lbtags').appendChild(s2)});
 $('lbnote').value=s.note||'';$('lbap').className='ap'+(s.status==='approved'?' on':'');$('lbch').className='ch'+(s.status==='changes'?' on':'');$('lbpick').className='pickbtn'+(s.favorite?' on':'');$('lbpick').textContent=s.favorite?'♥ Favorited':'♥ Favorite';$('lb').classList.add('open')}
 function close(){$('lb').classList.remove('open');cur=-1;render()}
@@ -209,6 +217,12 @@ items:M.items.map(it=>{const s=st(it.id),x={id:it.id,favorite:!!s.favorite,note:
 const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));
 a.download=(M.title+' feedback'+(out.reviewer?' - '+out.reviewer:'')).replace(/[\/:\\]/g,'-')+'.json';document.body.appendChild(a);a.click();a.remove()};
 if(M.summary){const a=$('summary');a.href=encodeURI(M.summary);a.hidden=false}
+if(M.credits&&M.credits.length){const b=$('creditsBtn');b.hidden=false;b.textContent='Credits ('+M.credits.length+')';
+$('creditsSub').textContent='Images in this gallery by other people or agencies, and how they are licensed. Keep these credits with any use.';
+M.credits.forEach(c=>{const r=document.createElement('div');r.className='cr';const a=document.createElement('b');a.textContent=c.credit;const l=document.createElement('div');l.className='lic';l.textContent=c.license;
+const w=document.createElement('div');w.className='what';w.textContent=c.titles.join(', ');r.append(a,l,w);$('creditRows').appendChild(r)});
+b.onclick=()=>{const on=$('credits').classList.toggle('on');b.classList.toggle('on',on);if(on)$('credits').scrollIntoView({behavior:'smooth'})};
+if(q.get('demo')==='credits'){$('credits').classList.add('on');b.classList.add('on')}}
 if(q.get('demo')==='approve-grid')M.board=null;render();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
 </script></body></html>
 """#
