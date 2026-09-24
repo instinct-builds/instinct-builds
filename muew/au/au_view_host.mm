@@ -748,6 +748,31 @@ int main() {
                   "the AU state saves the filter model, drive and keytrack");
             fflush(stdout);
         });
+        After(6.9997, ^{ // 0.22.0 filter routing: FILTER 2 to LADDER 24 by clicking its display, PARALLEL, F2 MIX 60%, BALANCE 30%
+            CGFloat t = view.bounds.size.height - 100;
+            Click(view, w, NSMakePoint(556 + 46, t - 29 + 8.5));             // FILTER 2 + SUB tab
+            muew::Preset st0;
+            bool ok0 = State(st0);
+            for (int i = 0; i < 9 && ok0 && st0.voice.filter2Type != 6; ++i) {
+                Click(view, w, NSMakePoint(686 + 43, t - 138 + 55));           // the F2 display steps the type
+                ok0 = State(st0);
+            }
+            Check(ok0 && st0.voice.filter2Type == 6, "clicking the FILTER 2 display reached LADDER 24 in the AU's sound");
+            Click(view, w, NSMakePoint(686 + 5 + 39 + 18.5, t - 138 + 4 + 6.5)); // PAR
+            Click(view, w, NSMakePoint(494 + 71 + 0.6 * 67, t - 167 + 6.5));      // F2 MIX bar at 60%
+            Click(view, w, NSMakePoint(494 + 142 + 0.3 * 67, t - 167 + 6.5));     // BALANCE bar at 30%
+            Snapshot(view, "MUEW_FILTER2_PNG", "FILTER 2 routing panel snapshot written");
+            muew::Preset st;
+            bool ok = State(st);
+            printf("filter 2: type %d, routing %d, f1 mix %.3f, f2 mix %.3f, balance %.3f\n", st.voice.filter2Type, st.voice.filterRouting,
+                   st.voice.filter1Mix, st.voice.filter2Mix, st.voice.filterBalance);
+            Check(ok && st.voice.filterRouting == 1 && std::fabs(st.voice.filter2Mix - 0.6) < 0.01 && std::fabs(st.voice.filterBalance - 0.3) < 0.01
+                  && st.voice.filter1Mix == 1.0, "PAR, F2 MIX 60% and BALANCE 30% reached the AU");
+            muew::Preset rt;
+            std::string txt = ok ? st.serialize() : "";
+            Check(ok && rt.parse(txt) && rt == st && txt.find("\nfilterr 1 0.6") != std::string::npos, "the AU state saves the filter routing");
+            fflush(stdout);
+        });
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });

@@ -71,12 +71,14 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::Osc2Warp2: return "WARP 2 B";
     case ModRoute::Dest::FilterDrive: return "F DRIVE";
     case ModRoute::Dest::FilterMorph: return "F MORPH";
+    case ModRoute::Dest::Filter2Morph: return "F2 MORPH";
+    case ModRoute::Dest::FilterBalance: return "F BALANCE";
     }
     return "?";
 }
 inline const char* filter2TypeName(int t) {
-    static const char* n[] = {"OFF", "LOW PASS", "BAND PASS", "HIGH PASS", "COMB", "FORMANT"};
-    return (t >= 0 && t < 6) ? n[t] : "?";
+    static const char* n[] = {"OFF", "LOW PASS", "BAND PASS", "HIGH PASS", "COMB +", "FORMANT", "LADDER 24", "COMB -", "MORPH"}; // 6-8: 0.22.0
+    return (t >= 0 && t < kFilter2Types) ? n[t] : "?";
 }
 inline const char* subShapeName(int s) {
     static const char* n[] = {"SINE", "TRI", "SQUARE"};
@@ -190,7 +192,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::Osc1WtPos, D::Osc2WtPos, D::SubLevel, D::NoiseLevel, D::Filter2Cutoff,
                                   D::FxDelayFeedback, D::FxReverbDecay, D::FxPhaserDepth, D::FxFlangerDepth, D::FxChorusDepth,
                                   D::Osc1Warp2, D::Osc2Warp2, // 0.19.0 appended
-                                  D::FilterDrive, D::FilterMorph}; // 0.21.0 appended
+                                  D::FilterDrive, D::FilterMorph, // 0.21.0 appended
+                                  D::Filter2Morph, D::FilterBalance}; // 0.22.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.

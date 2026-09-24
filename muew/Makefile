@@ -1,7 +1,7 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
 
-all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1
+all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-filterroute
 
 build:
 	mkdir -p build out
@@ -76,6 +76,9 @@ build/muew-tests-dc: tests/tests_dc.cpp src/voice.h src/oscillator.h src/preset.
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_dc.cpp
 build/muew-tests-browser: tests/tests_browser.cpp src/user_presets.h src/ui_model.h src/preset_bank.h src/preset.h src/factory_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_browser.cpp
+build/muew-tests-filterroute: tests/tests_filterroute.cpp src/filter.h src/layers.h src/voice.h src/preset.h src/synth.h src/ui_model.h | build
+	$(CXX) $(CXXFLAGS) -o $@ tests/tests_filterroute.cpp
+
 build/muew-tests-filter1: tests/tests_filter1.cpp src/filter.h src/voice.h src/preset.h src/synth.h src/ui_model.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_filter1.cpp
 
@@ -106,6 +109,7 @@ test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-t
 	./build/muew-tests-usertable
 	./build/muew-tests-import
 	./build/muew-tests-filter1
+	./build/muew-tests-filterroute
 	./build/muew-tests-layers
 	./build/muew-tests-browser
 	./build/muew-tests-dc

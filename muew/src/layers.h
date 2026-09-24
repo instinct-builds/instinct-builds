@@ -41,14 +41,16 @@ private:
 };
 
 // Filter 2 types (stored in presets, append only). Off skips the stage.
-enum class Filter2Type { Off = 0, Lowpass = 1, Bandpass = 2, Highpass = 3, Comb = 4, Formant = 5 };
-constexpr int kFilter2Types = 6;
+// 0.22.0 appends the filter 1 models: 6 LADDER 24, 7 COMB - (4 is COMB +), 8 MORPH.
+enum class Filter2Type { Off = 0, Lowpass = 1, Bandpass = 2, Highpass = 3, Comb = 4, Formant = 5, Ladder = 6, CombNeg = 7, Morph = 8 };
+constexpr int kFilter2Types = 9;
 
 class Filter2 {
 public:
     void setSampleRate(double sr) {
         sr_ = sr;
         svf_.setSampleRate(sr);
+        x_.setSampleRate(sr);
         for (auto& f : formant_) { f.setSampleRate(sr); f.setMode(SVFilter::Mode::Bandpass); }
         buf_.assign((size_t)(sr / 20.0) + 8, 0.0f);
         pos_ = 0;
@@ -58,10 +60,15 @@ public:
         if (type_ == Filter2Type::Lowpass) svf_.setMode(SVFilter::Mode::Lowpass);
         if (type_ == Filter2Type::Bandpass) svf_.setMode(SVFilter::Mode::Bandpass);
         if (type_ == Filter2Type::Highpass) svf_.setMode(SVFilter::Mode::Highpass);
+        if (type_ == Filter2Type::Ladder) x_.setMode(5);
+        if (type_ == Filter2Type::CombNeg) x_.setMode(7);
+        if (type_ == Filter2Type::Morph) x_.setMode(8);
     }
+    void setMorph(double m) { x_.setMorph(m); } // 0.22.0: MORPH type's LP -> BP -> HP position
     Filter2Type type() const { return type_; }
     void reset() {
         svf_.reset();
+        x_.reset();
         for (auto& f : formant_) f.reset();
         std::fill(buf_.begin(), buf_.end(), 0.0f);
     }
@@ -71,6 +78,7 @@ public:
         reso = std::clamp(reso, 0.1, 8.0);
         switch (type_) {
         case Filter2Type::Off: break;
+        case Filter2Type::Ladder: case Filter2Type::CombNeg: case Filter2Type::Morph: x_.set(cutoff, reso); break;
         case Filter2Type::Lowpass: case Filter2Type::Bandpass: case Filter2Type::Highpass: svf_.set(cutoff, reso); break;
         case Filter2Type::Comb: {
             // Feedback comb tuned to the cutoff: peaks at cutoff and its harmonics.
@@ -95,6 +103,7 @@ public:
     inline float process(float x) {
         switch (type_) {
         case Filter2Type::Off: return x;
+        case Filter2Type::Ladder: case Filter2Type::CombNeg: case Filter2Type::Morph: return x_.process(x);
         case Filter2Type::Lowpass: case Filter2Type::Bandpass: case Filter2Type::Highpass: return svf_.process(x);
         case Filter2Type::Comb: {
             const size_t n = buf_.size();
@@ -121,6 +130,7 @@ private:
     double sr_ = 44100.0;
     Filter2Type type_ = Filter2Type::Off;
     SVFilter svf_;
+    Filter1 x_; // 0.22.0 types 6-8
     SVFilter formant_[3];
     std::vector<float> buf_;
     size_t pos_ = 0;

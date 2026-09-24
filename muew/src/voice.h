@@ -31,7 +31,8 @@ struct ModRoute {
                       // 0.14.0: FX detail controls, macro sources only (global FX)
                       FxDelayFeedback = 16, FxReverbDecay = 17, FxPhaserDepth = 18, FxFlangerDepth = 19, FxChorusDepth = 20,
                       Osc1Warp2 = 21, Osc2Warp2 = 22,                 // 0.19.0: second warp slot amounts (0..1)
-                      FilterDrive = 23, FilterMorph = 24 } dest;      // 0.21.0: filter 1 drive / morph (0..1)
+                      FilterDrive = 23, FilterMorph = 24,             // 0.21.0: filter 1 drive / morph (0..1)
+                      Filter2Morph = 25, FilterBalance = 26 } dest;   // 0.22.0: filter 2 morph, parallel F1/F2 balance (0..1)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -126,6 +127,8 @@ struct VoiceParams {
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
+    // 0.22.0: per-filter dry/wet, parallel balance (0 all F1 .. 1 all F2), filter 2 MORPH position.
+    double filter1Mix = 1.0, filter2Mix = 1.0, filterBalance = 0.5, filter2Morph = 0.0;
 };
 
 constexpr int kMaxUnison = 8;
@@ -181,7 +184,15 @@ public:
         filter_.setDrive(p.filterDrive); filterR_.setDrive(p.filterDrive);   // 0.21.0
         filter_.setMorph(p.filterMorph); filterR_.setMorph(p.filterMorph);
         usesFilterX_ = false;
-        for (const auto& r : routes) if (r.dest == ModRoute::Dest::FilterDrive || r.dest == ModRoute::Dest::FilterMorph) usesFilterX_ = true;
+        bool driveRouted = false;
+        usesF2Morph_ = false; usesBalance_ = false;
+        for (const auto& r : routes) {
+            if (r.dest == ModRoute::Dest::FilterDrive || r.dest == ModRoute::Dest::FilterMorph) usesFilterX_ = true;
+            if (r.dest == ModRoute::Dest::FilterDrive) driveRouted = true;
+            if (r.dest == ModRoute::Dest::Filter2Morph) usesF2Morph_ = true;   // 0.22.0
+            if (r.dest == ModRoute::Dest::FilterBalance) usesBalance_ = true;
+        }
+        filter_.setOversample(p.filterDrive > 0 || driveRouted); filterR_.setOversample(p.filterDrive > 0 || driveRouted); // 0.22.0
         ampEnv_.set(p.ampA, p.ampD, p.ampS, p.ampR);
         modEnv_.set(p.modA, p.modD, p.modS, p.modR);
         lfo1_.setShape(static_cast<LFO::Shape>(p.lfo1Shape));
@@ -216,6 +227,7 @@ public:
         noise_.setTone(p.noiseTone);
         const int t2 = std::clamp(p.filter2Type, 0, kFilter2Types - 1);
         if (t2 != f2Type_) { f2Type_ = t2; f2L_.setType(t2); f2R_.setType(t2); f2L_.reset(); f2R_.reset(); }
+        f2L_.setMorph(p.filter2Morph); f2R_.setMorph(p.filter2Morph); // 0.22.0
     }
 
     // User tables for oscillators A/B (null = none; the synth owns them).
@@ -378,17 +390,33 @@ public:
         l = filter_.process(l);
         if (stereo) { filterR_.set(cutoff, resonance); r = filterR_.process(r); }
         else { r = l; filterR_.copyStateFrom(filter_); } // keep the right filter warm for a width change
+        if (params_.filter1Mix != 1.0) { // 0.22.0 filter 1 dry/wet
+            const float m1 = (float)std::clamp(params_.filter1Mix, 0.0, 1.0);
+            l = preL + m1 * (l - preL); r = preR + m1 * (r - preR);
+        }
 
         // 0.10.0 filter 2: after filter 1 (serial) or beside it on the dry mix (parallel).
         if (f2Type_ != 0) {
             const double c2 = params_.filter2Cutoff * std::pow(2.0, modSum(ModRoute::Dest::Filter2Cutoff));
+            if (usesF2Morph_) { const double mv = std::clamp(params_.filter2Morph + modSum(ModRoute::Dest::Filter2Morph), 0.0, 1.0); f2L_.setMorph(mv); f2R_.setMorph(mv); }
             f2L_.set(c2, params_.filter2Reso);
             const bool par = params_.filterRouting == 1;
             const float inL = par ? preL : l;
-            const float yL = f2L_.process(inL);
+            const float inR = par ? preR : r;
+            float yL = f2L_.process(inL);
             float yR = yL;
-            if (stereo) { f2R_.set(c2, params_.filter2Reso); yR = f2R_.process(par ? preR : r); }
-            if (par) { l = 0.5f * (l + yL); r = 0.5f * (r + yR); }
+            if (stereo) { f2R_.set(c2, params_.filter2Reso); yR = f2R_.process(inR); }
+            if (params_.filter2Mix != 1.0) { // 0.22.0 filter 2 dry/wet
+                const float m2 = (float)std::clamp(params_.filter2Mix, 0.0, 1.0);
+                yL = inL + m2 * (yL - inL); yR = (stereo ? inR : inL) + m2 * (yR - (stereo ? inR : inL));
+            }
+            if (par) {
+                if (params_.filterBalance == 0.5 && !usesBalance_) { l = 0.5f * (l + yL); r = 0.5f * (r + yR); } // 0.10.0 mix, unchanged
+                else { // 0.22.0 balance: 0 = filter 1 only .. 1 = filter 2 only
+                    const float b = (float)std::clamp(params_.filterBalance + modSum(ModRoute::Dest::FilterBalance), 0.0, 1.0);
+                    l = (1.0f - b) * l + b * yL; r = (1.0f - b) * r + b * yR;
+                }
+            }
             else { l = yL; r = yR; }
         }
 
@@ -508,7 +536,8 @@ private:
     std::vector<MSEG::Point> remapPts_[2];
     bool remapValid_[2] = {false, false};
     bool usesWarpX_ = false;
-    bool usesFilterX_ = false; // 0.21.0: a route targets FILTER DRIVE or MORPH
+    bool usesFilterX_ = false;
+    bool usesF2Morph_ = false, usesBalance_ = false; // 0.22.0 // 0.21.0: a route targets FILTER DRIVE or MORPH
     double w2a_ = 0.0, w2b_ = 0.0;
     static bool warp2Prone(int mode) { return mode >= 2 && mode != 5 && mode != 6 ? true : false; }
     void applyLfoExtras() {

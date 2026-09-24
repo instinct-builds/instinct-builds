@@ -104,12 +104,12 @@ int main() {
     check(ok && base.serialize().find("filter2") == std::string::npos && legacy.voice.filter2Type == 0, "untouched sounds write no new lines");
     Preset bad; bad.parse("muew-preset 2\nname x\nsub 9 7 9\nnoise -3 5\nfilter2 99 1e9 -4 3\n");
     check(bad.voice.subLevel == 1 && bad.voice.subOctave == 2 && bad.voice.subShape == 2 && bad.voice.noiseLevel == 0
-          && bad.voice.filter2Type == 5 && bad.voice.filter2Cutoff == 18000 && bad.voice.filter2Reso == 0.1 && bad.voice.filterRouting == 1,
+          && bad.voice.filter2Type == kFilter2Types - 1 && bad.voice.filter2Cutoff == 18000 && bad.voice.filter2Reso == 0.1 && bad.voice.filterRouting == 1,
           "out-of-range values clamp");
     Preset q = base; params::set(q, params::SubLevel, 50); params::set(q, params::Filter2Cutoff, 900); params::set(q, params::NoiseTone, 25);
     check(q.voice.subLevel == 0.5 && q.voice.filter2Cutoff == 900 && q.voice.noiseTone == 0.25 && params::get(q, params::Filter2Reso) == 0.7,
           "AU parameters 23-27 map onto the new fields");
-    check(std::string(ui::destName(D::Filter2Cutoff)) == "F2 CUTOFF" && std::string(ui::filter2TypeName(4)) == "COMB"
+    check(std::string(ui::destName(D::Filter2Cutoff)) == "F2 CUTOFF" && std::string(ui::filter2TypeName(4)) == "COMB +"
           && ui::knobPage(ui::Sub) == 1 && ui::knobPage(ui::Cutoff) == 0 && ui::knobPage(ui::WarpA) == -1, "UI names and knob pages");
 
     if (g_fail) { printf("%d LAYER TEST(S) FAILED\n", g_fail); return 1; }
