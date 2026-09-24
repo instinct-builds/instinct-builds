@@ -162,6 +162,11 @@ func run(model: AppModel, character: Character, outDir: String) {
                                  rows: sessionLogRows(logRolls))
     try? logText.write(to: URL(fileURLWithPath: "\(outDir)/session-log.txt"),
                        atomically: true, encoding: .utf8)
+    // 2.44.0 proof: the same Today rolls as a Markdown table.
+    let logMd = sessionLogMarkdown(character: character.name, range: .today,
+                                   groups: groupRollsByDay(Array(logRolls.reversed())))
+    try? logMd.write(to: URL(fileURLWithPath: "\(outDir)/session-log.md"),
+                     atomically: true, encoding: .utf8)
     let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
     try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))
     // 2.34.0 proof: compact export with zero-quantity rows collapsed.

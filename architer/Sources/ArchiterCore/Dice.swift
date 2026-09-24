@@ -268,6 +268,34 @@ public func sessionLogText(character: String, range: SessionLogRange,
     return lines.joined(separator: "\n") + "\n"
 }
 
+/// Markdown session log (2.44.0): the same day-grouped rolls as one
+/// table per day, for DMs who keep Obsidian/Notion notes. The Roll
+/// column carries the label with its expression; pipes in labels are
+/// escaped so a table never breaks.
+public func sessionLogMarkdown(character: String, range: SessionLogRange,
+                               groups: [RollDayGroup]) -> String {
+    var lines = ["# \(character) - Session Log (\(range.displayName))", ""]
+    if groups.isEmpty || groups.allSatisfy(\.rolls.isEmpty) {
+        lines.append("No rolls in range.")
+    } else {
+        for group in groups {
+            lines.append("## \(group.title)")
+            lines.append("")
+            lines.append("| Time | Roll | Total |")
+            lines.append("| --- | --- | --- |")
+            for roll in group.rolls {
+                let stamp = roll.rolledAt
+                    .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
+                let what = (roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
+                    .replacingOccurrences(of: "|", with: "\\|")
+                lines.append("| \(stamp) | \(what) | \(roll.total) |")
+            }
+            lines.append("")
+        }
+    }
+    return lines.joined(separator: "\n") + "\n"
+}
+
 public extension Array where Element == RollResult {
     /// Rolls inside a session-log range (2.41.0), measured against now in
     /// the given calendar. .all keeps everything, including unstamped

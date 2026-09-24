@@ -32,6 +32,7 @@ struct ARCHITERApp: App {
                     .keyboardShortcut("p", modifiers: [.command])
                 Button("Export Compact PDF (Landscape)…") { model.exportCompactPDF(landscape: true) }
                 Button("Export Session Log…") { model.exportSessionLog() }
+                Button("Export Session Log (Markdown)…") { model.exportSessionLogMarkdown() }
                 Toggle("Compact PDF: Hide Empty Rows", isOn: $model.compactPDFHideEmptyRows)
                 Toggle("Compact PDF: Session Log Appendix", isOn: $model.compactPDFSessionLog)
                 Picker("Compact PDF: Session Log Range", selection: $model.compactPDFSessionLogRange) {

@@ -256,6 +256,65 @@ struct RerollSpecTests {
     }
 }
 
+@Suite("Session-log Markdown export")
+struct SessionLogMarkdownTests {
+    private func stamped(_ expression: String, label: String?, total: Int, at: Date?) -> RollResult {
+        var r = RollResult(expression: expression, dice: [], modifier: 0, total: total, alternateTotal: nil)
+        r.label = label
+        r.rolledAt = at
+        return r
+    }
+
+    private var utc: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
+    }
+
+    @Test func oneTablePerDayGroup() throws {
+        let cal = utc
+        let t1 = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 9, minute: 42)))
+        let t2 = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 10, minute: 5)))
+        // Oldest first, as groupRollsByDay expects.
+        let rolls = [
+            stamped("2d6+3", label: nil, total: 8, at: t1),
+            stamped("1d20+7", label: "Stealth check", total: 19, at: t2),
+        ]
+        let groups = groupRollsByDay(rolls, now: t2, calendar: cal)
+        let text = sessionLogMarkdown(character: "Wren Halloway", range: .all, groups: groups)
+        #expect(text == """
+        # Wren Halloway - Session Log (All rolls)
+
+        ## Today
+
+        | Time | Roll | Total |
+        | --- | --- | --- |
+        | 09:42 | 2d6+3 | 8 |
+        | 10:05 | Stealth check (1d20+7) | 19 |
+
+        """)
+    }
+
+    @Test func pipesInLabelsAreEscaped() throws {
+        let cal = utc
+        let t = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 9)))
+        let rolls = [stamped("1d8", label: "Odd | label", total: 4, at: t)]
+        let groups = groupRollsByDay(rolls, now: t, calendar: cal)
+        let text = sessionLogMarkdown(character: "Wren Halloway", range: .today, groups: groups)
+        #expect(text.contains("Odd \\| label (1d8)"))
+    }
+
+    @Test func emptyRangeSaysSo() {
+        let text = sessionLogMarkdown(character: "Wren Halloway", range: .today, groups: [])
+        #expect(text == """
+        # Wren Halloway - Session Log (Today)
+
+        No rolls in range.
+
+        """)
+    }
+}
+
 @Suite("Reroll variants")
 struct RerollVariantTests {
     @Test func availabilityPerKind() {

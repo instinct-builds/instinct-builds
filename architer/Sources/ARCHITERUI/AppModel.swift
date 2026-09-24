@@ -538,6 +538,17 @@ public final class AppModel: ObservableObject {
                   name: "\(sel.name)-session-log.txt")
     }
 
+    /// Session-log Markdown export (2.44.0): the same rolls and range as
+    /// the text export, as one Markdown table per day.
+    public func exportSessionLogMarkdown() {
+        guard let sel = selected?.wrappedValue else { return }
+        let rolls = rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange)
+        let groups = groupRollsByDay(Array(rolls.reversed()))
+        savePanel(text: sessionLogMarkdown(character: sel.name,
+                                           range: compactPDFSessionLogRange, groups: groups),
+                  name: "\(sel.name)-session-log.md")
+    }
+
     public func exportPDF() {
         guard let sel = selected?.wrappedValue else { return }
         let panel = NSSavePanel()

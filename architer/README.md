@@ -4,6 +4,13 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.44.0
+
+- **Session-log Markdown export**: File > Export Session Log (Markdown)
+  saves the same rolls and range as the text export, as one Markdown
+  table per day (time, roll, total) - drops straight into Obsidian or
+  Notion session notes.
+
 ## What's in 2.43.0
 
 - **Reroll variants**: right-click a history card's reroll button to roll
