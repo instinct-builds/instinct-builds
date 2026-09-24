@@ -143,10 +143,11 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Exports as files.
     let pdf = SheetPDFExporter.export(character)
     try? pdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet.pdf"))
-    // 2.39.0 proof: the compact export carries the character's session-log
-    // appendix (Today + Yesterday groups from the backdated rolls above).
+    // 2.39.0/2.41.0 proof: the compact export carries the character's
+    // session-log appendix, ranged to Today - the Yesterday group is
+    // filtered out, the rerolled 4d6kh3 stays.
     let compactPdf = SheetPDFExporter.export(character, style: .compact,
-                                             sessionRolls: model.rollHistory.forCharacter(character.name))
+                                             sessionRolls: model.rollHistory.forCharacter(character.name).within(.today))
     try? compactPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact.pdf"))
     let compactLandscapePdf = SheetPDFExporter.export(character, style: .compact, orientation: .landscape)
     try? compactLandscapePdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-landscape.pdf"))

@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.41.0
+
+- **Session-log appendix date range**: the compact-PDF appendix can now print
+  all rolls, today only, or the last 7 days (File > Compact PDF: Session Log
+  Range). Range is persisted; unstamped pre-2.35.0 rolls only appear in
+  "All rolls", since an unplaceable roll inside a date range would mislead
+  the printout.
+
 ## What's in 2.40.0
 
 - Roll again from history: every roll card on the Dice tab gains a

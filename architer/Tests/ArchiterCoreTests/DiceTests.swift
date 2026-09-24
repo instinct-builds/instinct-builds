@@ -256,6 +256,61 @@ struct RerollSpecTests {
     }
 }
 
+@Suite("Session-log appendix date range")
+struct SessionLogRangeTests {
+    private func stamped(_ expression: String, at: Date?) -> RollResult {
+        var r = RollResult(expression: expression, dice: [], modifier: 0, total: 10, alternateTotal: nil)
+        r.rolledAt = at
+        return r
+    }
+
+    private var utc: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
+    }
+
+    @Test func allKeepsEverythingIncludingUnstamped() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 18)))
+        let old = try #require(cal.date(byAdding: .day, value: -30, to: now))
+        let rolls = [stamped("1d20", at: now), stamped("1d8", at: old), stamped("1d4", at: nil)]
+        let kept = rolls.within(.all, now: now, calendar: cal)
+        #expect(kept.count == 3)
+    }
+
+    @Test func todayKeepsOnlySameDayStamps() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 18)))
+        let earlierToday = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 0, minute: 1)))
+        let yesterday = try #require(cal.date(byAdding: .day, value: -1, to: now))
+        let rolls = [stamped("1d20", at: now), stamped("2d6", at: earlierToday),
+                     stamped("1d8", at: yesterday), stamped("1d4", at: nil)]
+        let kept = rolls.within(.today, now: now, calendar: cal)
+        #expect(kept.map(\.expression) == ["1d20", "2d6"])
+    }
+
+    @Test func last7DaysCoversTheRollingWeek() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 18)))
+        let sixDaysAgoStart = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 17, hour: 0)))
+        let sevenDaysAgo = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 16, hour: 23, minute: 59)))
+        let future = try #require(cal.date(byAdding: .day, value: 1, to: now))
+        let rolls = [stamped("1d20", at: now), stamped("1d12", at: sixDaysAgoStart),
+                     stamped("1d8", at: sevenDaysAgo), stamped("1d6", at: future),
+                     stamped("1d4", at: nil)]
+        let kept = rolls.within(.last7Days, now: now, calendar: cal)
+        // 6 days back at day start is the cutoff (today + 6 = 7 days);
+        // 7 days back and future stamps fall outside; unstamped drops out.
+        #expect(kept.map(\.expression) == ["1d20", "1d12"])
+    }
+
+    @Test func displayNamesAreStable() {
+        #expect(SessionLogRange.allCases.map(\.displayName) == ["All rolls", "Today", "Last 7 days"])
+        #expect(SessionLogRange(rawValue: "bogus") == nil)
+    }
+}
+
 @Suite("Session-log appendix rows")
 struct SessionLogRowTests {
     private func stamped(_ expression: String, label: String?, at: Date?) -> RollResult {

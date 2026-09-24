@@ -163,6 +163,50 @@ public func sessionLogRows(_ rolls: [RollResult], now: Date = Date(),
     }
 }
 
+/// Session-log appendix date range (2.41.0): which rolls the compact-PDF
+/// appendix prints. Stored as a rawValue string; unknown stored values
+/// fail safe to .all at the persistence layer.
+public enum SessionLogRange: String, CaseIterable, Sendable {
+    case all
+    case today
+    case last7Days
+
+    /// Menu label.
+    public var displayName: String {
+        switch self {
+        case .all: return "All rolls"
+        case .today: return "Today"
+        case .last7Days: return "Last 7 days"
+        }
+    }
+}
+
+public extension Array where Element == RollResult {
+    /// Rolls inside a session-log range (2.41.0), measured against now in
+    /// the given calendar. .all keeps everything, including unstamped
+    /// pre-2.35.0 rolls; ranged filters drop unstamped rolls, because an
+    /// unplaceable roll inside a date range would mislead the printout.
+    func within(_ range: SessionLogRange, now: Date = Date(),
+                calendar: Calendar = .current) -> [RollResult] {
+        switch range {
+        case .all:
+            return self
+        case .today:
+            return filter { roll in
+                roll.rolledAt.map { calendar.isDate($0, inSameDayAs: now) } ?? false
+            }
+        case .last7Days:
+            let startOfToday = calendar.startOfDay(for: now)
+            guard let cutoff = calendar.date(byAdding: .day, value: -6, to: startOfToday) else {
+                return self
+            }
+            return filter { roll in
+                roll.rolledAt.map { $0 >= cutoff && $0 <= now } ?? false
+            }
+        }
+    }
+}
+
 public extension RollResult {
     /// One session-log line (2.39.0, extracted from historyText):
     /// "[HH:mm] Stealth check: 25 (1d20+7)" when labeled, "[HH:mm] 2d6+3: 13"

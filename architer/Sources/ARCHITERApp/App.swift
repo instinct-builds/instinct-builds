@@ -1,6 +1,7 @@
 #if os(macOS)
 import SwiftUI
 import ARCHITERUI
+import ArchiterCore
 
 @main
 struct ARCHITERApp: App {
@@ -32,6 +33,11 @@ struct ARCHITERApp: App {
                 Button("Export Compact PDF (Landscape)…") { model.exportCompactPDF(landscape: true) }
                 Toggle("Compact PDF: Hide Empty Rows", isOn: $model.compactPDFHideEmptyRows)
                 Toggle("Compact PDF: Session Log Appendix", isOn: $model.compactPDFSessionLog)
+                Picker("Compact PDF: Session Log Range", selection: $model.compactPDFSessionLogRange) {
+                    ForEach(SessionLogRange.allCases, id: \.self) { range in
+                        Text(range.displayName).tag(range)
+                    }
+                }
                 Divider()
                 Button("Export Character File…") { model.exportCharacterJSON() }
                 Button("Import Character File…") { model.importCharacterJSON() }

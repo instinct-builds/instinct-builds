@@ -70,6 +70,15 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let compactPDFSessionLogKey = "architer.compactPDFSessionLog"
+    /// Compact-PDF option (2.41.0): date range for the session-log
+    /// appendix - all rolls, today only, or the last 7 days.
+    @Published public var compactPDFSessionLogRange: SessionLogRange =
+        SessionLogRange(rawValue: UserDefaults.standard.string(forKey: AppModel.compactPDFSessionLogRangeKey) ?? "") ?? .all {
+        didSet {
+            UserDefaults.standard.set(compactPDFSessionLogRange.rawValue, forKey: AppModel.compactPDFSessionLogRangeKey)
+        }
+    }
+    private static let compactPDFSessionLogRangeKey = "architer.compactPDFSessionLogRange"
     @Published public var rollHistory: [RollResult] = []
     @Published public var showWizard = false
     @Published public var showCompendium = false
@@ -530,7 +539,7 @@ public final class AppModel: ObservableObject {
                                          orientation: landscape ? .landscape : .portrait,
                                          collapseEmptyInventory: compactPDFHideEmptyRows,
                                          sessionRolls: compactPDFSessionLog
-                                             ? rollHistory.forCharacter(sel.name) : []).write(to: url)
+                                             ? rollHistory.forCharacter(sel.name).within(compactPDFSessionLogRange) : []).write(to: url)
         }
     }
 
