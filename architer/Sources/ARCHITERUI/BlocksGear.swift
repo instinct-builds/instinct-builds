@@ -311,6 +311,15 @@ public struct JournalBlock: View {
                         createdAt: Date()))
                 }
                 .controlSize(.small)
+                // 2.59.0: stamp a starter outline in as a new entry.
+                Menu("From template") {
+                    ForEach(JournalTemplate.builtIn) { template in
+                        Button(template.name) { character.addJournalEntry(from: template) }
+                    }
+                }
+                .controlSize(.small)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
                 // 2.46.0: one-tap recap - today's journal entries and
                 // rolls as one shareable text block.
                 Button("Copy today") { model.copySessionRecapToPasteboard(character) }

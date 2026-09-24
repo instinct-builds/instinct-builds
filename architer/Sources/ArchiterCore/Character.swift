@@ -277,6 +277,51 @@ public struct Attack: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// A starter outline for a new journal entry (2.59.0): the From
+/// template menu stamps one in with section headers the user fills in
+/// place. Built-ins only - original ARCHITER text, no published material.
+public struct JournalTemplate: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var name: String
+    /// The prefilled body: one section header per line.
+    public var body: String
+
+    public init(id: String, name: String, body: String) {
+        self.id = id
+        self.name = name
+        self.body = body
+    }
+
+    /// The three starter outlines offered by the journal's From
+    /// template menu: combat debrief, NPC meeting, loot log.
+    public static let builtIn: [JournalTemplate] = [
+        JournalTemplate(id: "combat-debrief", name: "Combat debrief", body: """
+        Encounter:
+        Opposition:
+        Key rolls:
+        Damage taken / healing:
+        Loot & rewards:
+        Loose ends:
+        """),
+        JournalTemplate(id: "npc-meeting", name: "NPC meeting", body: """
+        Who:
+        Where:
+        Their goal:
+        What we learned:
+        Promises & debts:
+        Follow-up:
+        """),
+        JournalTemplate(id: "loot-log", name: "Loot log", body: """
+        Source:
+        Items:
+        Coin & value:
+        Carried by:
+        Kept / sold:
+        Notes:
+        """),
+    ]
+}
+
 /// One dated session-log entry on the sheet's journal.
 public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID = UUID()
@@ -322,6 +367,16 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
                   text: session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n"),
                   createdAt: now,
                   isCollapsed: true)
+    }
+
+    /// Entry from a starter template (2.59.0): titled with the
+    /// template's name, body prefilled with its section headers,
+    /// stamped today so it joins the session recap.
+    public init(fromTemplate template: JournalTemplate, now: Date = Date()) {
+        self.init(date: JournalStamp.day(now),
+                  title: template.name,
+                  text: template.body,
+                  createdAt: now)
     }
 
     /// Multiline or over 80 chars - long enough to carry a collapse
@@ -563,6 +618,13 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         copy.id = UUID()
         copy.createdAt = Date()
         journal.insert(copy, at: i + 1)
+    }
+
+    /// Append a new journal entry from a starter template (2.59.0) -
+    /// the journal's From template menu. Lands last, matching Add
+    /// entry; reorder with the row chevrons.
+    public mutating func addJournalEntry(from template: JournalTemplate) {
+        journal.append(JournalEntry(fromTemplate: template))
     }
 
     /// Collapse or expand every long journal entry at once (2.53.0) -

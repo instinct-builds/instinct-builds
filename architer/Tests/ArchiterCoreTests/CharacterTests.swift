@@ -1051,6 +1051,21 @@ struct JournalTests {
         #expect(c.journal.count == 3)
     }
 
+    @Test func journalTemplateEntryAppendsStampedOutline() throws {
+        var c = Character(name: "Wren Halloway")
+        c.journal = [JournalEntry(title: "A", text: "alpha")]
+        let combat = JournalTemplate.builtIn[0]
+        c.addJournalEntry(from: combat)
+        #expect(c.journal.count == 2)
+        let entry = c.journal[1]
+        #expect(entry.title == "Combat debrief")
+        #expect(entry.text.hasPrefix("Encounter:"))
+        #expect(entry.text.contains("Loose ends:"))
+        #expect(entry.createdAt != nil)
+        #expect(entry.id != c.journal[0].id)
+        #expect(JournalTemplate.builtIn.map { $0.name } == ["Combat debrief", "NPC meeting", "Loot log"])
+    }
+
     @Test func journalEntrySizeLabel() throws {
         #expect(JournalEntry(text: "").sizeLabel == nil)
         #expect(JournalEntry(text: "   \n  ").sizeLabel == nil)

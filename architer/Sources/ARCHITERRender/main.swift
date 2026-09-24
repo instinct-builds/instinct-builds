@@ -271,6 +271,19 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: width, name: "journal-filter", outDir: outDir)
+        // 2.59.0 proof: the From template menu stamps a combat debrief
+        // outline in as a new entry - section headers prefilled, stamped
+        // today, appended last (the recap below counts 15).
+        if let combat = JournalTemplate.builtIn.first {
+            sel.addJournalEntry(from: combat)
+            model.selected?.wrappedValue = sel
+            renderPNG(
+                JournalBlock(character: .constant(sel))
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: width, name: "journal-templates", outDir: outDir)
+        }
     }
     // 2.46.0 proof: today's journal entries and rolls as one shareable
     // recap block - the same text the sheet's Copy today button copies.
