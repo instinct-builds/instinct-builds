@@ -7800,7 +7800,7 @@ struct FeedbackPreviewSheet: View {
     }
 }
 
-/// "N licenses expired since you last opened ASSSETS" (1.26). Shown once per launch.
+/// "N licenses expired since your last visit" (1.26). Shown once per launch.
 struct RightsNoticeBanner: View {
     @EnvironmentObject var model: StudioLibrary
     let issues: [RightsIssue]
@@ -7808,7 +7808,7 @@ struct RightsNoticeBanner: View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.octagon.fill").font(.system(size: 16)).foregroundStyle(Theme.danger)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(issues.count) license\(issues.count == 1 ? "" : "s") expired since you last opened ASSSETS").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Text("\(issues.count) license\(issues.count == 1 ? "" : "s") expired since your last visit").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                 Text(issues.prefix(3).map(\.title).joined(separator: ", ") + (issues.count > 3 ? " and \(issues.count - 3) more" : ""))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -7896,7 +7896,7 @@ struct BulkRightsSection: View {
                 }
             } else if withEnd > 0 {
                 HStack(spacing: 6) {
-                    Button { model.extendRights(Set(ids)) } label: { Label(withEnd == assets.count ? "Extend All 1 Year" : "Extend \(withEnd) Dated 1 Year", systemImage: "calendar.badge.plus") }
+                    Button { model.extendRights(Set(ids)) } label: { Label(withEnd == assets.count ? "Extend All 1 Year" : "Extend \(withEnd) · 1 Year", systemImage: "calendar.badge.plus").lineLimit(1).fixedSize() }
                     Button { model.markRenewed(Set(ids)) } label: { Label("Mark Renewed", systemImage: "arrow.clockwise.circle") }
                 }
                 .buttonStyle(.bordered).controlSize(.small).font(.caption)
