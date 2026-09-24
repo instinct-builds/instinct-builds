@@ -906,6 +906,28 @@ int main() {
                   && std::fabs(st.voice.arpSwing - 0.25) < 1e-6 && st.voice.arpLatch && st.serialize().find("\narp 1 2 2 3 0.62 0.25 1\n") != std::string::npos,
                   "ARP ON, UP/DN, 2 OCT, LATCH, GATE 62% and SWING reached the AU's sound");
             Check(std::fabs(gv - 62) < 0.01 && std::fabs(sv - 25) < 0.01, "Arp Gate and Arp Swing AU parameters follow the page");
+            // 0.26.0 step pattern + host sync: PATTERN on, LEN 16 -> 8, step 2 at half velocity,
+            // step 3 REST (kind strip once), step 5 TIE (twice), HOST SYNC on (no transport here: free clock).
+            {
+                auto cellX = [](int i) { return 492 + (i + 0.5) * (276.0 / 16); };
+                Click(view, w, NSMakePoint(492 + 31, t - 205 + 9));                        // PATTERN
+                for (int i = 0; i < 8; ++i) Click(view, w, NSMakePoint(560 + 10, t - 205 + 9)); // LEN <
+                Click(view, w, NSMakePoint(cellX(1), t - 246 + 11 + 0.5 * (37 - 14)));     // step 2 velocity 50%
+                Click(view, w, NSMakePoint(cellX(2), t - 246 + 4));                         // step 3 -> REST
+                Click(view, w, NSMakePoint(cellX(4), t - 246 + 4));                         // step 5 -> REST
+                Click(view, w, NSMakePoint(cellX(4), t - 246 + 4));                         //        -> TIE
+                Click(view, w, NSMakePoint(636 + 31, t - 205 + 9));                         // HOST SYNC
+                muew::Preset ps;
+                const bool okp = State(ps);
+                const auto& pv = ps.voice;
+                printf("arp pattern: sync %d on %d len %d vel2 %d kinds %d%d%d%d%d; editor %s\n", pv.clockSync ? 1 : 0, pv.arpPatOn ? 1 : 0, pv.arpPatLen, pv.arpPatVel[1],
+                       pv.arpPatKind[0], pv.arpPatKind[1], pv.arpPatKind[2], pv.arpPatKind[3], pv.arpPatKind[4], arpText().c_str());
+                Check(okp && pv.clockSync && pv.arpPatOn && pv.arpPatLen == 8 && pv.arpPatVel[1] == 64 && pv.arpPatKind[1] == 0 && pv.arpPatKind[2] == 1
+                      && pv.arpPatKind[4] == 2 && pv.arpPatKind[3] == 0 && ps.serialize().find("\narpx 1 1 8 127 0 64 0 127 1 127 0 127 2 ") != std::string::npos,
+                      "PATTERN, LEN, step velocity, REST, TIE and HOST SYNC reached the AU's sound");
+                Check(arpText().find(" sync=1 locked=0 pat=1 len=8 ") != std::string::npos && arpText().find("steps=O127,O64,R127,O127,T127,") != std::string::npos,
+                      "the ARP page reports the pattern; no transport = free clock");
+            }
             for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x90, k, 100, 0);
             for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x80, k, 0, 0);   // LATCH keeps them
             for (int i = 0; i < 40; ++i) RenderBlock();   // 20480 samples: 3-4 steps
@@ -927,6 +949,16 @@ int main() {
                   "the latched chord plays; the ARP page shows the AU's pool and step");
             Snapshot(view, "MUEW_ARP_PNG", "ARP page snapshot written");
             // Back: LATCH off (drops the released keys), ARP OFF, FILTER 1 page.
+            {   // pattern cell follows the AU while it plays
+                MUEWPerformance q{}; UInt32 qs = sizeof(q);
+                AudioUnitGetProperty(gUnit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &q, &qs);
+                const std::string at = arpText();
+                printf("arp pattern live: AU cell %d locked %u; editor %s\n", (int)q.arpPatCell, (unsigned)q.hostLocked, at.c_str());
+                Check(q.arpPatCell >= 0 && q.arpPatCell < 8 && q.hostLocked == 0 && at.find(" cell=" + std::to_string(q.arpPatCell) + " ") != std::string::npos,
+                      "the pattern lane highlights the AU's current cell");
+            }
+            Click(view, w, NSMakePoint(492 + 31, t - 205 + 9));   // PATTERN off
+            Click(view, w, NSMakePoint(636 + 31, t - 205 + 9));   // HOST SYNC off
             Click(view, w, NSMakePoint(666 + 27, t - 84 + 9));
             Click(view, w, NSMakePoint(492 + 22, t - 58 + 9));
             RenderBlock();

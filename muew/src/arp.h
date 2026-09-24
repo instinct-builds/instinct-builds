@@ -71,5 +71,29 @@ inline int stepSamplesAt(double start, double sampleRate, double bpm, int rate, 
     return std::max(1, (int)(std::llround(end) - std::llround(start)));
 }
 
+// ---- 0.26.0 host bar grid ----
+// The grid step that contains `beat` (host quarter notes from the song start),
+// swing aware: even steps are (1+swing) long, odd (1-swing), so pairs stay on
+// the straight grid. Returns the absolute step index; start/len in beats.
+inline long long gridStep(double beat, int rate, double swing, double* start = nullptr, double* len = nullptr) {
+    const double rb = rateBeats(rate), s = std::clamp(swing, 0.0, 0.5);
+    const double pair = 2.0 * rb;
+    const double pf = std::floor(beat / pair);
+    const double off = beat - pf * pair;
+    const double first = rb * (1.0 + s);
+    const bool odd = off >= first;
+    if (start) *start = pf * pair + (odd ? first : 0.0);
+    if (len) *len = odd ? rb * (1.0 - s) : first;
+    return (long long)pf * 2 + (odd ? 1 : 0);
+}
+
+// ---- 0.26.0 step pattern ----
+// Up to 16 steps, each ON (plays the next arp note at its velocity), REST
+// (silence, the note order does not advance) or TIE (holds the previous
+// note through the step). Values are stored in presets: append only.
+constexpr int kPatSteps = 16;
+enum StepKind { StepOn = 0, StepRest = 1, StepTie = 2, kStepKinds = 3 };
+inline int wrapStep(long long step, int len) { len = std::clamp(len, 1, kPatSteps); return (int)(((step % len) + len) % len); }
+
 } // namespace arp
 } // namespace muew

@@ -566,6 +566,50 @@ int main() {
         printf("arpeggiator (UP 1/16, pool, gate / swing automation, key up): ok\n");
     }
 
+    // 0.26.0 clock sync + step pattern: with the host transport playing, a key
+    // pressed in the last quarter of a 1/16 waits for the host's grid line;
+    // pattern REST/ON lands on the host's odd steps; stopped = free clock.
+    {
+        static Float64 hBeat = 0.2; static Boolean hPlay = true;
+        muew::Preset p = muew::factoryPresets()[0];
+        p.voice.osc2Level = 0; p.voice.osc1Shape = 0; p.voice.filterCutoff = 16000; p.voice.ampR = 0.02; p.routes.clear(); p.fx = muew::FXParams{};
+        p.voice.arpOn = true; p.voice.arpMode = 0; p.voice.arpRate = 3; p.voice.arpGate = 0.5; p.voice.clockSync = true;
+        p.voice.arpPatOn = true; p.voice.arpPatLen = 2; p.voice.arpPatKind[0] = muew::arp::StepRest;
+        AudioUnit t = openUnit();
+        HostCallbackInfo hc{};
+        hc.beatAndTempoProc = [](void*, Float64* beat, Float64* tempo) -> OSStatus { if (beat) *beat = hBeat; if (tempo) *tempo = 120.0; return noErr; };
+        hc.transportStateProc2 = [](void*, Boolean* play, Boolean* rec, Boolean* changed, Float64* sample, Boolean* cyc, Float64* cs, Float64* ce) -> OSStatus {
+            if (play) *play = hPlay; if (rec) *rec = false; if (changed) *changed = false; if (sample) *sample = hBeat * 22050.0;
+            if (cyc) *cyc = false; if (cs) *cs = 0; if (ce) *ce = 0; return noErr;
+        };
+        std::vector<float> bl(512), br(512);
+        const double blockBeats = 512.0 * 2.0 / 44100.0;
+        auto step = [&]() { bool r = render(t, bl, br); hBeat += blockBeats; return r; };
+        MUEWPerformance pf{}; UInt32 sz = sizeof(pf);
+        bool ok = t && AudioUnitSetProperty(t, kAudioUnitProperty_HostCallbacks, kAudioUnitScope_Global, 0, &hc, sizeof(hc)) == noErr && setState(t, p);
+        hBeat = 0.2 - blockBeats; ok = ok && step(); // hBeat now 0.2
+        ok = ok && MusicDeviceMIDIEvent(t, 0x90, 60, 100, 0) == noErr && step();
+        ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+        const int waitNote = pf.arpNote; const unsigned locked = pf.hostLocked;
+        ok = ok && step(); sz = sizeof(pf);
+        ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+        const int gridNote = pf.arpNote, gridStep = pf.arpStep;
+        bool evenOnly = true; int sounded = 0;
+        for (int i = 0; ok && i < 60; ++i) {
+            ok = step(); sz = sizeof(pf);
+            ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+            if (pf.arpNote >= 0) { ++sounded; if (pf.arpStep % 2 != 1 || pf.arpPatCell != 1) evenOnly = false; }
+        }
+        printf("clock sync: waiting note %d locked %u, at grid note %d step %d, pattern odd-only %d (%d blocks sounding)\n", waitNote, locked, gridNote, gridStep, evenOnly ? 1 : 0, sounded);
+        if (!ok || locked != 1 || waitNote != -1 || gridNote != 60 || gridStep != 1 || !evenOnly || sounded < 10) { printf("FAIL: arp clock sync to the host bar\n"); return 1; }
+        hPlay = false; ok = step() && step(); sz = sizeof(pf);
+        ok = ok && AudioUnitGetProperty(t, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+        muew::Preset st;
+        if (!ok || pf.hostLocked != 0 || !getState(t, st) || st.serialize().find("\narpx 1 1 2 127 1 127 0") == std::string::npos) { printf("FAIL: transport stop / arpx state\n"); return 1; }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("arp clock sync + step pattern (grid wait, odd steps, stop, state): ok\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;

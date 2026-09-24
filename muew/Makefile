@@ -85,7 +85,7 @@ build/muew-tests-voicex: tests/tests_voicex.cpp src/voice.h src/preset.h src/syn
 build/muew-tests-perf: tests/tests_perf.cpp src/voice.h src/preset.h src/synth.h src/ui_model.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_perf.cpp
 
-build/muew-tests-arp: tests/tests_arp.cpp src/voice.h src/preset.h src/synth.h src/arp.h | build
+build/muew-tests-arp: tests/tests_arp.cpp src/voice.h src/preset.h src/synth.h src/arp.h src/lfo.h src/fx.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_arp.cpp
 
 build/muew-tests-filter1: tests/tests_filter1.cpp src/filter.h src/voice.h src/preset.h src/synth.h src/ui_model.h | build

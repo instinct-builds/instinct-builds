@@ -21,6 +21,7 @@ public:
     static constexpr int kTable = 512;
     void setStartPhase(double p) { start_ = p - std::floor(p); }
     void resetTo(double p) { phase_ = p - std::floor(p); age_ = 0; }
+    void setPhase(double p) { phase_ = p - std::floor(p); } // 0.26.0 host lock: fade untouched
     void setCustom(const float* table) { custom_ = table; }
     void setFade(double delaySamples, double riseSamples) { delay_ = std::max(0.0, delaySamples); rise_ = std::max(0.0, riseSamples); }
     double phase() const { return phase_; }

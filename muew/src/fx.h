@@ -555,6 +555,13 @@ public:
         return b > 0.0 ? (bpm_ / 60.0) / b : std::clamp(l.rateHz, 0.02, 20.0);
     }
     double rackLfoPhase(int k) const { return lfoPhase_[k]; }
+    // 0.26.0: synced rack LFOs follow the host beat (clock sync, transport playing).
+    void lockLfos(double beat) {
+        for (int k = 0; k < 2; ++k) {
+            const double b = syncBeats(p_.lfo[k].sync);
+            if (b > 0.0) { const double ph = beat / b; lfoPhase_[k] = ph - std::floor(ph); }
+        }
+    }
     const StereoDelay& delay() const { return delay_; }
     const Reverb& reverb() const { return reverb_; }
     inline void process(float& l, float& r) {

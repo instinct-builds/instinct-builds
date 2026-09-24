@@ -141,6 +141,113 @@ int main() {
                         && r.voice.arpGate == 1.0 && r.voice.arpSwing == 0.5, "arp line clamps");
         Preset d = p; d.voice.arpGate = 0.5; check(!(d == p), "arp fields take part in equality");
     }
+
+    // ---- 0.26.0 host bar grid ----
+    {
+        double st, ln;
+        check(arp::gridStep(0.0, 3, 0) == 0 && arp::gridStep(0.26, 3, 0, &st, &ln) == 1 && std::fabs(st - 0.25) < 1e-12 && std::fabs(ln - 0.25) < 1e-12
+              && arp::gridStep(4.0, 3, 0) == 16 && arp::gridStep(-0.1, 3, 0) == -1, "grid steps follow the host beat (1/16)");
+        check(arp::gridStep(0.3, 3, 0.5, &st, &ln) == 0 && arp::gridStep(0.38, 3, 0.5, &st, &ln) == 1 && std::fabs(st - 0.375) < 1e-12 && std::fabs(ln - 0.125) < 1e-12,
+              "swung grid: even steps 75%, odd steps 25% of a pair");
+    }
+    // Render with the host calling setTransport every 512 samples from `beat0`.
+    auto hostRun = [](Synth& s, double beat0, int samples, bool playing, std::vector<int>* starts, std::vector<int>* notes) {
+        for (int t = 0; t < samples; t += 512) {
+            s.setTransport(beat0 + t * 120.0 / 60.0 / 44100.0, playing);
+            for (int i = 0; i < 512 && t + i < samples; ++i) {
+                render(s, 1);
+                if (s.arpPosition() == 1) { if (starts) starts->push_back(t + i); if (notes) notes->push_back(s.arpSoundingNote()); }
+            }
+        }
+    };
+    VoiceParams sp = ap; sp.clockSync = true;
+    {
+        Synth s; make(s, sp); s.setTransport(0.1, true); s.noteOn(60, 0.8f); s.noteOn(64, 0.8f);
+        std::vector<int> st, nt; hostRun(s, 0.1, 44100, true, &st, &nt);
+        // First step at once (60% of it left), then every grid line: beat 0.25 = sample 3307.5
+        bool grid = st.size() >= 8 && st[0] == 0;
+        for (size_t i = 1; grid && i < 8; ++i) grid = std::abs(st[i] - (int)std::llround((0.25 * i - 0.1) * 22050)) <= 1;
+        printf("sync starts: "); for (size_t i = 0; i < 6 && i < st.size(); ++i) printf("%d ", st[i]); printf("\n");
+        check(s.hostLocked() && grid && nt.size() >= 4 && nt[0] == 60 && nt[1] == 64 && nt[2] == 60, "clock sync: steps land on the host's 1/16 lines, not on the key press");
+        check(st.size() == 8 || std::abs((int)st.size() - 8) <= 1, "no double steps across host block updates");
+    }
+    {
+        Synth s; make(s, sp); s.setTransport(0.22, true); s.noteOn(60, 0.8f);
+        std::vector<int> st; hostRun(s, 0.22, 8000, true, &st, nullptr);
+        check(!st.empty() && std::abs(st[0] - (int)std::llround(0.03 * 22050)) <= 1, "a key pressed in the last quarter of a step waits for the next grid line");
+    }
+    {
+        Synth a; make(a, sp); Synth b; make(b, ap);
+        a.noteOn(60, 0.8f); b.noteOn(60, 0.8f);
+        std::vector<int> sa, sb; hostRun(a, 3.3, 30000, false, &sa, nullptr);
+        played(b, (int)sa.size(), &sb);
+        check(!a.hostLocked() && sa == sb, "transport stopped: the free clock runs exactly as without sync");
+    }
+    {
+        Synth s; make(s, sp); s.setTransport(7.0, true); s.noteOn(60, 0.8f);
+        std::vector<int> st; hostRun(s, 7.0, 44100, true, &st, nullptr);
+        const int before = (int)st.size();
+        s.setTransport(0.0, false); std::vector<int> st2; played(s, 3, &st2);
+        check(before > 4 && st2.size() == 3 && !s.hostLocked(), "stopping the transport falls back to the free clock without a stall");
+    }
+    // ---- 0.26.0 step pattern ----
+    {
+        VoiceParams v = ap; v.arpPatOn = true; v.arpPatLen = 4; v.arpGate = 0.5;
+        v.arpPatKind[0] = arp::StepOn; v.arpPatKind[1] = arp::StepTie; v.arpPatKind[2] = arp::StepRest; v.arpPatKind[3] = arp::StepOn;
+        v.arpPatVel[3] = 40;
+        Synth s; make(s, v); s.noteOn(60, 1.0f); s.noteOn(64, 1.0f); s.noteOn(67, 1.0f);
+        std::vector<int> nt, cells;
+        for (int t = 0; t < 44100 && nt.size() < 8; ++t) {
+            render(s, 1);
+            if (s.arpPosition() == 1) { nt.push_back(s.arpSoundingNote()); cells.push_back(s.arpPatternStep()); }
+            if (s.arpPosition() == 5000 && nt.size() == 1) check(s.arpSoundingNote() == 60, "a step before a TIE holds past its gate");
+        }
+        printf("pattern: "); for (size_t i = 0; i < nt.size(); ++i) printf("%d[%d] ", nt[i], cells[i]); printf("\n");
+        check(nt == std::vector<int>({60, 60, -1, 64, 67, 67, -1, 60}), "ON / TIE / REST / ON: ties hold, rests are silent and do not use up notes");
+        check(cells == std::vector<int>({0, 1, 2, 3, 0, 1, 2, 3}), "pattern cell follows the step");
+        // velocity: step 3 (vel 40) quieter than step 0 (127)
+        Synth q; make(q, v); q.noteOn(60, 1.0f);
+        std::vector<float> L(44100), R(44100); q.renderPlanar(L.data(), R.data(), 44100);
+        auto peak = [&](int a, int b) { float m = 0; for (int i = a; i < b; ++i) m = std::max(m, std::fabs(L[i])); return m; };
+        const float p0 = peak(0, 2700), p3 = peak(16540, 16540 + 2700);
+        printf("pattern velocity peaks %.3f %.3f\n", p0, p3);
+        check(p3 < p0 * 0.8f && p3 > 0.01f, "step velocity scales the note");
+    }
+    {
+        VoiceParams v = ap; v.arpPatOn = true; v.arpPatLen = 3; v.clockSync = true;
+        Synth s; make(s, v); s.setTransport(0.0, true); s.noteOn(60, 0.8f);
+        std::vector<int> nt; hostRun(s, 0.0, 44100, true, nullptr, &nt);
+        Synth s2; make(s2, v); s2.setTransport(0.5, true); s2.noteOn(60, 0.8f);
+        render(s2, 1); const int cell = s2.arpPatternStep();
+        check(cell == 2 % 3, "synced pattern cells count from the host bar (beat 0.5 = step 2)");
+    }
+    // ---- 0.26.0 LFO phase lock ----
+    {
+        VoiceParams v = base; v.clockSync = true; v.lfoFree[0] = true; v.lfoSync[0] = 3; // 1 beat per cycle
+        Synth s; make(s, v); s.setTransport(2.25, true); s.noteOn(60, 0.8f);
+        const double ph0 = s.voice(0).lfoPhaseOf(0);
+        std::vector<float> L(512), R(512); s.renderPlanar(L.data(), R.data(), 512);
+        s.setTransport(2.25 + 512 * 2.0 / 44100.0 + 0.5, true); // host jumped half a beat
+        const double ph1 = s.voice(0).lfoPhaseOf(0);
+        printf("lfo lock %.4f %.4f\n", ph0, ph1);
+        check(std::fabs(ph0 - 0.25) < 1e-9 && std::fabs(ph1 - std::fmod(0.25 + 512 * 2.0 / 44100.0 + 0.5, 1.0)) < 1e-9, "synced FREE LFO takes its phase from the host beat");
+        VoiceParams w = v; w.clockSync = false;
+        Synth f; make(f, w); f.setTransport(2.25, true); f.noteOn(60, 0.8f);
+        check(!f.hostLocked() && std::fabs(f.voice(0).lfoPhaseOf(0) - 0.25) > 1e-6, "clock sync off: LFO phases ignore the host");
+        FXParams fx; fx.lfo[0].sync = 2; // 2 beats per cycle
+        Synth r; make(r, v); r.setFX(fx); r.setTransport(5.0, true);
+        check(std::fabs(r.fx_.rackLfoPhase(0) - 0.5) < 1e-9, "synced rack LFO locks to the host beat");
+    }
+    {
+        Preset p; Preset q;
+        check(p.serialize().find("\narpx ") == std::string::npos, "default sound writes no arpx line");
+        p.voice.clockSync = true; p.voice.arpPatOn = true; p.voice.arpPatLen = 5; p.voice.arpPatVel[4] = 33; p.voice.arpPatKind[2] = arp::StepTie;
+        const std::string t = p.serialize();
+        check(q.parse(t) && q == p && t.find("\narpx 1 1 5 127 0 127 0 127 2 127 0 33 0") != std::string::npos, "arpx line round-trips");
+        Preset r; check(r.parse(Preset().serialize() + "arpx 1 1 99 0 9 300 1\n") && r.voice.arpPatLen == 16 && r.voice.arpPatVel[0] == 1 && r.voice.arpPatKind[0] == 2
+                        && r.voice.arpPatVel[1] == 127 && r.voice.arpPatKind[1] == 1 && r.voice.arpPatVel[2] == 127, "arpx line clamps and tolerates short lines");
+        Preset d = p; d.voice.arpPatVel[4] = 34; check(!(d == p), "pattern takes part in equality");
+    }
     printf(g_fail ? "FAIL: arp\n" : "PASS: arp\n");
     return g_fail;
 }

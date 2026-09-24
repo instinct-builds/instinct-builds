@@ -80,6 +80,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
+        patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -280,6 +281,49 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     ValuePill([self arpGateRect], @"GATE", v.arpGate >= 1 ? @"TIE" : [NSString stringWithFormat:@"%.0f%%", v.arpGate * 100], (v.arpGate - 0.05) / 0.95, pink, on);
     ValuePill([self arpSwingRect], @"SWING", ArpSwingValue(v.arpSwing), v.arpSwing / 0.5, pink, on && v.arpSwing > 0);
     [self drawArpGrid];
+    [self drawArpPattern];
+}
+// 0.26.0 step pattern: ON cells are velocity bars, REST cells are empty, TIE
+// cells bridge from the step before; a strip under each cell names its kind.
+- (void)drawArpPattern {
+    const VoiceParams& v = current.voice;
+    NSColor* pink = C(0xf06fb0); NSColor* sky = C(0x5ec8f2);
+    const bool on = v.arpOn && v.arpPatOn;
+    NSRect po = [self arpPatOnRect];
+    FillRound(po, 4, v.arpPatOn ? [pink colorWithAlphaComponent:.22] : C(0x0f141b));
+    TextA(@"PATTERN", NSMakeRect(po.origin.x, po.origin.y + 5, po.size.width, 10), 6.5, v.arpPatOn ? pink : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    Stepper([self arpPatLenRect], @"LEN", [NSString stringWithFormat:@"%d", std::clamp(v.arpPatLen, 1, arp::kPatSteps)], pink, v.arpPatOn);
+    NSRect sy = [self arpSyncRect];
+    FillRound(sy, 4, v.clockSync ? [sky colorWithAlphaComponent:.22] : C(0x0f141b));
+    TextA(@"HOST SYNC", NSMakeRect(sy.origin.x, sy.origin.y + 5, sy.size.width, 10), 6.5, v.clockSync ? sky : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    NSString* clk = !v.clockSync ? @"FREE CLOCK" : arpLiveLocked ? @"ON HOST BAR" : @"WAITING FOR PLAY";
+    TextA(clk, NSMakeRect(700, sy.origin.y + 5.5, 68, 10), 6, v.clockSync && arpLiveLocked ? sky : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
+    NSRect lane = [self arpPatLane];
+    FillRound(lane, 5, C(0x0f141b));
+    const int len = std::clamp(v.arpPatLen, 1, arp::kPatSteps);
+    const int live = (arpLiveOn && v.arpPatOn) ? arpLivePatCell : -1;
+    for (int i = 0; i < arp::kPatSteps; ++i) {
+        const NSRect c = [self arpPatCell:i];
+        const bool used = i < len;
+        const int kind = std::clamp(v.arpPatKind[i], 0, arp::kStepKinds - 1);
+        const NSRect bar = NSMakeRect(c.origin.x + 2, c.origin.y + 11, c.size.width - 4, c.size.height - 14);
+        if (i == live) FillRound(NSInsetRect(c, 0.5, 0.5), 3, [pink colorWithAlphaComponent:.16]);
+        if (i % 4 == 0) FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 8, c.size.width - 4, 1), 0, C(0x3a4452));
+        NSColor* full = !used ? C(0x1c232d) : !on ? C(0x3a4452) : i == live ? pink : [pink colorWithAlphaComponent:.6];
+        if (kind == arp::StepOn || kind == arp::StepTie) {
+            int k = i, vel = v.arpPatVel[i];
+            if (kind == arp::StepTie) { while (k > 0 && v.arpPatKind[k] == arp::StepTie) --k; vel = v.arpPatVel[k]; }
+            const CGFloat h = std::max(2.0, bar.size.height * std::clamp(vel, 1, 127) / 127.0);
+            NSRect b = NSMakeRect(bar.origin.x, bar.origin.y, bar.size.width, h);
+            if (kind == arp::StepTie) { b.origin.x -= 4; b.size.width += 4; } // bridge from the cell before
+            FillRound(b, 1.5, kind == arp::StepTie && used ? [full colorWithAlphaComponent:on ? .45 : .7] : full);
+        } else if (used) {
+            FillRound(NSMakeRect(NSMidX(bar) - 3, bar.origin.y + 1, 6, 1.5), 0.75, C(0x3a4452));
+        }
+        NSString* tag = kind == arp::StepOn ? @"" : kind == arp::StepRest ? @"R" : @"T";
+        FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 1.5, c.size.width - 4, 6), 1.5, used && kind != arp::StepOn ? C(0x232b36) : C(0x151b23));
+        if (tag.length) TextA(tag, NSMakeRect(c.origin.x, c.origin.y + 1, c.size.width, 7), 5, used ? C(0x8793a3) : C(0x3a4452), NSFontWeightBold, NSTextAlignmentCenter);
+    }
 }
 - (void)drawArpGrid {
     const VoiceParams& v = current.voice;
@@ -354,7 +398,26 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         [self voiceParamEdited:k ? params::ArpSwing : params::ArpGate];
         return YES;
     }
+    if (NSPointInRect(p, [self arpPatOnRect])) { v.arpPatOn = !v.arpPatOn; [self voiceParamEdited:-1]; return YES; }
+    NSRect pl = [self arpPatLenRect];
+    if (NSPointInRect(p, pl)) { v.arpPatLen = std::clamp(v.arpPatLen + (p.x < NSMidX(pl) ? -1 : 1), 1, arp::kPatSteps); [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, [self arpSyncRect])) { v.clockSync = !v.clockSync; [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, [self arpPatLane])) {
+        const int i = std::clamp((int)((p.x - [self arpPatLane].origin.x) / [self arpPatCell:0].size.width), 0, arp::kPatSteps - 1);
+        const NSRect c = [self arpPatCell:i];
+        v.arpPatOn = true;
+        if (i >= v.arpPatLen) v.arpPatLen = i + 1; // clicking past the end grows the pattern
+        if (p.y < c.origin.y + 9) v.arpPatKind[i] = (v.arpPatKind[i] + 1) % arp::kStepKinds; // kind strip: ON -> REST -> TIE
+        else { v.arpPatKind[i] = arp::StepOn; [self setPatVelocity:i at:p]; patDrag = i; }
+        [self voiceParamEdited:-1];
+        return YES;
+    }
     return NSPointInRect(p, [self arpGrid]);
+}
+- (void)setPatVelocity:(int)i at:(NSPoint)p {
+    const NSRect c = [self arpPatCell:i];
+    const double y = std::clamp((p.y - (c.origin.y + 11)) / (c.size.height - 14), 0.0, 1.0);
+    current.voice.arpPatVel[i] = std::clamp((int)std::lround(y * 127), 1, 127);
 }
 - (void)showArpOn:(bool)on pool:(const int*)pool count:(int)n index:(int)index note:(int)note step:(int)step {
     n = std::clamp(n, 0, 8);
@@ -365,12 +428,19 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     for (int i = 0; i < n; ++i) arpLivePool[i] = pool[i];
     if (filterPage == 2) [self setNeedsDisplayInRect:NSMakeRect(480, [self top] - 260, 300, 250)];
 }
+- (void)showArpPatCell:(int)cell locked:(bool)locked { // 0.26.0
+    if (cell == arpLivePatCell && locked == arpLiveLocked) return;
+    arpLivePatCell = cell; arpLiveLocked = locked;
+    if (filterPage == 2) [self setNeedsDisplayInRect:NSMakeRect(480, [self top] - 260, 300, 250)];
+}
 - (NSString*)muewArpText {
     const VoiceParams& v = current.voice;
     NSMutableString* s = [NSMutableString stringWithFormat:@"page=%d on=%d mode=%s oct=%d rate=%s gate=%.2f swing=%.2f latch=%d live=%d pool=", filterPage, v.arpOn ? 1 : 0,
         arp::modeName(v.arpMode), v.arpOctaves, arp::rateName(v.arpRate), v.arpGate, v.arpSwing, v.arpLatch ? 1 : 0, arpLiveOn ? 1 : 0];
     for (int i = 0; i < arpLivePoolN; ++i) [s appendFormat:@"%s%d", i ? "," : "", arpLivePool[i]];
     [s appendFormat:@" index=%d note=%d", arpLiveIndex, arpLiveNote];
+    [s appendFormat:@" sync=%d locked=%d pat=%d len=%d cell=%d steps=", v.clockSync ? 1 : 0, arpLiveLocked ? 1 : 0, v.arpPatOn ? 1 : 0, v.arpPatLen, arpLivePatCell]; // 0.26.0
+    for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%c%d", i ? "," : "", "ORT"[std::clamp(v.arpPatKind[i], 0, 2)], v.arpPatVel[i]];
     return s;
 }
 - (void)drawVoiceStrip {
@@ -560,7 +630,12 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)arpLatchRect { return NSMakeRect(666, [self top] - 84, 54, 18); }
 - (NSRect)arpGateRect { return NSMakeRect(492, [self top] - 108, 135, 16); }
 - (NSRect)arpSwingRect { return NSMakeRect(633, [self top] - 108, 135, 16); }
-- (NSRect)arpGrid { return NSMakeRect(492, [self top] - 246, 276, 128); }
+- (NSRect)arpGrid { return NSMakeRect(492, [self top] - 184, 276, 66); } // 0.26.0: shorter, the pattern lane sits below
+- (NSRect)arpPatOnRect { return NSMakeRect(492, [self top] - 205, 62, 18); }
+- (NSRect)arpPatLenRect { return NSMakeRect(560, [self top] - 205, 70, 18); }
+- (NSRect)arpSyncRect { return NSMakeRect(636, [self top] - 205, 62, 18); }
+- (NSRect)arpPatLane { return NSMakeRect(492, [self top] - 246, 276, 37); }
+- (NSRect)arpPatCell:(int)i { NSRect l = [self arpPatLane]; const CGFloat w = l.size.width / arp::kPatSteps; return NSMakeRect(l.origin.x + i * w, l.origin.y, w, l.size.height); }
 - (NSRect)f2Display { return NSMakeRect(686, [self top] - 138, 86, 94); }
 - (NSRect)f2TypeRect { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x, NSMaxY(r) - 18, r.size.width, 18); }
 - (NSRect)f2RouteRect:(int)i { NSRect r = [self f2Display]; return NSMakeRect(r.origin.x + 5 + i * 39, r.origin.y + 4, 37, 13); }
@@ -2981,6 +3056,12 @@ static int SortForColumn(int c) {
         return;
     }
     if (msegEdit >= 0 && (msegPt >= 0 || msegSeg >= 0 || msegLoopEdge >= 0)) { [self msegDragTo:p shift:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return; }
+    if (patDrag >= 0) { // 0.26.0 pattern lane: drag paints velocity across cells
+        const NSRect l = [self arpPatLane];
+        const int i = std::clamp((int)((p.x - l.origin.x) / [self arpPatCell:0].size.width), 0, arp::kPatSteps - 1);
+        if (i < current.voice.arpPatLen) { if (current.voice.arpPatKind[i] == arp::StepOn) [self setPatVelocity:i at:p]; patDrag = i; [self voiceParamEdited:-1]; }
+        return;
+    }
     if (arpDrag >= 0) { // 0.25.0 ARP GATE / SWING pills: the full width is the whole range
         NSRect r = arpDrag ? [self arpSwingRect] : [self arpGateRect];
         const double x = std::clamp(dragValue + (p.x - dragStart.x) / (r.size.width * scale / 150.0), 0.0, 1.0);
@@ -3110,7 +3191,7 @@ static int SortForColumn(int c) {
     if (voiceDrag >= 0 && host) host->parameterGesture(voiceDrag ? params::UnisonBlend : params::GlideTime, false);
     voiceDrag = -1;
     if (arpDrag >= 0 && host) host->parameterGesture(arpDrag ? params::ArpSwing : params::ArpGate, false);
-    arpDrag = -1;
+    arpDrag = -1; patDrag = -1;
     dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
     msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);

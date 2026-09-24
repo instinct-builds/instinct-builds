@@ -152,6 +152,18 @@ struct VoiceParams {
     double arpGate = 0.5;       // 0.05..1 of a step (1 = tied)
     double arpSwing = 0.0;      // 0..0.5 (straight .. 75/25)
     bool arpLatch = false;      // keep playing after the keys come up
+    // 0.26.0: lock the arp grid and synced FREE LFOs (voice + rack) to the
+    // host's bar while its transport plays; off (or stopped) = free clock.
+    bool clockSync = false;
+    // 0.26.0 step pattern (arp.h): off = every step plays at key velocity.
+    bool arpPatOn = false;
+    int arpPatLen = 16;                                   // 1..16
+    int arpPatVel[16] = {127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127}; // 1..127
+    int arpPatKind[16] = {};                              // arp::StepKind
+    bool arpPatDefault() const {
+        for (int i = 0; i < 16; ++i) if (arpPatVel[i] != 127 || arpPatKind[i] != 0) return false;
+        return !arpPatOn && arpPatLen == 16;
+    }
 };
 
 constexpr int kMaxUnison = 8;
@@ -265,6 +277,16 @@ public:
         applyMsegRates();
     }
 
+    // 0.26.0: synced FREE LFOs take their phase from the host beat. The fade
+    // (delay/rise) keeps running; only the phase moves.
+    double lfoPhaseOf(int i) const { return const_cast<Voice*>(this)->lfo(std::clamp(i, 0, 3)).phase(); }
+    void lockLfos(double beat) {
+        for (int i = 0; i < 4; ++i) {
+            if (!params_.lfoFree[i]) continue;
+            const double b = syncBeats(params_.lfoSync[i]);
+            if (b > 0.0) lfo(i).setPhase(beat / b + params_.lfoPhase[i]);
+        }
+    }
     void noteOn(int note, float velocity) {
         note_ = note;
         velocity_ = velocity;

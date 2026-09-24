@@ -46,6 +46,7 @@ struct PresetInfo {
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
 //                  0.25.0 adds optional `arp <on> <mode> <octaves> <rate> <gate> <swing> <latch>`.
+//                  0.26.0 adds optional `arpx <clocksync> <pattern on> <length> (<velocity> <kind>)x16`.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.22.0 adds optional `filterr <f1mix> <f2mix> <balance> <f2morph>`; filter2 types 6-8.
@@ -201,6 +202,17 @@ struct Preset {
             else if (key == "lfo2") ls >> voice.lfo2Rate >> voice.lfo2Shape;
             else if (key == "warp1") ls >> voice.osc1WarpMode >> voice.osc1Warp;
             else if (key == "warp2") ls >> voice.osc2WarpMode >> voice.osc2Warp;
+            else if (key == "arpx") { // 0.26.0: clock sync + step pattern
+                int sy = 0, on = 0, len = 16;
+                if (ls >> sy >> on >> len) {
+                    voice.clockSync = sy != 0; voice.arpPatOn = on != 0; voice.arpPatLen = std::clamp(len, 1, arp::kPatSteps);
+                    for (int i = 0; i < arp::kPatSteps; ++i) {
+                        int ve = 127, k = 0;
+                        if (!(ls >> ve >> k)) break;
+                        voice.arpPatVel[i] = std::clamp(ve, 1, 127); voice.arpPatKind[i] = std::clamp(k, 0, arp::kStepKinds - 1);
+                    }
+                }
+            }
             else if (key == "arp") { // 0.25.0: on mode octaves rate gate swing latch
                 int on = 0, m = 0, oc = 1, r = 3, la = 0; double g = 0.5, sw = 0;
                 if (ls >> on >> m >> oc >> r >> g >> sw >> la && std::isfinite(g) && std::isfinite(sw)) {
@@ -506,6 +518,8 @@ struct Preset {
         if (a.bendRange != b.bendRange) return false; // 0.24.0
         if (a.arpOn != b.arpOn || a.arpMode != b.arpMode || a.arpOctaves != b.arpOctaves || a.arpRate != b.arpRate
             || a.arpGate != b.arpGate || a.arpSwing != b.arpSwing || a.arpLatch != b.arpLatch) return false; // 0.25.0
+        if (a.clockSync != b.clockSync || a.arpPatOn != b.arpPatOn || a.arpPatLen != b.arpPatLen) return false; // 0.26.0
+        for (int i = 0; i < arp::kPatSteps; ++i) if (a.arpPatVel[i] != b.arpPatVel[i] || a.arpPatKind[i] != b.arpPatKind[i]) return false;
         if (a.voiceMode != b.voiceMode || a.polyVoices != b.polyVoices || a.glideTime != b.glideTime || a.glideLegato != b.glideLegato || a.uniPhase != b.uniPhase) return false; // 0.23.0
         if (a.filter1Mix != b.filter1Mix || a.filter2Mix != b.filter2Mix || a.filterBalance != b.filterBalance || a.filter2Morph != b.filter2Morph) return false; // 0.22.0
         if (a.filterDrive != b.filterDrive || a.filterKeytrack != b.filterKeytrack || a.filterMorph != b.filterMorph) return false; // 0.21.0
@@ -585,6 +599,11 @@ private:
         if (v.arpOn || v.arpMode != 0 || v.arpOctaves != 1 || v.arpRate != 3 || v.arpGate != 0.5 || v.arpSwing != 0 || v.arpLatch) // 0.25.0
             o << "arp " << (v.arpOn ? 1 : 0) << " " << v.arpMode << " " << v.arpOctaves << " " << v.arpRate << " " << v.arpGate << " " << v.arpSwing
               << " " << (v.arpLatch ? 1 : 0) << "\n";
+        if (v.clockSync || !v.arpPatDefault()) { // 0.26.0
+            o << "arpx " << (v.clockSync ? 1 : 0) << " " << (v.arpPatOn ? 1 : 0) << " " << v.arpPatLen;
+            for (int i = 0; i < arp::kPatSteps; ++i) o << " " << v.arpPatVel[i] << " " << v.arpPatKind[i];
+            o << "\n";
+        }
         if (v.voiceMode != 0 || v.polyVoices != 16 || v.glideTime != 0 || v.glideLegato || v.uniPhase != 0) // 0.23.0
             o << "voice " << v.voiceMode << " " << v.polyVoices << " " << v.glideTime << " " << (v.glideLegato ? 1 : 0) << " " << v.uniPhase << "\n";
         if (v.filter1Mix != 1 || v.filter2Mix != 1 || v.filterBalance != 0.5 || v.filter2Morph != 0) // 0.22.0

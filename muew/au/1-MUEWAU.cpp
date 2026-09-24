@@ -99,6 +99,7 @@ struct MUEWInstance {
     std::atomic<unsigned> arpOn{0};
     std::atomic<int> arpStep{0}, arpIndex{0}, arpNote{-1}, arpPoolN{0};
     std::atomic<int> arpPool[8] = {};
+    std::atomic<int> arpPatCell{-1}; std::atomic<unsigned> hostLocked{0}; // 0.26.0
     std::atomic<bool> paramsDirty{false};
 
     MUEWInstance() { syncParamsFromState(); }
@@ -513,7 +514,8 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
         case kMUEWProperty_Performance: // 0.24.0
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(MUEWPerformance)) {
                 MUEWPerformance pf{u->perfWheel.load(), u->perfAT.load(), u->perfBend.load(), u->perfNote.load(), u->perfSustain.load(),
-                                   u->arpOn.load(), u->arpStep.load(), u->arpIndex.load(), u->arpNote.load(), u->arpPoolN.load(), {}};
+                                   u->arpOn.load(), u->arpStep.load(), u->arpIndex.load(), u->arpNote.load(), u->arpPoolN.load(), {},
+                                   u->arpPatCell.load(), u->hostLocked.load()};
                 for (int i = 0; i < 8; ++i) pf.pool[i] = u->arpPool[i].load();
                 *static_cast<MUEWPerformance*>(outData) = pf;
                 *ioDataSize = sizeof(MUEWPerformance);
@@ -655,9 +657,21 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
     u->applyPendingState(false);
     if (u->hostCallbacks.beatAndTempoProc) {
         Float64 beat = 0, tempo = 0;
-        if (u->hostCallbacks.beatAndTempoProc(u->hostCallbacks.hostUserData, &beat, &tempo) == noErr && tempo > 0)
+        if (u->hostCallbacks.beatAndTempoProc(u->hostCallbacks.hostUserData, &beat, &tempo) == noErr && tempo > 0) {
             u->synth.setTempo(tempo);
-    }
+            // 0.26.0 clock sync: the arp grid and synced LFOs follow the host
+            // bar while its transport plays. No transport callback = free clock.
+            Boolean playing = false;
+            if (u->hostCallbacks.transportStateProc2) {
+                Boolean changed = false, cycling = false, recording = false; Float64 sample = 0, cs = 0, ce = 0;
+                if (u->hostCallbacks.transportStateProc2(u->hostCallbacks.hostUserData, &playing, &recording, &changed, &sample, &cycling, &cs, &ce) != noErr) playing = false;
+            } else if (u->hostCallbacks.transportStateProc) {
+                Boolean changed = false, cycling = false; Float64 sample = 0, cs = 0, ce = 0;
+                if (u->hostCallbacks.transportStateProc(u->hostCallbacks.hostUserData, &playing, &changed, &sample, &cycling, &cs, &ce) != noErr) playing = false;
+            }
+            u->synth.setTransport(beat, playing);
+        } else u->synth.setTransport(0.0, false);
+    } else u->synth.setTransport(0.0, false);
     float* left = static_cast<float*>(ioData->mBuffers[0].mData);
     float* right = static_cast<float*>(ioData->mBuffers[1].mData);
     // Never set kAudioUnitRenderAction_OutputIsSilence: hosts may answer that
@@ -706,7 +720,9 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         u->arpOn = sy.arpOn() ? 1u : 0u; u->arpStep = sy.arpStep(); u->arpIndex = sy.arpCycleIndex(); u->arpNote = sy.arpSoundingNote();
         const int n = sy.arpPoolCount(); u->arpPoolN = n;
         for (int i = 0; i < 8; ++i) u->arpPool[i] = i < n ? sy.arpPoolNote(i) : -1;
+        u->arpPatCell = sy.arpPatternStep();
     }
+    u->hostLocked = u->synth.hostLocked() ? 1u : 0u; // 0.26.0
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));
     for (auto& e : u->events) e.offset -= inNumberFrames;
     notifyFlags = (ioActionFlags ? *ioActionFlags : 0) | kAudioUnitRenderAction_PostRender;

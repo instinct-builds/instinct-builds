@@ -28,9 +28,12 @@ struct MUEWPerformance {
     SInt32 arpNote;      // note sounding now, -1 between gates
     SInt32 poolCount;    // held (or latched) keys
     SInt32 pool[8];      // the first 8, in press order
+    // 0.26.0
+    SInt32 arpPatCell;   // pattern cell of the current step, -1 = pattern off
+    UInt32 hostLocked;   // 1 while the clock follows the host bar (sync on, transport playing)
 };
 
 // Objective-C class the AU names in kAudioUnitProperty_CocoaUI. Versioned so
 // two MUEW builds loaded in one host never collide.
-#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_25"
+#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_26"
 #define MUEW_AU_BUNDLE_ID "co.instinct.muew.au"
