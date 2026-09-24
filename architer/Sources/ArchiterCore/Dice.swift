@@ -285,6 +285,39 @@ public func sessionSegments(_ rolls: [RollResult], now: Date = Date(),
     return Array(result.reversed())
 }
 
+/// Per-session summary for the divider stats line (2.69.0): roll count,
+/// high/low totals, and natural 20/1 counts over kept d20 dice only - an
+/// unkept advantage die is not a crit the table saw.
+public struct SessionStats: Equatable, Sendable {
+    public let count: Int
+    public let high: Int
+    public let low: Int
+    public let nat20s: Int
+    public let nat1s: Int
+
+    /// "9 rolls \u{00B7} high 26 \u{00B7} low 5 \u{00B7} nat 20 \u{00D7}2" - crit counts
+    /// appear only when nonzero, so a quiet session reads short.
+    public var line: String {
+        var parts = [count == 1 ? "1 roll" : "\(count) rolls",
+                     "high \(high)", "low \(low)"]
+        if nat20s > 0 { parts.append("nat 20 \u{00D7}\(nat20s)") }
+        if nat1s > 0 { parts.append("nat 1 \u{00D7}\(nat1s)") }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+}
+
+/// The stats line for one session segment (2.69.0). Totals read
+/// RollResult.total (modifier included); crits count kept d20 faces.
+public func sessionStats(_ session: RollSession) -> SessionStats {
+    let rolls = session.rolls
+    let keptD20 = rolls.flatMap(\.dice).filter { $0.kept && $0.sides == 20 }
+    return SessionStats(count: rolls.count,
+                        high: rolls.map(\.total).max() ?? 0,
+                        low: rolls.map(\.total).min() ?? 0,
+                        nat20s: keptD20.filter { $0.value == 20 }.count,
+                        nat1s: keptD20.filter { $0.value == 1 }.count)
+}
+
 /// Day groups for session-log exports (2.68.0): the 2.38.0 day groups
 /// with each header carrying the custom session names (2.67.0)
 /// contributing rolls to that day, oldest session first - so an exported

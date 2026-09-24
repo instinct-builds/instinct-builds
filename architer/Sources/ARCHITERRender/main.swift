@@ -154,6 +154,23 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: 800, name: "history-session", outDir: outDir, minHeight: 620, maxHeight: 620)
+        // 2.69.0 proof: every divider carries a stats line - the top
+        // session here includes a seeded natural 20 ("nat 20 \u{00D7}1").
+        var crit = DiceRoller(seed: 1).rollD20(mode: .normal)
+        for seed in 1...UInt64(200) {
+            let candidate = DiceRoller(seed: seed).rollD20(mode: .normal)
+            if candidate.dice.first(where: { $0.kept })?.value == 20 {
+                crit = candidate
+                break
+            }
+        }
+        crit.label = "Death save"
+        renderPNG(
+            HistoryListView(rolls: [crit, h2, y2, y1])
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 800, name: "history-session-stats", outDir: outDir, minHeight: 620, maxHeight: 620)
         // 2.58.0 proof: the book button opens an inline naming field on
         // the divider, pre-filled and editable before filing.
         renderPNG(

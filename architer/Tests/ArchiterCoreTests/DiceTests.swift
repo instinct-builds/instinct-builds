@@ -740,4 +740,34 @@ struct SessionSegmentTests {
         #expect(rows.first == .dayHeader("Today - Night watch"))
         #expect(sessionLogRows(rolls, now: now, calendar: cal).first == .dayHeader("Today"))
     }
+
+    // 2.69.0: the divider stats line - count and high/low over totals,
+    // natural 20/1 tallies over kept d20 dice only (an unkept advantage
+    // die is not a crit the table saw); crits leave the line when zero.
+    @Test func sessionStatsSummarizeTheSession() throws {
+        let cal = utc
+        // Advantage roll: a kept 20 over an unkept 1 - one nat 20, the
+        // dropped 1 is not a nat 1.
+        var adv = RollResult(expression: "d20",
+                             dice: [DieResult(sides: 20, value: 20, kept: true),
+                                    DieResult(sides: 20, value: 1, kept: false)],
+                             modifier: 7, total: 27, alternateTotal: 8)
+        adv.rolledAt = at(cal, 24, 18)
+        var critFail = RollResult(expression: "d20",
+                                  dice: [DieResult(sides: 20, value: 1, kept: true)],
+                                  modifier: 2, total: 3, alternateTotal: nil)
+        critFail.rolledAt = at(cal, 24, 17)
+        let plain = stamped("2d6", at: at(cal, 24, 16))   // total 10
+        let session = RollSession(number: 1, title: "Session 1 - Today", key: nil,
+                                  rolls: [adv, critFail, plain])
+        let stats = sessionStats(session)
+        #expect(stats.count == 3)
+        #expect(stats.high == 27)
+        #expect(stats.low == 3)
+        #expect(stats.nat20s == 1)
+        #expect(stats.nat1s == 1)
+        #expect(stats.line == "3 rolls \u{00B7} high 27 \u{00B7} low 3 \u{00B7} nat 20 \u{00D7}1 \u{00B7} nat 1 \u{00D7}1")
+        let quiet = sessionStats(RollSession(number: 1, title: "t", key: nil, rolls: [plain]))
+        #expect(quiet.line == "1 roll \u{00B7} high 10 \u{00B7} low 10")
+    }
 }

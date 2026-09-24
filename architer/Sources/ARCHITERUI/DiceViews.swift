@@ -230,9 +230,16 @@ public struct HistoryListView: View {
                         }
                     } header: {
                         HStack {
-                            Text(session.title)
-                                .font(Theme.Typeface.caption.bold())
-                                .foregroundStyle(Theme.inkMuted)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(session.title)
+                                    .font(Theme.Typeface.caption.bold())
+                                    .foregroundStyle(Theme.inkMuted)
+                                // 2.69.0: glanceable per-session summary -
+                                // count, high/low, and crit tallies.
+                                Text(sessionStats(session).line)
+                                    .font(Theme.Typeface.captionSmall)
+                                    .foregroundStyle(Theme.inkFaint)
+                            }
                             Spacer()
                             // 2.49.0: digest the whole session into the
                             // journal as one entry. Hidden while auto-log
