@@ -130,6 +130,21 @@ struct SessionRecapTests {
         #expect(entry.text.hasPrefix("[" + RollResult.historyTimeFormatter.string(from: morning)))
     }
 
+    @Test func sessionDigestHonorsCustomTitle() throws {
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
+        let session = RollSession(number: 2, title: "Session 2 - Today",
+                                  rolls: [roll("2d6+3", at: now)])
+        // A custom title replaces the generated one.
+        let named = JournalEntry(sessionDigest: session, title: "Lantern Street heist", now: now)
+        #expect(named.title == "Lantern Street heist")
+        #expect(named.isCollapsed == true)
+        // Blank and whitespace-only input falls back to the session title.
+        #expect(JournalEntry(sessionDigest: session, title: "", now: now).title == "Session 2 - Today")
+        #expect(JournalEntry(sessionDigest: session, title: "   ", now: now).title == "Session 2 - Today")
+        #expect(JournalEntry(sessionDigest: session, now: now).title == "Session 2 - Today")
+    }
+
     @Test func createdAtDecoding() throws {
         // The pre-2.46.0 saved shape: no createdAt key at all.
         let json = #"{"date":"Session 1","title":"Start","text":"It began."}"#

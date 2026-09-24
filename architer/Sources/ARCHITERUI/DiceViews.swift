@@ -176,8 +176,22 @@ extension DiceRollerView {
 public struct HistoryListView: View {
     @EnvironmentObject var model: AppModel
     let rolls: [RollResult]
+    /// 2.58.0: divider whose digest is being named, and the draft title.
+    @State private var namingSession: Int?
+    @State private var digestTitle: String
 
-    public init(rolls: [RollResult]) { self.rolls = rolls }
+    public init(rolls: [RollResult], initialNamingSession: Int? = nil,
+                initialDigestTitle: String = "") {
+        self.rolls = rolls
+        _namingSession = State(initialValue: initialNamingSession)
+        _digestTitle = State(initialValue: initialDigestTitle)
+    }
+
+    /// Files the digest with the drafted name and closes the inline form.
+    private func confirmDigest(_ session: RollSession) {
+        model.addSessionToJournal(session, title: digestTitle)
+        namingSession = nil
+    }
 
     /// Row identity namespaced by group: bare per-section offsets collide
     /// across sibling ForEaches inside a lazy stack, and SwiftUI drops the
@@ -208,10 +222,28 @@ public struct HistoryListView: View {
                             // journal as one entry. Hidden while auto-log
                             // is on (the rolls are already there), matching
                             // the 2.45.0 pencil; undated runs have no
-                            // session to name.
-                            if session.number > 0, !model.autoLogRollsToJournal {
+                            // session to name. 2.58.0: the button opens an
+                            // inline field pre-filled with the session's
+                            // title so the digest can land named.
+                            if namingSession == session.number {
+                                TextField("Session name", text: $digestTitle)
+                                    .textFieldStyle(InsetFieldStyle())
+                                    .frame(width: 180)
+                                    .onSubmit { confirmDigest(session) }
+                                Button { confirmDigest(session) }
+                                    label: { Image(systemName: "checkmark") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.inkFaint)
+                                    .help("Add to the journal with this name")
+                                Button { namingSession = nil }
+                                    label: { Image(systemName: "xmark") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.inkFaint)
+                                    .help("Cancel")
+                            } else if session.number > 0, !model.autoLogRollsToJournal {
                                 Button {
-                                    model.addSessionToJournal(session)
+                                    digestTitle = session.title
+                                    namingSession = session.number
                                 } label: { Image(systemName: "text.book.closed") }
                                     .buttonStyle(.plain)
                                     .foregroundStyle(Theme.inkFaint)

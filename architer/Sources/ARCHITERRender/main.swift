@@ -154,6 +154,16 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .background(Theme.surface)
                 .environmentObject(model),
             width: 800, name: "history-session", outDir: outDir, minHeight: 620, maxHeight: 620)
+        // 2.58.0 proof: the book button opens an inline naming field on
+        // the divider, pre-filled and editable before filing.
+        renderPNG(
+            HistoryListView(rolls: [h1, h2, y2, y1],
+                            initialNamingSession: 2,
+                            initialDigestTitle: "Lantern Street heist")
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 800, name: "history-digest-name", outDir: outDir, minHeight: 620, maxHeight: 620)
         model.autoLogRollsToJournal = true
     }
     // Proof render for 2.23.0: a macro row mid edit-in-place.

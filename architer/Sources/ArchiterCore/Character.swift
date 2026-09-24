@@ -313,9 +313,12 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// Digest entry for a roll session (2.49.0): one entry holding the
     /// session's rolls oldest first. Lands collapsed (2.52.0) - the long
     /// body stays one tap away without crowding the journal block.
-    public init(sessionDigest session: RollSession, now: Date = Date()) {
+    /// 2.58.0: a custom title ("Lantern Street heist") replaces the
+    /// session's generated one; blank input falls back to it.
+    public init(sessionDigest session: RollSession, title: String? = nil, now: Date = Date()) {
+        let custom = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.init(date: JournalStamp.day(now),
-                  title: session.title,
+                  title: custom.isEmpty ? session.title : custom,
                   text: session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n"),
                   createdAt: now,
                   isCollapsed: true)

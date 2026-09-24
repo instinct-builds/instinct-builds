@@ -397,9 +397,9 @@ public final class AppModel: ObservableObject {
     /// One-tap session digest (2.49.0): drop a whole session's rolls into
     /// the journal as one entry, oldest first - the session-divider
     /// button's action, offered while auto-log is off.
-    public func addSessionToJournal(_ session: RollSession) {
+    public func addSessionToJournal(_ session: RollSession, title: String? = nil) {
         guard var c = selected?.wrappedValue else { return }
-        c.journal.append(JournalEntry(sessionDigest: session))
+        c.journal.append(JournalEntry(sessionDigest: session, title: title))
         selected?.wrappedValue = c
     }
 
