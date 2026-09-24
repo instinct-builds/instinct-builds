@@ -4,6 +4,14 @@ A native macOS character-sheet builder for tabletop RPGs — built from scratch,
 no APIs, no dependencies. Original code and content with genre-standard
 mechanics (ability modifiers, proficiency, advantage, spell slots).
 
+## What's in 2.47.0
+
+- **Journal timestamps in exports**: stamped journal entries (auto-logged
+  rolls, new hand-written entries) render their creation time in the
+  PDF, HTML and Markdown exports - "2026-09-24 06:51 - 4d6kh3" - closing
+  the loop with the session recap. Unstamped entries from older saves
+  keep their date-title head.
+
 ## What's in 2.46.0
 
 - **Session recap**: a Copy today button on the sheet's journal block

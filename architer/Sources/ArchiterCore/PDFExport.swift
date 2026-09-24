@@ -483,8 +483,7 @@ public enum SheetPDFExporter {
                 guard !c.journal.isEmpty else { continue }
                 cursor.section("Journal", margin: margin)
                 for e in c.journal {
-                    let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
-                    let headLines = wrap(head.isEmpty ? "Entry" : head, width: flowW, size: 9)
+                    let headLines = wrap(e.exportHead, width: flowW, size: 9)
                     var bodyLines: [String] = []
                     for para in e.text.components(separatedBy: "\n") {
                         bodyLines += wrap(para, width: flowW - 14, size: 9)

@@ -989,6 +989,38 @@ struct JournalTests {
         let empty = SheetExporter.exportMarkdown(Character(name: "Test"))
         #expect(!empty.contains("## Journal"))
     }
+
+    @Test func exportHeadAddsTimeForStampedEntries() {
+        let stamp = Date(timeIntervalSince1970: 1_790_000_000)
+        let time = RollResult.historyTimeFormatter.string(from: stamp)
+        // Unstamped entries keep the pre-2.47.0 head.
+        #expect(JournalEntry(date: "Session 1", title: "Start").exportHead == "Session 1 - Start")
+        // Stamped entries render their creation time after the date.
+        #expect(JournalEntry(date: "2026-09-24", title: "4d6kh3",
+                             createdAt: stamp).exportHead == "2026-09-24 \(time) - 4d6kh3")
+        // A stamp with no free-form date still shows the time.
+        #expect(JournalEntry(title: "T", createdAt: stamp).exportHead == "\(time) - T")
+        // Nothing at all stays "Entry".
+        #expect(JournalEntry().exportHead == "Entry")
+    }
+
+    @Test func exportsShowStampedEntryTimes() {
+        let stamp = Date(timeIntervalSince1970: 1_790_000_000)
+        let time = RollResult.historyTimeFormatter.string(from: stamp)
+        var c = Character(name: "Test")
+        c.journal = [JournalEntry(date: "2026-09-24", title: "4d6kh3",
+                                  text: "Rolled 12.", createdAt: stamp)]
+        let md = SheetExporter.exportMarkdown(c)
+        #expect(md.contains("### 2026-09-24 \(time) - 4d6kh3"))
+        let html = SheetExporter.exportHTML(c)
+        #expect(html.contains("<h3>2026-09-24 \(time) - 4d6kh3</h3>"))
+        let pdf = String(decoding: SheetPDFExporter.export(c), as: UTF8.self)
+        #expect(pdf.contains("(2026-09-24 \(time) - 4d6kh3)"))
+        // Unstamped entries render no time anywhere.
+        var legacy = Character(name: "Test")
+        legacy.journal = [JournalEntry(date: "Session 1", title: "Start", text: "It began.")]
+        #expect(!SheetExporter.exportMarkdown(legacy).contains(time))
+    }
 }
 
 @Suite("Character portrait")

@@ -188,6 +188,11 @@ func run(model: AppModel, character: Character, outDir: String) {
     depleted.inventory.append(InventoryItem(name: "Chalk", quantity: 0, category: "Gear"))
     let collapsedPdf = SheetPDFExporter.export(depleted, style: .compact, collapseEmptyInventory: true)
     try? collapsedPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-compact-collapsed.pdf"))
+    // 2.47.0 proof: stamped journal entries render their creation time in
+    // exports. The pristine sample sheet above stays byte-stable; this
+    // export renders the model's copy with auto-logged (stamped) entries.
+    let stampedPdf = SheetPDFExporter.export(model.selected?.wrappedValue ?? character)
+    try? stampedPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-stamped.pdf"))
     try? SheetExporter.exportHTML(character).write(toFile: "\(outDir)/sample-sheet.html", atomically: true, encoding: .utf8)
     try? SheetExporter.exportMarkdown(character).write(toFile: "\(outDir)/sample-sheet.md", atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")

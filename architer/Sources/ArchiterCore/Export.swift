@@ -130,8 +130,7 @@ public enum SheetExporter {
                 if !c.journal.isEmpty {
                     var lines = ["## Journal"]
                     for e in c.journal {
-                        let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
-                        lines.append("### \(head.isEmpty ? "Entry" : head)")
+                        lines.append("### \(e.exportHead)")
                         if !e.text.isEmpty { lines.append(e.text) }
                     }
                     out.append(lines.joined(separator: "\n"))
@@ -301,8 +300,7 @@ public enum SheetExporter {
                 if !c.journal.isEmpty {
                     var items = ""
                     for e in c.journal {
-                        let head = [e.date, e.title].filter { !$0.isEmpty }.joined(separator: " - ")
-                        items += "<h3>\(esc(head.isEmpty ? "Entry" : head))</h3>"
+                        items += "<h3>\(esc(e.exportHead))</h3>"
                         if !e.text.isEmpty {
                             items += "<p>\(esc(e.text).replacingOccurrences(of: "\n", with: "<br>"))</p>"
                         }

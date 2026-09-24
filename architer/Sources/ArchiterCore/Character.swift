@@ -306,6 +306,22 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+public extension JournalEntry {
+    /// Export head line (2.47.0): the free-form date and title joined,
+    /// with the creation time appended for stamped entries
+    /// ("2026-09-24 06:51 - 4d6kh3"). Unstamped entries keep the
+    /// pre-2.47.0 head.
+    var exportHead: String {
+        var day = date
+        if let createdAt {
+            let time = RollResult.historyTimeFormatter.string(from: createdAt)
+            day = day.isEmpty ? time : "\(day) \(time)"
+        }
+        let head = [day, title].filter { !$0.isEmpty }.joined(separator: " - ")
+        return head.isEmpty ? "Entry" : head
+    }
+}
+
 /// Non-walking movement kinds. Genre-standard categories; walking speed
 /// stays the base `speed` field.
 public enum MovementMode: String, Codable, CaseIterable, Sendable {
