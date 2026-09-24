@@ -31,9 +31,15 @@ struct MUEWPerformance {
     // 0.26.0
     SInt32 arpPatCell;   // pattern cell of the current step, -1 = pattern off
     UInt32 hostLocked;   // 1 while the clock follows the host bar (sync on, transport playing)
+    // 0.30.0 Engine HQ meter
+    UInt32 activeVoices; // voices sounding after the last block
+    UInt32 voiceLimit;   // POLY voice count (1 in MONO / LEGATO)
+    Float32 cpuLoad;     // smoothed share of the real-time budget the engine used (1 = 100%)
+    UInt32 oscHQ;        // 1 while the oscillators run oversampled
+    UInt32 renderHQ;     // 1 during an offline (HQ) render
 };
 
 // Objective-C class the AU names in kAudioUnitProperty_CocoaUI. Versioned so
 // two MUEW builds loaded in one host never collide.
-#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_29"
+#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_30"
 #define MUEW_AU_BUNDLE_ID "co.instinct.muew.au"

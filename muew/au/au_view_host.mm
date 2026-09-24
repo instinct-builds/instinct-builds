@@ -1124,6 +1124,34 @@ int main() {
         After(7.0, ^{ // Snapshot the hosted editor itself (independent of screen capture timing).
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });
+        After(7.12, ^{ // 0.30.0 Engine HQ: header QUALITY pill on, a chord for the voice meter
+            const NSPoint hqPill = NSMakePoint(268 + 7 + 14, view.bounds.size.height - 66 + 21 + 6.5);
+            Click(view, w, hqPill);
+            MusicDeviceMIDIEvent(gUnit, 0x90, 60, 100, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 64, 100, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 67, 100, 0);
+            for (int i = 0; i < 8; ++i) RenderBlock();
+        });
+        After(7.17, ^{
+            const NSPoint hqPill = NSMakePoint(268 + 7 + 14, view.bounds.size.height - 66 + 21 + 6.5);
+            RenderBlock();
+            SEL follow = NSSelectorFromString(@"muewFollowPerformance");
+            if ([view respondsToSelector:follow]) ((void (*)(id, SEL))[view methodForSelector:follow])(view, follow);
+            [view display];
+            Snapshot(view, "MUEW_ENGINE_PNG", "Engine HQ header snapshot written");
+            NSString* et = [view respondsToSelector:NSSelectorFromString(@"muewEngineText")] ? [view valueForKey:@"muewEngineText"] : @"";
+            Float64 lat = -1; UInt32 sz = sizeof(lat);
+            AudioUnitGetProperty(gUnit, kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0, &lat, &sz);
+            muew::Preset st; const bool ok = State(st);
+            printf("hq30: %s; AU oscq %d; latency %.2f samples\n", et.UTF8String ?: "", st.voice.oscQuality, lat * 44100.0);
+            Check(ok && st.voice.oscQuality == 1 && st.serialize().find("\noscq 1\n") != std::string::npos, "header HQ pill: QUALITY HQ reached the AU and its state");
+            Check(std::fabs(lat * 44100.0 - 7.5) < 0.01 || std::fabs(lat * 44100.0 - 30.0) < 0.01, "the AU reports the HQ latency to the host");
+            Check([et rangeOfString:@"hq=1 voices="].location != NSNotFound && [et rangeOfString:@"voices=0/"].location == NSNotFound,
+                  "header meter shows the held chord's voices");
+            MusicDeviceMIDIEvent(gUnit, 0x80, 60, 0, 0); MusicDeviceMIDIEvent(gUnit, 0x80, 64, 0, 0); MusicDeviceMIDIEvent(gUnit, 0x80, 67, 0, 0);
+            Click(view, w, hqPill); // back to STANDARD
+            muew::Preset back;
+            Check(State(back) && back.voice.oscQuality == 0, "header HQ pill returns to STANDARD");
+            fflush(stdout);
+        });
         After(7.2, ^{ // 0.11.0 full browser: open it, import a file, filter by a character tag, rate, sort by rating
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(view.bounds.size.width - 76 + 23, t - 26 + 8)); // FULL pill on the compact browser

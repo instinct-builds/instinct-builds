@@ -428,6 +428,45 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     for (int i = 0; i < n; ++i) arpLivePool[i] = pool[i];
     if (filterPage == 2) [self setNeedsDisplayInRect:NSMakeRect(480, [self top] - 260, 300, 250)];
 }
+// 0.30.0 Engine HQ: header block with the QUALITY pill, voice count and CPU load.
+- (NSRect)engineBox { return NSMakeRect(268, self.bounds.size.height - 66, 104, 40); }
+- (NSRect)engineHQPill { NSRect b = [self engineBox]; return NSMakeRect(b.origin.x + 7, b.origin.y + 21, 28, 13); }
+- (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render {
+    const int pc = (int)std::lround(std::clamp(cpu, 0.0f, 9.99f) * 100), was = (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100);
+    const bool same = active == engVoices && limit == engLimit && render == engRender && pc == was;
+    engVoices = active; engLimit = limit; engCpu = cpu; engRender = render;
+    if (!same) [self setNeedsDisplayInRect:NSInsetRect([self engineBox], -2, -2)];
+}
+- (NSString*)muewEngineText {
+    return [NSString stringWithFormat:@"hq=%d voices=%d/%d cpu=%.4f render=%d", current.voice.oscQuality, engVoices, engLimit, engCpu, engRender ? 1 : 0];
+}
+- (void)drawEngine {
+    const NSRect b = [self engineBox];
+    FillRound(b, 7, C(0x0a0d12));
+    [C(0x232a35) setStroke];
+    [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(b, 0.5, 0.5) xRadius:7 yRadius:7] stroke];
+    const bool hq = current.voice.oscQuality == 1 || engRender;
+    const NSRect pill = [self engineHQPill];
+    NSColor* teal = C(0x5adac8);
+    if (hq) FillRound(pill, 6.5, [teal colorWithAlphaComponent:0.9]);
+    else {
+        FillRound(pill, 6.5, C(0x141a22));
+        [C(0x3a4452) setStroke];
+        [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(pill, 0.5, 0.5) xRadius:6 yRadius:6] stroke];
+    }
+    TextA(@"HQ", NSMakeRect(pill.origin.x, pill.origin.y + 1.5, pill.size.width, 10), 8, hq ? C(0x06201c) : C(0x8391a3), NSFontWeightBold, NSTextAlignmentCenter);
+    NSString* vs = [NSString stringWithFormat:@"%d/%d", engVoices, engLimit > 0 ? engLimit : current.voice.polyVoices];
+    TextA(engRender ? @"RENDER" : @"VOICES", NSMakeRect(b.origin.x + 40, b.origin.y + 23, 36, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentLeft);
+    TextA(vs, NSMakeRect(b.origin.x + 72, b.origin.y + 22, 26, 11), 8.5, engVoices > 0 ? C(0xe6ebf1) : C(0x758192), NSFontWeightSemibold, NSTextAlignmentRight);
+    // CPU: share of the real-time budget, amber past 50 %, red past 80 %.
+    TextA(@"CPU", NSMakeRect(b.origin.x + 8, b.origin.y + 6, 22, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentLeft);
+    const float cpu = std::clamp(engCpu, 0.0f, 1.0f);
+    const NSRect track = NSMakeRect(b.origin.x + 30, b.origin.y + 9, 40, 4);
+    FillRound(track, 2, C(0x1a212b));
+    NSColor* cc = cpu > 0.8f ? C(0xf06a5f) : cpu > 0.5f ? C(0xf2ab55) : teal;
+    if (cpu > 0.002f) FillRound(NSMakeRect(track.origin.x, track.origin.y, std::max<CGFloat>(3, track.size.width * cpu), 4), 2, cc);
+    TextA([NSString stringWithFormat:@"%d%%", (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100)], NSMakeRect(b.origin.x + 72, b.origin.y + 5, 26, 11), 8.5, C(0xb7c1cd), NSFontWeightSemibold, NSTextAlignmentRight);
+}
 - (void)showArpPatCell:(int)cell locked:(bool)locked { // 0.26.0
     if (cell == arpLivePatCell && locked == arpLiveLocked) return;
     arpLivePatCell = cell; arpLiveLocked = locked;
@@ -1266,6 +1305,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [g drawInRect:NSMakeRect(0, b.size.height - 82, b.size.width, 82) angle:270];
     Text(@"MUEW", NSMakeRect(28, b.size.height - 59, 180, 38), 28, C(0xf5f7fa), NSFontWeightBold);
     Text(@"WAVETABLE INSTRUMENT", NSMakeRect(126, b.size.height - 50, 200, 16), 10, C(0x5adac8), NSFontWeightSemibold);
+    [self drawEngine]; // 0.30.0
 
     // Preset display
     NSRect disp = NSMakeRect(380, b.size.height - 66, 320, 40);
@@ -3282,6 +3322,10 @@ static int SortForColumn(int c) {
     dragStart = p;
     dragKnob = -1;
     if (browserOpen) { [self browserMouseDown:p]; return; }
+    if (NSPointInRect(p, NSInsetRect([self engineHQPill], -4, -4))) { // 0.30.0 global QUALITY
+        current.voice.oscQuality = current.voice.oscQuality ? 0 : 1;
+        edited = true; [self applySound]; [self setNeedsDisplay:YES]; return;
+    }
     if (NSPointInRect(p, [self expandRect]) || NSPointInRect(p, [self presetDisplayRect])) { [self setBrowserOpen:true]; return; }
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
     if ([self voiceStripMouseDown:p event:e]) return; // 0.23.0

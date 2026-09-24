@@ -19,6 +19,7 @@
 #include <atomic>
 #include <cmath>
 #include <string>
+#include <mach/mach_time.h>
 
 namespace {
 
@@ -101,6 +102,20 @@ struct MUEWInstance {
     std::atomic<int> arpPool[8] = {};
     std::atomic<int> arpPatCell{-1}; std::atomic<unsigned> hostLocked{0}; // 0.26.0
     std::atomic<bool> paramsDirty{false};
+    // 0.30.0 Engine HQ: offline bounces render HQ; the editor meter reads voices and CPU load.
+    std::atomic<bool> offline{false};
+    std::atomic<float> cpuLoad{0};
+    std::atomic<int> activeVoices{0}, voiceLimit{16};
+    std::atomic<unsigned> oscHQ{0};
+    double cpuSmooth = 0.0;
+    double notifiedLatency = 0.0; // samples, as last announced to the host
+    // Samples the current sound runs late (oscillator HQ 7.5, HQ distortion 22.5).
+    static double latencyOf(const muew::Preset& s, bool off) {
+        const double osc = (s.voice.oscQuality == 1 || off) ? muew::Voice::kHQLatency : 0.0;
+        const bool dist = s.fx.dist.enabled && s.fx.dist.mode != 2 && (s.fx.dist.quality == 1 || off);
+        return osc + (dist ? muew::Distortion::kHQLatencyExact : 0.0);
+    }
+    double latencySamples() { std::lock_guard<std::mutex> g(stateLock); return latencyOf(state, offline.load()); }
 
     MUEWInstance() { syncParamsFromState(); }
     std::vector<ScheduledEvent> events;
@@ -167,7 +182,9 @@ struct MUEWInstance {
         std::unique_lock<std::mutex> g(stateLock, std::defer_lock);
         if (block) g.lock(); else if (!g.try_lock()) return;
         foldParams();
+        if (synth.renderHQ() != offline.load()) synth.setRenderHQ(offline.load()); // 0.30.0
         if (!stateDirty) return;
+        voiceLimit = state.voice.voiceMode != 0 ? 1 : std::clamp(state.voice.polyVoices, 1, 16);
         synth.setTables(state.tables[0], state.tables[1]);
         synth.setParams(state.voice, state.routes);
         synth.setFX(state.fx);
@@ -204,6 +221,13 @@ void NotifyListeners(MUEWInstance* u, AudioUnitPropertyID id, AudioUnitScope sco
 
 // Tells the host (automation lanes, generic views) that every parameter may
 // have a new value, after a preset load or state recall.
+// 0.30.0: tell the host when the sound's latency changed (QUALITY, DIST HQ, offline render).
+void SyncLatency(MUEWInstance* u) {
+    const double l = u->latencySamples();
+    if (l == u->notifiedLatency) return;
+    u->notifiedLatency = l;
+    NotifyListeners(u, kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0);
+}
 void NotifyAllParameters(MUEWInstance* u) {
     for (int id = 0; id < muew::params::Count; ++id) {
         AudioUnitParameter p{u->componentInstance, static_cast<AudioUnitParameterID>(id), kAudioUnitScope_Global, 0};
@@ -335,6 +359,11 @@ OSStatus MUEWGetPropertyInfo(void* self, AudioUnitPropertyID inID, AudioUnitScop
                 *outDataSize = sizeof(MUEWPerformance); if (outWritable) *outWritable = false; return noErr;
             }
             break;
+        case kAudioUnitProperty_OfflineRender: // 0.30.0
+            if (inScope == kAudioUnitScope_Global) {
+                *outDataSize = sizeof(UInt32); if (outWritable) *outWritable = true; return noErr;
+            }
+            break;
         case kAudioUnitProperty_HostCallbacks:
             if (inScope == kAudioUnitScope_Global) {
                 *outDataSize = sizeof(HostCallbackInfo); if (outWritable) *outWritable = true; return noErr;
@@ -376,7 +405,7 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
             break;
         case kAudioUnitProperty_Latency:
             if (inScope == kAudioUnitScope_Global) {
-                *static_cast<Float64*>(outData) = 0.0; *ioDataSize = sizeof(Float64); return noErr;
+                *static_cast<Float64*>(outData) = u->latencySamples() / u->sampleRate; *ioDataSize = sizeof(Float64); return noErr; // 0.30.0
             }
             break;
         case kAudioUnitProperty_SupportedNumChannels:
@@ -511,11 +540,18 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 return noErr;
             }
             break;
+        case kAudioUnitProperty_OfflineRender: // 0.30.0
+            if (inScope == kAudioUnitScope_Global) {
+                *static_cast<UInt32*>(outData) = u->offline.load() ? 1 : 0; *ioDataSize = sizeof(UInt32); return noErr;
+            }
+            break;
         case kMUEWProperty_Performance: // 0.24.0
             if (inScope == kAudioUnitScope_Global && *ioDataSize >= sizeof(MUEWPerformance)) {
                 MUEWPerformance pf{u->perfWheel.load(), u->perfAT.load(), u->perfBend.load(), u->perfNote.load(), u->perfSustain.load(),
                                    u->arpOn.load(), u->arpStep.load(), u->arpIndex.load(), u->arpNote.load(), u->arpPoolN.load(), {},
-                                   u->arpPatCell.load(), u->hostLocked.load()};
+                                   u->arpPatCell.load(), u->hostLocked.load(),
+                                   (UInt32)u->activeVoices.load(), (UInt32)u->voiceLimit.load(), u->cpuLoad.load(),
+                                   u->oscHQ.load(), u->offline.load() ? 1u : 0u}; // 0.30.0
                 for (int i = 0; i < 8; ++i) pf.pool[i] = u->arpPool[i].load();
                 *static_cast<MUEWPerformance*>(outData) = pf;
                 *ioDataSize = sizeof(MUEWPerformance);
@@ -571,6 +607,14 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 return noErr;
             }
             break;
+        case kAudioUnitProperty_OfflineRender: // 0.30.0: a bounce renders HQ
+            if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(UInt32)) {
+                u->offline = *static_cast<const UInt32*>(inData) != 0;
+                NotifyListeners(u, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0);
+                SyncLatency(u);
+                return noErr;
+            }
+            break;
         case kAudioUnitProperty_RenderQuality:
             if (inScope == kAudioUnitScope_Global && inDataSize >= sizeof(UInt32)) {
                 u->renderQuality = *static_cast<const UInt32*>(inData);
@@ -588,7 +632,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                     if (p->presetNumber >= kPresetCount || !u->loadFactoryPreset(p->presetNumber))
                         return kAudioUnitErr_InvalidPropertyValue;
                 }
-                NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+                NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0); SyncLatency(u);
                 NotifyAllParameters(u);
                 return noErr;
             }
@@ -610,7 +654,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                         u->setState(saved, n);          // 0.4+: exact sound, edits included
                     else if (n >= 0)
                         u->loadFactoryPreset(n);        // 0.3 and earlier: preset number only
-                    NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+                    NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0); SyncLatency(u);
                     NotifyAllParameters(u);
                 }
                 return noErr;
@@ -623,7 +667,7 @@ OSStatus MUEWSetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                 if (!str || CFGetTypeID(str) != CFStringGetTypeID() || !ParseStateString(str, p))
                     return kAudioUnitErr_InvalidPropertyValue;
                 u->setState(p, -1); // an edited sound is no longer a factory preset
-                NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+                NotifyListeners(u, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0); SyncLatency(u);
                 NotifyAllParameters(u);
                 return noErr;
             }
@@ -654,6 +698,7 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
     AudioUnitRenderActionFlags notifyFlags = (ioActionFlags ? *ioActionFlags : 0) | kAudioUnitRenderAction_PreRender;
     for (const auto& n : u->renderNotifies)
         n.proc(n.userData, &notifyFlags, inTimeStamp, inOutputBusNumber, inNumberFrames, ioData);
+    const uint64_t t0 = mach_absolute_time(); // 0.30.0 CPU meter
     u->applyPendingState(false);
     if (u->hostCallbacks.beatAndTempoProc) {
         Float64 beat = 0, tempo = 0;
@@ -723,6 +768,13 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         u->arpPatCell = sy.arpPatternStep();
     }
     u->hostLocked = u->synth.hostLocked() ? 1u : 0u; // 0.26.0
+    { // 0.30.0 voice / CPU meter: share of the block's real-time budget spent rendering it
+        static const double tick = [] { mach_timebase_info_data_t tb; mach_timebase_info(&tb); return (double)tb.numer / tb.denom * 1e-9; }();
+        const double used = (double)(mach_absolute_time() - t0) * tick, budget = inNumberFrames / u->sampleRate;
+        if (budget > 0) { u->cpuSmooth += 0.1 * (std::min(used / budget, 4.0) - u->cpuSmooth); u->cpuLoad = (float)u->cpuSmooth; }
+        u->activeVoices = u->synth.activeVoiceCount();
+        u->oscHQ = u->synth.oscHQ() ? 1u : 0u;
+    }
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));
     for (auto& e : u->events) e.offset -= inNumberFrames;
     notifyFlags = (ioActionFlags ? *ioActionFlags : 0) | kAudioUnitRenderAction_PostRender;

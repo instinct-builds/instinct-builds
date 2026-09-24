@@ -81,6 +81,10 @@ struct MUEWEditorHost {
     // 0.26.0 step pattern lane: cell being velocity-dragged (-1 none), the AU's live cell and host lock.
     int patDrag, arpLivePatCell;
     bool arpLiveLocked;
+    // 0.30.0 Engine HQ header meter (fed by the host at ~30 Hz).
+    int engVoices, engLimit;
+    float engCpu;
+    bool engRender;
     int voiceDrag;   // 0.23.0 voice strip: GLIDE (0) or BLEND (1) bar being dragged, -1 none
     int lfoXDrag;    // 0.18.0 LFO editor: PHASE/DELAY/RISE pill being dragged (0-2), -1 none
     int routeDrag;
@@ -128,4 +132,5 @@ struct MUEWEditorHost {
 // 0.25.0: the arp as the AU is playing it, for the ARP page's step display.
 - (void)showArpOn:(bool)on pool:(const int*)pool count:(int)n index:(int)index note:(int)note step:(int)step;
 - (void)showArpPatCell:(int)cell locked:(bool)locked; // 0.26.0
+- (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render; // 0.30.0
 @end

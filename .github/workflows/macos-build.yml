@@ -266,7 +266,7 @@ jobs:
           cp muew/au/2-au_host_test.cpp muew/au/au_host_test.cpp
           cp muew/au/3-build_au.sh muew/au/build_au.sh
       - name: MUEW parameter, unison/FX rack, user preset and bank tests
-        run: cd muew && make build/muew-tests-params build/muew-tests-ui build/muew-tests-user build/muew-tests-bank build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28 build/muew-tests-quality29 build/muew-tests-filterroute build/muew-tests-voicex build/muew-tests-perf build/muew-tests-arp && ./build/muew-tests-filter1 && ./build/muew-tests-fx27 && ./build/muew-tests-fx28 && ./build/muew-tests-quality29 && ./build/muew-tests-filterroute && ./build/muew-tests-voicex && ./build/muew-tests-perf && ./build/muew-tests-arp && ./build/muew-tests-params && ./build/muew-tests-ui && ./build/muew-tests-user && ./build/muew-tests-bank && ./build/muew-tests-unison && ./build/muew-tests-matrix && ./build/muew-tests-usertable && ./build/muew-tests-layers && ./build/muew-tests-browser && ./build/muew-tests-dc && ./build/muew-tests-fxrack && ./build/muew-tests-fxdetail && ./build/muew-tests-racklfo && ./build/muew-tests-routecurve && ./build/muew-tests-mseg2 && ./build/muew-tests-lfox && ./build/muew-tests-warpx && ./build/muew-tests-import
+        run: cd muew && make build/muew-tests-params build/muew-tests-ui build/muew-tests-user build/muew-tests-bank build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28 build/muew-tests-quality29 build/muew-tests-hq30 build/muew-tests-filterroute build/muew-tests-voicex build/muew-tests-perf build/muew-tests-arp && ./build/muew-tests-filter1 && ./build/muew-tests-fx27 && ./build/muew-tests-fx28 && ./build/muew-tests-quality29 && ./build/muew-tests-hq30 && ./build/muew-tests-filterroute && ./build/muew-tests-voicex && ./build/muew-tests-perf && ./build/muew-tests-arp && ./build/muew-tests-params && ./build/muew-tests-ui && ./build/muew-tests-user && ./build/muew-tests-bank && ./build/muew-tests-unison && ./build/muew-tests-matrix && ./build/muew-tests-usertable && ./build/muew-tests-layers && ./build/muew-tests-browser && ./build/muew-tests-dc && ./build/muew-tests-fxrack && ./build/muew-tests-fxdetail && ./build/muew-tests-racklfo && ./build/muew-tests-routecurve && ./build/muew-tests-mseg2 && ./build/muew-tests-lfox && ./build/muew-tests-warpx && ./build/muew-tests-import
       - name: Build, sign, install and validate MUEW AU
         run: cd muew && au/build_au.sh
       - name: Build designed MUEW standalone app + DMG
@@ -279,95 +279,97 @@ jobs:
             -o build/au_view_host
           export MUEW_USER_PRESETS="$RUNNER_TEMP/muew-user-presets"
           rm -rf "$MUEW_USER_PRESETS"
-          export MUEW_VIEW_PNG="$PWD/out/MUEW-0.29.0-au-editor-edited.png"
-          export MUEW_BROWSER_PNG="$PWD/out/MUEW-0.29.0-browser.png"
-          export MUEW_FXDETAIL_PREFIX="$PWD/out/MUEW-0.29.0-fx-"
-          export MUEW_FXLFO_MOD_PNG="$PWD/out/MUEW-0.29.0-lfo-modulators.png"
-          export MUEW_FXLFO1_PNG="$PWD/out/MUEW-0.29.0-lfo-flanger-range.png"
-          export MUEW_ROUTEAUX_PNG="$PWD/out/MUEW-0.29.0-route-aux.png"
-          export MUEW_ROUTECURVE_PNG="$PWD/out/MUEW-0.29.0-route-curve.png"
-          export MUEW_MSEG_PNG="$PWD/out/MUEW-0.29.0-mseg-editor.png"
-          export MUEW_LFO_PNG="$PWD/out/MUEW-0.29.0-lfo-editor.png"
-          export MUEW_WARP_PNG="$PWD/out/MUEW-0.29.0-warp-osc.png"
-          export MUEW_WT3D_PNG="$PWD/out/MUEW-0.29.0-wavetable-3d.png"
-          export MUEW_FILTER_PNG="$PWD/out/MUEW-0.29.0-filter-panel.png"
-          export MUEW_FILTER2_PNG="$PWD/out/MUEW-0.29.0-filter-routing.png"
-          export MUEW_VOICE_PNG="$PWD/out/MUEW-0.29.0-voice-panel.png"
-          export MUEW_PERF_PNG="$PWD/out/MUEW-0.29.0-performance.png"
-          export MUEW_ARP_PNG="$PWD/out/MUEW-0.29.0-arp.png"
-          export MUEW_HYPER_PNG="$PWD/out/MUEW-0.29.0-fx-hyper-page.png"
-          export MUEW_FILTERFX_PNG="$PWD/out/MUEW-0.29.0-fx-filter-page.png"
-          export MUEW_REVERB_PNG="$PWD/out/MUEW-0.29.0-fx-reverb-page.png"
-          export MUEW_COMP_PNG="$PWD/out/MUEW-0.29.0-fx-comp-page.png"
-          export MUEW_DISTHQ_PNG="$PWD/out/MUEW-0.29.0-fx-dist-hq.png"
-          export MUEW_AUTOGAIN_PNG="$PWD/out/MUEW-0.29.0-fx-comp-autogain.png"
+          export MUEW_VIEW_PNG="$PWD/out/MUEW-0.30.0-au-editor-edited.png"
+          export MUEW_BROWSER_PNG="$PWD/out/MUEW-0.30.0-browser.png"
+          export MUEW_FXDETAIL_PREFIX="$PWD/out/MUEW-0.30.0-fx-"
+          export MUEW_FXLFO_MOD_PNG="$PWD/out/MUEW-0.30.0-lfo-modulators.png"
+          export MUEW_FXLFO1_PNG="$PWD/out/MUEW-0.30.0-lfo-flanger-range.png"
+          export MUEW_ROUTEAUX_PNG="$PWD/out/MUEW-0.30.0-route-aux.png"
+          export MUEW_ROUTECURVE_PNG="$PWD/out/MUEW-0.30.0-route-curve.png"
+          export MUEW_MSEG_PNG="$PWD/out/MUEW-0.30.0-mseg-editor.png"
+          export MUEW_LFO_PNG="$PWD/out/MUEW-0.30.0-lfo-editor.png"
+          export MUEW_WARP_PNG="$PWD/out/MUEW-0.30.0-warp-osc.png"
+          export MUEW_WT3D_PNG="$PWD/out/MUEW-0.30.0-wavetable-3d.png"
+          export MUEW_FILTER_PNG="$PWD/out/MUEW-0.30.0-filter-panel.png"
+          export MUEW_FILTER2_PNG="$PWD/out/MUEW-0.30.0-filter-routing.png"
+          export MUEW_VOICE_PNG="$PWD/out/MUEW-0.30.0-voice-panel.png"
+          export MUEW_PERF_PNG="$PWD/out/MUEW-0.30.0-performance.png"
+          export MUEW_ARP_PNG="$PWD/out/MUEW-0.30.0-arp.png"
+          export MUEW_HYPER_PNG="$PWD/out/MUEW-0.30.0-fx-hyper-page.png"
+          export MUEW_FILTERFX_PNG="$PWD/out/MUEW-0.30.0-fx-filter-page.png"
+          export MUEW_REVERB_PNG="$PWD/out/MUEW-0.30.0-fx-reverb-page.png"
+          export MUEW_COMP_PNG="$PWD/out/MUEW-0.30.0-fx-comp-page.png"
+          export MUEW_DISTHQ_PNG="$PWD/out/MUEW-0.30.0-fx-dist-hq.png"
+          export MUEW_AUTOGAIN_PNG="$PWD/out/MUEW-0.30.0-fx-comp-autogain.png"
+          export MUEW_ENGINE_PNG="$PWD/out/MUEW-0.30.0-engine-hq.png"
           ./build/au_view_host > out/au_view_host.log 2>&1 &
           pid=$!
           sleep 7
-          screencapture -x out/MUEW-0.29.0-au-editor.png
+          screencapture -x out/MUEW-0.30.0-au-editor.png
           status=0
           wait $pid || status=$?
           cat out/au_view_host.log
           test "$status" -eq 0
-          test -s out/MUEW-0.29.0-au-editor.png
-          test -s out/MUEW-0.29.0-au-editor-edited.png
-          test -s out/MUEW-0.29.0-browser.png
-          test -s out/MUEW-0.29.0-fx-delay.png
-          test -s out/MUEW-0.29.0-lfo-modulators.png
-          test -s out/MUEW-0.29.0-lfo-flanger-range.png
-          test -s out/MUEW-0.29.0-route-aux.png
-          test -s out/MUEW-0.29.0-route-curve.png
-          test -s out/MUEW-0.29.0-mseg-editor.png
-          test -s out/MUEW-0.29.0-lfo-editor.png
-          test -s out/MUEW-0.29.0-warp-osc.png
-          test -s out/MUEW-0.29.0-wavetable-3d.png
-          test -s out/MUEW-0.29.0-filter-panel.png
-          test -s out/MUEW-0.29.0-filter-routing.png
-          test -s out/MUEW-0.29.0-voice-panel.png
-          test -s out/MUEW-0.29.0-performance.png
-          test -s out/MUEW-0.29.0-arp.png
-          test -s out/MUEW-0.29.0-fx-hyper-page.png
-          test -s out/MUEW-0.29.0-fx-filter-page.png
-          test -s out/MUEW-0.29.0-fx-reverb-page.png
-          test -s out/MUEW-0.29.0-fx-comp-page.png
-          test -s out/MUEW-0.29.0-fx-dist-hq.png
-          test -s out/MUEW-0.29.0-fx-comp-autogain.png
+          test -s out/MUEW-0.30.0-au-editor.png
+          test -s out/MUEW-0.30.0-au-editor-edited.png
+          test -s out/MUEW-0.30.0-browser.png
+          test -s out/MUEW-0.30.0-fx-delay.png
+          test -s out/MUEW-0.30.0-lfo-modulators.png
+          test -s out/MUEW-0.30.0-lfo-flanger-range.png
+          test -s out/MUEW-0.30.0-route-aux.png
+          test -s out/MUEW-0.30.0-route-curve.png
+          test -s out/MUEW-0.30.0-mseg-editor.png
+          test -s out/MUEW-0.30.0-lfo-editor.png
+          test -s out/MUEW-0.30.0-warp-osc.png
+          test -s out/MUEW-0.30.0-wavetable-3d.png
+          test -s out/MUEW-0.30.0-filter-panel.png
+          test -s out/MUEW-0.30.0-filter-routing.png
+          test -s out/MUEW-0.30.0-voice-panel.png
+          test -s out/MUEW-0.30.0-performance.png
+          test -s out/MUEW-0.30.0-arp.png
+          test -s out/MUEW-0.30.0-fx-hyper-page.png
+          test -s out/MUEW-0.30.0-fx-filter-page.png
+          test -s out/MUEW-0.30.0-fx-reverb-page.png
+          test -s out/MUEW-0.30.0-fx-comp-page.png
+          test -s out/MUEW-0.30.0-fx-dist-hq.png
+          test -s out/MUEW-0.30.0-fx-comp-autogain.png
+          test -s out/MUEW-0.30.0-engine-hq.png
       - name: Verify MUEW app and distribution
         run: |
           set -euo pipefail
           cd muew
           lipo out/MUEW.app/Contents/MacOS/MUEW -verify_arch arm64 x86_64
           codesign --verify --deep --strict out/MUEW.app
-          hdiutil verify out/MUEW-0.29.0.dmg
+          hdiutil verify out/MUEW-0.30.0.dmg
       - name: Capture MUEW designed UI proof
         run: |
           cd muew
           open out/MUEW.app
           sleep 8
-          screencapture -x out/MUEW-0.29.0-instrument.png
-          test -s out/MUEW-0.29.0-instrument.png
-          sips -g pixelWidth -g pixelHeight out/MUEW-0.29.0-instrument.png
-          test "$(sips -g pixelWidth out/MUEW-0.29.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
+          screencapture -x out/MUEW-0.30.0-instrument.png
+          test -s out/MUEW-0.30.0-instrument.png
+          sips -g pixelWidth -g pixelHeight out/MUEW-0.30.0-instrument.png
+          test "$(sips -g pixelWidth out/MUEW-0.30.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
       - name: Upload MUEW release + visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.29.0-quality-consistency
+          name: muew-0.30.0-engine-hq
           path: |
-            muew/out/MUEW-0.29.0.dmg
-            muew/out/MUEW-0.29.0-instrument.png
-            muew/out/MUEW-0.29.0-au-editor.png
-            muew/out/MUEW-0.29.0-au-editor-edited.png
-            muew/out/MUEW-0.29.0-browser.png
-            muew/out/MUEW-0.29.0-fx-*.png
-            muew/out/MUEW-0.29.0-lfo-*.png
-            muew/out/MUEW-0.29.0-warp-*.png
-            muew/out/MUEW-0.29.0-wavetable-*.png
-            muew/out/MUEW-0.29.0-route-*.png
-            muew/out/MUEW-0.29.0-mseg-*.png
-            muew/out/MUEW-0.29.0-filter-*.png
-            muew/out/MUEW-0.29.0-voice-*.png
-            muew/out/MUEW-0.29.0-performance.png
-            muew/out/MUEW-0.29.0-arp.png
+            muew/out/MUEW-0.30.0.dmg
+            muew/out/MUEW-0.30.0-instrument.png
+            muew/out/MUEW-0.30.0-au-editor.png
+            muew/out/MUEW-0.30.0-au-editor-edited.png
+            muew/out/MUEW-0.30.0-browser.png
+            muew/out/MUEW-0.30.0-fx-*.png
+            muew/out/MUEW-0.30.0-lfo-*.png
+            muew/out/MUEW-0.30.0-warp-*.png
+            muew/out/MUEW-0.30.0-wavetable-*.png
+            muew/out/MUEW-0.30.0-route-*.png
+            muew/out/MUEW-0.30.0-mseg-*.png
+            muew/out/MUEW-0.30.0-filter-*.png
+            muew/out/MUEW-0.30.0-voice-*.png
+            muew/out/MUEW-0.30.0-performance.png
+            muew/out/MUEW-0.30.0-arp.png
             muew/out/au_view_host.log
             muew/out/auval.log
             muew/out/au_host_test.log
@@ -376,7 +378,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.29.0-diagnostics
+          name: muew-0.30.0-diagnostics
           path: |
             muew/out/*.log
           if-no-files-found: ignore

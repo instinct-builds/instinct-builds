@@ -41,6 +41,7 @@ public:
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
         for (auto& v : voices_) v.setParams(p, routes);
+        oscQ_ = std::clamp(p.oscQuality, 0, 1); applyHQ(); // 0.30.0
         const int mode = std::clamp(p.voiceMode, 0, 2);
         if (mode != voiceMode_) { // leaving or entering mono: release everything, start from a clean note stack
             for (auto& v : voices_) if (v.isActive()) v.noteOff();
@@ -191,6 +192,8 @@ public:
     int arpPatternStep() const { return patOn_ ? arpPatIdx_ : -1; } // 0.26.0: pattern cell of the current step
 
 private:
+    void applyHQ() { const bool on = oscHQ(); for (auto& v : voices_) v.setHQ(on); fx_.setForceHQ(renderHQ_); }
+    int oscQ_ = 0; bool renderHQ_ = false; // 0.30.0
     void linkPerformance() { for (auto& v : voices_) v.setPerformance(&perf_); }
     void noteOnImpl(int note, float velocity) {
         if (voiceMode_ != 0) { monoNoteOn(note, velocity); return; }
@@ -233,6 +236,14 @@ public:
         return n;
     }
     int maxVoices() const { return static_cast<int>(voices_.size()); }
+
+    // 0.30.0 HQ. The QUALITY setting oversamples the oscillators; an HQ render
+    // (the host's offline bounce) also forces the distortion to 4x.
+    void setRenderHQ(bool on) { renderHQ_ = on; applyHQ(); }
+    bool renderHQ() const { return renderHQ_; }
+    bool oscHQ() const { return oscQ_ == 1 || renderHQ_; }
+    // Samples the engine output runs late (fractional: the halfbands are half-sample aligned).
+    double latencySamples() const { return (oscHQ() ? Voice::kHQLatency : 0.0) + fx_.latencySamples(); }
 
     void render(float* out, int frames) {
         for (int i = 0; i < frames; ++i) {

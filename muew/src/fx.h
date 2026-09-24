@@ -326,10 +326,14 @@ public:
         }
         }
     }
-    void reset() { for (auto& h : os_) for (auto& s : h) s.reset(); holdCount_ = 0; heldL_ = heldR_ = 0; }
+    void reset() { for (auto& h : os_) for (auto& s : h) s.reset(); holdCount_ = 0; heldL_ = heldR_ = 0; hqWas_ = false; }
     inline void process(float& l, float& r) {
         const double d = drive();
-        if (p_.quality == 1 && p_.mode != 2) { processHQ(l, r, d); return; }
+        if (hqActive()) {
+            if (!hqWas_) { for (auto& h : os_) for (auto& st : h) st.reset(); hqWas_ = true; } // 0.30.0: start the 4x path clean
+            processHQ(l, r, d); return;
+        }
+        hqWas_ = false;
         float wl, wr;
         if (p_.mode == 2) {
             const int hold = 1 + (int)(d * 15.0);
@@ -344,6 +348,10 @@ public:
         r = r + m * (wr * trim - r);
     }
     const DistortionParams& params() const { return p_; }
+    // 0.30.0: an HQ render (offline bounce) runs soft clip and fold at 4x whatever the QUALITY row says.
+    void setForceHQ(bool on) { forceHQ_ = on; }
+    bool hqActive() const { return (p_.quality == 1 || forceHQ_) && p_.mode != 2; }
+    static constexpr double kHQLatencyExact = Halfband2x::kLatency * 1.5; // 22.5 samples at 1x
     static constexpr int kHQLatency = Halfband2x::kLatency + Halfband2x::kLatency / 2; // 22 whole samples (+0.5)
 private:
     // 0.29.0 HQ: two halfband stages up to 4x; dry and wet mix inside the oversampled domain so they stay aligned.
@@ -366,6 +374,7 @@ private:
     double driveOffset_ = 0.0;
     int holdCount_ = 0;
     float heldL_ = 0, heldR_ = 0;
+    bool forceHQ_ = false, hqWas_ = false; // 0.30.0
 };
 
 // RBJ-cookbook biquad (transposed direct form II).
@@ -918,6 +927,9 @@ public:
     }
     // Macro routes into the distortion drive (Dest::DistDrive).
     void setDriveOffset(double d) { dist_.setDriveOffset(d); }
+    // 0.30.0 HQ render and the latency the chain adds (samples at 1x).
+    void setForceHQ(bool on) { dist_.setForceHQ(on); }
+    double latencySamples() const { return p_.dist.enabled && dist_.hqActive() ? Distortion::kHQLatencyExact : 0.0; }
     // 0.14.0: macro routes into the detail controls (global FX, macro sources).
     struct Mod { double drive = 0, delayFeedback = 0, reverbDecay = 0, phaserDepth = 0, flangerDepth = 0, chorusDepth = 0;
                  double hyperDetune = 0, filterCutoff = 0; }; // 0.27.0 (filterCutoff: 1 = +4 octaves)

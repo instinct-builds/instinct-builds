@@ -145,6 +145,9 @@ struct VoiceParams {
     int uniPhase = 0;           // 0 spread (fixed phases, retriggered), 1 random per note
     // 0.24.0: pitch bend range in semitones (both directions).
     int bendRange = 2;
+    // 0.30.0 global QUALITY: 0 STANDARD, 1 HQ (oscillator stacks run at 2x and
+    // come back down through a halfband, which removes warp and FM aliasing).
+    int oscQuality = 0;
     // 0.25.0 arpeggiator (see arp.h). Off: the synth plays keys directly.
     bool arpOn = false;
     int arpMode = 0;            // arp::Mode
@@ -196,8 +199,8 @@ public:
     void init(double sr, const Wavetable* table) {
         sr_ = sr;
         for (int i = 0; i < kMaxUnison; ++i) {
-            osc1_[i].setSampleRate(sr); osc1_[i].setTable(table);
-            osc2_[i].setSampleRate(sr); osc2_[i].setTable(table);
+            osc1_[i].setSampleRate(hq_ ? 2 * sr : sr); osc1_[i].setTable(table);
+            osc2_[i].setSampleRate(hq_ ? 2 * sr : sr); osc2_[i].setTable(table);
         }
         filter_.setSampleRate(sr); filterR_.setSampleRate(sr);
         ampEnv_.setSampleRate(sr);
@@ -352,7 +355,18 @@ public:
         filter_.reset(); filterR_.reset(); f2L_.reset(); f2R_.reset();
         dcL_.reset(); dcR_.reset();
         glideLeft_ = 0; glideSemi_ = 0.0;
+        hbL_.reset(); hbR_.reset(); // 0.30.0
     }
+    // 0.30.0: oscillator oversampling on/off (the synth passes the effective QUALITY).
+    void setHQ(bool on) {
+        if (on == hq_) return;
+        hq_ = on;
+        const double osr = on ? 2.0 * sr_ : sr_;
+        for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setSampleRate(osr); osc2_[i].setSampleRate(osr); }
+        hbL_.reset(); hbR_.reset();
+    }
+    bool hq() const { return hq_; }
+    static constexpr double kHQLatency = Halfband2x::kLatency * 0.5; // 7.5 samples at 1x
     bool isActive() const { return ampEnv_.isActive(); }
     bool dcBlockerOn() const { return dcOn_; } // 0.12.0 (tests)
     int note() const { return note_; }
@@ -436,26 +450,34 @@ public:
         if (active2_) { const double wp = std::clamp(params_.osc2WtPos + modSum(ModRoute::Dest::Osc2WtPos), 0.0, 1.0); for (int i = 0; i < n2; ++i) osc2_[i].setWtPos(wp); }
         float l, r;
         bool stereo = false;
-        if (n1 == 1 && n2 == 1) {
-            // Classic path, unchanged since 0.1: one oscillator each, mono.
-            osc1_[0].setFrequency(baseFreq_);
-            osc1_[0].setDetuneSemitones(pitch1);
-            osc1_[0].setWarp(wm1, warp1);
-            osc2_[0].setFrequency(baseFreq_);
-            osc2_[0].setDetuneSemitones(pitch2);
-            osc2_[0].setWarp(wm2, warp2);
-            l = r = osc1_[0].process() * g1 + osc2_[0].process() * g2;
-        } else {
-            const double width = std::clamp(params_.uniWidth + modSum(ModRoute::Dest::UnisonWidth), 0.0, 1.0);
-            if (usesUniBlend_) blendMod_ = modSum(ModRoute::Dest::UnisonBlend); // 0.23.0
-            const double det1 = std::clamp(params_.osc1UniDetune + modSum(ModRoute::Dest::Osc1Unison), 0.0, 1.0);
-            const double det2 = std::clamp(params_.osc2UniDetune + modSum(ModRoute::Dest::Osc2Unison), 0.0, 1.0);
-            float l1 = 0, r1 = 0, l2 = 0, r2 = 0;
-            stack(osc1_, gains1_, n1, pitch1, det1, width, wm1, warp1, l1, r1);
-            stack(osc2_, gains2_, n2, pitch2, det2, width, wm2, warp2, l2, r2);
-            l = l1 * g1 + l2 * g2;
-            r = r1 * g1 + r2 * g2;
-            stereo = width > 0.0;
+        auto oscBlock = [&](float& l, float& r) {
+            if (n1 == 1 && n2 == 1) {
+                // Classic path, unchanged since 0.1: one oscillator each, mono.
+                osc1_[0].setFrequency(baseFreq_);
+                osc1_[0].setDetuneSemitones(pitch1);
+                osc1_[0].setWarp(wm1, warp1);
+                osc2_[0].setFrequency(baseFreq_);
+                osc2_[0].setDetuneSemitones(pitch2);
+                osc2_[0].setWarp(wm2, warp2);
+                l = r = osc1_[0].process() * g1 + osc2_[0].process() * g2;
+            } else {
+                const double width = std::clamp(params_.uniWidth + modSum(ModRoute::Dest::UnisonWidth), 0.0, 1.0);
+                if (usesUniBlend_) blendMod_ = modSum(ModRoute::Dest::UnisonBlend); // 0.23.0
+                const double det1 = std::clamp(params_.osc1UniDetune + modSum(ModRoute::Dest::Osc1Unison), 0.0, 1.0);
+                const double det2 = std::clamp(params_.osc2UniDetune + modSum(ModRoute::Dest::Osc2Unison), 0.0, 1.0);
+                float l1 = 0, r1 = 0, l2 = 0, r2 = 0;
+                stack(osc1_, gains1_, n1, pitch1, det1, width, wm1, warp1, l1, r1);
+                stack(osc2_, gains2_, n2, pitch2, det2, width, wm2, warp2, l2, r2);
+                l = l1 * g1 + l2 * g2;
+                r = r1 * g1 + r2 * g2;
+                stereo = width > 0.0;
+            }
+        };
+        if (!hq_) oscBlock(l, r);
+        else { // 0.30.0 HQ: two oscillator samples at 2x, then one halfband down (7.5 samples late)
+            float la, ra, lb, rb;
+            oscBlock(la, ra); oscBlock(lb, rb);
+            l = (float)hbL_.down(la, lb); r = (float)hbR_.down(ra, rb);
         }
 
         // 0.12.0 DC blocker on the oscillator mix (see dcOn_ above).
@@ -538,6 +560,8 @@ public:
 
 private:
     double sr_ = 44100.0;
+    bool hq_ = false;          // 0.30.0
+    Halfband2x hbL_, hbR_;
     int note_ = -1;
     float velocity_ = 0.0f;
     double baseFreq_ = 440.0;

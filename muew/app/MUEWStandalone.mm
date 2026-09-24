@@ -6,8 +6,14 @@
 #import "MUEWEditorView.h"
 #include "synth.h"
 #include <mutex>
+#include <atomic>
+#include <chrono>
+#include <algorithm>
 
 using namespace muew;
+
+static std::atomic<float> gCpu{0}; // 0.30.0 header meter: smoothed real-time load
+static std::atomic<int> gVoices{0};
 
 static NSColor* C(uint32_t rgb, CGFloat a = 1) {
     return [NSColor colorWithRed:((rgb >> 16) & 255) / 255.0 green:((rgb >> 8) & 255) / 255.0 blue:(rgb & 255) / 255.0 alpha:a];
@@ -28,7 +34,7 @@ struct StandaloneHost : MUEWEditorHost {
 };
 
 @interface AppDelegate : NSObject <NSApplicationDelegate> {
-    NSWindow* w; MUEWEditorView* v; StandaloneHost* binding; AVAudioEngine* engine; AVAudioSourceNode* source; Synth synth; std::mutex lock;
+    NSWindow* w; MUEWEditorView* v; StandaloneHost* binding; AVAudioEngine* engine; AVAudioSourceNode* source; Synth synth; std::mutex lock; NSTimer* meter;
 }
 @end
 
@@ -56,13 +62,22 @@ struct StandaloneHost : MUEWEditorHost {
         float* left = (float*)out->mBuffers[0].mData;
         float* right = (float*)out->mBuffers[1].mData;
         std::lock_guard<std::mutex> g(*l);
+        const auto t0 = std::chrono::steady_clock::now(); // 0.30.0 header meter
         s->renderPlanar(left, right, (int)count);
+        const double used = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), budget = count / 44100.0;
+        if (budget > 0) { const float c = gCpu.load(); gCpu = c + 0.1f * ((float)std::min(used / budget, 4.0) - c); }
+        gVoices = s->activeVoiceCount();
         return noErr;
     }];
     [engine attachNode:source];
     [engine connect:source to:engine.mainMixerNode format:fmt];
     NSError* err = nil;
     [engine startAndReturnError:&err];
+    MUEWEditorView* view = v; // 0.30.0: feed the header voice / CPU meter
+    meter = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15 repeats:YES block:^(NSTimer*) {
+        const auto& vp = view->current.voice;
+        [view showEngineVoices:gVoices.load() limit:vp.voiceMode != 0 ? 1 : vp.polyVoices cpu:gCpu.load() render:false];
+    }];
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)s { return YES; }
 @end

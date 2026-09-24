@@ -405,6 +405,33 @@ int main() {
             printf("reset: preset 7 energy %.6f / %.6f / %.6f\n", m1, m2, m3);
             if (std::fabs(m2 - m1) > 1e-6 * m1 || std::fabs(m3 - m1) > 1e-6 * m1) { printf("FAIL: notes after a Reset render differently\n"); return 1; }
         }
+        // 0.30.0 Engine HQ: QUALITY and HQ distortion report latency; an offline render runs HQ; the meter counts voices.
+        {
+            auto latency = [&]() { Float64 l = -1; UInt32 sz = sizeof(l); AudioUnitGetProperty(unit, kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0, &l, &sz); return l * 44100.0; };
+            muew::Preset hq;
+            if (!selectPreset(34) || !getState(unit, hq)) { printf("FAIL: select Fold Screamer for HQ\n"); return 1; }
+            hq.fx.dist.enabled = true; hq.fx.dist.mode = 1; hq.fx.dist.quality = 0; hq.voice.oscQuality = 0;
+            if (!setState(unit, hq)) { printf("FAIL: set STANDARD sound\n"); return 1; }
+            const double l0 = latency();
+            hq.voice.oscQuality = 1; setState(unit, hq); const double l1 = latency();
+            hq.fx.dist.quality = 1; setState(unit, hq); const double l2 = latency();
+            hq.voice.oscQuality = 0; hq.fx.dist.quality = 0; setState(unit, hq);
+            UInt32 off = 1;
+            const bool offOk = AudioUnitSetProperty(unit, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &off, sizeof(off)) == noErr;
+            const double l3 = latency();
+            UInt32 rd = 0, rsz = sizeof(rd); AudioUnitGetProperty(unit, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &rd, &rsz);
+            double so = 0, mo = 0; const bool rOk = measureLR(so, mo);
+            MUEWPerformance pf{}; UInt32 psz = sizeof(pf);
+            AudioUnitGetProperty(unit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &psz);
+            off = 0; AudioUnitSetProperty(unit, kAudioUnitProperty_OfflineRender, kAudioUnitScope_Global, 0, &off, sizeof(off));
+            const double l4 = latency();
+            printf("hq: latency %.1f / %.1f / %.1f samples, offline %.1f (read %u), back %.1f; offline render energy %.3f; meter hq %u render %u limit %u cpu %.4f\n",
+                   l0, l1, l2, l3, (unsigned)rd, l4, mo, (unsigned)pf.oscHQ, (unsigned)pf.renderHQ, (unsigned)pf.voiceLimit, pf.cpuLoad);
+            if (std::fabs(l0) > 1e-9 || std::fabs(l1 - 7.5) > 1e-6 || std::fabs(l2 - 30.0) > 1e-6) { printf("FAIL: QUALITY / DIST HQ latency not reported\n"); return 1; }
+            if (!offOk || rd != 1 || std::fabs(l3 - 30.0) > 1e-6 || std::fabs(l4) > 1e-9) { printf("FAIL: offline render does not switch to HQ\n"); return 1; }
+            if (!rOk || mo <= 0 || pf.oscHQ != 1 || pf.renderHQ != 1 || pf.voiceLimit < 1 || !(pf.cpuLoad > 0)) { printf("FAIL: HQ render or engine meter\n"); return 1; }
+            if (!selectPreset(7)) { printf("FAIL: back to Warm Pad\n"); return 1; }
+        }
         printf("parameters: %d published; get/set, schedule, preset sync, audible automation, macros, unison width, drive, HYPER / FILTER FX, SIZE / UPWARD and recall: ok\n", (int)mp::Count);
     }
 

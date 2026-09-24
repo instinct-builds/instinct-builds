@@ -49,6 +49,7 @@ struct PresetInfo {
 //                  and `compx <mode> <upward> <speed> <low dB> <mid dB> <high dB> <mix>` lines.
 //                  0.29.0 adds an optional `distx <quality>` line and an optional 8th compx field
 //                  (AUTO GAIN 0/1, written only when on).
+//                  0.30.0 adds an optional `oscq <quality>` line (global QUALITY, written only when HQ).
 //                  0.17.0 adds optional `msegcurve`, `msegx` and `mseg2` lines.
 //                  0.18.0 adds optional `lfox <i> <custom> <phase> <delay> <rise> <free>`
 //                  and `lfopts <i> <n> (<t> <v> <c>)*` lines (drawn LFO shapes).
@@ -246,6 +247,7 @@ struct Preset {
                 }
             }
             else if (key == "perf") { int b = 2; if (ls >> b) voice.bendRange = std::clamp(b, 0, 24); } // 0.24.0
+            else if (key == "oscq") { int q = 0; if (ls >> q) voice.oscQuality = std::clamp(q, 0, 1); } // 0.30.0
             else if (key == "voice") { // 0.23.0: mode poly-voices glide-time glide-legato unison-phase
                 int m = 0, n = 16, gl = 0, ph = 0; double g = 0;
                 if (ls >> m >> n >> g >> gl >> ph && std::isfinite(g)) {
@@ -581,6 +583,7 @@ struct Preset {
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;
         if (a.bendRange != b.bendRange) return false; // 0.24.0
+        if (a.oscQuality != b.oscQuality) return false; // 0.30.0
         if (a.arpOn != b.arpOn || a.arpMode != b.arpMode || a.arpOctaves != b.arpOctaves || a.arpRate != b.arpRate
             || a.arpGate != b.arpGate || a.arpSwing != b.arpSwing || a.arpLatch != b.arpLatch) return false; // 0.25.0
         if (a.clockSync != b.clockSync || a.arpPatOn != b.arpPatOn || a.arpPatLen != b.arpPatLen) return false; // 0.26.0
@@ -671,6 +674,7 @@ private:
             o << "\n";
         }
         if (v.bendRange != 2) o << "perf " << v.bendRange << "\n"; // 0.24.0
+        if (v.oscQuality != 0) o << "oscq " << v.oscQuality << "\n"; // 0.30.0
         if (v.arpOn || v.arpMode != 0 || v.arpOctaves != 1 || v.arpRate != 3 || v.arpGate != 0.5 || v.arpSwing != 0 || v.arpLatch) // 0.25.0
             o << "arp " << (v.arpOn ? 1 : 0) << " " << v.arpMode << " " << v.arpOctaves << " " << v.arpRate << " " << v.arpGate << " " << v.arpSwing
               << " " << (v.arpLatch ? 1 : 0) << "\n";
