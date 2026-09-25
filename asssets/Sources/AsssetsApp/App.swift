@@ -2670,7 +2670,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2793,7 +2793,7 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
@@ -2807,7 +2807,12 @@ final class StudioLibrary: ObservableObject {
                         self.openLibraryHealth()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                             if demo == "changed-source-review" { self.reviewChangedSource(source.id) }
-                            if demo == "changed-source-apply" {
+                            if demo == "changed-source-inspector" {
+                                self.healthOpen = false
+                                self.selection = [source.id]; self.focusID = source.id
+                                self.inspectorAnchor = "source-changes"
+                            }
+                            if demo == "changed-source-apply" || demo == "source-history-inspector" {
                                 self.reviewChangedSource(source.id)
                                 self.reviewedSourceID = nil
                                 self.refreshChangedSource(source.id)
@@ -2815,6 +2820,11 @@ final class StudioLibrary: ObservableObject {
                                     let a = self.catalog.assets.first { $0.id == source.id }
                                     let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == expectedRights
                                         && self.catalog.boardsUsing(source.id).count > 0 && self.catalog.sourceHistory(for: source.id).count == 1
+                                    if demo == "source-history-inspector" {
+                                        self.healthOpen = false
+                                        self.selection = [source.id]; self.focusID = source.id
+                                        self.inspectorAnchor = "source-changes"
+                                    }
                                     try? "done changed=\(passed) rights=\(a?.rights != nil) boards=\(self.catalog.boardsUsing(source.id).count)".write(
                                         to: self.supportRoot.appendingPathComponent("demo-changed-source.txt"), atomically: true, encoding: .utf8)
                                 }
@@ -7760,6 +7770,73 @@ struct VersionStrip: View {
     }
 }
 
+/// Per-asset view of accepted source metadata, linked to the live Library Health check.
+struct SourceChangesSection: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    @State private var expanded = false
+
+    var body: some View {
+        let entries = model.catalog.sourceHistory(for: asset.id)
+        let unreviewed = model.health?.changedSources.contains(asset.id) == true
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                InspectorLabel(text: "SOURCE CHANGES")
+                Spacer(minLength: 2)
+                if !entries.isEmpty {
+                    Text("\(entries.count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
+            if unreviewed {
+                Label("Source changed on disk, not yet reviewed", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if model.healthScanning {
+                Label("Checking source files…", systemImage: "arrow.clockwise").font(.caption).foregroundStyle(.secondary)
+            } else if entries.isEmpty {
+                Text("No source refreshes recorded. Earlier catalogs start with an empty history.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Button { model.openLibraryHealth() } label: {
+                Label(unreviewed ? "Review in Library Health" : "Check in Library Health", systemImage: "stethoscope")
+            }.buttonStyle(.bordered).controlSize(.small).tint(unreviewed ? Theme.warning : Theme.accent)
+            ForEach(Array(entries.prefix(expanded ? entries.count : 3))) { entry in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.refreshedAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption.weight(.semibold))
+                    Text((entry.path as NSString).abbreviatingWithTildeInPath)
+                        .font(.caption2.monospaced()).lineLimit(2).truncationMode(.middle).textSelection(.enabled)
+                    Text("\(ByteCountFormatter.string(fromByteCount: entry.before.size, countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: entry.after.size, countStyle: .file)) · \(entry.beforeResolution) → \(entry.afterResolution)")
+                        .font(.caption2).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 3) {
+                        ForEach(Array(entry.beforePalette.prefix(3).enumerated()), id: \.offset) { _, hex in
+                            RoundedRectangle(cornerRadius: 2).fill(Color(hex: hex)).frame(width: 13, height: 13)
+                        }
+                        Image(systemName: "arrow.right").font(.system(size: 9)).padding(.horizontal, 2)
+                        ForEach(Array(entry.afterPalette.prefix(3).enumerated()), id: \.offset) { _, hex in
+                            RoundedRectangle(cornerRadius: 2).fill(Color(hex: hex)).frame(width: 13, height: 13)
+                        }
+                    }.accessibilityLabel("Palette changed from \(entry.beforePalette.prefix(3).joined(separator: ", ")) to \(entry.afterPalette.prefix(3).joined(separator: ", "))")
+                    Text("SHA-256 \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
+                        .font(.caption2.monospaced()).lineLimit(1).truncationMode(.middle)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(9).background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+            }
+            if entries.count > 3 {
+                Button(expanded ? "Show recent" : "Show all \(entries.count) receipts") { expanded.toggle() }
+                    .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent)
+            }
+            Text("Receipts save metadata, not old file bytes. A prior source cannot be restored here.")
+                .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent.opacity(0.25)))
+    }
+}
+
 struct Inspector: View {
     @EnvironmentObject var model: StudioLibrary
     let asset: StudioAsset
@@ -7809,6 +7886,9 @@ struct Inspector: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         RightsSection(asset: asset)
+                        if !asset.isStarter && asset.importedPath != nil && asset.placementRecipe == nil {
+                            SourceChangesSection(asset: asset).id("source-changes")
+                        }
                         OnBoardsSection(asset: asset)
                         if asset.stackID != nil { VersionStrip(asset: asset) }
                         if asset.kind != .audio { SimilarStrip(asset: asset) }

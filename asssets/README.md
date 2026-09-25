@@ -905,3 +905,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Review now compares the known and current file sizes, resolution and palette before accepting changed bytes. If the file changes after review, refresh stops and asks for another scan and review. The exact reviewed fingerprint and derived metadata are accepted together; user tags, rights and board references remain on the same asset.
 - Each accepted refresh writes a dated receipt in the catalog with the source path, before/after fingerprints and file facts. Library Health displays recent receipts and can expand the full history. The receipt is metadata, not an original-file backup; it cannot recover prior bytes. Older catalogs decode with no receipts. Core tests check receipt persistence, retained rights and board references, and rejection of duplicate acceptance. CI tests the receipt on disk and captures the native review/history views.
+
+## 1.44.0: source changes on the asset
+
+- Imported assets show a Source Changes section in the inspector. An unreviewed source detected by Library Health gets a visible warning and a Review in Library Health button; the check opens a fresh full scan, not a guess based on cached history. Assets with receipts show a newest-first timeline with date, source path, size, file facts, palette swatches and truncated before/after hashes. Show all expands longer timelines. Records belong to the asset ID even after a relink; each receipt keeps the path used at that refresh.
+- The section is explicit that catalog receipts do not retain the prior file bytes. New native CI shots check both pending and refreshed per-asset inspector states at the runner's compact screen size.
