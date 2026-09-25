@@ -34,11 +34,13 @@ public struct DiceRollerView: View {
 
     /// 2.74.0: harness hook - start with the Latest session scope on.
     /// 2.78.0/2.84.0: or with the crits-only / starred-only filter on.
+    /// 2.97.0: or with a history filter drafted (render proofs).
     public init(initialLatestSession: Bool = false, initialCritsOnly: Bool = false,
-                initialStarredOnly: Bool = false) {
+                initialStarredOnly: Bool = false, initialHistoryFilter: String = "") {
         _historyLatestSession = State(initialValue: initialLatestSession)
         _historyCritsOnly = State(initialValue: initialCritsOnly)
         _historyStarredOnly = State(initialValue: initialStarredOnly)
+        _historyFilter = State(initialValue: initialHistoryFilter)
     }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
@@ -185,7 +187,13 @@ public struct DiceRollerView: View {
                         .controlSize(.small)
                         .help("Restore the last deleted roll or session")
                 }
-                Button("Copy") { model.copyRollsToPasteboard(visibleHistory) }
+                // 2.97.0: the button says when the filter narrows what it
+                // copies - the journal's explicit Copy filtered (2.63.0)
+                // sets the precedent; the action already rides
+                // visibleHistory, notes included via shareLines.
+                Button(historyFilter.trimmingCharacters(in: .whitespaces).isEmpty ? "Copy" : "Copy filtered") {
+                    model.copyRollsToPasteboard(visibleHistory)
+                }
                     .controlSize(.small)
                     .disabled(visibleHistory.isEmpty)
                     .help("Copy the shown rolls (scope and filter applied) as text, oldest first")

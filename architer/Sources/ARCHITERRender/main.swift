@@ -755,6 +755,15 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? filterProof.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/history-filter-note.txt"),
                atomically: true, encoding: .utf8)
+    // 2.97.0 proof: with a filter drafted the bar's Copy reads "Copy
+    // filtered" - the button says when the filter narrows what it
+    // copies; the action already rides visibleHistory.
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-copy-filtered", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
