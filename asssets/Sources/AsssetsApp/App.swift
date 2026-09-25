@@ -6752,6 +6752,21 @@ struct Inspector: View {
                 .padding(.horizontal, 16).padding(.top, 10)
                 RatingLabelRow(asset: asset).padding(.horizontal, 16).padding(.top, 8)
                 if model.missing.contains(asset.id) { MissingBanner(asset: asset).padding(.horizontal, 14).padding(.top, 8) }
+                if let recipe = asset.placementRecipe {
+                    let status = model.catalog.placementStatus(recipe, exists: { FileManager.default.fileExists(atPath: $0) })
+                    if status != .ready(art: recipe.artID, mockup: recipe.mockupID) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning)
+                            Text(status == .missingArt(recipe.artID) ? "Source art missing" : "PSD mockup missing")
+                                .font(.caption.weight(.semibold))
+                            Spacer(minLength: 4)
+                            Button("Relink…") { model.editPlacement(asset) }.controlSize(.small)
+                        }
+                        .padding(9).background(Theme.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.warning.opacity(0.4)))
+                        .padding(.horizontal, 14).padding(.top, 8)
+                    }
+                }
                 if asset.kind != .audio { EffectStrip(asset: asset).padding(.top, 10) }
                 Divider().overlay(Theme.hairline).padding(.top, 10)
                 ScrollViewReader { proxy in
