@@ -543,6 +543,20 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-relabel", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.83.0 proof: copy single roll - the renamed card's own history
+    // line is what its copy button puts on the pasteboard.
+    if let top = model.rollHistory.first {
+        let copyLines = ["Copy single roll (2.83.0)", "", top.historyLine]
+        try? copyLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/roll-copy.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-copy-roll", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -310,6 +310,14 @@ public final class AppModel: ObservableObject {
         pb.setString(rolls.historyText, forType: .string)
     }
 
+    /// Copy one roll (2.83.0): the roll's own history line, for sharing
+    /// the moment without copying a whole session.
+    public func copyRollToPasteboard(_ roll: RollResult) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(roll.historyLine, forType: .string)
+    }
+
     /// Copy one roll session (2.70.0): title, stats line, rolls oldest
     /// first - a paste-ready record without filing a digest.
     public func copySessionToPasteboard(_ session: RollSession) {

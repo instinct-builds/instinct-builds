@@ -600,6 +600,12 @@ struct RollCard: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.inkFaint)
                 .help("Rename this roll's label")
+            // 2.83.0: copy just this roll's line.
+            Button { model.copyRollToPasteboard(roll) }
+                label: { Image(systemName: "doc.on.doc") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help("Copy this roll as text")
             // 2.45.0: with auto-log on the roll is already journaled.
             if !model.autoLogRollsToJournal {
                 Button {
