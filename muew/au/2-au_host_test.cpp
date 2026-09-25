@@ -60,7 +60,7 @@ static bool render(AudioUnit u, std::vector<float>& l, std::vector<float>& r) {
     bool ok=AudioUnitRender(u,&flags,&ts,0,frames,b)==noErr; free(b); return ok;
 }
 
-static constexpr int kExpectedPresets = 104; // 0.8.0 appended 38-41, 0.9.0 42-44, 0.10.0 45-48, 0.11.0 49-79, 0.32.0 80-103
+static constexpr int kExpectedPresets = 108; // 0.8.0 appended 38-41, 0.9.0 42-44, 0.10.0 45-48, 0.11.0 49-79, 0.32.0 80-103, 0.34.0 104-107
 
 static double energy(const std::vector<float>& x, size_t a, size_t b) {
     double e=0; for(size_t i=a;i<b;++i)e+=double(x[i])*x[i]; return e;
@@ -273,7 +273,7 @@ int main() {
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
-        static_assert(mp::Count == 38, "0.28.0 publishes 38 parameters");
+        static_assert(mp::Count == 40, "0.34.0 publishes 40 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
             printf("FAIL: reselect Init Saw\n"); return 1;
         }

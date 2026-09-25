@@ -26,6 +26,7 @@ enum ID {
     ArpGate, ArpSwing,      // 0.25.0
     HyperMix, FilterFxCutoff, // 0.27.0
     ReverbSize, CompUpward,   // 0.28.0
+    SpecMorphA, SpecMorphB,   // 0.34.0: live spectral morph amounts
     Count
 };
 
@@ -78,6 +79,8 @@ inline const Def& def(int id) {
         {"Filter FX Cutoff", Hertz, 40, 18000, true},
         {"Reverb Size", Percent, 0, 100, false},
         {"Multiband Upward", Percent, 0, 100, false},
+        {"Spec Morph A", Percent, 0, 100, false},
+        {"Spec Morph B", Percent, 0, 100, false},
     };
     return d[std::clamp(id, 0, Count - 1)];
 }
@@ -120,6 +123,8 @@ inline double& field(Preset& p, int id) {
     case FilterFxCutoff: return p.fx.filter.cutoffHz;
     case ReverbSize: return p.fx.reverb.size;
     case CompUpward: return p.fx.comp.upward;
+    case SpecMorphA: return p.voice.osc1SpecMorph;
+    case SpecMorphB: return p.voice.osc2SpecMorph;
     default: return p.fx.reverb.mix;
     }
 }

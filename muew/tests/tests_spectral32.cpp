@@ -36,7 +36,7 @@ int main() {
 
     // ---- Factory bank ----
     const auto& bank = factoryPresets();
-    check(kFactoryPresetCount == 104, "factory bank has 104 presets (80 + 24 appended)");
+    check(kFactoryPresetCount >= 104, "factory bank keeps the 104 presets (80 + 24 appended in 0.32.0)");
     int tex = 0; bool tables = true, custom = true, deep = true;
     for (int i = 80; i < (int)bank.size(); ++i) {
         tables &= !bank[i].tables[0].empty();

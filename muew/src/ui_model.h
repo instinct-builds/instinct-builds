@@ -916,6 +916,29 @@ inline double fadeTo01(double s) { return s <= 0 ? 0.0 : 0.02 + 0.98 * std::log(
 inline SpectralProcess& morphSpec(VoiceParams& v, int o) { return o ? v.osc2MorphSpec : v.osc1MorphSpec; }
 inline double& specMorphAmount(VoiceParams& v, int o) { return o ? v.osc2SpecMorph : v.osc1SpecMorph; }
 inline ModRoute::Dest specMorphDest(int o) { return o ? ModRoute::Dest::Osc2SpecMorph : ModRoute::Dest::Osc1SpecMorph; }
+// 0.34.0 morph drivers: the MORPH row's chip picks which source moves the
+// morph through the route it manages (the first plain route to the dest
+// from one of these). Bipolar sources run at half depth around the amount.
+inline const std::vector<ModRoute::Source>& morphDrivers() {
+    using S = ModRoute::Source;
+    static const std::vector<S> d = {S::Macro2, S::LFO1, S::LFO2, S::LFO3, S::LFO4, S::MSEG1, S::MSEG2, S::Env3, S::ModEnv, S::ModWheel};
+    return d;
+}
+inline const char* morphDriverName(ModRoute::Source s) {
+    using S = ModRoute::Source;
+    switch (s) {
+    case S::Macro2: return "WARP"; case S::LFO1: return "LFO 1"; case S::LFO2: return "LFO 2"; case S::LFO3: return "LFO 3"; case S::LFO4: return "LFO 4";
+    case S::MSEG1: return "MSEG 1"; case S::MSEG2: return "MSEG 2"; case S::Env3: return "ENV 3"; case S::ModEnv: return "MOD ENV"; case S::ModWheel: return "WHEEL";
+    default: return "";
+    }
+}
+inline int morphDriverRoute(const Preset& p, int o) {
+    const auto d = o ? ModRoute::Dest::Osc2SpecMorph : ModRoute::Dest::Osc1SpecMorph;
+    const auto& ds = morphDrivers();
+    for (int i = 0; i < (int)p.routes.size(); ++i)
+        if (p.routes[i].dest == d && p.routes[i].aux < 0 && std::find(ds.begin(), ds.end(), p.routes[i].source) != ds.end()) return i;
+    return -1;
+}
 inline bool setSpecMorphTarget(Preset& p, int o, const SpectralProcess& sp) {
     if (sp.isIdentity()) return false;
     morphSpec(p.voice, o) = sp;
@@ -930,8 +953,25 @@ inline void clearSpecMorph(Preset& p, int o) {
     morphSpec(p.voice, o) = SpectralProcess{};
     specMorphAmount(p.voice, o) = 0.0;
     const auto d = specMorphDest(o);
-    p.routes.erase(std::remove_if(p.routes.begin(), p.routes.end(), [&](const ModRoute& r) {
-        return r.dest == d && r.source == ModRoute::Source::Macro2 && r.aux < 0; }), p.routes.end());
+    (void)d;
+    const int i = morphDriverRoute(p, o);
+    if (i >= 0) p.routes.erase(p.routes.begin() + i);
+}
+// Steps the managed route to the next driver (dir +1 / -1). Moving onto a
+// bipolar source sets depth 0.5 and, from amount 0, amount 0.5, so the LFO
+// sweeps the whole 0..1 range; back on a unipolar source depth returns to 1.
+inline bool stepMorphDriver(Preset& p, int o, int dir) {
+    const int i = morphDriverRoute(p, o);
+    if (i < 0) return false;
+    const auto& ds = morphDrivers();
+    const int n = (int)ds.size();
+    const int k = (int)(std::find(ds.begin(), ds.end(), p.routes[i].source) - ds.begin());
+    ModRoute& r = p.routes[i];
+    r.source = ds[((k + dir) % n + n) % n];
+    r.curve = 0;
+    if (sourceBipolar((int)r.source)) { r.amount = 0.5; double& a = specMorphAmount(p.voice, o); if (a == 0) a = 0.5; }
+    else r.amount = 1.0;
+    return true;
 }
 // The frame the SPECTRAL page previews for a morph amount: a straight blend,
 // the same crossfade the oscillator plays.

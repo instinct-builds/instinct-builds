@@ -104,3 +104,7 @@ texture-mallet
 formant-bass
 grit-bass
 spectral-riser
+vowel-morph-pad
+breathing-glass
+morph-lead
+formant-growl

@@ -101,7 +101,7 @@ int main() {
 
     // 7. Level pass: factory 1-80 carry no trim; 81-104 land near their category level.
     const auto& P = factoryPresets();
-    check(P.size() == 104, "the bank still has 104 presets");
+    check(P.size() >= 104, "the bank still holds presets 1-104");
     int trimmed80 = 0; for (int i = 0; i < 80; ++i) if (P[i].voice.trimDb != 0 || P[i].serialize().find("\ntrim ") != std::string::npos) ++trimmed80;
     check(trimmed80 == 0, "factory presets 1-80 are untouched by the level pass");
     const auto lvl = [&](const Preset& p) { return rmsDb(render(p, 48, 88200, true), 22050); };

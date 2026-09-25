@@ -3974,6 +3974,173 @@ chorus 0 0.6 6 15 0.35
 delay 0 0.28 0.42 0.35 0.22
 reverb 1 0.8 0.4 0.3
 )MUEW"},
+    {"vowel-morph-pad", R"MUEW(muew-preset 2
+name Vowel Morph Pad
+category Pad
+author MUEW Factory
+tags pad vowel formant evolving warm
+desc Saw-to-square pad; the WARP macro morphs it live into a dark, closed vowel.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.12
+osc2Level 0.45
+filterCutoff 5200
+filterReso 0.3
+filterMode 0
+amp 1.4 1 0.88 2.6
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.15
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.16 0.16 0.9 0.8
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+morphspec1 -7 0 -5 0
+trim -4.5
+wtgen1 morph 2 3 16
+wtspec1 2 0 -2 0
+routes 10
+route 6 30 1
+route 0 11 0.35
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"breathing-glass", R"MUEW(muew-preset 2
+name Breathing Glass
+category Texture
+author MUEW Factory
+tags texture glassy breath evolving bright
+desc Bright glass noise that LFO 1 breathes in and out of a hollow, dark odd-partial morph.
+osc1Shape 5
+osc2Shape 0
+osc2Detune 12
+osc2Level 0.12
+filterCutoff 10000
+filterReso 0.2
+filterMode 0
+amp 1.2 1 0.85 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.09
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 4 1 0.1 0 0.9 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+specmorph 0.5 0
+morphspec1 0 0 -7 -1
+trim 5.5
+wtgen1 noise 121 24 0.9 0.25
+wtspec1 0 0 -1 0.4
+routes 9
+route 0 30 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"morph-lead", R"MUEW(muew-preset 2
+name Morph Lead
+category Lead
+author MUEW Factory
+tags lead formant bright aggressive
+desc Mono-style lead whose MSEG 1 throws each note up an octave of formant, then settles.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.08
+osc2Level 0.35
+filterCutoff 7500
+filterReso 0.35
+filterMode 0
+amp 0.005 0.4 0.8 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.1 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.3 0
+specmorph 0.5 0
+morphspec1 12 0 0 0.6
+wtgen1 morph 2 3 8
+routes 9
+route 4 30 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"formant-growl", R"MUEW(muew-preset 2
+name Formant Growl
+category Bass
+author MUEW Factory
+tags bass growl formant dark aggressive
+desc Bass whose mod envelope snaps it from a bright saw into a low, hollow growl on every note.
+osc1Shape 5
+osc2Shape 1
+osc2Detune -12
+osc2Level 0.4
+filterCutoff 3200
+filterReso 0.45
+filterMode 0
+amp 0.003 0.5 0.85 0.25
+mod 0.003 0.35 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0.1 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+morphspec1 -12 0.2 -2 -0.8
+trim 2.5
+wtgen1 morph 2 2 8
+routes 9
+route 1 30 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
 };
 
 constexpr int kFactoryPresetCount = (int)(sizeof(kFactoryPresetTexts) / sizeof(kFactoryPresetTexts[0]));

@@ -738,7 +738,8 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtSpecButton:(int)i { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272 + i * 66, cv.origin.y + 8, 60, 18); }
 - (NSRect)wtDoneRect { return NSMakeRect(400, [self top] - 32, 48, 17); }
 - (NSRect)wtCmpRect:(int)i { return NSMakeRect(134 + i * 15, [self top] - 32, 14, 17); } // 0.33.0 A / B compare
-- (NSRect)wtMorphBar { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, cv.origin.y + 33, 88, 6); } // 0.33.0
+- (NSRect)wtMorphBar { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, cv.origin.y + 33, 60, 6); } // 0.33.0 (0.34.0: 60 wide, driver chip after it)
+- (NSRect)wtMorphChip { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 337, cv.origin.y + 29.5, 40, 13); } // 0.34.0 morph driver
 - (NSRect)wtMorphButton { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 214, cv.origin.y + 8, 52, 18); } // 0.33.0
 - (NSRect)modField:(int)j {
     int n = [self modFieldCount];
@@ -1040,13 +1041,20 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                 if (base > 0) FillRound(NSMakeRect(mb.origin.x, mb.origin.y, std::max<CGFloat>(6, mb.size.width * base), mb.size.height), 3, [col colorWithAlphaComponent:wtSpecDrag == 4 ? .95 : .7]);
                 FillRound(NSMakeRect(mb.origin.x + mb.size.width * morphAmt - 1, mb.origin.y - 2, 2, mb.size.height + 4), 1, C(0xeaf1f8));
             }
-            TextA(morphOn ? [NSString stringWithFormat:@"%.0f%%", morphAmt * 100] : @"NO TARGET", NSMakeRect(NSMaxX(mb) + 2, mb.origin.y - 2.5, 52, 11), morphOn ? 8 : 6.5,
+            // 0.34.0 driver chip: the source that moves the morph (click steps it; right half forward, left half back).
+            const NSRect ch = [self wtMorphChip];
+            const int dr = ui::morphDriverRoute(current, wtEdit);
+            FillRound(ch, 4, morphOn && dr >= 0 ? [col colorWithAlphaComponent:.18] : C(0x1b222c));
+            TextA(dr >= 0 ? [NSString stringWithUTF8String:ui::morphDriverName(current.routes[dr].source)] : @"\u2014", NSMakeRect(ch.origin.x, ch.origin.y + 2.5, ch.size.width, 10), 6.5,
+                  morphOn && dr >= 0 ? col : C(0x4a5462), NSFontWeightBold, NSTextAlignmentCenter);
+            // 0.34.0 fix: the readout shares the MORPH label's baseline (8 pt, -2.5), "OFF" without a target.
+            TextA(morphOn ? [NSString stringWithFormat:@"%.0f%%", morphAmt * 100] : @"OFF", NSMakeRect(NSMaxX(ch) + 2, mb.origin.y - 2.5, NSMaxX(cv) - 8 - NSMaxX(ch) - 2, 11), 8,
                   morphOn ? C(0xe6ebf1) : C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
             const NSRect tb = [self wtMorphButton];
             const bool canSet = pending, canClear = !pending && morphOn;
             FillRound(tb, 4, C(0x1b222c));
             if (canSet) { NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(tb, .5, .5) xRadius:4 yRadius:4]; o.lineWidth = 1; [col setStroke]; [o stroke]; }
-            TextA(canClear ? @"CLEAR" : @"TO MORPH", NSMakeRect(tb.origin.x, tb.origin.y + 4, tb.size.width, 11), 7.5,
+            TextA(canClear ? @"CLEAR" : @"TO MORPH", NSMakeRect(tb.origin.x, tb.origin.y + 3.5, tb.size.width, 11), 7.5, // 0.34.0: centred like APPLY
                   canSet ? col : canClear ? C(0xc9d2dd) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
         }
         for (int i = 0; i < 2; ++i) {
@@ -3022,8 +3030,10 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 - (NSString*)muewMorphText {
     if (wtEdit < 0 || wtEdit > 1) return @"";
     const SpectralProcess& ms = ui::morphSpec(current.voice, wtEdit);
-    return [NSString stringWithFormat:@"cmp=%@ target=%.1f/%.2f/%.1f/%.2f amount=%.2f level=%.2f frames=%d", wtCmpA == wtEdit ? @"A" : @"B",
-            ms.formantSt, ms.stretch, ms.tiltDb, ms.oddEven, ui::specMorphAmount(current.voice, wtEdit), ui::specMorphLevel(current, wtEdit), (int)current.tables[wtEdit].size()];
+    const int dr = ui::morphDriverRoute(current, wtEdit);
+    return [NSString stringWithFormat:@"cmp=%@ target=%.1f/%.2f/%.1f/%.2f amount=%.2f level=%.2f frames=%d driver=%s", wtCmpA == wtEdit ? @"A" : @"B",
+            ms.formantSt, ms.stretch, ms.tiltDb, ms.oddEven, ui::specMorphAmount(current.voice, wtEdit), ui::specMorphLevel(current, wtEdit), (int)current.tables[wtEdit].size(),
+            dr >= 0 ? ui::morphDriverName(current.routes[dr].source) : "none"];
 }
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
@@ -3110,6 +3120,11 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         for (int i = 0; i < 4; ++i)
             if (NSPointInRect(p, NSInsetRect([self wtSpecBar:i], -6, -7))) { wtSpecDrag = i; [self specDragTo:p]; return; }
         if (NSPointInRect(p, NSInsetRect([self wtMorphBar], -6, -6)) && !ui::morphSpec(current.voice, wtEdit).isIdentity()) { wtSpecDrag = 4; [self specDragTo:p]; return; }
+        if (NSPointInRect(p, NSInsetRect([self wtMorphChip], -1, -3)) && !ui::morphSpec(current.voice, wtEdit).isIdentity()) { // 0.34.0 driver
+            const NSRect ch = [self wtMorphChip];
+            if (ui::stepMorphDriver(current, wtEdit, p.x < NSMidX(ch) - 8 ? -1 : 1)) { edited = true; [self applySound]; [self setNeedsDisplay:YES]; }
+            return;
+        }
         if (NSPointInRect(p, [self wtMorphButton])) { // 0.33.0 TO MORPH / CLEAR
             if (!wtSpec.isIdentity()) { ui::setSpecMorphTarget(current, wtEdit, wtSpec); wtSpec = SpectralProcess{}; }
             else if (!ui::morphSpec(current.voice, wtEdit).isIdentity()) ui::clearSpecMorph(current, wtEdit);

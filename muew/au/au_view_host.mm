@@ -802,8 +802,18 @@ int main() {
             for (const auto& r : b1.routes) if (r.dest == muew::ModRoute::Dest::Osc1SpecMorph && r.source == muew::ModRoute::Source::Macro2) ++wired;
             Check(ok0 && ok1 && b1.voice.osc1MorphSpec.tiltDb == -9 && b1.tables[0] == b0.tables[0] && wired == 1,
                   "TO MORPH stored TILT -9 as OSC A's morph target, kept the table and wired the WARP macro in the AU");
-            Click(view, w, NSMakePoint(40 + 272 + 0.6 * 88, cvy + 33 + 3));    // MORPH bar at 60%
+            Click(view, w, NSMakePoint(40 + 272 + 0.6 * 60, cvy + 33 + 3));    // MORPH bar at 60% (0.34.0: 60 wide)
+            Click(view, w, NSMakePoint(40 + 337 + 30, cvy + 29.5 + 6.5));      // 0.34.0 driver chip, right half: WARP -> LFO 1
             muew::Preset b2; const bool ok2 = State(b2);
+            int lfoRoutes = 0;
+            for (const auto& r : b2.routes) if (r.dest == muew::ModRoute::Dest::Osc1SpecMorph && r.source == muew::ModRoute::Source::LFO1 && r.amount == 0.5) ++lfoRoutes;
+            Check(ok2 && lfoRoutes == 1 && muew::ui::morphDriverRoute(b2, 0) >= 0, "the driver chip moved OSC A's morph route from the WARP macro to LFO 1 at half depth");
+            muew::Preset pa = b2; muew::params::set(pa, muew::params::SpecMorphA, 25);
+            Check(pa.voice.osc1SpecMorph == 0.25 && std::fabs(muew::params::get(b2, muew::params::SpecMorphA) - 60) < 1.1, "SPEC MORPH A is AU parameter 38 over the same amount");
+            AudioUnitParameterValue smA = -1;
+            AudioUnitGetParameter(gUnit, muew::params::SpecMorphA, kAudioUnitScope_Global, 0, &smA);
+            printf("param38: %.1f\n", smA);
+            Check(std::fabs(smA - 60) < 1.1, "the AU publishes the MORPH bar's 60% on parameter 38");
             const std::string m2 = morphText();
             Snapshot(view, "MUEW_MORPH_PNG", "SPEC morph snapshot written");
             printf("morph33: %s\n", m2.c_str());
