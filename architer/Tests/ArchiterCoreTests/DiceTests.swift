@@ -1445,4 +1445,24 @@ struct FilterPresetTests {
         #expect(list.preset(named: "FIRE")?.query == "fire")
         #expect(list.preset(named: "missing") == nil)
     }
+
+    @Test func renamedReplacesInPlaceKeepingFilterAndOrder() throws {
+        let fire = try #require(FilterPreset(name: "Fire", query: "fire"))
+        let bridge = try #require(FilterPreset(name: "Bridge", query: "bridge"))
+        let list = [fire, bridge]
+        let renamed = try #require(list.renamed(from: "fire", to: "Fire damage"))
+        #expect(renamed.map(\.name) == ["Fire damage", "Bridge"])
+        #expect(renamed[0].query == "fire")
+        let recased = try #require(list.renamed(from: "Fire", to: "FIRE"))
+        #expect(recased[0].name == "FIRE")
+    }
+
+    @Test func renamedRejectsBlankMissingAndClashingNames() throws {
+        let fire = try #require(FilterPreset(name: "Fire", query: "fire"))
+        let bridge = try #require(FilterPreset(name: "Bridge", query: "bridge"))
+        let list = [fire, bridge]
+        #expect(list.renamed(from: "Fire", to: "   ") == nil)
+        #expect(list.renamed(from: "Missing", to: "New") == nil)
+        #expect(list.renamed(from: "Fire", to: "bridge") == nil)
+    }
 }

@@ -809,6 +809,27 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-presets", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.6.0 proof: preset rename - "Fire stuff" becomes "Fire damage"
+    // in place (its filter stays); the txt records the list before and
+    // after. The render opens the rename form on "Bridge checks" with
+    // the draft pre-filled with its current name.
+    do {
+        let before = model.filterPresets.map { "\($0.name) -> \($0.query)" }
+        let ok = model.renameFilterPreset(from: "Fire stuff", to: "Fire damage")
+        let after = model.filterPresets.map { "\($0.name) -> \($0.query)" }
+        try? (["Preset rename (3.6.0)", "succeeded: \(ok)", "",
+               "before:"] + before + ["", "after:"] + after)
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-preset-rename.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialRenamingPresetOriginal: "Bridge checks",
+                       initialRenamePresetDraft: "Bridge checks")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-preset-rename", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(

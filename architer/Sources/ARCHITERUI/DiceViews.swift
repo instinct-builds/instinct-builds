@@ -40,7 +40,9 @@ public struct DiceRollerView: View {
                 initialSavingFilterPreset: Bool = false,
                 initialFilterPresetNameDraft: String = "",
                 initialConfirmingFilteredDelete: Bool = false,
-                initialConfirmingClearAll: Bool = false) {
+                initialConfirmingClearAll: Bool = false,
+                initialRenamingPresetOriginal: String? = nil,
+                initialRenamePresetDraft: String = "") {
         _historyLatestSession = State(initialValue: initialLatestSession)
         _historyCritsOnly = State(initialValue: initialCritsOnly)
         _historyStarredOnly = State(initialValue: initialStarredOnly)
@@ -49,6 +51,8 @@ public struct DiceRollerView: View {
         _filterPresetNameDraft = State(initialValue: initialFilterPresetNameDraft)
         _confirmingFilteredDelete = State(initialValue: initialConfirmingFilteredDelete)
         _confirmingClearAll = State(initialValue: initialConfirmingClearAll)
+        _renamingPresetOriginal = State(initialValue: initialRenamingPresetOriginal)
+        _renamePresetDraft = State(initialValue: initialRenamePresetDraft)
     }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
@@ -78,6 +82,11 @@ public struct DiceRollerView: View {
     /// the current filter as a preset; the draft pre-fills with the query.
     @State private var savingFilterPreset = false
     @State private var filterPresetNameDraft = ""
+    /// Filter-preset rename form (3.6.0): the preset being renamed
+    /// while the inline form is open; the draft pre-fills with its
+    /// current name.
+    @State private var renamingPresetOriginal: String?
+    @State private var renamePresetDraft = ""
     /// Filtered-delete confirm (3.3.0): true while the bar asks before
     /// removing the filter-visible subset; Undo restores it.
     @State private var confirmingFilteredDelete = false
@@ -198,11 +207,23 @@ public struct DiceRollerView: View {
                     if !model.filterPresets.isEmpty { Divider() }
                     Button("Save current filter…") {
                         filterPresetNameDraft = historyFilter.trimmingCharacters(in: .whitespaces)
+                        renamingPresetOriginal = nil
                         savingFilterPreset = true
                     }
                     .disabled(historyFilter.trimmingCharacters(in: .whitespaces).isEmpty)
                     if !model.filterPresets.isEmpty {
                         Divider()
+                        // 3.6.0: rename a preset in place - no
+                        // delete-and-recreate, its filter stays.
+                        Menu("Rename") {
+                            ForEach(model.filterPresets, id: \.name) { preset in
+                                Button(preset.name) {
+                                    renamingPresetOriginal = preset.name
+                                    renamePresetDraft = preset.name
+                                    savingFilterPreset = false
+                                }
+                            }
+                        }
                         Menu("Remove") {
                             ForEach(model.filterPresets, id: \.name) { preset in
                                 Button(preset.name) { model.deleteFilterPreset(name: preset.name) }
@@ -213,7 +234,7 @@ public struct DiceRollerView: View {
                     Image(systemName: "bookmark")
                 }
                 .controlSize(.small)
-                .help("Saved filter presets - apply one, save the current filter, or remove one")
+                .help("Saved filter presets - apply one, save the current filter, rename one, or remove one")
                 if savingFilterPreset {
                     TextField("Preset name", text: $filterPresetNameDraft)
                         .textFieldStyle(InsetFieldStyle())
@@ -227,6 +248,20 @@ public struct DiceRollerView: View {
                     .controlSize(.small)
                     .help("Save the current filter under this name")
                     Button("Cancel") { savingFilterPreset = false }
+                        .controlSize(.small)
+                }
+                if let original = renamingPresetOriginal {
+                    TextField("New preset name", text: $renamePresetDraft)
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(maxWidth: 120)
+                    Button("Rename") {
+                        if model.renameFilterPreset(from: original, to: renamePresetDraft) {
+                            renamingPresetOriginal = nil
+                        }
+                    }
+                    .controlSize(.small)
+                    .help("Rename the preset, keeping its filter")
+                    Button("Cancel") { renamingPresetOriginal = nil }
                         .controlSize(.small)
                 }
                 if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -256,7 +291,7 @@ public struct DiceRollerView: View {
                 // 3.3.1: the same collapse while the filtered-delete
                 // confirm is open - the confirm controls take the space.
                 // 3.4.0: and while the Clear-all confirm is open.
-                if !savingFilterPreset && !confirmingFilteredDelete && !confirmingClearAll {
+                if !savingFilterPreset && renamingPresetOriginal == nil && !confirmingFilteredDelete && !confirmingClearAll {
                     // 2.97.0: the button says when the filter narrows what it
                     // copies - the journal's explicit Copy filtered (2.63.0)
                     // sets the precedent; the action already rides
@@ -279,7 +314,7 @@ public struct DiceRollerView: View {
                 // 2.99.0: file the filtered subset into the journal as
                 // one digest entry titled with the query - the filter
                 // view's counterpart of Digest starred.
-                if !savingFilterPreset && !confirmingClearAll,
+                if !savingFilterPreset && renamingPresetOriginal == nil && !confirmingClearAll,
                    !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
                     // 3.3.1: Digest/Export collapse while the delete
                     // confirm is open - the confirm controls take the
@@ -329,7 +364,7 @@ public struct DiceRollerView: View {
                 // 2.85.0: the highlight reel - visible only while stars exist.
                 // 3.0.1: also hidden while the preset naming form is open.
                 // 3.4.0: and while the Clear-all confirm is open.
-                if !savingFilterPreset && !confirmingClearAll && !model.rollHistory.starredRolls.isEmpty {
+                if !savingFilterPreset && renamingPresetOriginal == nil && !confirmingClearAll && !model.rollHistory.starredRolls.isEmpty {
                     // 3.2.0: with the filter cluster also in the bar the
                     // four star actions collapse into one menu so the
                     // bar stays on one line; without a filter they keep

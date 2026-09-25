@@ -693,6 +693,17 @@ public final class AppModel: ObservableObject {
         return true
     }
 
+    /// Rename a saved filter preset in place, keeping its filter
+    /// (3.6.0). False when the source is missing, the new name is
+    /// empty, or another preset already owns it (any case).
+    @discardableResult
+    public func renameFilterPreset(from: String, to: String) -> Bool {
+        guard let renamed = filterPresets.renamed(from: from, to: to)
+        else { return false }
+        filterPresets = renamed
+        return true
+    }
+
     /// Remove a saved filter preset by name, matching any case (3.0.0).
     public func deleteFilterPreset(name: String) {
         filterPresets.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame }

@@ -752,6 +752,29 @@ public extension Array where Element == FilterPreset {
     func preset(named name: String) -> FilterPreset? {
         first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
+
+    /// Rename the preset saved under `from` (any case) to `to`, keeping
+    /// its position and filter (3.6.0). Nil when the source is missing,
+    /// the trimmed new name is empty, or another preset already owns it
+    /// (any case); re-casing the preset's own name is allowed.
+    func renamed(from: String, to: String) -> [FilterPreset]? {
+        let t = to.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty,
+              let index = firstIndex(where: {
+                  $0.name.caseInsensitiveCompare(from) == .orderedSame
+              })
+        else { return nil }
+        let clash = contains {
+            $0.name.caseInsensitiveCompare(t) == .orderedSame
+                && $0.name.caseInsensitiveCompare(from) != .orderedSame
+        }
+        guard !clash,
+              let preset = FilterPreset(name: t, query: self[index].query)
+        else { return nil }
+        var copy = self
+        copy[index] = preset
+        return copy
+    }
 }
 
 public extension Array where Element == RollResult {
