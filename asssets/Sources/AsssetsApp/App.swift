@@ -4388,11 +4388,11 @@ struct BatchPlaceSheet: View {
                     }
                 }
             }.font(.caption)
-            if let presetIssue {
+            if let issue = presetIssue {
                 HStack(spacing: 6) {
-                    Label(presetIssue, systemImage: "exclamationmark.triangle.fill")
+                    Label(issue, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2).foregroundStyle(Theme.warning).lineLimit(2)
-                    if let preset = model.catalog.placementPresets.first(where: { presetIssue.hasPrefix($0.name + ": mockup missing") }),
+                    if let preset = model.catalog.placementPresets.first(where: { issue.hasPrefix($0.name + ": mockup missing") }),
                        model.catalog.assets.contains(where: { $0.id == preset.mockupID }) {
                         Button("Locate…") {
                             if model.locate(preset.mockupID) {
