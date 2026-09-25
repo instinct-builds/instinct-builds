@@ -204,7 +204,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if (k == ui::F2Reso) return p[ui::Resonance];
     if (k == ui::Sub) return p[ui::Attack];
     if (k == ui::Noise) return p[ui::Release];
-    if (k == ui::NoiseTone) return p[ui::MsegTime];
+    if (k == ui::NoiseTone) return NSMakePoint(748, t - 200); // leave a clear character/color lane beside NOISE
     return p[k];
 }
 - (BOOL)oscRowKnob:(int)k {
@@ -823,8 +823,8 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     return f[std::clamp(id, 0, 6)];
 }
 - (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 190 - i * 19, 48, 15); } // 0.22.0: 4 pt lower, clear of the MIX bars
-- (NSRect)noiseCharacterRect { return NSMakeRect(615, [self top] - 190, 62, 15); }
-- (NSRect)noiseColorRect { return NSMakeRect(615, [self top] - 209, 62, 15); }
+- (NSRect)noiseCharacterRect { return NSMakeRect(666, [self top] - 190, 50, 15); }
+- (NSRect)noiseColorRect { return NSMakeRect(666, [self top] - 209, 50, 15); }
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 306, 440, 306); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
@@ -1854,9 +1854,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(color, 3, C(0x1c232d));
         FillRound(NSMakeRect(color.origin.x, color.origin.y, color.size.width * v.noiseColor, color.size.height), 3,
                   v.noiseCharacter ? C(0xf5cc78, .55) : C(0x4a5462, .6));
-        TextA(@"COLOR", NSMakeRect(color.origin.x + 4, color.origin.y + 2, 35, 10), 6.5,
+        TextA(@"COLOR", NSMakeRect(color.origin.x + 3, color.origin.y + 2, 30, 10), 6.5,
               v.noiseCharacter ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
-        TextA([NSString stringWithFormat:@"%.0f", v.noiseColor * 100], NSMakeRect(color.origin.x + 38, color.origin.y + 2, 20, 10),
+        TextA([NSString stringWithFormat:@"%.0f", v.noiseColor * 100], NSMakeRect(color.origin.x + 30, color.origin.y + 2, 16, 10),
               6.5, v.noiseCharacter ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
         NSString* pills[2] = {v.subOctave >= 2 ? @"-2 OCT" : @"-1 OCT", S(ui::subShapeName(v.subShape))};
         for (int i = 0; i < 2; ++i) {

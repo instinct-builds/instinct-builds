@@ -1744,8 +1744,8 @@ int main() {
             Click(view, w, NSMakePoint(494 + 142 + 0.3 * 67, t - 167 + 6.5));     // BALANCE bar at 30%
             // 0.51.0 noise character and color on the same page, without touching NOISE TONE.
             muew::Preset beforeNoise; State(beforeNoise);
-            for (int i = 0; i < 2; ++i) Click(view, w, NSMakePoint(615 + 31, t - 190 + 7)); // CLASSIC -> AIR -> GRAIN
-            Click(view, w, NSMakePoint(615 + 46, t - 209 + 7)); // COLOR 74%
+            for (int i = 0; i < 2; ++i) Click(view, w, NSMakePoint(666 + 25, t - 190 + 7)); // CLASSIC -> AIR -> GRAIN
+            Click(view, w, NSMakePoint(666 + 37, t - 209 + 7)); // COLOR 74%
             muew::Preset noiseState; bool noiseOk = State(noiseState);
             Check(noiseOk && noiseState.voice.noiseCharacter == 2 && std::fabs(noiseState.voice.noiseColor - .74) < .02 &&
                   noiseState.voice.noiseTone == beforeNoise.voice.noiseTone &&
