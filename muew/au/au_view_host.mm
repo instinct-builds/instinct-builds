@@ -1428,7 +1428,14 @@ int main() {
             Check(ok0 && before.tables[0].size() == 64, "profile-span test begins with 64-frame sound");
             if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
             muew::Preset setup = before;
-            muew::gainPartial(setup.tables[0][0], 29, -24);
+            // The factory frame has effectively silent upper bins. Explicitly
+            // seed both ends of the seam in source and destination so preview
+            // and transfer prove audible data, not shading over empty bins.
+            for (int i = 0; i < (int)setup.tables[0].size(); ++i) {
+                for (int h = 28; h <= 38; ++h)
+                    muew::seedPartial(setup.tables[0][i], h, -29.0 + (h % 4) * 3.0);
+            }
+            muew::gainPartial(setup.tables[0][0], 29, -12);
             muew::gainPartial(setup.tables[0][0], 35, 18);
             NSString* setupText = [NSString stringWithUTF8String:setup.serialize().c_str()];
             CFStringRef setupRef = (__bridge CFStringRef)setupText;
@@ -1488,6 +1495,12 @@ int main() {
             muew::SpectralClipboard expected; expected.capture(setup.tables[0][0], 0); expected.span(28,38);
             auto want = baseline.tables[0]; muew::FrameRange rr{13,38};
             muew::applySpectralProfileTable(want, rr, 25, expected, .75, 1, false);
+            const auto highBefore = muew::frameSpectrum(baseline.tables[0][25]);
+            const auto highAfter = muew::frameSpectrum(changed.tables[0][25]);
+            const double h35Before = std::abs(highBefore[35]/highBefore[1]);
+            const double h35After = std::abs(highAfter[35]/highAfter[1]);
+            Check(ok2 && h35Before > 0.005 && std::abs(h35After-h35Before) > 0.005,
+                  "seeded H35 on page 2 is visible and changes on transfer");
             Check(ok2 && want == changed.tables[0] && changed.tables[0][13] == baseline.tables[0][13] &&
                   changed.tables[0][38] == baseline.tables[0][38] && changed.tables[0][25] != baseline.tables[0][25],
                   "page-spanning paste matches tapered range and preserves untouched edges");
