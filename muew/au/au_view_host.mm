@@ -1792,7 +1792,7 @@ int main() {
             Snapshot(view,"MUEW_NOISE55_PNG","noise BURST envelope panel snapshot written");
             // 0.57.0: the small FILTER-page strip opens a full-size shape
             // editor over the matrix so the three noise controls do not crowd.
-            Click(view,w,NSMakePoint(662,t-252+6));
+            Click(view,w,NSMakePoint(662,t-258+5.5));
             Click(view,w,NSMakePoint(113,179)); // 25% attack, within the 240ms duration
             Click(view,w,NSMakePoint(102,145)); // -0.50: a faster decay tail
             muew::Preset shaped; bool shapedOk=State(shaped);
