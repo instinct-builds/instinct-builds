@@ -243,7 +243,9 @@ public struct DiceRollerView: View {
                 // 3.0.1: while the preset naming form is open the
                 // Copy/Digest/star cluster collapses so the bar never
                 // wraps; the naming controls take the space instead.
-                if !savingFilterPreset {
+                // 3.3.1: the same collapse while the filtered-delete
+                // confirm is open - the confirm controls take the space.
+                if !savingFilterPreset && !confirmingFilteredDelete {
                     // 2.97.0: the button says when the filter narrows what it
                     // copies - the journal's explicit Copy filtered (2.63.0)
                     // sets the precedent; the action already rides
@@ -268,25 +270,30 @@ public struct DiceRollerView: View {
                 // view's counterpart of Digest starred.
                 if !savingFilterPreset,
                    !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button("Digest filtered") {
-                        model.addFilteredRollsToJournal(
-                            visibleHistory,
-                            query: historyFilter.trimmingCharacters(in: .whitespaces))
+                    // 3.3.1: Digest/Export collapse while the delete
+                    // confirm is open - the confirm controls take the
+                    // space, same discipline as 3.0.1.
+                    if !confirmingFilteredDelete {
+                        Button("Digest filtered") {
+                            model.addFilteredRollsToJournal(
+                                visibleHistory,
+                                query: historyFilter.trimmingCharacters(in: .whitespaces))
+                        }
+                            .controlSize(.small)
+                            .disabled(model.selected == nil)
+                            .help("Add the filtered rolls to the journal as one entry titled with the filter")
+                        // 3.1.0: the file side of the filter family - same
+                        // shape as the starred export, headed by the query.
+                        Button("Export filtered") {
+                            model.exportFilteredMarkdown(
+                                visibleHistory,
+                                query: historyFilter.trimmingCharacters(in: .whitespaces),
+                                ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
+                        }
+                            .controlSize(.small)
+                            .disabled(visibleHistory.isEmpty)
+                            .help("Save the filtered rolls as a Markdown file")
                     }
-                        .controlSize(.small)
-                        .disabled(model.selected == nil)
-                        .help("Add the filtered rolls to the journal as one entry titled with the filter")
-                    // 3.1.0: the file side of the filter family - same
-                    // shape as the starred export, headed by the query.
-                    Button("Export filtered") {
-                        model.exportFilteredMarkdown(
-                            visibleHistory,
-                            query: historyFilter.trimmingCharacters(in: .whitespaces),
-                            ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
-                    }
-                        .controlSize(.small)
-                        .disabled(visibleHistory.isEmpty)
-                        .help("Save the filtered rolls as a Markdown file")
                     // 3.3.0: the destructive member of the filter
                     // family - behind a confirm, with one undo step.
                     if confirmingFilteredDelete {
