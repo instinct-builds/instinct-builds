@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1;
-        wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
+        wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
@@ -438,6 +438,32 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 // 0.30.0 Engine HQ: header block with the QUALITY pill, voice count and CPU load.
 - (NSRect)engineBox { return NSMakeRect(268, self.bounds.size.height - 66, 104, 40); }
 - (NSRect)engineHQPill { NSRect b = [self engineBox]; return NSMakeRect(b.origin.x + 7, b.origin.y + 21, 28, 13); }
+// 0.35.0 live morph meter: redraws only when an oscillator with a morph target moves.
+- (void)showLiveMorphA:(float)a b:(float)b {
+    const float in[2] = {a, b};
+    bool redraw = false;
+    for (int o = 0; o < 2; ++o) {
+        const float v = in[o] < 0 ? -1.0f : std::clamp(in[o], 0.0f, 1.0f);
+        if (std::fabs(v - liveMorph[o]) < 0.004f) continue;
+        liveMorph[o] = v;
+        if (!ui::morphSpec(current.voice, o).isIdentity()) redraw = true;
+    }
+    if (redraw) [self setNeedsDisplay:YES];
+}
+// The morph amount to show: what the engine last played while a note sounds, else the settled level.
+- (double)shownMorph:(int)o {
+    if (ui::morphSpec(current.voice, o).isIdentity()) return 0;
+    return liveMorph[o] >= 0 ? liveMorph[o] : ui::specMorphLevel(current, o);
+}
+- (NSString*)muewLiveMorphText { return [NSString stringWithFormat:@"live=%.2f/%.2f shown=%.2f/%.2f", liveMorph[0], liveMorph[1], [self shownMorph:0], [self shownMorph:1]]; }
+- (const TableFrames&)morphTableFor:(int)o { // processed copy of OSC o's table, rebuilt when the table or target changes
+    const SpectralProcess& ms = ui::morphSpec(current.voice, o);
+    if (!(morphCacheIn[o] == current.tables[o]) || morphCacheSpec[o] != ms) {
+        morphCacheIn[o] = current.tables[o]; morphCacheSpec[o] = ms;
+        morphCacheOut[o] = ms.isIdentity() ? current.tables[o] : processTable(current.tables[o], ms);
+    }
+    return morphCacheOut[o];
+}
 - (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render {
     const int pc = (int)std::lround(std::clamp(cpu, 0.0f, 9.99f) * 100), was = (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100);
     const bool same = active == engVoices && limit == engLimit && render == engRender && pc == was;
@@ -887,6 +913,11 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     const auto wx = ui::warpExtras(current.voice, o); // 0.19.0: second slot + REMAP curve
     std::vector<float> wv = user ? ui::waveformUser(current.tables[o], OscWtPos(current.voice, o), wm, w, 240, &wx)
                                  : ui::waveform(table, shape, wm, w, 240, &wx);
+    const double morphNow = user ? [self shownMorph:o] : 0; // 0.35.0: the display follows the live morph
+    if (morphNow > 0) {
+        const std::vector<float> wb = ui::waveformUser([self morphTableFor:o], OscWtPos(current.voice, o), wm, w, 240, &wx);
+        for (int i = 0; i < 240; ++i) wv[i] += (float)morphNow * (wb[i] - wv[i]);
+    }
     NSBezierPath* p = [NSBezierPath bezierPath];
     for (int i = 0; i < 240; ++i) {
         CGFloat x = r.origin.x + 8 + (r.size.width - 16) * i / 239.0;
@@ -924,6 +955,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(NSMakeRect(r.origin.x + 5, NSMaxY(r) - 17, 50, 13), 4, C(0x0a0d12, .85)); // 0.19.0: keeps the label readable over the wave
         TextA([NSString stringWithFormat:@"POS %.0f%%", pos * 100], NSMakeRect(r.origin.x + 8, NSMaxY(r) - 16, 70, 11), 7.5,
               col, NSFontWeightSemibold, NSTextAlignmentLeft);
+        if (!ui::morphSpec(current.voice, o).isIdentity()) { // 0.35.0 MORPH badge, live while a note sounds
+            const NSRect mbg = NSMakeRect(r.origin.x + 58, NSMaxY(r) - 17, 48, 13);
+            FillRound(mbg, 4, C(0x0a0d12, .85));
+            FillRound(NSMakeRect(mbg.origin.x + 3, mbg.origin.y + 2, 2, 9 * std::clamp(morphNow, 0.0, 1.0) + .01), 1, col); // tiny level bar
+            TextA([NSString stringWithFormat:@"MORPH %.0f%%", morphNow * 100], NSMakeRect(mbg.origin.x + 7, mbg.origin.y + 1.5, mbg.size.width - 8, 10), 7,
+                  col, NSFontWeightSemibold, NSTextAlignmentLeft);
+        }
     }
 }
 
@@ -996,7 +1034,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(NSMakeRect(pv.origin.x + 4, pv.origin.y + specH + 1.5, pv.size.width - 8, 1), 0, C(0x1b222c));
         const SpectralProcess& ms = ui::morphSpec(current.voice, wtEdit);
         const bool morphOn = !ms.isIdentity();
-        const double morphAmt = ui::specMorphLevel(current, wtEdit);
+        const double morphAmt = [self shownMorph:wtEdit]; // 0.35.0: live while a note sounds
         // 0.33.0: with no pending process the preview plays back the live morph blend.
         const Frame pf = !wtSpec.isIdentity() ? processFrame(f, wtSpec) : ui::morphPreviewFrame(f, ms, morphAmt);
         const bool pending = !wtSpec.isIdentity();
@@ -1029,7 +1067,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(NSMakeRect(std::min(mid, x), bar.origin.y, std::max<CGFloat>(1, std::fabs(x - mid)), bar.size.height), 3, [col colorWithAlphaComponent:wtSpecDrag == i ? .95 : .7]);
             FillRound(NSMakeRect(mid - .5, bar.origin.y - 2, 1, bar.size.height + 4), 0, C(0x3a4452));
             FillRound(NSMakeRect(x - 4, NSMidY(bar) - 4, 8, 8), 4, v == 0 ? C(0x5f6b7b) : C(0xeaf1f8));
-            TextA(SpecValueText(wtSpec, i), NSMakeRect(NSMaxX(bar) + 4, bar.origin.y - 2.5, 50, 11), 8, v == 0 ? C(0x5f6b7b) : C(0xe6ebf1), NSFontWeightSemibold, NSTextAlignmentRight);
+            // 0.35.0 fix: the value column ends inside the canvas, on the MORPH readout's right edge.
+            TextA(SpecValueText(wtSpec, i), NSMakeRect(NSMaxX(bar) + 2, bar.origin.y - 2.5, NSMaxX(cv) - 8 - NSMaxX(bar) - 2, 11), 8, v == 0 ? C(0x5f6b7b) : C(0xe6ebf1), NSFontWeightSemibold, NSTextAlignmentRight);
         }
         { // 0.33.0 MORPH row: the static amount toward the stored target; the WARP macro adds on top
             const NSRect mb = [self wtMorphBar];
@@ -1045,7 +1084,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             const NSRect ch = [self wtMorphChip];
             const int dr = ui::morphDriverRoute(current, wtEdit);
             FillRound(ch, 4, morphOn && dr >= 0 ? [col colorWithAlphaComponent:.18] : C(0x1b222c));
-            TextA(dr >= 0 ? [NSString stringWithUTF8String:ui::morphDriverName(current.routes[dr].source)] : @"\u2014", NSMakeRect(ch.origin.x, ch.origin.y + 2.5, ch.size.width, 10), 6.5,
+            TextA(dr >= 0 ? [NSString stringWithUTF8String:ui::morphDriverName(current.routes[dr].source)] : @"\u2014", NSMakeRect(ch.origin.x, ch.origin.y + 1, ch.size.width, 10), 6.5, // 0.35.0: centred in the chip
                   morphOn && dr >= 0 ? col : C(0x4a5462), NSFontWeightBold, NSTextAlignmentCenter);
             // 0.34.0 fix: the readout shares the MORPH label's baseline (8 pt, -2.5), "OFF" without a target.
             TextA(morphOn ? [NSString stringWithFormat:@"%.0f%%", morphAmt * 100] : @"OFF", NSMakeRect(NSMaxX(ch) + 2, mb.origin.y - 2.5, NSMaxX(cv) - 8 - NSMaxX(ch) - 2, 11), 8,

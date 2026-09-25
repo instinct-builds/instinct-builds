@@ -14,6 +14,7 @@ using namespace muew;
 
 static std::atomic<float> gCpu{0}; // 0.30.0 header meter: smoothed real-time load
 static std::atomic<int> gVoices{0};
+static std::atomic<float> gMorphA{-1.0f}, gMorphB{-1.0f}; // 0.35.0 live morph meter
 
 static NSColor* C(uint32_t rgb, CGFloat a = 1) {
     return [NSColor colorWithRed:((rgb >> 16) & 255) / 255.0 green:((rgb >> 8) & 255) / 255.0 blue:(rgb & 255) / 255.0 alpha:a];
@@ -67,6 +68,7 @@ struct StandaloneHost : MUEWEditorHost {
         const double used = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), budget = count / 44100.0;
         if (budget > 0) { const float c = gCpu.load(); gCpu = c + 0.1f * ((float)std::min(used / budget, 4.0) - c); }
         gVoices = s->activeVoiceCount();
+        gMorphA = s->specMorphMeter(0); gMorphB = s->specMorphMeter(1); // 0.35.0
         return noErr;
     }];
     [engine attachNode:source];
@@ -77,6 +79,7 @@ struct StandaloneHost : MUEWEditorHost {
     meter = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15 repeats:YES block:^(NSTimer*) {
         const auto& vp = view->current.voice;
         [view showEngineVoices:gVoices.load() limit:vp.voiceMode != 0 ? 1 : vp.polyVoices cpu:gCpu.load() render:false];
+        [view showLiveMorphA:gMorphA.load() b:gMorphB.load()]; // 0.35.0
     }];
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)s { return YES; }

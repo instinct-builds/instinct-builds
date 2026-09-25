@@ -379,6 +379,7 @@ public:
     bool hq() const { return hq_; }
     static constexpr double kHQLatency = Halfband2x::kLatency * 0.5; // 7.5 samples at 1x
     bool isActive() const { return ampEnv_.isActive(); }
+    double liveSpecMorph(int o) const { return liveMorph_[o ? 1 : 0]; } // 0.35.0 meter: the morph this voice last played
     bool dcBlockerOn() const { return dcOn_; } // 0.12.0 (tests)
     int note() const { return note_; }
     uint64_t age() const { return age_; }
@@ -460,9 +461,11 @@ public:
         if (active1_) { const double wp = std::clamp(params_.osc1WtPos + modSum(ModRoute::Dest::Osc1WtPos), 0.0, 1.0); for (int i = 0; i < n1; ++i) osc1_[i].setWtPos(wp); }
         if (active2_) { const double wp = std::clamp(params_.osc2WtPos + modSum(ModRoute::Dest::Osc2WtPos), 0.0, 1.0); for (int i = 0; i < n2; ++i) osc2_[i].setWtPos(wp); }
         if (active1_ && (params_.osc1SpecMorph != 0.0 || usesSpecMorph_[0])) { // 0.33.0
-            const double sm = std::clamp(params_.osc1SpecMorph + modSum(ModRoute::Dest::Osc1SpecMorph), 0.0, 1.0); for (int i = 0; i < n1; ++i) osc1_[i].setSpecMorph(sm); }
+            const double sm = std::clamp(params_.osc1SpecMorph + modSum(ModRoute::Dest::Osc1SpecMorph), 0.0, 1.0); for (int i = 0; i < n1; ++i) osc1_[i].setSpecMorph(sm); liveMorph_[0] = sm; }
+        else liveMorph_[0] = 0.0;
         if (active2_ && (params_.osc2SpecMorph != 0.0 || usesSpecMorph_[1])) {
-            const double sm = std::clamp(params_.osc2SpecMorph + modSum(ModRoute::Dest::Osc2SpecMorph), 0.0, 1.0); for (int i = 0; i < n2; ++i) osc2_[i].setSpecMorph(sm); }
+            const double sm = std::clamp(params_.osc2SpecMorph + modSum(ModRoute::Dest::Osc2SpecMorph), 0.0, 1.0); for (int i = 0; i < n2; ++i) osc2_[i].setSpecMorph(sm); liveMorph_[1] = sm; }
+        else liveMorph_[1] = 0.0;
         float l, r;
         bool stereo = false;
         auto oscBlock = [&](float& l, float& r) {
@@ -705,6 +708,7 @@ private:
     bool usesF2Morph_ = false, usesBalance_ = false; // 0.22.0
     bool usesUniBlend_ = false; double blendMod_ = 0.0; // 0.23.0
     bool usesSpecMorph_[2] = {false, false}; // 0.33.0
+    double liveMorph_[2] = {0.0, 0.0};        // 0.35.0
     AlignDelay alignDry1L_, alignDry1R_, alignDry2L_, alignDry2R_, alignParL_, alignParR_, alignPar2L_, alignPar2R_; // 0.22.0 // 0.21.0: a route targets FILTER DRIVE or MORPH
     double w2a_ = 0.0, w2b_ = 0.0;
     static bool warp2Prone(int mode) { return mode >= 2 && mode != 5 && mode != 6 ? true : false; }

@@ -834,6 +834,41 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab for the steps that follow
             fflush(stdout);
         });
+        After(6.9994, ^{ // 0.35.0 live morph view: WARP drives OSC A's morph, a held chord plays it at 70%, the editor follows the engine
+            CGFloat t = view.bounds.size.height - 100;
+            const CGFloat cvy = t - 184;
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, t - 32 + 8.5));      // SPEC tab
+            muew::Preset s0; State(s0);
+            for (int i = 0; i < 12 && s0.routes.size() && muew::ui::morphDriverRoute(s0, 0) >= 0 && s0.routes[muew::ui::morphDriverRoute(s0, 0)].source != muew::ModRoute::Source::Macro2; ++i) {
+                Click(view, w, NSMakePoint(40 + 337 + 4, cvy + 29.5 + 6.5));   // driver chip, left edge: step back toward WARP
+                State(s0);
+            }
+            const int dri = muew::ui::morphDriverRoute(s0, 0);
+            Check(dri >= 0 && s0.routes[dri].source == muew::ModRoute::Source::Macro2 && s0.routes[dri].amount == 1.0, "the chip's left edge stepped the driver back to WARP at full depth");
+            AudioUnitSetParameter(gUnit, muew::params::SpecMorphA, kAudioUnitScope_Global, 0, 20.0f, 0); // base 20% (parameter 38)
+            AudioUnitSetParameter(gUnit, muew::params::Macro2, kAudioUnitScope_Global, 0, 50.0f, 0);     // WARP 50%: live 70%
+            MusicDeviceMIDIEvent(gUnit, 0x90, 48, 100, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 55, 100, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 60, 100, 0);
+            for (int i = 0; i < 6; ++i) RenderBlock();
+            typedef void (*SyncFn)(id, SEL, BOOL);
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((SyncFn)[view methodForSelector:sync])(view, sync, YES);
+            SEL follow = NSSelectorFromString(@"muewFollowPerformance");
+            if ([view respondsToSelector:follow]) ((void (*)(id, SEL))[view methodForSelector:follow])(view, follow);
+            [view display];
+            NSString* lt = [view respondsToSelector:NSSelectorFromString(@"muewLiveMorphText")] ? [view valueForKey:@"muewLiveMorphText"] : @"";
+            const std::string live = lt.UTF8String ?: "";
+            MUEWPerformance pf{}; UInt32 sz = sizeof(pf);
+            const bool got = AudioUnitGetProperty(gUnit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+            Snapshot(view, "MUEW_LIVEMORPH_PNG", "live morph snapshot written");
+            printf("livemorph35: %s; engine meter %.3f / %.3f\n", live.c_str(), pf.specMorph[0], pf.specMorph[1]);
+            Check(got && std::fabs(pf.specMorph[0] - 0.7f) < 0.01f && pf.specMorph[1] <= 0.0f, "the engine reports OSC A playing its morph at 70% (20% base + WARP 50%), OSC B none");
+            Check(live.find("live=0.70/") != std::string::npos && live.find("shown=0.70/") != std::string::npos, "the editor shows the engine's live 70% morph");
+            MusicDeviceMIDIEvent(gUnit, 0x80, 48, 0, 0); MusicDeviceMIDIEvent(gUnit, 0x80, 55, 0, 0); MusicDeviceMIDIEvent(gUnit, 0x80, 60, 0, 0);
+            AudioUnitSetParameter(gUnit, muew::params::Macro2, kAudioUnitScope_Global, 0, 0.0f, 0);
+            for (int i = 0; i < 4; ++i) RenderBlock();
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab for the steps that follow
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab

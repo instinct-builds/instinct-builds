@@ -74,6 +74,9 @@ build/muew-tests-fx28: tests/tests_fx28.cpp src/fx.h src/preset.h src/ui_model.h
 build/muew-tests-spectral32: tests/tests_spectral32.cpp src/table_recipe.h src/table_history.h src/preset.h src/factory_bank.h src/spectral_process.h src/table_import.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_spectral32.cpp
 
+build/muew-tests-live35: tests/tests_live35.cpp src/ui_model.h src/synth.h src/voice.h src/factory_bank.h | build
+	$(CXX) $(CXXFLAGS) -o $@ tests/tests_live35.cpp
+
 build/muew-tests-lanes34: tests/tests_lanes34.cpp src/au_params.h src/preset.h src/ui_model.h src/factory_bank.h src/synth.h src/voice.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_lanes34.cpp
 
@@ -126,7 +129,7 @@ build/muew-license: src/license_tool.cpp src/license.h | build
 build/muew-render-preset: src/render_preset.cpp src/preset.h src/preset_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28 build/muew-tests-quality29 build/muew-tests-hq30 build/muew-tests-spectral31 build/muew-tests-spectral32 build/muew-tests-morph33 build/muew-tests-lanes34
+test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28 build/muew-tests-quality29 build/muew-tests-hq30 build/muew-tests-spectral31 build/muew-tests-spectral32 build/muew-tests-morph33 build/muew-tests-lanes34 build/muew-tests-live35
 	./build/muew-tests
 	./build/muew-tests-fx
 	./build/muew-tests-license
@@ -149,6 +152,7 @@ test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-t
 	./build/muew-tests-spectral32
 	./build/muew-tests-morph33
 	./build/muew-tests-lanes34
+	./build/muew-tests-live35
 	./build/muew-tests-filterroute
 	./build/muew-tests-voicex
 	./build/muew-tests-perf

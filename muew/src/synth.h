@@ -251,6 +251,13 @@ public:
         return n;
     }
     int maxVoices() const { return static_cast<int>(voices_.size()); }
+    // 0.35.0 live morph meter: the highest morph amount any sounding voice
+    // played on oscillator o in the last block, -1 when nothing sounds.
+    float specMorphMeter(int o) const {
+        float m = -1.0f;
+        for (const auto& v : voices_) if (v.isActive()) m = std::max(m, (float)v.liveSpecMorph(o));
+        return m;
+    }
 
     // 0.30.0 HQ. The QUALITY setting oversamples the oscillators; an HQ render
     // (the host's offline bounce) also forces the distortion to 4x.

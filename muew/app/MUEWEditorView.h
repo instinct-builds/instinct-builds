@@ -120,6 +120,11 @@ struct MUEWEditorHost {
     muew::SpectralProcess wtCmpRefMs[2], wtCmpHoldMs[2];
     double wtCmpRefAmt[2], wtCmpHoldAmt[2];
     bool wtCmpHas[2];
+    // 0.35.0 live morph meter (from the engine, -1 = nothing sounding) and the
+    // processed table the main OSC display blends toward, cached per oscillator.
+    float liveMorph[2];
+    muew::TableFrames morphCacheIn[2], morphCacheOut[2];
+    muew::SpectralProcess morphCacheSpec[2];
     int wtCmpA;
     // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE, 2 = ARP since 0.25.0).
     int filterPage;
@@ -147,4 +152,5 @@ struct MUEWEditorHost {
 - (void)showArpOn:(bool)on pool:(const int*)pool count:(int)n index:(int)index note:(int)note step:(int)step;
 - (void)showArpPatCell:(int)cell locked:(bool)locked; // 0.26.0
 - (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render; // 0.30.0
+- (void)showLiveMorphA:(float)a b:(float)b; // 0.35.0
 @end

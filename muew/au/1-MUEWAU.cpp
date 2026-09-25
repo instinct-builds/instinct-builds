@@ -107,6 +107,7 @@ struct MUEWInstance {
     std::atomic<float> cpuLoad{0};
     std::atomic<int> activeVoices{0}, voiceLimit{16};
     std::atomic<unsigned> oscHQ{0};
+    std::atomic<float> liveMorph[2]{{-1.0f}, {-1.0f}}; // 0.35.0 editor morph meter
     double cpuSmooth = 0.0;
     double notifiedLatency = 0.0; // samples, as last announced to the host
     // Samples the current sound runs late (oscillator HQ 7.5, HQ distortion 22.5).
@@ -551,7 +552,8 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                                    u->arpOn.load(), u->arpStep.load(), u->arpIndex.load(), u->arpNote.load(), u->arpPoolN.load(), {},
                                    u->arpPatCell.load(), u->hostLocked.load(),
                                    (UInt32)u->activeVoices.load(), (UInt32)u->voiceLimit.load(), u->cpuLoad.load(),
-                                   u->oscHQ.load(), u->offline.load() ? 1u : 0u}; // 0.30.0
+                                   u->oscHQ.load(), u->offline.load() ? 1u : 0u, // 0.30.0
+                                   {u->liveMorph[0].load(), u->liveMorph[1].load()}}; // 0.35.0
                 for (int i = 0; i < 8; ++i) pf.pool[i] = u->arpPool[i].load();
                 *static_cast<MUEWPerformance*>(outData) = pf;
                 *ioDataSize = sizeof(MUEWPerformance);
@@ -773,6 +775,7 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         const double used = (double)(mach_absolute_time() - t0) * tick, budget = inNumberFrames / u->sampleRate;
         if (budget > 0) { u->cpuSmooth += 0.1 * (std::min(used / budget, 4.0) - u->cpuSmooth); u->cpuLoad = (float)u->cpuSmooth; }
         u->activeVoices = u->synth.activeVoiceCount();
+        u->liveMorph[0] = u->synth.specMorphMeter(0); u->liveMorph[1] = u->synth.specMorphMeter(1); // 0.35.0
         u->oscHQ = u->synth.oscHQ() ? 1u : 0u;
     }
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));
