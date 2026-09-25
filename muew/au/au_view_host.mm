@@ -1562,9 +1562,14 @@ int main() {
             straight.reverse = false; muew::applySpectralProfileTable(normal, rr, 25, straight, .75, 1, false);
             const auto normSpec = muew::frameSpectrum(normal[25]);
             const auto revSpec = muew::frameSpectrum(changed.tables[0][25]);
+            // The source may still slope downward after boosting H16: reversal's
+            // direction follows its captured ratios, not an assumed brighter H4.
+            const double sourceShift = expected.sourceRatio(4) - straight.sourceRatio(4);
+            const double editedShift = std::abs(revSpec[4]/revSpec[1]) - std::abs(normSpec[4]/normSpec[1]);
+            printf("reverse H4 source shift %.6f, normalized result shift %.6f\n", sourceShift, editedShift);
             Check(ok2 && normal[25] != changed.tables[0][25] &&
-                std::abs(revSpec[4]/revSpec[1]) > std::abs(normSpec[4]/normSpec[1]),
-                "reverse swaps low and high source ratios in the audible edited frame");
+                std::abs(sourceShift) > 1e-6 && sourceShift * editedShift > 1e-9,
+                "reverse H4 transfer follows reflected source ratio in the audible edited frame");
             const auto orig=muew::frameSpectrum(baseline.tables[0][25]), altered=muew::frameSpectrum(changed.tables[0][25]);
             const double scale=std::abs(altered[1])/std::abs(orig[1]);
             bool otherBins=true;for(int h=20;h<=muew::kEditablePartials;++h)
