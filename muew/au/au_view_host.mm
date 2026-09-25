@@ -869,6 +869,82 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab for the steps that follow
             fflush(stdout);
         });
+        After(6.99945, ^{ // 0.36.0 morph everywhere: per-voice ghosts on both main OSC displays, the matrix row meter, SNAP A on the SPEC page
+            muew::Preset keep; const bool kept = State(keep);
+            muew::Preset g = keep;
+            if (g.tables[0].empty()) for (int f = 0; f < 4; ++f) g.tables[0].push_back(muew::shapeFrame(2));
+            g.tables[1] = g.tables[0];
+            g.voice.osc1Shape = muew::kCustomShape; g.voice.osc2Shape = muew::kCustomShape; g.voice.osc2Level = 0.7;
+            muew::SpectralProcess sp; sp.tiltDb = -12; sp.formantSt = 5;
+            muew::ui::clearSpecMorph(g, 0); muew::ui::clearSpecMorph(g, 1);
+            while (g.routes.size() > 12) g.routes.pop_back();
+            muew::ui::setSpecMorphTarget(g, 0, sp); muew::ui::setSpecMorphTarget(g, 1, sp);
+            g.voice.osc1SpecMorph = 0.2; g.voice.osc2SpecMorph = 0.45; g.voice.macros[1] = 0;
+            g.voice.arpOn = false; g.voice.voiceMode = 0; g.voice.polyVoices = std::max(g.voice.polyVoices, 8); // three separate voices
+            muew::ModRoute vr; vr.source = muew::ModRoute::Source::Velocity; vr.dest = muew::ModRoute::Dest::Osc1SpecMorph; vr.amount = 0.6;
+            g.routes.insert(g.routes.begin(), vr);                           // row 01: VELOCITY -> OSC A MORPH, on the visible page
+            NSString* gs = [NSString stringWithUTF8String:g.serialize().c_str()];
+            CFStringRef gcf = (__bridge CFStringRef)gs;
+            const bool set = AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &gcf, sizeof(gcf)) == noErr;
+            AudioUnitSetParameter(gUnit, muew::params::Macro2, kAudioUnitScope_Global, 0, 0.0f, 0);
+            typedef void (*SyncFn)(id, SEL, BOOL);
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((SyncFn)[view methodForSelector:sync])(view, sync, YES);
+            NSNumber* keptPage = [view valueForKey:@"matrixPage"];
+            [view setValue:@0 forKey:@"matrixPage"];                          // matrix page 1-4, where row 01 sits
+            SEL closeEd = NSSelectorFromString(@"muewCloseTableEditor");
+            if ([view respondsToSelector:closeEd]) ((void (*)(id, SEL))[view methodForSelector:closeEd])(view, closeEd);
+            MusicDeviceMIDIEvent(gUnit, 0x90, 48, 32, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 55, 70, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 60, 121, 0);
+            for (int i = 0; i < 6; ++i) RenderBlock();
+            SEL follow = NSSelectorFromString(@"muewFollowPerformance");
+            if ([view respondsToSelector:follow]) ((void (*)(id, SEL))[view methodForSelector:follow])(view, follow);
+            [view display];
+            MUEWPerformance pf{}; UInt32 sz = sizeof(pf);
+            const bool got = AudioUnitGetProperty(gUnit, kMUEWProperty_Performance, kAudioUnitScope_Global, 0, &pf, &sz) == noErr;
+            NSString* lt = [view respondsToSelector:NSSelectorFromString(@"muewLiveMorphText")] ? [view valueForKey:@"muewLiveMorphText"] : @"";
+            const std::string live = lt.UTF8String ?: "";
+            Snapshot(view, "MUEW_MORPHMAIN_PNG", "morph-everywhere main display snapshot written");
+            printf("morph36: %s; engine A %u voices %.3f %.3f %.3f, B %u voices %.3f\n", live.c_str(), pf.voiceMorphCount[0], pf.voiceMorph[0][0], pf.voiceMorph[0][1], pf.voiceMorph[0][2],
+                   pf.voiceMorphCount[1], pf.voiceMorph[1][0]);
+            const float ea = 0.2f + 0.6f * 121 / 127.0f, eb = 0.2f + 0.6f * 70 / 127.0f, ec = 0.2f + 0.6f * 32 / 127.0f;
+            Check(kept && set, "the harness loaded a two-oscillator morph sound through the preset state");
+            Check(got && pf.voiceMorphCount[0] == 3 && std::fabs(pf.voiceMorph[0][0] - ea) < 0.02f && std::fabs(pf.voiceMorph[0][1] - eb) < 0.02f && std::fabs(pf.voiceMorph[0][2] - ec) < 0.02f,
+                  "the engine reports OSC A's three voices at their velocity-spread morphs, highest first");
+            Check(got && pf.voiceMorphCount[1] == 3 && std::fabs(pf.specMorph[1] - 0.45f) < 0.01f, "the engine meters OSC B at 45% on its three voices");
+            Check(live.find("voices=3/3") != std::string::npos && live.find("shown=0.77/0.45") != std::string::npos, "the editor shows 77% on OSC A and 45% on OSC B");
+            Check(live.find("ghosts=A:0.53,0.35 B:") != std::string::npos && live.find("B:") + 2 == live.size(), "OSC A draws two ghost voices; OSC B, with every voice alike, none");
+            // SPEC page: ghosts on the preview and MORPH row, then SNAP A captures this state for the compare.
+            SEL openEd = NSSelectorFromString(@"muewOpenTableEditorA");
+            if ([view respondsToSelector:openEd]) ((void (*)(id, SEL))[view methodForSelector:openEd])(view, openEd);
+            CGFloat t = view.bounds.size.height - 100;
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, t - 32 + 8.5));      // SPEC tab
+            Click(view, w, NSMakePoint(40 + 8 + 196 - 42 + 18, t - 184 + 138 - 8 - 16 + 6)); // SNAP A
+            [view display];
+            Snapshot(view, "MUEW_MORPHSNAP_PNG", "SPEC ghosts + SNAP snapshot written");
+            AudioUnitSetParameter(gUnit, muew::params::SpecMorphA, kAudioUnitScope_Global, 0, 60.0f, 0); // move the amount after the snapshot
+            if ([view respondsToSelector:sync]) ((SyncFn)[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(134 + 7, t - 32 + 8.5));             // A
+            NSString* ma = [view respondsToSelector:NSSelectorFromString(@"muewMorphText")] ? [view valueForKey:@"muewMorphText"] : @"";
+            Click(view, w, NSMakePoint(149 + 7, t - 32 + 8.5));             // B
+            NSString* mb = [view respondsToSelector:NSSelectorFromString(@"muewMorphText")] ? [view valueForKey:@"muewMorphText"] : @"";
+            printf("snap36: A %s | B %s\n", ma.UTF8String ?: "", mb.UTF8String ?: "");
+            Check(std::string(ma.UTF8String ?: "").find("cmp=A") != std::string::npos && std::string(ma.UTF8String ?: "").find("amount=0.20") != std::string::npos,
+                  "after SNAP A, A plays the snapshot's 20% amount");
+            Check(std::string(mb.UTF8String ?: "").find("cmp=B") != std::string::npos && std::string(mb.UTF8String ?: "").find("amount=0.60") != std::string::npos,
+                  "B returns to the 60% edit made after the snapshot");
+            MusicDeviceMIDIEvent(gUnit, 0x80, 48, 0, 0); MusicDeviceMIDIEvent(gUnit, 0x80, 55, 0, 0); MusicDeviceMIDIEvent(gUnit, 0x80, 60, 0, 0);
+            for (int i = 0; i < 4; ++i) RenderBlock();
+            if (kept) { // put the earlier sound back for the steps that follow
+                NSString* ks = [NSString stringWithUTF8String:keep.serialize().c_str()];
+                CFStringRef kcf = (__bridge CFStringRef)ks;
+                AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &kcf, sizeof(kcf));
+                if ([view respondsToSelector:sync]) ((SyncFn)[view methodForSelector:sync])(view, sync, YES);
+            }
+            if (keptPage) [view setValue:keptPage forKey:@"matrixPage"];
+            if ([view respondsToSelector:openEd]) ((void (*)(id, SEL))[view methodForSelector:openEd])(view, openEd);
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab

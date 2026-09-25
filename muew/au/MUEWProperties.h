@@ -39,9 +39,12 @@ struct MUEWPerformance {
     UInt32 renderHQ;     // 1 during an offline (HQ) render
     // 0.35.0 live spectral morph per oscillator (0..1), -1 while nothing sounds
     Float32 specMorph[2];
+    // 0.36.0 per-voice morph (highest first) and how many voices sound, per oscillator
+    Float32 voiceMorph[2][8];
+    UInt32 voiceMorphCount[2];
 };
 
 // Objective-C class the AU names in kAudioUnitProperty_CocoaUI. Versioned so
 // two MUEW builds loaded in one host never collide.
-#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_35"
+#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_36"
 #define MUEW_AU_BUNDLE_ID "co.instinct.muew.au"

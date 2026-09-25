@@ -125,6 +125,10 @@ struct MUEWEditorHost {
     float liveMorph[2];
     muew::TableFrames morphCacheIn[2], morphCacheOut[2];
     muew::SpectralProcess morphCacheSpec[2];
+    // 0.36.0 per-voice morph ghosts (highest first) and the SPEC page's A snapshot flag.
+    float voiceMorph[2][8];
+    int voiceMorphN[2];
+    bool wtCmpSnap[2];
     int wtCmpA;
     // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE, 2 = ARP since 0.25.0).
     int filterPage;
@@ -153,4 +157,6 @@ struct MUEWEditorHost {
 - (void)showArpPatCell:(int)cell locked:(bool)locked; // 0.26.0
 - (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render; // 0.30.0
 - (void)showLiveMorphA:(float)a b:(float)b; // 0.35.0
+- (void)showVoiceMorph:(const float*)a count:(int)na b:(const float*)b count:(int)nb; // 0.36.0
+- (std::vector<double>)ghostMorphs:(int)o; // 0.36.0
 @end

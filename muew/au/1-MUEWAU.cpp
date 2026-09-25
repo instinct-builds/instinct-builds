@@ -108,6 +108,8 @@ struct MUEWInstance {
     std::atomic<int> activeVoices{0}, voiceLimit{16};
     std::atomic<unsigned> oscHQ{0};
     std::atomic<float> liveMorph[2]{{-1.0f}, {-1.0f}}; // 0.35.0 editor morph meter
+    std::atomic<float> voiceMorph[2][8]{};              // 0.36.0 per-voice ghosts
+    std::atomic<UInt32> voiceMorphN[2]{{0u}, {0u}};
     double cpuSmooth = 0.0;
     double notifiedLatency = 0.0; // samples, as last announced to the host
     // Samples the current sound runs late (oscillator HQ 7.5, HQ distortion 22.5).
@@ -555,6 +557,10 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                                    u->oscHQ.load(), u->offline.load() ? 1u : 0u, // 0.30.0
                                    {u->liveMorph[0].load(), u->liveMorph[1].load()}}; // 0.35.0
                 for (int i = 0; i < 8; ++i) pf.pool[i] = u->arpPool[i].load();
+                for (int o = 0; o < 2; ++o) { // 0.36.0
+                    pf.voiceMorphCount[o] = u->voiceMorphN[o].load();
+                    for (int i = 0; i < 8; ++i) pf.voiceMorph[o][i] = u->voiceMorph[o][i].load();
+                }
                 *static_cast<MUEWPerformance*>(outData) = pf;
                 *ioDataSize = sizeof(MUEWPerformance);
                 return noErr;
@@ -776,6 +782,11 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         if (budget > 0) { u->cpuSmooth += 0.1 * (std::min(used / budget, 4.0) - u->cpuSmooth); u->cpuLoad = (float)u->cpuSmooth; }
         u->activeVoices = u->synth.activeVoiceCount();
         u->liveMorph[0] = u->synth.specMorphMeter(0); u->liveMorph[1] = u->synth.specMorphMeter(1); // 0.35.0
+        for (int o = 0; o < 2; ++o) { // 0.36.0 per-voice ghosts
+            float vm[8]; const int n = u->synth.specMorphVoices(o, vm, 8);
+            for (int i = 0; i < 8; ++i) u->voiceMorph[o][i] = i < n ? vm[i] : -1.0f;
+            u->voiceMorphN[o] = (UInt32)n;
+        }
         u->oscHQ = u->synth.oscHQ() ? 1u : 0u;
     }
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));

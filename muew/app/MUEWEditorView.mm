@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1;
-        wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
+        wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
@@ -161,6 +161,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     matrixPage = 0;
     wtHistory[0].clear(); wtHistory[1].clear(); // 0.32.0: undo never crosses into another preset
     wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
+    wtCmpSnap[0] = wtCmpSnap[1] = false; // 0.36.0: a new sound drops any SNAP
     for (int o = 0; o < 2; ++o) {
         wtCmpHas[o] = !current.tables[o].empty();
         wtCmpRef[o] = current.tables[o]; wtCmpRefMs[o] = ui::morphSpec(current.voice, o); wtCmpRefAmt[o] = ui::specMorphAmount(current.voice, o);
@@ -455,7 +456,42 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     if (ui::morphSpec(current.voice, o).isIdentity()) return 0;
     return liveMorph[o] >= 0 ? liveMorph[o] : ui::specMorphLevel(current, o);
 }
-- (NSString*)muewLiveMorphText { return [NSString stringWithFormat:@"live=%.2f/%.2f shown=%.2f/%.2f", liveMorph[0], liveMorph[1], [self shownMorph:0], [self shownMorph:1]]; }
+- (NSString*)muewLiveMorphText {
+    NSMutableString* g = [NSMutableString string]; // 0.36.0: the ghost amounts each display draws
+    for (int o = 0; o < 2; ++o) {
+        [g appendString:o ? @" B:" : @" ghosts=A:"];
+        const std::vector<double> gh = [self ghostMorphs:o];
+        for (size_t i = 0; i < gh.size(); ++i) [g appendFormat:@"%@%.2f", i ? @"," : @"", gh[i]];
+    }
+    return [NSString stringWithFormat:@"live=%.2f/%.2f shown=%.2f/%.2f voices=%d/%d%@", liveMorph[0], liveMorph[1], [self shownMorph:0], [self shownMorph:1], voiceMorphN[0], voiceMorphN[1], g];
+}
+// 0.36.0 per-voice morph: redraws only when a voice on an oscillator with a morph target moves.
+- (void)showVoiceMorph:(const float*)a count:(int)na b:(const float*)b count:(int)nb {
+    const float* in[2] = {a, b}; const int n[2] = {std::clamp(na, 0, 8), std::clamp(nb, 0, 8)};
+    bool redraw = false;
+    for (int o = 0; o < 2; ++o) {
+        bool same = n[o] == voiceMorphN[o];
+        for (int i = 0; same && i < n[o]; ++i) same = std::fabs(in[o][i] - voiceMorph[o][i]) < 0.004f;
+        if (same) continue;
+        voiceMorphN[o] = n[o];
+        for (int i = 0; i < 8; ++i) voiceMorph[o][i] = i < n[o] ? std::clamp(in[o][i], 0.0f, 1.0f) : -1.0f;
+        if (!ui::morphSpec(current.voice, o).isIdentity()) redraw = true;
+    }
+    if (redraw) [self setNeedsDisplay:YES];
+}
+// The other voices' morph amounts, drawn as ghosts behind the shown one: distinct by 2% or more.
+- (std::vector<double>)ghostMorphs:(int)o {
+    std::vector<double> g;
+    if (ui::morphSpec(current.voice, o).isIdentity() || liveMorph[o] < 0) return g;
+    const double shown = [self shownMorph:o];
+    for (int i = 0; i < voiceMorphN[o]; ++i) {
+        const double v = voiceMorph[o][i];
+        if (v < 0 || std::fabs(v - shown) < 0.02) continue;
+        bool dup = false; for (double x : g) dup = dup || std::fabs(x - v) < 0.02;
+        if (!dup) g.push_back(v);
+    }
+    return g;
+}
 - (const TableFrames&)morphTableFor:(int)o { // processed copy of OSC o's table, rebuilt when the table or target changes
     const SpectralProcess& ms = ui::morphSpec(current.voice, o);
     if (!(morphCacheIn[o] == current.tables[o]) || morphCacheSpec[o] != ms) {
@@ -766,6 +802,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtCmpRect:(int)i { return NSMakeRect(134 + i * 15, [self top] - 32, 14, 17); } // 0.33.0 A / B compare
 - (NSRect)wtMorphBar { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, cv.origin.y + 33, 60, 6); } // 0.33.0 (0.34.0: 60 wide, driver chip after it)
 - (NSRect)wtMorphChip { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 337, cv.origin.y + 29.5, 40, 13); } // 0.34.0 morph driver
+- (NSRect)wtSnapRect { NSRect pv = [self wtSpecPreview]; return NSMakeRect(NSMaxX(pv) - 42, NSMaxY(pv) - 16, 36, 12); } // 0.36.0 SNAP A
 - (NSRect)wtMorphButton { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 214, cv.origin.y + 8, 52, 18); } // 0.33.0
 - (NSRect)modField:(int)j {
     int n = [self modFieldCount];
@@ -914,8 +951,11 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     std::vector<float> wv = user ? ui::waveformUser(current.tables[o], OscWtPos(current.voice, o), wm, w, 240, &wx)
                                  : ui::waveform(table, shape, wm, w, 240, &wx);
     const double morphNow = user ? [self shownMorph:o] : 0; // 0.35.0: the display follows the live morph
-    if (morphNow > 0) {
+    const std::vector<double> ghosts = user ? [self ghostMorphs:o] : std::vector<double>{}; // 0.36.0
+    std::vector<std::vector<float>> ghostWaves;
+    if (morphNow > 0 || !ghosts.empty()) {
         const std::vector<float> wb = ui::waveformUser([self morphTableFor:o], OscWtPos(current.voice, o), wm, w, 240, &wx);
+        for (double g : ghosts) { std::vector<float> gw(wv); for (int i = 0; i < 240; ++i) gw[i] += (float)g * (wb[i] - gw[i]); ghostWaves.push_back(gw); }
         for (int i = 0; i < 240; ++i) wv[i] += (float)morphNow * (wb[i] - wv[i]);
     }
     NSBezierPath* p = [NSBezierPath bezierPath];
@@ -928,6 +968,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [NSGraphicsContext saveGraphicsState];
     [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 1, 1) xRadius:6 yRadius:6] addClip];
     p.lineJoinStyle = NSLineJoinStyleRound;
+    for (const auto& gw : ghostWaves) { // 0.36.0 per-voice ghosts: thin traces for the other held voices
+        NSBezierPath* gp = [NSBezierPath bezierPath];
+        for (int i = 0; i < 240; ++i) {
+            const NSPoint q = NSMakePoint(r.origin.x + 8 + (r.size.width - 16) * i / 239.0, NSMidY(r) + std::clamp((double)gw[i], -1.1, 1.1) * r.size.height * .36);
+            i ? [gp lineToPoint:q] : [gp moveToPoint:q];
+        }
+        gp.lineJoinStyle = NSLineJoinStyleRound; gp.lineWidth = 1; [[col colorWithAlphaComponent:.38] setStroke]; [gp stroke];
+    }
     [[col colorWithAlphaComponent:.25] setStroke]; p.lineWidth = 5; [p stroke];
     [col setStroke]; p.lineWidth = 1.8; [p stroke];
     [NSGraphicsContext restoreGraphicsState];
@@ -961,6 +1009,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(NSMakeRect(mbg.origin.x + 3, mbg.origin.y + 2, 2, 9 * std::clamp(morphNow, 0.0, 1.0) + .01), 1, col); // tiny level bar
             TextA([NSString stringWithFormat:@"MORPH %.0f%%", morphNow * 100], NSMakeRect(mbg.origin.x + 7, mbg.origin.y + 1.5, mbg.size.width - 8, 10), 7,
                   col, NSFontWeightSemibold, NSTextAlignmentLeft);
+            if (!ghosts.empty()) { // 0.36.0: how many more voices the ghost traces show
+                const NSRect gb = NSMakeRect(NSMaxX(mbg) + 2, mbg.origin.y, 20, 13);
+                FillRound(gb, 4, C(0x0a0d12, .85));
+                TextA([NSString stringWithFormat:@"+%d", (int)ghosts.size()], NSMakeRect(gb.origin.x, gb.origin.y + 1.5, gb.size.width, 10), 7,
+                      [col colorWithAlphaComponent:.7], NSFontWeightSemibold, NSTextAlignmentCenter);
+            }
         }
     }
 }
@@ -1040,6 +1094,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         const bool pending = !wtSpec.isIdentity();
         const bool changed = pending || (morphOn && morphAmt > 0);
         StrokeFrame(f, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
+        if (!pending && morphOn) // 0.36.0 per-voice ghosts: the other held voices' blends, thin
+            for (double g : [self ghostMorphs:wtEdit]) StrokeFrame(ui::morphPreviewFrame(f, ms, g), NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.4], 1);
         if (changed) { StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.22], 5); StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, col, 1.8); }
         // Partials 1-32 on a 48 dB scale: processed bars, original as a grey cap line on each bar.
         const int nP = 32;
@@ -1055,8 +1111,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         }
         TextA(@"PARTIALS 1-32", NSMakeRect(sp.origin.x + 2, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
         TextA(changed ? @"GREY = BEFORE" : @"48 dB", NSMakeRect(NSMaxX(sp) - 92, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x4a5462), NSFontWeightBold, NSTextAlignmentRight);
-        NSString* pvLabel = wtCmpA == wtEdit ? @"A \u2022 AS LOADED" : pending ? @"PREVIEW" : changed ? [NSString stringWithFormat:@"MORPH %.0f%%", morphAmt * 100] : @"FRAME";
+        NSString* pvLabel = wtCmpA == wtEdit ? (wtCmpSnap[wtEdit] ? @"A \u2022 SNAPSHOT" : @"A \u2022 AS LOADED") : pending ? @"PREVIEW" : changed ? [NSString stringWithFormat:@"MORPH %.0f%%", morphAmt * 100] : @"FRAME";
         TextA(pvLabel, NSMakeRect(pv.origin.x + 6, NSMaxY(pv) - 14, 100, 10), 7, wtCmpA == wtEdit ? C(0xf0b44a) : changed ? col : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
+        { // 0.36.0 SNAP: capture this state as the A side of the compare
+            const NSRect sn = [self wtSnapRect];
+            const bool snapped = wtCmpSnap[wtEdit];
+            FillRound(sn, 4, snapped ? C(0xe0a33a, .22) : C(0x1b222c));
+            TextA(snapped ? @"SNAP \u2713" : @"SNAP A", NSMakeRect(sn.origin.x, sn.origin.y + 1.5, sn.size.width, 10), 6.5,
+                  snapped ? C(0xf0b44a) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+        }
         NSArray* names = @[@"FORMANT", @"STRETCH", @"TILT", @"ODD/EVEN"];
         for (int i = 0; i < 4; ++i) {
             const NSRect bar = [self wtSpecBar:i];
@@ -1078,6 +1141,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             if (morphOn) {
                 if (morphAmt > base) FillRound(NSMakeRect(mb.origin.x, mb.origin.y, mb.size.width * morphAmt, mb.size.height), 3, [col colorWithAlphaComponent:.25]);
                 if (base > 0) FillRound(NSMakeRect(mb.origin.x, mb.origin.y, std::max<CGFloat>(6, mb.size.width * base), mb.size.height), 3, [col colorWithAlphaComponent:wtSpecDrag == 4 ? .95 : .7]);
+                for (double g : [self ghostMorphs:wtEdit]) // 0.36.0: a tick per other held voice
+                    FillRound(NSMakeRect(mb.origin.x + mb.size.width * g - .5, mb.origin.y - 1, 1, mb.size.height + 2), .5, [col colorWithAlphaComponent:.85]);
                 FillRound(NSMakeRect(mb.origin.x + mb.size.width * morphAmt - 1, mb.origin.y - 2, 2, mb.size.height + 4), 1, C(0xeaf1f8));
             }
             // 0.34.0 driver chip: the source that moves the morph (click steps it; right half forward, left half back).
@@ -1840,6 +1905,16 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(dp, 4, C(0x2a323e));
         TextA(S(std::string(ui::destName(rt.dest)) + " \u25BE"), NSMakeRect(dp.origin.x, dp.origin.y + 1, dp.size.width, 12), 9, C(0xeaf1f8),
               NSFontWeightMedium, NSTextAlignmentCenter);
+        if (rt.dest == ModRoute::Dest::Osc1SpecMorph || rt.dest == ModRoute::Dest::Osc2SpecMorph) { // 0.36.0 live morph meter on the row
+            const int mo = rt.dest == ModRoute::Dest::Osc2SpecMorph ? 1 : 0;
+            if (!ui::morphSpec(current.voice, mo).isIdentity()) {
+                const NSRect mt = NSMakeRect(dp.origin.x + 6, dp.origin.y + 1, dp.size.width - 12, 2);
+                FillRound(mt, 1, C(0x111820));
+                const double lv = [self shownMorph:mo];
+                if (lv > 0) FillRound(NSMakeRect(mt.origin.x, mt.origin.y, mt.size.width * lv, 2), 1, liveMorph[mo] >= 0 ? col : [col colorWithAlphaComponent:.45]);
+                for (double g : [self ghostMorphs:mo]) FillRound(NSMakeRect(mt.origin.x + mt.size.width * g - .5, mt.origin.y - .5, 1, 3), .5, C(0xeaf1f8, .7));
+            }
+        }
         TextA(@"\u00D7", [self routeClear:i], 12, C(0x6f7b8b), NSFontWeightRegular, NSTextAlignmentCenter);
         NSRect bar = [self routeBar:i];
         NSRect track = NSMakeRect(bar.origin.x, bar.origin.y + 4, bar.size.width, 5);
@@ -3064,6 +3139,20 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     [self applySound];
     [self setNeedsDisplay:YES];
 }
+// 0.36.0 SNAP: the current oscillator (table, morph target and amount) becomes the A side.
+- (void)wtSnapA {
+    if (wtEdit < 0 || wtEdit > 1) return;
+    const int o = wtEdit;
+    wtCmpRef[o] = current.tables[o]; wtCmpRefMs[o] = ui::morphSpec(current.voice, o); wtCmpRefAmt[o] = ui::specMorphAmount(current.voice, o);
+    wtCmpHas[o] = true; wtCmpSnap[o] = true;
+    [self setNeedsDisplay:YES];
+}
+- (void)muewSnapA { [self wtSnapA]; }
+- (void)muewCloseTableEditor { wtEdit = -1; [self setNeedsDisplay:YES]; } // 0.36.0 harness: the main OSC displays
+- (void)muewOpenTableEditorA { // back to OSC A's editor with no side effects on the sound
+    if (current.tables[0].empty()) return;
+    wtEdit = 0; wtFrame = std::clamp(wtFrame, 0, (int)current.tables[0].size() - 1); [self setNeedsDisplay:YES];
+}
 - (void)muewCompareA { [self wtCompare:YES]; }
 - (void)muewCompareB { [self wtCompare:NO]; }
 - (NSString*)muewMorphText {
@@ -3150,6 +3239,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     for (int i = 0; i < 2; ++i) // 0.33.0 A / B
         if (NSPointInRect(p, NSInsetRect([self wtCmpRect:i], -1, -2))) { [self wtCompare:i == 0]; return; }
     if (wtCmpA >= 0) [self wtCompare:NO]; // any other click goes back to the edit first
+    if (wtMode == 3 && NSPointInRect(p, NSInsetRect([self wtSnapRect], -1, -2))) { [self wtSnapA]; return; } // 0.36.0
     if (NSPointInRect(p, [self wtDoneRect])) { wtEdit = -1; [self setNeedsDisplay:YES]; return; }
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }

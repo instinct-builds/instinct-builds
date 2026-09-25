@@ -258,6 +258,16 @@ public:
         for (const auto& v : voices_) if (v.isActive()) m = std::max(m, (float)v.liveSpecMorph(o));
         return m;
     }
+    // 0.36.0 per-voice ghosts: each sounding voice's morph on oscillator o,
+    // highest first, up to max entries. Returns the count.
+    int specMorphVoices(int o, float* out, int max) const {
+        float all[64]; int n = 0;
+        for (const auto& v : voices_) if (v.isActive() && n < 64) all[n++] = (float)v.liveSpecMorph(o);
+        std::sort(all, all + n, [](float a, float b) { return a > b; });
+        n = std::min(n, max);
+        for (int i = 0; i < n; ++i) out[i] = all[i];
+        return n;
+    }
 
     // 0.30.0 HQ. The QUALITY setting oversamples the oscillators; an HQ render
     // (the host's offline bounce) also forces the distortion to 4x.
