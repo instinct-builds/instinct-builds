@@ -1957,7 +1957,7 @@ final class StudioLibrary: ObservableObject {
                     psdToggled[a.id] = Set(flips)
                 }
             }
-        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results":
+        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results", "batch-compare":
             let starters = catalog.assets.filter(\.isStarter)
             let names = ["risograph-4k.png", "blueprint-4k.png", "ink-fiber-4k.png"]
             let art = names.compactMap { name in starters.first { $0.importedPath?.hasSuffix(name) == true } }
@@ -1976,7 +1976,7 @@ final class StudioLibrary: ObservableObject {
                             self.batchPlacement = active
                         }
                     }
-                    if demo == "batch-crop" || demo == "batch-crop-results" {
+                    if demo == "batch-crop" || demo == "batch-crop-results" || demo == "batch-compare" {
                         self.batchPlacement?.crops[art[0].id] = BoardRect(x: 0.18, y: 0.12, w: 0.5, h: 0.5)
                         self.batchPlacement?.crops[art[1].id] = BoardRect(x: 0.05, y: 0.25, w: 0.7, h: 0.6)
                     }
@@ -4457,12 +4457,20 @@ struct BatchPlaceSheet: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                     ForEach(arts) { art in
                         VStack(alignment: .leading, spacing: 7) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8).fill(Theme.panel)
-                                if let image = previews[art.id] {
-                                    Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
-                                } else { ProgressView().controlSize(.small) }
-                            }.frame(height: 135).clipShape(RoundedRectangle(cornerRadius: 8))
+                            HStack(spacing: 5) {
+                                BatchSourceFrame(image: sourceImages[art.id], mode: state.mode,
+                                    areaAspect: designAspect, crop: state.crops[art.id])
+                                    .overlay(alignment: .topLeading) { comparisonLabel("SOURCE · FRAME") }
+                                ZStack {
+                                    Theme.panel
+                                    if let image = previews[art.id] {
+                                        Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                                    } else { ProgressView().controlSize(.small) }
+                                }
+                                .overlay(alignment: .topLeading) { comparisonLabel("PLACED") }
+                            }
+                            .frame(height: 135)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                             HStack(spacing: 5) {
                                 Text(art.title).font(.caption.weight(.semibold)).lineLimit(1)
                                 Spacer(minLength: 0)
@@ -4512,6 +4520,14 @@ struct BatchPlaceSheet: View {
         } message: { Text("Stores this mockup, design layer, mode and background for future batches. A name already in use is updated.") }
     }
 
+    private func comparisonLabel(_ text: String) -> some View {
+        Text(text).font(.system(size: 8, weight: .bold, design: .rounded)).tracking(0.5)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5).padding(.vertical, 3)
+            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 4))
+            .padding(5)
+    }
+
     private var designAspect: Double {
         guard let d = doc, let i = layerIndex, d.layers.indices.contains(i),
               let q = MockupPlacement.quad(of: d.layers[i]) else { return 1 }
@@ -4549,6 +4565,54 @@ struct BatchPlaceSheet: View {
             guard !Task.isCancelled else { return }
             if let result, let image = MediaRenderer.cgImage(result, maxPixel: 360) { previews[art.id] = image }
         }
+    }
+}
+
+/// A read-only, fitted source with the same visible region used by the placement renderer.
+/// This sits beside each live mockup render, so opening the crop editor is optional for review.
+struct BatchSourceFrame: View {
+    let image: CGImage?
+    let mode: PlacementMode
+    let areaAspect: Double
+    let crop: BoardRect?
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                Theme.panel
+                if let image {
+                    let aspect = CGFloat(image.width) / CGFloat(max(1, image.height))
+                    let w = min(geo.size.width, geo.size.height * aspect)
+                    let h = w / aspect
+                    let region = MockupPlacement.region(mode: mode, artAspect: Double(aspect), areaAspect: areaAspect,
+                        crop: mode == .fill ? crop : nil)
+                    let x0 = CGFloat(max(0, region.x)), y0 = CGFloat(max(0, region.y))
+                    let x1 = CGFloat(min(1, region.x + region.w)), y1 = CGFloat(min(1, region.y + region.h))
+                    ZStack(alignment: .topLeading) {
+                        Image(decorative: image, scale: 1).resizable().interpolation(.high)
+                            .frame(width: w, height: h)
+                        if mode == .fill, x1 > x0, y1 > y0 {
+                            Rectangle().fill(.black.opacity(0.42))
+                                .frame(width: w, height: y0 * h)
+                            Rectangle().fill(.black.opacity(0.42))
+                                .frame(width: w, height: (1 - y1) * h).offset(y: y1 * h)
+                            Rectangle().fill(.black.opacity(0.42))
+                                .frame(width: x0 * w, height: (y1 - y0) * h).offset(y: y0 * h)
+                            Rectangle().fill(.black.opacity(0.42))
+                                .frame(width: (1 - x1) * w, height: (y1 - y0) * h)
+                                .offset(x: x1 * w, y: y0 * h)
+                            Rectangle().stroke(.white, lineWidth: 1.5)
+                                .frame(width: (x1 - x0) * w, height: (y1 - y0) * h)
+                                .offset(x: x0 * w, y: y0 * h)
+                        }
+                    }
+                    .frame(width: w, height: h)
+                    .clipped()
+                } else { ProgressView().controlSize(.small) }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .accessibilityLabel("Source artwork with visible framing")
     }
 }
 

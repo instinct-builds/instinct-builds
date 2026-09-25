@@ -856,3 +856,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Each artwork in Batch Place has its own Crop control. Drag the outlined visible region to move it or its corner to zoom; the mockup preview rerenders that artwork with its framing. Reset returns to the automatic center crop. In Fit, the whole art is shown, so the Crop control is disabled and no crop is saved.
 - Per-art crops persist in the new render's editable placement recipe. The named preset still sets only the shared mockup, layer, Fill/Fit and background; choosing one leaves each artwork's framing and rights intact. The 1.33 native proof includes two distinct adjusted artworks and the results, while the plain batch demo checks the no-crop path.
+
+## 1.34.0: source and placed framing together
+
+- Every artwork card in Batch Place shows a compact source view with the exact visible Fill region outlined next to the live placed mockup. A darkened surround marks what the mockup crops away, with SOURCE · FRAME and PLACED labels. In Fit the whole source stays visible without a crop outline; the placed preview shows its margins. These are read-only comparisons; Crop/Adjusted opens the existing per-art drag editor.
+- Changing the shared mockup, design layer, mode, background or a single artwork's crop rerenders the placed view and updates the source frame. No extra recipe data or remote rendering is needed. Native CI proof covers the regular batch and two distinct adjusted frames.
