@@ -323,7 +323,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Stage AU continuation sources
         run: |
           cp muew/au/1-MUEWAU.cpp muew/au/MUEWAU.cpp
@@ -335,7 +335,8 @@ jobs:
         run: |
           set -euo pipefail
           baseline="$RUNNER_TEMP/muew-factory-baseline"
-          git worktree add --detach "$baseline" 57f026850fc7af3bcf3c8d47f3adf1810a3152cc
+          git cat-file -e 75c24134911434383bc58c286e23da5cdf79bc79^{commit}
+          git worktree add --detach "$baseline" 75c24134911434383bc58c286e23da5cdf79bc79
           cp muew/tests/factory_render_hash.cpp "$baseline/muew/tests/factory_render_hash.cpp"
           clang++ -std=c++17 -O2 -o "$RUNNER_TEMP/factory-hash-old" "$baseline/muew/tests/factory_render_hash.cpp"
           clang++ -std=c++17 -O2 -o "$RUNNER_TEMP/factory-hash-new" muew/tests/factory_render_hash.cpp
