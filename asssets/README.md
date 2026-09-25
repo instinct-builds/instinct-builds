@@ -890,3 +890,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - When the old root itself, or one of its descendants, is watched, the Relink Moved Folder preview now shows the exact old-to-new watched-folder mapping beside the asset paths. Move watched folder(s) is a visible opt-in toggle, on only when the new directories exist and do not overlap another watch. A missing directory, conflicting watch or directory escaping the chosen root shows why the watch will stay old. A watched ancestor outside the old root is called out as out of scope, not silently rewritten.
 - Revalidation checks the watch mapping alongside the asset matches. If either changes before Relink, it asks for a fresh review. Accepted watched roots change in the same undoable catalog operation as matched asset paths. The CI demo confirms two source relinks, one unmatched file left old and one watched root moved; tests cover move, overlap and missing destination.
+
+## 1.41.0: grouped folder-relocation preview
+
+- Relink Moved Folder groups the preview by outcome with clear section counts: Unmatched, Ambiguous and Matched. Each section can be collapsed or expanded without changing the preview's accepted matches or the watch-folder toggle. Problem groups appear before matches so a large relocation does not bury failures below hundreds of safe mappings. Empty groups still say zero, and rows retain exact old/new paths and reasons.
+- The native `folder-relink` and `folder-relink-collapsed` shots check full and collapsed group layout at 1024x768. The post-apply CI marker still verifies two relinks, one untouched missing file and a moved watch root.

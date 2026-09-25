@@ -242,6 +242,7 @@ jobs:
           shoot duplicates-merge 1920x1200 duplicates-merge
           shoot library-health 1920x1200 library-health
           DELAY=18 shoot folder-relink 1920x1200 folder-relink
+          DELAY=18 shoot folder-relink-collapsed 1920x1200 folder-relink-collapsed
           DELAY=18 shoot folder-relink-apply 1920x1200 folder-relink-apply demo-folder-relink.txt
           grep -q '^done relinked=2 unmatched=1 watch=moved$' "$SUP/demo-folder-relink.txt"
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")

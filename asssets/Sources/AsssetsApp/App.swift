@@ -2530,7 +2530,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2619,7 +2619,7 @@ final class StudioLibrary: ObservableObject {
             case "duplicates-merge":
                 show(collection: StudioCatalog.inboxCollection)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.findDuplicates() }
-            case "folder-relink", "folder-relink-apply":
+            case "folder-relink", "folder-relink-apply", "folder-relink-collapsed":
                 let previous = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Moved Project")
                 let current = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Relocated Project")
                 try? fm.removeItem(at: previous); try? fm.removeItem(at: current)
@@ -7210,6 +7210,9 @@ struct FolderRelinkSheet: View {
     @EnvironmentObject var model: StudioLibrary
     @State private var oldRoot = ""
     @State private var newRoot = ""
+    @State private var matchedOpen = true
+    @State private var unmatchedOpen = true
+    @State private var ambiguousOpen = true
     var body: some View {
         let preview = model.folderRelinkPreview
         VStack(alignment: .leading, spacing: 14) {
@@ -7266,20 +7269,9 @@ struct FolderRelinkSheet: View {
                 }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 7) {
-                        ForEach(preview.rows) { row in
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: row.status == .matched ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                    .foregroundStyle(row.status == .matched ? Theme.watch : Theme.warning)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(row.title).font(.caption.weight(.semibold))
-                                    Text(row.oldPath + " → " + row.newPath).font(.caption2.monospaced())
-                                        .lineLimit(2).truncationMode(.middle).foregroundStyle(.secondary)
-                                    Text(row.status.rawValue.capitalized + " · " + row.reason).font(.caption2)
-                                        .foregroundStyle(row.status == .matched ? Theme.watch : Theme.warning)
-                                }
-                                Spacer(minLength: 0)
-                            }.padding(8).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
-                        }
+                        relinkSection("Unmatched", rows: preview.unmatched, tint: Theme.warning, expanded: $unmatchedOpen)
+                        relinkSection("Ambiguous", rows: preview.ambiguous, tint: Theme.danger, expanded: $ambiguousOpen)
+                        relinkSection("Matched", rows: preview.matched, tint: Theme.watch, expanded: $matchedOpen)
                     }
                 }.frame(height: 265)
             } else {
@@ -7300,6 +7292,7 @@ struct FolderRelinkSheet: View {
         .onChange(of: oldRoot) { _, _ in model.folderRelinkPreview = nil }
         .onChange(of: newRoot) { _, _ in model.folderRelinkPreview = nil }
         .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("folder-relink-collapsed") { matchedOpen = false }
             if let preview = model.folderRelinkPreview {
                 oldRoot = preview.oldRoot; newRoot = preview.newRoot
                 // The onChange handlers run as part of the same render; the demo also rechecks the preview below.
@@ -7307,6 +7300,46 @@ struct FolderRelinkSheet: View {
             } else if oldRoot.isEmpty,
                       let missing = model.health?.missingFiles.compactMap({ id in model.catalog.assets.first { $0.id == id }?.importedPath }).first {
                 oldRoot = URL(fileURLWithPath: missing).deletingLastPathComponent().path
+            }
+        }
+    }
+
+    private func relinkSection(_ title: String, rows: [FolderRelinkPreview.Row], tint: Color,
+                               expanded: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Button { expanded.wrappedValue.toggle() } label: {
+                HStack {
+                    Image(systemName: expanded.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.bold)).frame(width: 15)
+                    Circle().fill(tint).frame(width: 6, height: 6)
+                    Text("\(title) · \(rows.count)").font(.caption.weight(.semibold))
+                    Spacer()
+                    Text(expanded.wrappedValue ? "Hide" : "Show").font(.caption2).foregroundStyle(.secondary)
+                }
+                .foregroundStyle(rows.isEmpty ? .secondary : .primary)
+                .padding(.horizontal, 9).padding(.vertical, 7)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
+            }.buttonStyle(.plain).accessibilityLabel("\(title), \(rows.count) files, \(expanded.wrappedValue ? "expanded" : "collapsed")")
+            if expanded.wrappedValue {
+                if rows.isEmpty {
+                    Text("No \(title.lowercased()) files")
+                        .font(.caption2).foregroundStyle(.tertiary).padding(.leading, 16).padding(.vertical, 3)
+                } else {
+                    ForEach(rows) { row in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: row.status == .matched ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(tint)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(row.title).font(.caption.weight(.semibold))
+                                Text(row.oldPath + " → " + row.newPath).font(.caption2.monospaced())
+                                    .lineLimit(2).truncationMode(.middle).foregroundStyle(.secondary)
+                                Text(row.status.rawValue.capitalized + " · " + row.reason).font(.caption2)
+                                    .foregroundStyle(tint)
+                            }
+                            Spacer(minLength: 0)
+                        }.padding(8).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
+                    }
+                }
             }
         }
     }
