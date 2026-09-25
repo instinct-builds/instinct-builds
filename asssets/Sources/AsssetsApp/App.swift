@@ -1569,6 +1569,7 @@ final class StudioLibrary: ObservableObject {
     @Published var healthScanning = false
     @Published var folderRelinkOpen = false
     @Published var folderRelinkPreview: FolderRelinkPreview?
+    @Published var folderRelinkMoveWatches = false
 
     func previewFolderRelink(oldRoot: String, newRoot: String) {
         let fm = FileManager.default
@@ -1576,7 +1577,11 @@ final class StudioLibrary: ObservableObject {
             exists: { fm.fileExists(atPath: $0) }, isFile: { path in
                 guard let attrs = try? fm.attributesOfItem(atPath: path) else { return false }
                 return attrs[.type] as? FileAttributeType == .typeRegular
+            }, isDirectory: { path in
+                guard let attrs = try? fm.attributesOfItem(atPath: path) else { return false }
+                return attrs[.type] as? FileAttributeType == .typeDirectory
             })
+        folderRelinkMoveWatches = !(folderRelinkPreview?.watchMoves.isEmpty ?? true) && folderRelinkPreview?.watchIssue == nil
     }
 
     func applyFolderRelink() {
@@ -1587,21 +1592,29 @@ final class StudioLibrary: ObservableObject {
             exists: { fm.fileExists(atPath: $0) }, isFile: { path in
                 guard let attrs = try? fm.attributesOfItem(atPath: path) else { return false }
                 return attrs[.type] as? FileAttributeType == .typeRegular
+            }, isDirectory: { path in
+                guard let attrs = try? fm.attributesOfItem(atPath: path) else { return false }
+                return attrs[.type] as? FileAttributeType == .typeDirectory
             })
         let accepted = Set(preview.matched.map { "\($0.id):\($0.oldPath):\($0.newPath)" })
         let current = Set(fresh.matched.map { "\($0.id):\($0.oldPath):\($0.newPath)" })
-        guard accepted == current else {
+        guard accepted == current && preview.watchMoves == fresh.watchMoves && preview.watchIssue == fresh.watchIssue else {
             folderRelinkPreview = fresh
-            flash("Files changed since preview. Review the updated matches before relinking.")
+            folderRelinkMoveWatches = false
+            flash("Files or watch folders changed since preview. Review them again before relinking.")
             return
         }
         var n = 0
-        mutate("Relink Moved Folder") { n = $0.relinkFolder(fresh) }
+        let moveWatches = folderRelinkMoveWatches && fresh.watchIssue == nil
+        mutate("Relink Moved Folder") { n = $0.relinkFolder(fresh, moveWatches: moveWatches) }
         missing = catalog.missingIDs { fm.fileExists(atPath: $0) }
         folderRelinkPreview = nil
         folderRelinkOpen = false
         refreshHealth()
-        flash("Relinked \(n) \(n == 1 ? "file" : "files"). Unmatched files stayed untouched.")
+        if moveWatches { scanWatchFolders() }
+        flash("Relinked \(n) \(n == 1 ? "file" : "files")." +
+            (moveWatches ? " Updated \(fresh.watchMoves.count) watched folder(s)." : " Watched folders stayed unchanged.") +
+            " Unmatched files stayed untouched.")
     }
 
     /// Checks files, license copies and sizes off the main thread. `full` also hashes same-size files to count identical sets.
@@ -2607,11 +2620,12 @@ final class StudioLibrary: ObservableObject {
                 show(collection: StudioCatalog.inboxCollection)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.findDuplicates() }
             case "folder-relink", "folder-relink-apply":
-                let previous = drop.appendingPathComponent("Moved Project")
+                let previous = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Moved Project")
                 let current = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Relocated Project")
                 try? fm.removeItem(at: previous); try? fm.removeItem(at: current)
                 try? fm.createDirectory(at: previous.appendingPathComponent("Campaign"), withIntermediateDirectories: true)
                 try? fm.createDirectory(at: current.appendingPathComponent("Campaign"), withIntermediateDirectories: true)
+                _ = catalog.addWatchFolder(previous.path)
                 for (source, name) in [("risograph-4k.png", "Campaign/Poster.png"),
                                        ("ink-fiber-4k.png", "Campaign/Texture.png"),
                                        ("blueprint-4k.png", "Campaign/Unmatched.png")] {
@@ -2631,10 +2645,11 @@ final class StudioLibrary: ObservableObject {
                         self.previewFolderRelink(oldRoot: previous.path, newRoot: current.path)
                         if ProcessInfo.processInfo.arguments.contains("folder-relink-apply") {
                             self.applyFolderRelink()
+                            let watchOK = self.catalog.watchFolders.contains(current.path) && !self.catalog.watchFolders.contains(previous.path)
                             let paths = self.catalog.assets.compactMap(\.importedPath)
                             let n = paths.filter { $0.hasPrefix(current.path + "/") }.count
                             let old = paths.filter { $0.hasPrefix(previous.path + "/") }.count
-                            try? "done relinked=\(n) unmatched=\(old)".write(to: self.supportRoot.appendingPathComponent("demo-folder-relink.txt"), atomically: true, encoding: .utf8)
+                            try? "done relinked=\(n) unmatched=\(old) watch=\(watchOK ? "moved" : "not-moved")".write(to: self.supportRoot.appendingPathComponent("demo-folder-relink.txt"), atomically: true, encoding: .utf8)
                         }
                     }
                 }
@@ -7230,6 +7245,25 @@ struct FolderRelinkSheet: View {
                 }
             }
             if let preview {
+                if !preview.watchMoves.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Move \(preview.watchMoves.count) watched folder(s) with this relink", isOn: $model.folderRelinkMoveWatches)
+                            .disabled(preview.watchIssue != nil)
+                        ForEach(preview.watchMoves, id: \.oldPath) { move in
+                            Text(move.oldPath + " → " + move.newPath)
+                                .font(.caption2.monospaced()).lineLimit(1).truncationMode(.middle)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let issue = preview.watchIssue {
+                            Text(issue).font(.caption2).foregroundStyle(Theme.warning)
+                        } else {
+                            Text("This changes the watched folder in the same undo step. Leave off to keep the old watch.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }.padding(8).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
+                } else if let issue = preview.watchIssue {
+                    Text(issue).font(.caption2).foregroundStyle(Theme.warning)
+                }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 7) {
                         ForEach(preview.rows) { row in
@@ -7247,14 +7281,14 @@ struct FolderRelinkSheet: View {
                             }.padding(8).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
                         }
                     }
-                }.frame(height: 315)
+                }.frame(height: 265)
             } else {
                 Text("No changes yet. Preview the proposed mappings before relinking.")
                     .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 315)
                     .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
             }
             HStack {
-                Text("Only matched paths change. Unmatched and ambiguous files remain where they are.")
+                Text("Only matched paths and the selected watch change. Unmatched and ambiguous files stay.")
                     .font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel") { model.folderRelinkOpen = false }.keyboardShortcut(.cancelAction)

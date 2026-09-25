@@ -16,18 +16,50 @@ public struct FolderRelinkPreview: Sendable {
     public let newRoot: String
     public let rows: [Row]
     public let outOfScopeCount: Int
+    /// Watch roots exactly under the old root are moved by the same relative path, if no other watch overlaps.
+    public let watchMoves: [WatchMove]
+    public let watchIssue: String?
+    public struct WatchMove: Equatable, Sendable {
+        public let oldPath: String
+        public let newPath: String
+    }
     public var matched: [Row] { rows.filter { $0.status == .matched } }
     public var unmatched: [Row] { rows.filter { $0.status == .unmatched } }
     public var ambiguous: [Row] { rows.filter { $0.status == .ambiguous } }
 
     public init(catalog: StudioCatalog, oldRoot: String, newRoot: String,
-                exists: (String) -> Bool, isFile: (String) -> Bool) {
+                exists: (String) -> Bool, isFile: (String) -> Bool,
+                isDirectory: (String) -> Bool = { _ in true }) {
         let old = URL(fileURLWithPath: oldRoot, isDirectory: true).standardizedFileURL.path
         let new = URL(fileURLWithPath: newRoot, isDirectory: true).standardizedFileURL.path
         self.oldRoot = old; self.newRoot = new
+        let resolvedRoot = URL(fileURLWithPath: new, isDirectory: true).resolvingSymlinksInPath().path
+        let moving = catalog.watchFolders.filter { $0 == old || $0.hasPrefix(old + "/") }
+        watchMoves = moving.map { root in
+            WatchMove(oldPath: root, newPath: new + String(root.dropFirst(old.count)))
+        }
+        let staying = catalog.watchFolders.filter { !moving.contains($0) }
+        let targets = watchMoves.map(\.newPath)
+        if watchMoves.isEmpty {
+            watchIssue = catalog.watchFolders.contains(where: { old.hasPrefix($0 + "/") })
+                ? "The old folder sits inside a watched parent; that wider watch will stay in place."
+                : nil
+        } else if targets.contains(where: { !isDirectory($0) }) {
+            watchIssue = "A mapped watch folder does not exist at the new location."
+        } else if targets.contains(where: {
+            let resolved = URL(fileURLWithPath: $0, isDirectory: true).resolvingSymlinksInPath().path
+            return resolved != resolvedRoot && !resolved.hasPrefix(resolvedRoot + "/")
+        }) {
+            watchIssue = "A mapped watch folder points outside the chosen new folder."
+        } else if Set(targets).count != targets.count || targets.contains(where: { candidate in
+            staying.contains(where: { candidate == $0 || candidate.hasPrefix($0 + "/") || $0.hasPrefix(candidate + "/") })
+        }) {
+            watchIssue = "The new watch folder overlaps another watched folder."
+        } else {
+            watchIssue = nil
+        }
         let missing = catalog.missingIDs(exists: exists)
         let owned = Set(catalog.assets.compactMap(\.importedPath))
-        let resolvedRoot = URL(fileURLWithPath: new, isDirectory: true).resolvingSymlinksInPath().path
         var draft: [(StudioAsset, String, String)] = []
         for art in catalog.assets where missing.contains(art.id) {
             guard let path = art.importedPath,
@@ -64,13 +96,18 @@ extension StudioCatalog {
     /// Apply only the rows the owner previewed. The app refreshes the dry run from live disk state first.
     /// Preserve IDs and all metadata so recipes, boards and rights stay linked.
     @discardableResult
-    public mutating func relinkFolder(_ preview: FolderRelinkPreview) -> Int {
+    public mutating func relinkFolder(_ preview: FolderRelinkPreview, moveWatches: Bool = false) -> Int {
         let exact = Dictionary(uniqueKeysWithValues: preview.matched.map { ($0.id, ($0.oldPath, $0.newPath)) })
         var count = 0
         for i in assets.indices {
             guard let pair = exact[assets[i].id], assets[i].importedPath == pair.0 else { continue }
             assets[i].importedPath = pair.1
             count += 1
+        }
+        if moveWatches, preview.watchIssue == nil {
+            for move in preview.watchMoves {
+                if let i = watchFolders.firstIndex(of: move.oldPath) { watchFolders[i] = move.newPath }
+            }
         }
         return count
     }
