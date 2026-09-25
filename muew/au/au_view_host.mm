@@ -765,6 +765,24 @@ int main() {
             printf("spectral31: %s -> %s; frame 33 centroid %.3f (expected %.3f)\n", before.c_str(), after.c_str(), got, want);
             Check(ok2 && st.tables[0].size() == 64 && std::fabs(got - want) < 0.02 * want + 0.01, "APPLY processed all 64 frames in the AU's table");
             Check(after.find("formant=0.0 stretch=0.00 tilt=0.0 oddeven=0.00") != std::string::npos, "APPLY clears the pending process");
+            // 0.32.0 undo / redo: the header arrows step back to the imported table and forward to the processed one.
+            auto histText = [&]() -> std::string {
+                NSString* s3 = [view respondsToSelector:NSSelectorFromString(@"muewHistoryText")] ? [view valueForKey:@"muewHistoryText"] : @"";
+                return s3.UTF8String ?: "";
+            };
+            const std::string h0 = histText();
+            Click(view, w, NSMakePoint(224 + 7.5, t - 32 + 8.5));             // UNDO
+            muew::Preset un; const bool ok3 = State(un);
+            const std::string h1 = histText();
+            Snapshot(view, "MUEW_UNDO_PNG", "undo snapshot written");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, t - 32 + 8.5));        // REDO
+            muew::Preset re; const bool ok4 = State(re);
+            const std::string h2 = histText();
+            printf("undo32: %s | after UNDO %s | after REDO %s\n", h0.c_str(), h1.c_str(), h2.c_str());
+            Check(h0.find("last=APPLY") != std::string::npos, "APPLY is the newest step in the WT history");
+            Check(ok3 && un.tables[0] == st0.tables[0], "UNDO restores the table from before APPLY in the AU");
+            Check(ok4 && re.tables[0] == st.tables[0], "REDO puts the processed table back");
+            Check(h2.find("redo=0") != std::string::npos, "REDO empties the redo side again");
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab for the steps that follow
             fflush(stdout);
         });

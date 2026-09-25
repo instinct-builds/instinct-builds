@@ -1,6 +1,7 @@
 #pragma once
 #include "synth.h"
 #include "fx.h"
+#include "table_recipe.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -57,6 +58,7 @@ struct PresetInfo {
 //                  0.26.0 adds optional `arpx <clocksync> <pattern on> <length> (<velocity> <kind>)x16`.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
+//                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
 //                  0.22.0 adds optional `filterr <f1mix> <f2mix> <balance> <f2morph>`; filter2 types 6-8.
 //                  0.21.0 adds optional `filterx <drive> <keytrack> <morph>`; filterMode 5-8.
 //                  0.19.0 adds optional `warpx <modeA> <amtA> <modeB> <amtB>` (second
@@ -75,6 +77,10 @@ struct Preset {
     // 0.9.0: user wavetables for oscillators A/B (empty = none). Played when
     // that oscillator's shape is kCustomShape.
     TableFrames tables[2];
+    // 0.32.0: a table built from a `wtgen` recipe remembers it, so an unedited
+    // table saves as its recipe line again (compact, byte-identical round trip).
+    std::string tableRecipe[2], tableSpec[2];
+    TableFrames recipeTable[2];
     int version = 2; // format version this preset was parsed from
 
     static constexpr const char* kMagicV1 = "muew-preset 1";
@@ -123,6 +129,11 @@ struct Preset {
                 o << "filter2 " << v.filter2Type << " " << v.filter2Cutoff << " " << v.filter2Reso << " " << v.filterRouting << "\n";
             for (int t = 0; t < 2; ++t) {
                 if (tables[t].empty()) continue;
+                if (!tableRecipe[t].empty() && tables[t] == recipeTable[t]) { // 0.32.0: unedited recipe table
+                    o << "wtgen" << (t + 1) << " " << tableRecipe[t] << "\n";
+                    if (!tableSpec[t].empty()) o << "wtspec" << (t + 1) << " " << tableSpec[t] << "\n";
+                    continue;
+                }
                 std::ostringstream w;
                 w << std::setprecision(9);
                 w << "wt" << (t + 1) << " " << tables[t].size();
@@ -204,6 +215,7 @@ struct Preset {
         else return false; // unknown or future version: refuse rather than guess
         *this = Preset{};
         version = (line == kMagicV1) ? 1 : 2;
+        SpectralProcess pendingSpec[2]; // 0.32.0: applied after every line is read
         while (std::getline(in, line)) {
             std::istringstream ls(line);
             std::string key;
@@ -536,7 +548,21 @@ struct Preset {
                 int e; ls >> e >> fx.reverb.decay >> fx.reverb.damping >> fx.reverb.mix;
                 fx.reverb.enabled = e != 0;
             }
+            else if (key == "wtgen1" || key == "wtgen2") { // 0.32.0 table recipe
+                const int o = key == "wtgen1" ? 0 : 1;
+                tableRecipe[o] = restOf(line, key);
+                tables[o] = tableFromRecipe(tableRecipe[o]);
+            }
+            else if (key == "wtspec1" || key == "wtspec2") {
+                const int o = key == "wtspec1" ? 0 : 1;
+                if (specFromText(restOf(line, key), pendingSpec[o])) tableSpec[o] = restOf(line, key);
+            }
             // Unknown keys are ignored so minor additions stay loadable.
+        }
+        for (int o = 0; o < 2; ++o) {
+            if (!tables[o].empty() && !pendingSpec[o].isIdentity()) tables[o] = processTable(tables[o], pendingSpec[o]);
+            if (tables[o].empty() || tableRecipe[o].empty()) { tableRecipe[o].clear(); tableSpec[o].clear(); }
+            else recipeTable[o] = tables[o];
         }
         return true;
     }

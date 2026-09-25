@@ -1,0 +1,39 @@
+muew-preset 2
+name Hollow Surf
+category Texture
+author MUEW Factory
+tags texture hollow odd wash evolving
+desc Odd-partial-only noise wash, like surf through a pipe. MSEG-free and slow.
+osc1Shape 5
+osc2Shape 3
+osc2Detune 0
+osc2Level 0.2
+filterCutoff 5000
+filterReso 0.35
+filterMode 0
+amp 2 1 0.9 3.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.1
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 noise 606 32 0.7 0.08
+wtspec1 0 0 -2 -1
+routes 9
+route 0 11 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3

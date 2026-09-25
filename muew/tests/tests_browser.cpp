@@ -12,7 +12,7 @@ static void check(bool c, const std::string& n) { printf("%s %s\n", c ? "ok:  " 
 int main() {
     namespace fs = std::filesystem;
     const auto& bank = factoryPresets();
-    check(kFactoryPresetCount == 80 && (int)bank.size() == 80, "factory bank has 80 presets");
+    check(kFactoryPresetCount == 104 && (int)bank.size() == 104, "factory bank has 104 presets");
 
     // Every factory preset: description, at least one character tag, exact round trip.
     bool desc = true, chars = true, rt = true;
@@ -54,7 +54,7 @@ int main() {
     auto q = ui::visiblePresets(f, favs, lib);
     check(!q.empty() && std::find(q.begin(), q.end(), ui::indexOfSlug("deep-house-sub")) != q.end(), "search matches descriptions");
     f.query = "mUEw fAcToRy";
-    check((int)ui::visiblePresets(f, favs, lib).size() == 80, "search matches author, case-insensitive");
+    check((int)ui::visiblePresets(f, favs, lib).size() == 104, "search matches author, case-insensitive");
 
     // Sort orders.
     auto all = ui::visiblePresets({}, favs, lib);
@@ -94,7 +94,7 @@ int main() {
     bf.bank = ui::BankUserFolder;
     auto folder = ui::visiblePresets(bf, favs, lib);
     bf.bank = ui::BankFactory;
-    check(impOnly.size() == 1 && impOnly[0] == imp && folder.size() == 2 && (int)ui::visiblePresets(bf, favs, lib).size() == 80,
+    check(impOnly.size() == 1 && impOnly[0] == imp && folder.size() == 2 && (int)ui::visiblePresets(bf, favs, lib).size() == 104,
           "bank filter: Imported, user folder, Factory");
     check(ui::visiblePresets({}, favs, lib, true) == folder, "legacy userOnly equals the user folder bank");
     Preset anon = bank[1]; anon.info.author = "User"; anon.info.name = "Pluck";

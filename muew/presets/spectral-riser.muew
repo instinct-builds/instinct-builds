@@ -1,0 +1,38 @@
+muew-preset 2
+name Spectral Riser
+category FX
+author MUEW Factory
+tags fx riser noise sweep bright
+desc Eight-second noise riser: the mod envelope sweeps the table from dark to bright.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.2
+osc2Level 0.3
+filterCutoff 9000
+filterReso 0.3
+filterMode 0
+amp 0.5 1 1 1.5
+mod 8 1 1 1
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.3 0.3 1 0.8
+lfo34 0.07 1 0.11 0
+wtgen1 bands 888 32 200 8000 3
+routes 10
+route 1 11 1
+route 1 0 12
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3

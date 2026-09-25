@@ -3005,6 +3005,954 @@ delay 0 0.28 0.42 0.35 0.22
 reverb 0 0.55 0.45 0.28
 comp 1 0.4
 )MUEW"},
+    {"dust-storm", R"MUEW(muew-preset 2
+name Dust Storm
+category Texture
+author MUEW Factory
+tags texture noise evolving dark wide
+desc Resynthesized noise storm; LFO 3 drifts it from grit to rumble. WARP scans the table.
+osc1Shape 5
+osc2Shape 1
+osc2Detune -12
+osc2Level 0.2
+filterCutoff 5200
+filterReso 0.3
+filterMode 0
+amp 1.8 1 0.9 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 1 0.2 0 0.9 0.8
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 noise 101 32 0.9 0.03
+wtspec1 0 0 -2 0
+routes 9
+route 9 11 0.45
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.2 5 14 0.3
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.9 0.45 0.4
+)MUEW"},
+    {"breath-cloud", R"MUEW(muew-preset 2
+name Breath Cloud
+category Texture
+author MUEW Factory
+tags texture breath air soft
+desc Airy breath table under a soft sine; the mod envelope exhales through the frames.
+osc1Shape 5
+osc2Shape 0
+osc2Detune 0
+osc2Level 0.35
+filterCutoff 7000
+filterReso 0.2
+filterMode 0
+amp 0.9 1 0.8 2.5
+mod 1.2 2 0.3 2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 noise 202 24 0.5 0.12
+wtspec1 4 0 -4 0
+routes 9
+route 1 11 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"vowel-wind", R"MUEW(muew-preset 2
+name Vowel Wind
+category Texture
+author MUEW Factory
+tags texture vowel formant evolving
+desc Band-passed wind swept from oo to ee; LFO 1 breathes the vowel back and forth.
+osc1Shape 5
+osc2Shape 2
+osc2Detune -12
+osc2Level 0.15
+filterCutoff 6500
+filterReso 0.5
+filterMode 0
+amp 1.2 1 0.85 2.4
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.12
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 bands 303 32 350 2600 6
+wtspec1 0 0 -1 0
+routes 9
+route 0 11 0.45
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"whistle-field", R"MUEW(muew-preset 2
+name Whistle Field
+category Texture
+author MUEW Factory
+tags texture whistle glassy bright wide
+desc Narrow resonant band sweeping upward: a field of whistles. SPREAD opens the stereo image.
+osc1Shape 5
+osc2Shape 0
+osc2Detune 12
+osc2Level 0.15
+filterCutoff 9000
+filterReso 0.3
+filterMode 0
+amp 1.4 1 0.8 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.08
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 4 1 0.08 0 0.9 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 bands 404 24 900 5200 18
+routes 9
+route 0 11 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"rust-drone", R"MUEW(muew-preset 2
+name Rust Drone
+category Texture
+author MUEW Factory
+tags texture drone dark metallic
+desc Stretched noise partials give a rusty, inharmonic-sounding drone that stays in tune.
+osc1Shape 5
+osc2Shape 1
+osc2Detune -12.05
+osc2Level 0.4
+filterCutoff 2400
+filterReso 0.6
+filterMode 0
+amp 2.5 1 0.9 4
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.05 1 0.03 0
+wtpos 0.3 0
+wtgen1 noise 505 16 0.4 0.05
+wtspec1 0 0.35 -3 0
+routes 9
+route 10 11 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"hollow-surf", R"MUEW(muew-preset 2
+name Hollow Surf
+category Texture
+author MUEW Factory
+tags texture hollow odd wash evolving
+desc Odd-partial-only noise wash, like surf through a pipe. MSEG-free and slow.
+osc1Shape 5
+osc2Shape 3
+osc2Detune 0
+osc2Level 0.2
+filterCutoff 5000
+filterReso 0.35
+filterMode 0
+amp 2 1 0.9 3.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.1
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 noise 606 32 0.7 0.08
+wtspec1 0 0 -2 -1
+routes 9
+route 0 11 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"tape-hiss-choir", R"MUEW(muew-preset 2
+name Tape Hiss Choir
+category Texture
+author MUEW Factory
+tags texture choir formant vintage warm
+desc Formant-shifted hiss that sings like a worn choir tape. WARP scans between vowels.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.1
+osc2Level 0.3
+filterCutoff 4800
+filterReso 0.3
+filterMode 0
+amp 1.5 1 0.85 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.15 0.15 0.9 0.8
+lfo34 0.07 1 0.11 0
+wtpos 0.4 0
+wtgen1 bands 707 32 500 1500 4
+wtspec1 7 0 -3 0
+routes 9
+route 9 11 0.35
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"glass-rain-bed", R"MUEW(muew-preset 2
+name Glass Rain Bed
+category Texture
+author MUEW Factory
+tags texture bright glassy shimmer
+desc Bright spectral rain with even partials lifted for a glassy octave shimmer.
+osc1Shape 5
+osc2Shape 0
+osc2Detune 24
+osc2Level 0.1
+filterCutoff 11000
+filterReso 0.2
+filterMode 0
+amp 0.6 1 0.75 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.25
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 noise 808 24 1.0 0.3
+wtspec1 0 -0.2 -1 0.5
+routes 9
+route 0 11 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 1 0.3 4 12 0.3
+delay 1 0.375 0.5 0.4 0.25
+reverb 1 0.88 0.3 0.4
+)MUEW"},
+    {"sonar-mist", R"MUEW(muew-preset 2
+name Sonar Mist
+category Texture
+author MUEW Factory
+tags texture dark underwater slow
+desc Low band sweep, tilted dark: a sonar pulse heard through mist.
+osc1Shape 5
+osc2Shape 0
+osc2Detune -12
+osc2Level 0.3
+filterCutoff 1800
+filterReso 0.8
+filterMode 0
+amp 2.2 1 0.9 4.5
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.05
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 bands 909 16 180 900 10
+wtspec1 -5 0 -5 0
+routes 9
+route 0 11 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"static-bloom", R"MUEW(muew-preset 2
+name Static Bloom
+category Texture
+author MUEW Factory
+tags texture noise opening bright
+desc Starts as dark static and blooms bright over the mod envelope.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.08
+osc2Level 0.2
+filterCutoff 8000
+filterReso 0.3
+filterMode 0
+amp 1 1 0.9 2.5
+mod 3 2 1 3
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 noise 111 32 0.03 0.95
+routes 9
+route 1 11 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"spectral-veil", R"MUEW(muew-preset 2
+name Spectral Veil
+category Pad
+author MUEW Factory
+tags pad formant wide soft
+desc Saw-to-square morph lifted by +5 semitones of formant; a soft, veiled pad.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.14
+osc2Level 0.5
+filterCutoff 4200
+filterReso 0.3
+filterMode 0
+amp 1.6 1 0.85 2.4
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.15
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.18 0.18 0.9 0.8
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 morph 2 3 16
+wtspec1 5 0 -3 0
+routes 9
+route 0 11 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"aurora-pad", R"MUEW(muew-preset 2
+name Aurora Pad
+category Pad
+author MUEW Factory
+tags pad bright evolving wide
+desc Resonant band texture over a detuned saw layer, slowly drifting through the table.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.1
+osc2Level 0.55
+filterCutoff 5000
+filterReso 0.35
+filterMode 0
+amp 1.8 1 0.9 3
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.2 0.2 0.95 0.8
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 bands 222 32 600 3600 5
+wtspec1 0 0 -2 0
+routes 9
+route 9 11 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"velvet-texture", R"MUEW(muew-preset 2
+name Velvet Texture
+category Pad
+author MUEW Factory
+tags pad dark warm soft
+desc Dark noise table under a warm triangle; TILT -6 keeps it velvet-soft.
+osc1Shape 5
+osc2Shape 1
+osc2Detune 0
+osc2Level 0.5
+filterCutoff 2600
+filterReso 0.3
+filterMode 0
+amp 1.4 1 0.9 2.8
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.4 0
+wtgen1 noise 333 24 0.35 0.08
+wtspec1 0 0 -6 0
+routes 9
+route 9 11 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"stretched-strings", R"MUEW(muew-preset 2
+name Stretched Strings
+category Pad
+author MUEW Factory
+tags pad strings stretched shimmer wide
+desc Saw strings with harmonic STRETCH for a shimmering, piano-string top.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.12
+osc2Level 0.5
+filterCutoff 5200
+filterReso 0.3
+filterMode 0
+amp 1.2 1 0.85 2.2
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.16 0.16 0.9 0.8
+lfo34 0.07 1 0.11 0
+wtgen1 morph 2 2 8
+wtspec1 0 0.25 -1 0
+routes 8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"octave-halo", R"MUEW(muew-preset 2
+name Octave Halo
+category Pad
+author MUEW Factory
+tags pad even octave airy soft
+desc Even partials only: the table sounds an octave up, a halo over a sub sine.
+osc1Shape 5
+osc2Shape 0
+osc2Detune -12
+osc2Level 0.45
+filterCutoff 7000
+filterReso 0.2
+filterMode 0
+amp 1.3 1 0.85 2.6
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.12 0 0.7 0.7
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 morph 2 3 8
+wtspec1 0 0 -2 1
+routes 9
+route 0 11 0.4
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"mist-choir", R"MUEW(muew-preset 2
+name Mist Choir
+category Pad
+author MUEW Factory
+tags pad choir vowel wide
+desc Vowel texture with a formant lift; LFO 1 moves it between ah and eh.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.1
+osc2Level 0.35
+filterCutoff 5000
+filterReso 0.3
+filterMode 0
+amp 1.5 1 0.9 2.8
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.18
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.15 0.15 0.9 0.8
+lfo34 0.07 1 0.11 0
+wtpos 0.5 0
+wtgen1 bands 444 32 450 1800 7
+wtspec1 3 0 -2 0
+routes 9
+route 0 11 0.45
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"formant-lead", R"MUEW(muew-preset 2
+name Formant Lead
+category Lead
+author MUEW Factory
+tags lead formant bright vowel
+desc Square lead with a +9 semitone formant; the mod wheel sweeps the vowel.
+osc1Shape 5
+osc2Shape 3
+osc2Detune -12
+osc2Level 0.3
+filterCutoff 7000
+filterReso 0.6
+filterMode 0
+amp 0.01 0.2 0.85 0.25
+mod 0.01 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0 0 0.5 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 morph 3 2 16
+wtspec1 9 0 0 0
+routes 9
+route 15 11 1
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"hollow-flute-lead", R"MUEW(muew-preset 2
+name Hollow Flute Lead
+category Lead
+author MUEW Factory
+tags lead hollow breathy odd soft
+desc Odd-partial table with breath noise: a hollow flute that vibrates on LFO 1.
+osc1Shape 5
+osc2Shape 0
+osc2Detune 0
+osc2Level 0.5
+filterCutoff 6000
+filterReso 0.3
+filterMode 0
+amp 0.05 0.2 0.9 0.3
+mod 0.01 0.3 0 0.2
+lfo1Rate 5
+lfo1Shape 0
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0 0 0.5 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 noise 555 16 0.6 0.25
+wtspec1 0 0 -4 -1
+routes 9
+route 0 0 0.12
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"glass-stretch-lead", R"MUEW(muew-preset 2
+name Glass Stretch Lead
+category Lead
+author MUEW Factory
+tags lead glassy stretched bright
+desc Stretched saw partials with the top lifted; glassy and cutting.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 7
+osc2Level 0.2
+filterCutoff 8000
+filterReso 0.5
+filterMode 0
+amp 0.01 0.3 0.8 0.3
+mod 0.01 0.6 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 3 1 0.1 0 0.6 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 morph 2 4 16
+wtspec1 0 0.4 2 0
+routes 9
+route 1 11 0.6
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"spectral-ep", R"MUEW(muew-preset 2
+name Spectral EP
+category Keys
+author MUEW Factory
+tags keys electric soft bell
+desc Sine-to-saw morph tilted dark; velocity-shaped EP whose tone moves through the table.
+osc1Shape 5
+osc2Shape 0
+osc2Detune 12
+osc2Level 0.15
+filterCutoff 5000
+filterReso 0.2
+filterMode 0
+amp 0.005 1.4 0.3 0.6
+mod 0.005 0.8 0 0.4
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0 0 0.5 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 morph 0 2 16
+wtspec1 0 0 -5 0
+routes 10
+route 1 11 0.6
+route 2 11 0.3
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"texture-mallet", R"MUEW(muew-preset 2
+name Texture Mallet
+category Keys
+author MUEW Factory
+tags keys mallet woody percussive warm
+desc A short noise-table strike over a sine body, like a felt mallet on wood.
+osc1Shape 5
+osc2Shape 0
+osc2Detune 0
+osc2Level 0.6
+filterCutoff 4500
+filterReso 0.3
+filterMode 0
+amp 0.002 0.7 0 0.5
+mod 0.002 0.3 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0 0 0.5 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 bands 666 16 300 1200 8
+wtspec1 0 0 -3 0
+routes 9
+route 1 11 0.8
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"formant-bass", R"MUEW(muew-preset 2
+name Formant Bass
+category Bass
+author MUEW Factory
+tags bass formant talking mono aggressive
+desc Saw bass with a -7 semitone formant; the mod envelope talks through the table.
+osc1Shape 5
+osc2Shape 1
+osc2Detune -12
+osc2Level 0.5
+filterCutoff 1400
+filterReso 1.2
+filterMode 0
+amp 0.005 0.3 0.8 0.15
+mod 0.005 0.35 0.1 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0 0 0.5 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 morph 2 3 16
+wtspec1 -7 0 0 0
+routes 10
+route 1 11 0.8
+route 1 2 1.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"grit-bass", R"MUEW(muew-preset 2
+name Grit Bass
+category Bass
+author MUEW Factory
+tags bass gritty noise dark
+desc Dark noise table stacked on a sub sine; WARP scans the grit.
+osc1Shape 5
+osc2Shape 0
+osc2Detune -12
+osc2Level 0.7
+filterCutoff 900
+filterReso 0.8
+filterMode 0
+amp 0.005 0.4 0.85 0.2
+mod 0.005 0.5 0 0.2
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 1 1 0 0 0.5 0.7
+lfo34 0.07 1 0.11 0
+wtgen1 noise 777 16 0.25 0.9
+wtspec1 0 0 -2 0
+routes 9
+route 1 11 0.5
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
+    {"spectral-riser", R"MUEW(muew-preset 2
+name Spectral Riser
+category FX
+author MUEW Factory
+tags fx riser noise sweep bright
+desc Eight-second noise riser: the mod envelope sweeps the table from dark to bright.
+osc1Shape 5
+osc2Shape 2
+osc2Detune 0.2
+osc2Level 0.3
+filterCutoff 9000
+filterReso 0.3
+filterMode 0
+amp 0.5 1 1 1.5
+mod 8 1 1 1
+lfo1Rate 0.2
+lfo1Shape 1
+lfo2 0.35 1
+warp1 0 0
+warp2 0 0
+mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
+unison 5 3 0.3 0.3 1 0.8
+lfo34 0.07 1 0.11 0
+wtgen1 bands 888 32 200 8000 3
+routes 10
+route 1 11 1
+route 1 0 12
+route 5 2 3
+route 6 5 0.7
+route 6 6 0.7
+route 7 4 4
+route 8 1 0.3
+route 8 3 0.25
+route 8 7 0.4
+route 8 8 0.4
+chorus 0 0.6 6 15 0.35
+delay 0 0.28 0.42 0.35 0.22
+reverb 1 0.8 0.4 0.3
+)MUEW"},
 };
 
 constexpr int kFactoryPresetCount = (int)(sizeof(kFactoryPresetTexts) / sizeof(kFactoryPresetTexts[0]));

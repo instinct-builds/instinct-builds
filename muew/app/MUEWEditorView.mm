@@ -135,7 +135,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
-    if (index != currentIndex || p.info.name != current.info.name) matrixPage = 0; // a different sound starts on page 1
+    if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); } // a different sound starts on page 1, with no table history
     current = p;
     currentIndex = index;
     edited = wasEdited;
@@ -158,6 +158,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     currentIndex = i;
     current = lib.at(i);
     matrixPage = 0;
+    wtHistory[0].clear(); wtHistory[1].clear(); // 0.32.0: undo never crosses into another preset
     edited = false;
     [self applySound];
     [self revealCurrent];
@@ -723,7 +724,8 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
 - (NSRect)wtButton:(int)i { return NSMakeRect(40 + i * 51, [self top] - 250, 48, 20); }
-- (NSRect)wtModeTab:(int)i { return NSMakeRect(258 + i * 35, [self top] - 32, 32, 17); } // DRAW, HARM, 3D (0.20.0), SPEC (0.31.0)
+- (NSRect)wtModeTab:(int)i { return NSMakeRect(262 + i * 34, [self top] - 32, 31, 17); } // DRAW, HARM, 3D (0.20.0), SPEC (0.31.0)
+- (NSRect)wtUndoRect:(int)i { return NSMakeRect(224 + i * 18, [self top] - 32, 15, 17); } // 0.32.0 UNDO, REDO
 // 0.31.0 SPECTRAL page geometry (inside the canvas): preview on the left, four bipolar bars and APPLY / RESET on the right.
 - (NSRect)wtSpecPreview { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 8, cv.origin.y + 8, 196, cv.size.height - 16); }
 - (NSRect)wtSpecBar:(int)i { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, NSMaxY(cv) - 22 - i * 22, 88, 6); }
@@ -928,7 +930,21 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     Text([NSString stringWithFormat:@"WAVETABLE  \u2022  OSC %@", wtEdit ? @"B" : @"A"],
          NSMakeRect(40, NSMaxY(P) - 30, 150, 20), 11, col, NSFontWeightSemibold);
     Text([NSString stringWithFormat:@"FRAME %d / %d", wtFrame + 1, (int)t.size()],
-         NSMakeRect(170, NSMaxY(P) - 29, 110, 20), 10, C(0x8793a3), NSFontWeightMedium);
+         NSMakeRect(146, NSMaxY(P) - 29, 78, 20), 10, C(0x8793a3), NSFontWeightMedium);
+    for (int i = 0; i < 2; ++i) { // 0.32.0 UNDO / REDO: curved arrows, lit when there is a step to take
+        const NSRect r = [self wtUndoRect:i];
+        const bool live = i == 0 ? wtHistory[wtEdit].canUndo() : wtHistory[wtEdit].canRedo();
+        FillRound(r, 4, C(0x1b222c));
+        NSColor* ac = live ? C(0xc9d2dd) : C(0x3f4856);
+        const CGFloat cx = NSMidX(r), cy = NSMidY(r) - 1, rad = 4.2, dir = i == 0 ? 1 : -1;
+        NSBezierPath* arc = [NSBezierPath bezierPath];
+        [arc appendBezierPathWithArcWithCenter:NSMakePoint(cx, cy) radius:rad startAngle:(i == 0 ? 160 : 20) endAngle:(i == 0 ? -60 : 240) clockwise:(i == 0)];
+        arc.lineWidth = 1.4; arc.lineCapStyle = NSLineCapStyleRound; [ac setStroke]; [arc stroke];
+        const CGFloat ax = cx - dir * rad * 0.94, ay = cy + rad * 0.34; // arrow head at the arc's start
+        NSBezierPath* head = [NSBezierPath bezierPath];
+        [head moveToPoint:NSMakePoint(ax - dir * 2.6, ay + 0.6)]; [head lineToPoint:NSMakePoint(ax, ay - 2.8)]; [head lineToPoint:NSMakePoint(ax + dir * 2.4, ay + 1.4)];
+        head.lineWidth = 1.4; head.lineCapStyle = NSLineCapStyleRound; head.lineJoinStyle = NSLineJoinStyleRound; [head stroke];
+    }
     NSArray* tabs = @[@"DRAW", @"HARM", @"3D", @"SPEC"];
     for (int i = 0; i < 4; ++i) {
         NSRect r = [self wtModeTab:i];
@@ -2910,6 +2926,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (d.length) bytes.assign((const unsigned char*)d.bytes, (const unsigned char*)d.bytes + d.length);
     TableFrames in = importAudio(bytes);
     if (in.empty()) return NO;
+    [self wtRemember:"IMPORT"];
     current.tables[wtEdit] = in;
     OscShape(current.voice, wtEdit) = kCustomShape;
     [self selectTableFrame:0];
@@ -2926,35 +2943,59 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (![d writeToURL:sp.URL atomically:YES]) NSBeep();
 }
 
+// 0.32.0: snapshot the open table before an edit changes it.
+- (void)wtRemember:(const char*)label {
+    if (wtEdit < 0 || wtEdit > 1) return;
+    wtHistory[wtEdit].push(current.tables[wtEdit], wtFrame, label);
+}
+- (void)wtStep:(BOOL)redo {
+    if (wtEdit < 0 || wtEdit > 1) return;
+    TableFrames& t = current.tables[wtEdit];
+    int f = wtFrame;
+    if (!(redo ? wtHistory[wtEdit].redo(t, f) : wtHistory[wtEdit].undo(t, f))) { NSBeep(); return; }
+    [self selectTableFrame:f]; // moves WT POS onto the restored frame, applies the sound and redraws
+}
+- (void)muewTableUndo { [self wtStep:NO]; }
+- (void)muewTableRedo { [self wtStep:YES]; }
+- (NSString*)muewHistoryText {
+    if (wtEdit < 0 || wtEdit > 1) return @"";
+    const auto& h = wtHistory[wtEdit];
+    return [NSString stringWithFormat:@"undo=%d redo=%d last=%s", h.undoDepth(), h.redoDepth(), h.undoLabel().c_str()];
+}
+
 - (void)tableButton:(int)i {
     TableFrames& t = current.tables[wtEdit];
     const int n = (int)t.size();
     switch (i) {
     case 0: // add a fresh frame at the end
         if (n >= kMaxFrames) { NSBeep(); return; }
+        [self wtRemember:"ADD"];
         t.push_back(shapeFrame(2));
         [self selectTableFrame:n];
         return;
     case 1: // duplicate the selected frame after itself
         if (n >= kMaxFrames) { NSBeep(); return; }
+        [self wtRemember:"DUP"];
         { Frame copy = t[wtFrame]; t.insert(t.begin() + wtFrame + 1, copy); }
         [self selectTableFrame:wtFrame + 1];
         return;
     case 2:
         if (n <= 1) { NSBeep(); return; }
+        [self wtRemember:"DELETE"];
         t.erase(t.begin() + wtFrame);
         [self selectTableFrame:std::min(wtFrame, n - 2)];
         return;
     case 3: { // 0.20.0 spectral morph: rebuild as the next of 8/16/32/64 frames through every key frame
         if (n < 2) { NSBeep(); return; }
+        [self wtRemember:"MORPH"];
         const int N = morphTarget(n);
         const double at = n > 1 ? (double)wtFrame / (n - 1) : 0.0;
         t = spectralMorph(t, N);
         [self selectTableFrame:(int)std::lround(at * (N - 1))];
         return;
     }
-    case 4: smoothFrame(t[wtFrame], 2); break;
-    case 5: normalizeFrame(t[wtFrame]); break;
+    case 4: [self wtRemember:"SMOOTH"]; smoothFrame(t[wtFrame], 2); break;
+    case 5: [self wtRemember:"NORMAL"]; normalizeFrame(t[wtFrame]); break;
     case 6: [self importTable]; return;
     case 7: [self exportTable]; return;
     default: return;
@@ -2985,10 +3026,13 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (NSPointInRect(p, [self wtDoneRect])) { wtEdit = -1; [self setNeedsDisplay:YES]; return; }
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }
+    for (int i = 0; i < 2; ++i) // 0.32.0 UNDO / REDO
+        if (NSPointInRect(p, NSInsetRect([self wtUndoRect:i], -1, -2))) { [self wtStep:i == 1]; return; }
     if (wtMode == 3 && NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { // 0.31.0 SPECTRAL page
         for (int i = 0; i < 4; ++i)
             if (NSPointInRect(p, NSInsetRect([self wtSpecBar:i], -6, -7))) { wtSpecDrag = i; [self specDragTo:p]; return; }
         if (NSPointInRect(p, [self wtSpecButton:0]) && !wtSpec.isIdentity()) {
+            [self wtRemember:"APPLY"];
             t = processTable(t, wtSpec); wtSpec = SpectralProcess{};
             edited = true; [self applySound]; [self setNeedsDisplay:YES]; return;
         }
@@ -3007,7 +3051,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     }
     for (int i = 0; i < (int)WtButtonLabels().count; ++i)
         if (NSPointInRect(p, [self wtButton:i])) { [self tableButton:i]; return; }
-    if (NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { wtDrawing = true; [self tableStrokeTo:p first:YES]; }
+    if (NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { wtDrawing = true; [self wtRemember:wtMode == 1 ? "HARM" : "DRAW"]; [self tableStrokeTo:p first:YES]; }
 }
 
 // FILTER panel page tabs and the FILTER 2 + SUB page's click controls.
@@ -3684,6 +3728,16 @@ static int NoteForKey(unichar ch) {
     static const char* keys = "awsedftgyhujk";
     const char* p = strchr(keys, (char)ch);
     return (ch && ch < 128 && p) ? (int)(p - keys) : -1;
+}
+
+// 0.32.0: cmd-Z / shift-cmd-Z step the WT editor's history while it is open and this view has focus;
+// otherwise the key goes on to the host (its own undo).
+- (BOOL)performKeyEquivalent:(NSEvent*)e {
+    if (wtEdit >= 0 && self.window.firstResponder == self && (e.modifierFlags & NSEventModifierFlagCommand)) {
+        NSString* k = e.charactersIgnoringModifiers.lowercaseString;
+        if ([k isEqualToString:@"z"]) { [self wtStep:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return YES; }
+    }
+    return [super performKeyEquivalent:e];
 }
 
 - (void)keyDown:(NSEvent*)e {
