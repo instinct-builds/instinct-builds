@@ -192,7 +192,15 @@ public struct DiceRollerView: View {
                 // sets the precedent; the action already rides
                 // visibleHistory, notes included via shareLines.
                 Button(historyFilter.trimmingCharacters(in: .whitespaces).isEmpty ? "Copy" : "Copy filtered") {
-                    model.copyRollsToPasteboard(visibleHistory)
+                    let query = historyFilter.trimmingCharacters(in: .whitespaces)
+                    if query.isEmpty {
+                        model.copyRollsToPasteboard(visibleHistory)
+                    } else {
+                        // 2.98.0: the paste says it was narrowed.
+                        model.copyFilteredRollsToPasteboard(
+                            visibleHistory, query: query,
+                            ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
+                    }
                 }
                     .controlSize(.small)
                     .disabled(visibleHistory.isEmpty)

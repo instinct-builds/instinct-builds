@@ -781,6 +781,14 @@ public extension Array where Element == RollResult {
         return "Starred rolls (\(starred.count))\n" + starred.historyText
     }
 
+    /// Share text for a filtered history copy (2.98.0): a header naming
+    /// the query and the hit count - the paste says what it is,
+    /// matching Copy starred's header - then the filtered rolls oldest
+    /// first, notes riding via shareLines.
+    func filteredShareText(query: String, ofTotal total: Int) -> String {
+        "Filtered: \(query) (\(count) of \(total))\n\n" + historyText
+    }
+
     /// The log with the first entry equal to `roll`'s star flipped
     /// (2.84.0). nil and false both read as unstarred; toggling a
     /// starred roll clears back to nil so saved logs stay lean.

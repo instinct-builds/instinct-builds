@@ -755,6 +755,12 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? filterProof.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/history-filter-note.txt"),
                atomically: true, encoding: .utf8)
+    // 2.98.0 proof: the filtered copy's header - the exact string the
+    // Copy filtered button puts on the pasteboard with "bridge" drafted.
+    try? model.rollHistory.matching("bridge")
+        .filteredShareText(query: "bridge", ofTotal: model.rollHistory.count)
+        .write(to: URL(fileURLWithPath: "\(outDir)/filtered-copy.txt"),
+               atomically: true, encoding: .utf8)
     // 2.97.0 proof: with a filter drafted the bar's Copy reads "Copy
     // filtered" - the button says when the filter narrows what it
     // copies; the action already rides visibleHistory.

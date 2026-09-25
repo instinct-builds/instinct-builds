@@ -310,6 +310,15 @@ public final class AppModel: ObservableObject {
         pb.setString(rolls.historyText, forType: .string)
     }
 
+    /// Copy a filtered history subset (2.98.0): the rolls the filter
+    /// left visible, with a header naming the query and hit count so
+    /// the paste says it was narrowed - Copy starred's precedent.
+    public func copyFilteredRollsToPasteboard(_ rolls: [RollResult], query: String, ofTotal total: Int) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(rolls.filteredShareText(query: query, ofTotal: total), forType: .string)
+    }
+
     /// Copy the starred rolls (2.85.0): the night's highlight reel,
     /// oldest first, with a header so the paste says what it is.
     public func copyStarredToPasteboard() {

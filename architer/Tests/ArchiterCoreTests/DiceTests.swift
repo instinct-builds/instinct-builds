@@ -665,6 +665,26 @@ struct RollHistoryFilterTests {
         // A query hitting nothing anywhere stays empty.
         #expect(rolls.matching("dragon").isEmpty)
     }
+
+    // 2.98.0: the filtered copy's header names the query and the hit
+    /// count so the paste says it was narrowed; notes ride along.
+    @Test func filteredShareTextNamesTheNarrowing() {
+        var noted = roll("8d6", label: "Fireball")
+        noted.note = "The bridge collapses behind them"
+        let rolls = [roll("d20"), noted]
+        let hits = rolls.matching("bridge")
+        #expect(hits.filteredShareText(query: "bridge", ofTotal: 2) == """
+            Filtered: bridge (1 of 2)
+
+            Fireball: 10 (8d6)
+              The bridge collapses behind them
+            """)
+        // Rolls read oldest first, like every other share block.
+        let pair = rolls.matching("d")
+        #expect(pair.count == 2)
+        #expect(pair.filteredShareText(query: "d", ofTotal: 2)
+            .hasPrefix("Filtered: d (2 of 2)\n\nFireball: 10 (8d6)\n  The bridge collapses behind them\nd20: 10"))
+    }
 }
 
 @Suite("Session segments")
