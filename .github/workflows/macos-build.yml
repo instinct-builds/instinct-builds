@@ -241,6 +241,9 @@ jobs:
           DELAY=24 shoot batch-license-row 1920x1200 batch-license-row
           shoot duplicates-merge 1920x1200 duplicates-merge
           shoot library-health 1920x1200 library-health
+          DELAY=15 shoot source-review-queue 1920x1200 source-review-queue
+          DELAY=15 shoot source-review-queue-next 1920x1200 source-review-queue-next demo-source-queue.txt
+          grep -q '^done queue-next=true pending=1$' "$SUP/demo-source-queue.txt"
           DELAY=13 shoot changed-source 1920x1200 changed-source
           DELAY=13 shoot changed-source-review 1920x1200 changed-source-review
           DELAY=14 shoot changed-source-inspector 1920x1200 changed-source-inspector

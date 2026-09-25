@@ -910,3 +910,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Imported assets show a Source Changes section in the inspector. An unreviewed source detected by Library Health gets a visible warning and a Review in Library Health button; the check opens a fresh full scan, not a guess based on cached history. Assets with receipts show a newest-first timeline with date, source path, size, file facts, palette swatches and truncated before/after hashes. Show all expands longer timelines. Records belong to the asset ID even after a relink; each receipt keeps the path used at that refresh.
 - The section is explicit that catalog receipts do not retain the prior file bytes. New native CI shots check both pending and refreshed per-asset inspector states at the runner's compact screen size.
+
+## 1.45.0: one-by-one changed-source review queue
+
+- Library Health keeps a stable ordered queue of changed files. Show queue lists the pending sources and marks the current selection; selecting a row does not accept its bytes. Review opens the before/after confirmation for just that file. Cancel leaves every source pending. After an accepted refresh, the next pending file is selected in the same sheet and the queue stays in view; Check Again preserves the selection if that file remains pending. There is no bulk acceptance.
+- The native CI demo changes two imported files, shows both pending in the queue, accepts only one and verifies one receipt with the other still pending. A second native shot checks the remaining selected row at 1024x768. Tests cover selection across scans, advancing after an acceptance and the end of the queue.

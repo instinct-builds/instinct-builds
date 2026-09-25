@@ -1583,6 +1583,17 @@ final class StudioLibrary: ObservableObject {
     @Published var reviewedSourceID: UUID?
     @Published var sourceReviewPreview: SourceReviewPreview?
     @Published var sourceHistoryExpanded = false
+    @Published var sourceQueueSelected: UUID?
+    @Published var sourceQueueOpen = false
+    @Published var sourceQueueAnchor: UUID?
+    var sourceReviewQueue: SourceReviewQueue {
+        SourceReviewQueue(pending: health?.changedSources ?? [], selected: sourceQueueSelected)
+    }
+    func selectSourceInQueue(_ id: UUID) {
+        guard sourceReviewQueue.pending.contains(id) else { return }
+        sourceQueueSelected = id
+        sourceRefreshError = nil
+    }
 
     struct SourceReviewPreview {
         let id: UUID
@@ -1612,6 +1623,7 @@ final class StudioLibrary: ObservableObject {
     /// Prepare the actual on-disk candidate before asking for acceptance.
     func reviewChangedSource(_ id: UUID) {
         sourceReviewPreview = nil; sourceRefreshError = nil
+        sourceQueueSelected = id
         guard !sourceRefreshBusy, let a = catalog.assets.first(where: { $0.id == id }),
               let path = a.importedPath, let old = a.sourceFingerprint,
               health?.changedSources.contains(id) == true,
@@ -1668,6 +1680,8 @@ final class StudioLibrary: ObservableObject {
         }
         sourceRefreshBusy = false
         if applied {
+            sourceQueueSelected = sourceReviewQueue.next(after: id)
+            sourceQueueAnchor = sourceQueueSelected
             ThumbnailStore.shared.invalidate(id: id, path: reviewed.path)
             psdCache.removeValue(forKey: reviewed.path)
             lookCache.removeValue(forKey: lookKey(a))
@@ -1782,6 +1796,7 @@ final class StudioLibrary: ObservableObject {
                     return snapshot.importedPath != live.importedPath || snapshot.sourceFingerprint != live.sourceFingerprint
                 }
                 self.health = r
+                self.sourceQueueSelected = SourceReviewQueue(pending: r.changedSources, selected: self.sourceQueueSelected).selected
                 self.healthScanning = false
             }
         }
@@ -2670,7 +2685,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2793,7 +2808,7 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
@@ -2803,9 +2818,36 @@ final class StudioLibrary: ObservableObject {
                     let replacement = starterRoot.appendingPathComponent("risograph-4k.png")
                     try? fm.removeItem(atPath: path)
                     try? fm.copyItem(at: replacement, to: URL(fileURLWithPath: path))
+                    if demo == "source-review-queue" || demo == "source-review-queue-next" {
+                        // Second changed original in the same import set, separately fingerprinted and replaced.
+                        if let another = find("Atrium Cork Wall.png"), let otherPath = another.importedPath,
+                           let otherBase = Self.sourceFingerprint(otherPath) {
+                            mutate { $0.seedSourceFingerprint(otherBase, for: another.id, path: otherPath) }
+                            try? fm.removeItem(atPath: otherPath)
+                            try? fm.copyItem(at: starterRoot.appendingPathComponent("blueprint-4k.png"), to: URL(fileURLWithPath: otherPath))
+                        }
+                    }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                         self.openLibraryHealth()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            if demo == "source-review-queue" || demo == "source-review-queue-next" {
+                                self.sourceQueueOpen = true
+                                self.sourceQueueAnchor = source.id
+                                self.sourceQueueSelected = source.id
+                                if demo == "source-review-queue-next" {
+                                    self.reviewChangedSource(source.id)
+                                    self.reviewedSourceID = nil
+                                    self.refreshChangedSource(source.id)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                        let q = self.sourceReviewQueue
+                                        let ok = q.pending.count == 1 && q.selected != source.id &&
+                                            self.catalog.sourceHistory(for: source.id).count == 1 &&
+                                            self.catalog.sourceHistory(for: q.selected ?? source.id).isEmpty
+                                        try? "done queue-next=\(ok) pending=\(q.pending.count)".write(
+                                            to: self.supportRoot.appendingPathComponent("demo-source-queue.txt"), atomically: true, encoding: .utf8)
+                                    }
+                                }
+                            }
                             if demo == "changed-source-review" { self.reviewChangedSource(source.id) }
                             if demo == "changed-source-inspector" {
                                 self.healthOpen = false
@@ -7317,6 +7359,7 @@ struct LibraryHealthSheet: View {
                 Text("\(a?.title ?? "Source") at \((p?.path as NSString?)?.abbreviatingWithTildeInPath ?? "unknown path")\nSize: \(p.map { ByteCountFormatter.string(fromByteCount: $0.baseline.size, countStyle: .file) } ?? "?") → \(p.map { ByteCountFormatter.string(fromByteCount: $0.current.size, countStyle: .file) } ?? "?")\nFile facts: \(p?.beforeResolution ?? "?") → \(p?.afterResolution ?? "?")\nPalette: \(p?.beforePalette.prefix(3).joined(separator: ", ") ?? "?") → \(p?.afterPalette.prefix(3).joined(separator: ", ") ?? "?")\nThe new bytes get the preview. ID, rights, boards and placed versions remain. The receipt saves metadata, not old bytes; this cannot restore the old file.")
             }
             Divider().overlay(Theme.hairline)
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if !h.missingFiles.isEmpty {
@@ -7333,22 +7376,7 @@ struct LibraryHealthSheet: View {
                         }
                     }
                     if !h.changedSources.isEmpty {
-                        HealthCard(symbol: "arrow.triangle.2.circlepath.circle.fill", tint: Theme.warning,
-                                   title: "\(h.changedSources.count) changed \(h.changedSources.count == 1 ? "source" : "sources")",
-                                   detail: "The file at its known path has new bytes. Review each before updating its preview, palette and file facts; rights, boards and prior versions stay.",
-                                   action: ("Check Again", { model.refreshHealth(full: true) })) {
-                            ForEach(h.changedSources.prefix(5), id: \.self) { id in
-                                if let a = byID[id] {
-                                    HealthRow(asset: a, detail: a.importedPath ?? "") {
-                                        Button("Review…") { model.reviewChangedSource(id) }
-                                            .controlSize(.small).disabled(model.sourceRefreshBusy)
-                                    }
-                                }
-                            }
-                            if let error = model.sourceRefreshError {
-                                Text(error).font(.caption2).foregroundStyle(Theme.warning)
-                            }
-                        }
+                        SourceReviewQueueCard(byID: byID).id("source-review-queue")
                     }
                     if !h.missingLicenseFiles.isEmpty {
                         let docs = h.missingLicenseFiles.compactMap { model.catalog.licenseDoc($0) }
@@ -7419,6 +7447,13 @@ struct LibraryHealthSheet: View {
                     HealthAllClear(h: h, scanned: h.duplicateSets != nil)
                 }
                 .padding(20)
+            }
+            .onChange(of: model.sourceQueueAnchor) { _, anchor in
+                if anchor != nil {
+                    withAnimation { proxy.scrollTo("source-review-queue", anchor: .top) }
+                    model.sourceQueueAnchor = nil
+                }
+            }
             }
             Divider().overlay(Theme.hairline)
             HStack {
@@ -7567,6 +7602,56 @@ struct FolderRelinkSheet: View {
                             Spacer(minLength: 0)
                         }.padding(8).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
                     }
+                }
+            }
+        }
+    }
+}
+
+struct SourceReviewQueueCard: View {
+    @EnvironmentObject var model: StudioLibrary
+    let byID: [UUID: StudioAsset]
+    var body: some View {
+        let queue = model.sourceReviewQueue
+        HealthCard(symbol: "arrow.triangle.2.circlepath.circle.fill", tint: Theme.warning,
+                   title: "Changed sources · \(queue.pending.count)",
+                   detail: "Review each file before accepting new bytes. Nothing is refreshed in bulk.",
+                   action: ("Check Again", { model.refreshHealth(full: true) })) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(queue.position.map { "\($0) of \(queue.pending.count)" } ?? "Queue empty")
+                        .font(.caption.monospacedDigit()).foregroundStyle(Theme.warning)
+                    Spacer()
+                    Button(model.sourceQueueOpen ? "Show selected" : "Show queue") { model.sourceQueueOpen.toggle() }
+                        .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent)
+                }.padding(.leading, 42)
+                if model.sourceQueueOpen {
+                    ForEach(queue.pending, id: \.self) { id in
+                        if let asset = byID[id] {
+                            Button { model.selectSourceInQueue(id) } label: {
+                                HStack(spacing: 7) {
+                                    Image(systemName: queue.selected == id ? "largecircle.fill.circle" : "circle")
+                                        .foregroundStyle(queue.selected == id ? Theme.warning : Color.secondary)
+                                    Text(asset.title).lineLimit(1)
+                                    Spacer(minLength: 3)
+                                    Text(asset.importedPath.map { ($0 as NSString).lastPathComponent } ?? "")
+                                        .font(.caption2).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                                }.font(.caption)
+                                .padding(7).background(queue.selected == id ? Theme.warning.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                            }.buttonStyle(.plain).padding(.leading, 42)
+                        }
+                    }
+                }
+                if let id = queue.selected, let asset = byID[id] {
+                    HealthRow(asset: asset, detail: asset.importedPath ?? "") {
+                        Button("Review…") { model.reviewChangedSource(id) }
+                            .controlSize(.small).disabled(model.sourceRefreshBusy || model.healthScanning)
+                    }
+                    Text("Only this file is reviewed. After accepting it, the next pending file is selected; Cancel changes nothing.")
+                        .font(.caption2).foregroundStyle(.secondary).padding(.leading, 42)
+                }
+                if let error = model.sourceRefreshError {
+                    Text(error).font(.caption2).foregroundStyle(Theme.warning).padding(.leading, 42)
                 }
             }
         }
