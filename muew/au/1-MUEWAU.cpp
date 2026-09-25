@@ -210,7 +210,10 @@ MUEWInstance* Self(void* self) { return reinterpret_cast<MUEWInstance*>(self); }
 bool ParseStateString(CFStringRef str, muew::Preset& out) {
     CFIndex len = CFStringGetLength(str);
     CFIndex max = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8) + 1;
-    if (max <= 1 || max > (1 << 20)) return false;
+    // 0.36.0 fix1: the cap was 1 MB of worst-case UTF-8 (3 bytes per character), which a
+    // sound with two full 64-frame tables (~410k characters) exceeded, so hosts could not
+    // restore it. 16 MB leaves room for any MUEW state.
+    if (max <= 1 || max > (1 << 24)) return false;
     std::string buf(static_cast<size_t>(max), '\0');
     if (!CFStringGetCString(str, &buf[0], max, kCFStringEncodingUTF8)) return false;
     buf.resize(std::strlen(buf.c_str()));

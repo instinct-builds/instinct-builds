@@ -907,7 +907,7 @@ int main() {
             printf("morph36: %s; engine A %u voices %.3f %.3f %.3f, B %u voices %.3f\n", live.c_str(), pf.voiceMorphCount[0], pf.voiceMorph[0][0], pf.voiceMorph[0][1], pf.voiceMorph[0][2],
                    pf.voiceMorphCount[1], pf.voiceMorph[1][0]);
             const float ea = 0.2f + 0.6f * 121 / 127.0f, eb = 0.2f + 0.6f * 70 / 127.0f, ec = 0.2f + 0.6f * 32 / 127.0f;
-            Check(kept && set, "the harness loaded a two-oscillator morph sound through the preset state");
+            Check(kept && set, "the AU accepts a two-oscillator sound with two full 64-frame tables through the preset state (0.36.0 fix1: over 1 MB worst-case UTF-8)");
             Check(got && pf.voiceMorphCount[0] == 3 && std::fabs(pf.voiceMorph[0][0] - ea) < 0.02f && std::fabs(pf.voiceMorph[0][1] - eb) < 0.02f && std::fabs(pf.voiceMorph[0][2] - ec) < 0.02f,
                   "the engine reports OSC A's three voices at their velocity-spread morphs, highest first");
             Check(got && pf.voiceMorphCount[1] == 3 && std::fabs(pf.specMorph[1] - 0.45f) < 0.01f, "the engine meters OSC B at 45% on its three voices");
