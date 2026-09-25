@@ -1957,7 +1957,7 @@ final class StudioLibrary: ObservableObject {
                     psdToggled[a.id] = Set(flips)
                 }
             }
-        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results", "batch-compare", "batch-focus":
+        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results", "batch-compare", "batch-focus", "batch-focus-next":
             let starters = catalog.assets.filter(\.isStarter)
             let names = ["risograph-4k.png", "blueprint-4k.png", "ink-fiber-4k.png"]
             let art = names.compactMap { name in starters.first { $0.importedPath?.hasSuffix(name) == true } }
@@ -1976,7 +1976,7 @@ final class StudioLibrary: ObservableObject {
                             self.batchPlacement = active
                         }
                     }
-                    if demo == "batch-crop" || demo == "batch-crop-results" || demo == "batch-compare" || demo == "batch-focus" {
+                    if demo == "batch-crop" || demo == "batch-crop-results" || demo == "batch-compare" || demo == "batch-focus" || demo == "batch-focus-next" {
                         self.batchPlacement?.crops[art[0].id] = BoardRect(x: 0.18, y: 0.12, w: 0.5, h: 0.5)
                         self.batchPlacement?.crops[art[1].id] = BoardRect(x: 0.05, y: 0.25, w: 0.7, h: 0.6)
                     }
@@ -4496,10 +4496,13 @@ struct BatchPlaceSheet: View {
                 .padding(2)
             }.frame(height: 408)
             .sheet(item: $focusedArt) { art in
-                BatchFocusedComparison(art: art, source: sourceImages[art.id], placed: previews[art.id],
-                    mode: state.mode, areaAspect: designAspect, crop: state.crops[art.id],
+                BatchFocusedComparison(arts: arts, initialArtID: art.id, sources: sourceImages, placed: previews,
+                    mode: state.mode, areaAspect: designAspect, crops: state.crops,
                     mockupName: mockup?.title ?? "Mockup", close: { focusedArt = nil },
-                    edit: { focusedArt = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { cropArt = art } })
+                    edit: { selected in
+                        focusedArt = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { cropArt = selected }
+                    })
                     .environment(\.colorScheme, .dark)
             }
             .popover(item: $cropArt) { art in
@@ -4524,7 +4527,9 @@ struct BatchPlaceSheet: View {
             if ProcessInfo.processInfo.arguments.contains("batch-crop"), cropArt == nil {
                 cropArt = arts.first
             }
-            if ProcessInfo.processInfo.arguments.contains("batch-focus"), focusedArt == nil {
+            if ProcessInfo.processInfo.arguments.contains("batch-focus-next"), focusedArt == nil {
+                focusedArt = arts.dropFirst().first
+            } else if ProcessInfo.processInfo.arguments.contains("batch-focus"), focusedArt == nil {
                 focusedArt = arts.first
             }
         }
@@ -4634,15 +4639,29 @@ struct BatchSourceFrame: View {
 /// A larger, read-only comparison for one batch artwork. Keeps the same state in the batch
 /// sheet so closing the view neither commits a render nor loses the other artworks' crops.
 struct BatchFocusedComparison: View {
-    let art: StudioAsset
-    let source: CGImage?
-    let placed: CGImage?
+    let arts: [StudioAsset]
+    let sources: [UUID: CGImage]
+    let placed: [UUID: CGImage]
     let mode: PlacementMode
     let areaAspect: Double
-    let crop: BoardRect?
+    let crops: [UUID: BoardRect]
     let mockupName: String
     let close: () -> Void
-    let edit: () -> Void
+    let edit: (StudioAsset) -> Void
+    @State private var selectedID: UUID
+
+    init(arts: [StudioAsset], initialArtID: UUID, sources: [UUID: CGImage], placed: [UUID: CGImage],
+         mode: PlacementMode, areaAspect: Double, crops: [UUID: BoardRect], mockupName: String,
+         close: @escaping () -> Void, edit: @escaping (StudioAsset) -> Void) {
+        self.arts = arts; self.sources = sources; self.placed = placed; self.mode = mode
+        self.areaAspect = areaAspect; self.crops = crops; self.mockupName = mockupName
+        self.close = close; self.edit = edit
+        _selectedID = State(initialValue: initialArtID)
+    }
+
+    private var index: Int { arts.firstIndex { $0.id == selectedID } ?? 0 }
+    private var art: StudioAsset? { arts.indices.contains(index) ? arts[index] : nil }
+    private var crop: BoardRect? { art.flatMap { crops[$0.id] } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -4650,27 +4669,37 @@ struct BatchFocusedComparison: View {
                 Image(systemName: "rectangle.split.2x1").foregroundStyle(Theme.accent)
                 Text("Inspect Placement").font(.system(size: 17, weight: .bold))
                 Spacer()
-                Text(art.title).font(.caption.weight(.semibold)).lineLimit(1).foregroundStyle(.secondary)
+                if let art { Text(art.title).font(.caption.weight(.semibold)).lineLimit(1).foregroundStyle(.secondary) }
             }
             HStack(spacing: 14) {
                 panel("SOURCE · FRAME") {
-                    BatchSourceFrame(image: source, mode: mode, areaAspect: areaAspect, crop: crop)
+                    BatchSourceFrame(image: art.flatMap { sources[$0.id] }, mode: mode, areaAspect: areaAspect, crop: crop)
                 }
                 panel("PLACED · \(mockupName)") {
                     ZStack {
                         Theme.panel
-                        if let placed {
-                            Image(decorative: placed, scale: 1).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        if let image = art.flatMap({ placed[$0.id] }) {
+                            Image(decorative: image, scale: 1).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
                         } else { ProgressView().controlSize(.small) }
                     }
                 }
             }
-            HStack {
+            HStack(spacing: 8) {
                 Text(mode == .fill ? (crop == nil ? "Automatic Fill framing" : "Custom Fill framing") : "Fit shows the whole artwork")
                     .font(.caption).foregroundStyle(.secondary)
-                Spacer()
+                Spacer(minLength: 0)
+                Button { selectedID = arts[index - 1].id } label: {
+                    Label("Previous", systemImage: "chevron.left")
+                }.disabled(index == 0).help("Inspect the previous artwork")
+                Text("\(arts.isEmpty ? 0 : index + 1) of \(arts.count)")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .frame(minWidth: 38)
+                Button { selectedID = arts[index + 1].id } label: {
+                    Label("Next", systemImage: "chevron.right")
+                }.disabled(index >= arts.count - 1).help("Inspect the next artwork")
                 Button("Back to Batch") { close() }.keyboardShortcut(.cancelAction)
-                Button("Adjust Crop…") { edit() }.buttonStyle(.borderedProminent).disabled(mode == .fit)
+                Button("Adjust Crop…") { if let art { edit(art) } }
+                    .buttonStyle(.borderedProminent).disabled(mode == .fit || art == nil)
             }
         }
         .padding(20).frame(width: 850).background(Theme.backdrop)

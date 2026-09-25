@@ -866,3 +866,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Inspect on a batch artwork opens a larger, read-only source-frame and placed-mockup comparison without closing the batch or making a render. The source uses that art's current crop and the same Fill/Fit setting as its compact card; the placed side shows the actual local preview with the chosen mockup and design layer. Back to Batch preserves every artwork's choices.
 - Adjust Crop from the focused view returns to the batch and opens that artwork's drag editor. Fit keeps the full artwork and disables crop adjustment. No new stored data or service is needed. A native `batch-focus` screenshot checks the enlarged layout at 1024x768.
+
+## 1.36.0: browse artworks in focused comparison
+
+- Previous and Next inside Inspect Placement move through the current batch in order, keeping the large source framing beside the placed mockup. A position label makes the current artwork clear, and the controls disable at the ends instead of wrapping. Inspect and Adjust Crop continue to target the artwork shown. Back to Batch returns to all three editable cards without saving or changing their choices.
+- The native `batch-focus` and `batch-focus-next` captures check both the first custom crop and the next unadjusted artwork at 1024x768. The existing batch-crop proof and recipe assertions remain.
