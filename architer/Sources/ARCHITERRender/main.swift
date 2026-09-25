@@ -780,6 +780,28 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-copy-filtered", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.0.0 proof: the preset cycle - save two, re-save one with
+    // different casing (replaces in place, menu order kept); the list
+    // the presets menu would show.
+    do {
+        _ = model.saveFilterPreset(name: "Fire stuff", query: "fire")
+        _ = model.saveFilterPreset(name: "Bridge checks", query: "bridge")
+        _ = model.saveFilterPreset(name: "fire stuff", query: "fire damage")
+        let lines = model.filterPresets.map { "\($0.name) -> \($0.query)" }
+        try? ("Presets after save + case-insensitive re-save:\n" + lines.joined(separator: "\n"))
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-presets.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    // 3.0.0 render: the bar with the presets bookmark menu and the
+    // inline naming form open, the draft pre-filled with the query.
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire",
+                       initialSavingFilterPreset: true,
+                       initialFilterPresetNameDraft: "Fire stuff")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-presets", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -701,6 +701,42 @@ public extension RollResult {
     }
 }
 
+/// A named history-filter preset (3.0.0): a saved query the filter
+/// bar's presets menu re-applies. Name and query are trimmed; blank
+/// either way is no preset.
+public struct FilterPreset: Equatable, Codable, Sendable {
+    public var name: String
+    public var query: String
+    public init?(name: String, query: String) {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, !q.isEmpty else { return nil }
+        self.name = n
+        self.query = q
+    }
+}
+
+public extension Array where Element == FilterPreset {
+    /// Insert the preset, replacing an existing one with the same name
+    /// (any case) in place so the menu keeps its order.
+    func upserted(_ preset: FilterPreset) -> [FilterPreset] {
+        var copy = self
+        if let index = copy.firstIndex(where: {
+            $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
+        }) {
+            copy[index] = preset
+        } else {
+            copy.append(preset)
+        }
+        return copy
+    }
+
+    /// The preset saved under `name`, matching any case.
+    func preset(named name: String) -> FilterPreset? {
+        first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+}
+
 public extension Array where Element == RollResult {
     /// The newest session's rolls (2.74.0): the "Latest session" history
     /// scope - the common case at the table. Empty history stays empty.

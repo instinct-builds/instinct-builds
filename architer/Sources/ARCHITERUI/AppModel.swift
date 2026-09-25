@@ -69,6 +69,17 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let digestFormatKey = "architer.digestFormat"
+    /// History-filter presets (3.0.0): named saved queries the filter
+    /// bar's presets menu re-applies. Persisted across launches.
+    @Published public var filterPresets: [FilterPreset] =
+        UserDefaults.standard.data(forKey: AppModel.filterPresetsKey)
+            .flatMap { try? JSONDecoder().decode([FilterPreset].self, from: $0) } ?? [] {
+        didSet {
+            UserDefaults.standard.set(try? JSONEncoder().encode(filterPresets),
+                                      forKey: AppModel.filterPresetsKey)
+        }
+    }
+    private static let filterPresetsKey = "architer.filterPresets"
     /// Journal timestamps in exports (2.66.0): on keeps the 2.47.0
     /// stamped heads; off gives clean archival sheets.
     @Published public var exportJournalTimestamps: Bool =
@@ -654,6 +665,21 @@ public final class AppModel: ObservableObject {
         guard !subset.rolls.isEmpty, var c = selected?.wrappedValue else { return }
         c.journal.append(JournalEntry(sessionDigest: subset, format: digestFormat))
         selected?.wrappedValue = c
+    }
+
+    /// Save the current history filter under a name (3.0.0). Blank
+    /// names or queries are rejected; re-saving a name (any case)
+    /// replaces its query in place.
+    @discardableResult
+    public func saveFilterPreset(name: String, query: String) -> Bool {
+        guard let preset = FilterPreset(name: name, query: query) else { return false }
+        filterPresets = filterPresets.upserted(preset)
+        return true
+    }
+
+    /// Remove a saved filter preset by name, matching any case (3.0.0).
+    public func deleteFilterPreset(name: String) {
+        filterPresets.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     /// Level-up assistant: roll the hit die or take the average, then apply.

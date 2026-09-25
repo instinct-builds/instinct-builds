@@ -1409,3 +1409,28 @@ struct SessionSegmentTests {
         #expect([RollResult]().latestSession(now: now, calendar: cal).isEmpty)
     }
 }
+
+@Suite("History filter presets")
+struct FilterPresetTests {
+    @Test func initTrimsAndRejectsBlank() throws {
+        #expect(FilterPreset(name: "   ", query: "fire") == nil)
+        #expect(FilterPreset(name: "Fire", query: "   ") == nil)
+        let preset = try #require(FilterPreset(name: "  Fire stuff  ", query: "  fire  "))
+        #expect(preset.name == "Fire stuff")
+        #expect(preset.query == "fire")
+    }
+
+    @Test func upsertAppendsThenReplacesCaseInsensitively() throws {
+        let fire = try #require(FilterPreset(name: "Fire", query: "fire"))
+        let bridge = try #require(FilterPreset(name: "Bridge", query: "bridge"))
+        var list = [FilterPreset]().upserted(fire).upserted(bridge)
+        #expect(list.map(\.name) == ["Fire", "Bridge"])
+        let renamed = try #require(FilterPreset(name: "bridge", query: "over the bridge"))
+        list = list.upserted(renamed)
+        #expect(list.count == 2)
+        #expect(list[1].name == "bridge")
+        #expect(list[1].query == "over the bridge")
+        #expect(list.preset(named: "FIRE")?.query == "fire")
+        #expect(list.preset(named: "missing") == nil)
+    }
+}

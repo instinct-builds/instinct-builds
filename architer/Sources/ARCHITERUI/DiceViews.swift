@@ -36,11 +36,15 @@ public struct DiceRollerView: View {
     /// 2.78.0/2.84.0: or with the crits-only / starred-only filter on.
     /// 2.97.0: or with a history filter drafted (render proofs).
     public init(initialLatestSession: Bool = false, initialCritsOnly: Bool = false,
-                initialStarredOnly: Bool = false, initialHistoryFilter: String = "") {
+                initialStarredOnly: Bool = false, initialHistoryFilter: String = "",
+                initialSavingFilterPreset: Bool = false,
+                initialFilterPresetNameDraft: String = "") {
         _historyLatestSession = State(initialValue: initialLatestSession)
         _historyCritsOnly = State(initialValue: initialCritsOnly)
         _historyStarredOnly = State(initialValue: initialStarredOnly)
         _historyFilter = State(initialValue: initialHistoryFilter)
+        _savingFilterPreset = State(initialValue: initialSavingFilterPreset)
+        _filterPresetNameDraft = State(initialValue: initialFilterPresetNameDraft)
     }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
@@ -66,6 +70,10 @@ public struct DiceRollerView: View {
     @State private var historyStarredOnly = false
     /// Text filter over history labels and expressions; blank shows all.
     @State private var historyFilter = ""
+    /// Filter-preset naming form (3.0.0): true while the bar is naming
+    /// the current filter as a preset; the draft pre-fills with the query.
+    @State private var savingFilterPreset = false
+    @State private var filterPresetNameDraft = ""
 
     private var visibleHistory: [RollResult] {
         let name = historyForCharacter ? model.selected?.wrappedValue.name : nil
@@ -170,6 +178,46 @@ public struct DiceRollerView: View {
                 TextField("Filter rolls", text: $historyFilter)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(maxWidth: 160)
+                // 3.0.0: named filter presets - save the current filter
+                // under a name and re-apply it from the menu.
+                Menu {
+                    ForEach(model.filterPresets, id: \.name) { preset in
+                        Button(preset.name) { historyFilter = preset.query }
+                    }
+                    if !model.filterPresets.isEmpty { Divider() }
+                    Button("Save current filter…") {
+                        filterPresetNameDraft = historyFilter.trimmingCharacters(in: .whitespaces)
+                        savingFilterPreset = true
+                    }
+                    .disabled(historyFilter.trimmingCharacters(in: .whitespaces).isEmpty)
+                    if !model.filterPresets.isEmpty {
+                        Divider()
+                        Menu("Remove") {
+                            ForEach(model.filterPresets, id: \.name) { preset in
+                                Button(preset.name) { model.deleteFilterPreset(name: preset.name) }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "bookmark")
+                }
+                .controlSize(.small)
+                .help("Saved filter presets - apply one, save the current filter, or remove one")
+                if savingFilterPreset {
+                    TextField("Preset name", text: $filterPresetNameDraft)
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(maxWidth: 120)
+                    Button("Save") {
+                        if model.saveFilterPreset(name: filterPresetNameDraft,
+                                                  query: historyFilter) {
+                            savingFilterPreset = false
+                        }
+                    }
+                    .controlSize(.small)
+                    .help("Save the current filter under this name")
+                    Button("Cancel") { savingFilterPreset = false }
+                        .controlSize(.small)
+                }
                 if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text("\(visibleHistory.count) of \(model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)")
                         .font(Theme.Typeface.caption)
