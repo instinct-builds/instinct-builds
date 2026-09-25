@@ -258,3 +258,31 @@ struct PlacementPresetTests {
         #expect(StudioCatalog.decode(old)?.placementPresets.isEmpty == true)
     }
 }
+
+@Suite("Per-art batch framing")
+struct BatchFramingTests {
+    @Test func distinctArtworkCropsRenderAndPersistIndependently() throws {
+        let tool = MockupPlacementTests()
+        let screen = tool.layer("Poster Design (Smart Object)", left: 0, top: 0, w: 20, h: 20)
+        let doc = PsdDocument(width: 20, height: 20, layers: [screen])
+        let striped = tool.split(40, 20)
+        let left = BoardRect(x: 0, y: 0, w: 0.5, h: 1)
+        let right = BoardRect(x: 0.5, y: 0, w: 0.5, h: 1)
+        let red = MockupPlacement.place(striped, into: doc, mode: .fill, crop: left)!.layers[0].rgba
+        let blue = MockupPlacement.place(striped, into: doc, mode: .fill, crop: right)!.layers[0].rgba
+        let center = (10 * 20 + 10) * 4
+        #expect(red[center] > red[center + 2])
+        #expect(blue[center + 2] > blue[center])
+        var catalog = StudioCatalog()
+        let art1 = catalog.importFile(path: "/art-1.png")!, art2 = catalog.importFile(path: "/art-2.png")!
+        let mockup = catalog.importFile(path: "/mockup.psd")!
+        let a = catalog.addPlacedMockup(path: "/render-1.png", art: art1, mockup: mockup, resolution: "20 × 20",
+            recipe: PlacementRecipe(artID: art1, mockupID: mockup, layerName: "Poster Design", crop: left), stackOnArt: true)!
+        let b = catalog.addPlacedMockup(path: "/render-2.png", art: art2, mockup: mockup, resolution: "20 × 20",
+            recipe: PlacementRecipe(artID: art2, mockupID: mockup, layerName: "Poster Design", crop: right), stackOnArt: true)!
+        let decoded = StudioCatalog.decode(try catalog.encoded())!
+        #expect(decoded.assets.first { $0.id == a }?.placementRecipe?.crop == left)
+        #expect(decoded.assets.first { $0.id == b }?.placementRecipe?.crop == right)
+        #expect(decoded.assets.first { $0.id == a }?.stackID != decoded.assets.first { $0.id == b }?.stackID)
+    }
+}

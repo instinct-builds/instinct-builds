@@ -1223,11 +1223,12 @@ final class StudioLibrary: ObservableObject {
                 guard let current = catalog.assets.first(where: { $0.id == a.id }),
                       current.importedPath.map({ FileManager.default.fileExists(atPath: $0) }) ?? (current.sourceKey?.hasPrefix("generated:") == true),
                       let art = artPixels(current, maxPixel: 2400) else { continue }
+                let crop = mode == .fill ? state.crops[current.id] : nil
                 let image = await Task.detached(priority: .userInitiated) {
-                    Self.renderPlaced(art: art, doc: doc, layer: layer, mode: mode, crop: nil, background: bg)
+                    Self.renderPlaced(art: art, doc: doc, layer: layer, mode: mode, crop: crop, background: bg)
                 }.value
                 let recipe = PlacementRecipe(artID: current.id, mockupID: mockup.id, layerName: name, mode: mode,
-                                             background: state.background.rawValue)
+                                             crop: crop, background: state.background.rawValue)
                 if let image, let id = savePlaced(image, art: current, mockup: mockup, recipe: recipe, stackOnArt: true, undo: nil) { ids.append(id) }
             }
             if !ids.isEmpty { _ = history.record("Batch Place into Mockup", before: before, after: catalog) }
@@ -1239,7 +1240,7 @@ final class StudioLibrary: ObservableObject {
             if isDemo {
                 let recipes = ids.compactMap { id in catalog.assets.first { $0.id == id }?.placementRecipe }
                 let rights = ids.compactMap { id in catalog.assets.first { $0.id == id }?.rights }.count
-                try? "done placed=\(ids.count) recipes=\(recipes.count) rights=\(rights) unique-art=\(Set(recipes.map(\.artID)).count)".write(
+                try? "done placed=\(ids.count) recipes=\(recipes.count) rights=\(rights) unique-art=\(Set(recipes.map(\.artID)).count) cropped=\(recipes.filter { $0.crop != nil }.count)".write(
                     to: supportRoot.appendingPathComponent("demo-batch-place.txt"), atomically: true, encoding: .utf8)
             }
         }
@@ -1956,7 +1957,7 @@ final class StudioLibrary: ObservableObject {
                     psdToggled[a.id] = Set(flips)
                 }
             }
-        case "batch-place", "batch-place-results", "placement-presets":
+        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results":
             let starters = catalog.assets.filter(\.isStarter)
             let names = ["risograph-4k.png", "blueprint-4k.png", "ink-fiber-4k.png"]
             let art = names.compactMap { name in starters.first { $0.importedPath?.hasSuffix(name) == true } }
@@ -1975,7 +1976,13 @@ final class StudioLibrary: ObservableObject {
                             self.batchPlacement = active
                         }
                     }
-                    if demo == "batch-place-results", let state = self.batchPlacement { self.commitBatchPlacement(state) }
+                    if demo == "batch-crop" || demo == "batch-crop-results" {
+                        self.batchPlacement?.crops[art[0].id] = BoardRect(x: 0.18, y: 0.12, w: 0.5, h: 0.5)
+                        self.batchPlacement?.crops[art[1].id] = BoardRect(x: 0.05, y: 0.25, w: 0.7, h: 0.6)
+                    }
+                    if demo == "batch-place-results" || demo == "batch-crop-results", let state = self.batchPlacement {
+                        self.commitBatchPlacement(state)
+                    }
                 }
             }
         case "place-mockup", "place-all", "place-edit", "place-relink":
@@ -4330,12 +4337,16 @@ struct BatchPlaceState: Identifiable {
     var layer: Int?
     var mode: PlacementMode = .fill
     var background: PlaceBackground = .white
+    /// Artwork-specific framing; named presets only change the shared placement settings.
+    var crops: [UUID: BoardRect] = [:]
 }
 
 struct BatchPlaceSheet: View {
     @EnvironmentObject var model: StudioLibrary
     @State var state: BatchPlaceState
     @State private var previews: [UUID: CGImage] = [:]
+    @State private var sourceImages: [UUID: CGImage] = [:]
+    @State private var cropArt: StudioAsset?
     @State private var presetName = ""
     @State private var namingPreset = false
     @State private var presetIssue: String?
@@ -4343,7 +4354,13 @@ struct BatchPlaceSheet: View {
     private var doc: PsdDocument? { mockup.flatMap { model.psdDocument($0) } }
     private var layers: [Int] { doc.map { MockupPlacement.targetLayers($0) } ?? [] }
     private var layerIndex: Int? { state.layer ?? layers.first }
-    private var renderKey: String { "\(state.mockup)|\(layerIndex ?? -1)|\(state.mode.rawValue)|\(state.background.rawValue)" }
+    private var renderKey: String {
+        let crops = state.arts.map { id in
+            let c = state.crops[id]
+            return "\(id):\(c.map { "\($0.x),\($0.y),\($0.w),\($0.h)" } ?? "-")"
+        }.joined(separator: "|")
+        return "\(state.mockup)|\(layerIndex ?? -1)|\(state.mode.rawValue)|\(state.background.rawValue)|\(crops)"
+    }
     private var arts: [StudioAsset] { state.arts.compactMap { id in model.catalog.assets.first { $0.id == id } } }
 
     var body: some View {
@@ -4446,7 +4463,15 @@ struct BatchPlaceSheet: View {
                                     Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
                                 } else { ProgressView().controlSize(.small) }
                             }.frame(height: 135).clipShape(RoundedRectangle(cornerRadius: 8))
-                            Text(art.title).font(.caption.weight(.semibold)).lineLimit(1)
+                            HStack(spacing: 5) {
+                                Text(art.title).font(.caption.weight(.semibold)).lineLimit(1)
+                                Spacer(minLength: 0)
+                                Button { cropArt = art } label: {
+                                    Label(state.crops[art.id] == nil ? "Crop" : "Adjusted", systemImage: "crop.rotate")
+                                        .font(.caption2.weight(.semibold))
+                                }.buttonStyle(.borderless).disabled(layerIndex == nil || state.mode == .fit)
+                                    .help("Adjust the visible region for this artwork")
+                            }
                             Label(rightsLine(art), systemImage: art.rightsStatus().isProblem || art.rightsStatus() == .missing ? "exclamationmark.circle" : "checkmark.seal")
                                 .font(.caption2).foregroundStyle(art.rightsStatus().isProblem || art.rightsStatus() == .missing ? Theme.warning : .secondary)
                                 .lineLimit(1)
@@ -4457,6 +4482,13 @@ struct BatchPlaceSheet: View {
                 }
                 .padding(2)
             }.frame(height: 408)
+            .popover(item: $cropArt) { art in
+                BatchArtCropper(art: art, image: sourceImages[art.id], mode: state.mode,
+                    areaAspect: designAspect, crop: Binding(
+                        get: { state.crops[art.id] },
+                        set: { state.crops[art.id] = $0 }))
+                    .environment(\.colorScheme, .dark)
+            }
             HStack {
                 Button("Cancel") { model.batchPlacement = nil }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -4467,12 +4499,23 @@ struct BatchPlaceSheet: View {
         }
         .padding(20).frame(width: 900).background(Theme.backdrop)
         .environment(\.colorScheme, .dark)
-        .task(id: renderKey) { await makePreviews() }
+        .task(id: renderKey) {
+            await makePreviews()
+            if ProcessInfo.processInfo.arguments.contains("batch-crop"), cropArt == nil {
+                cropArt = arts.first
+            }
+        }
         .alert("Save Placement Preset", isPresented: $namingPreset) {
             TextField("Preset name", text: $presetName)
             Button("Save") { model.saveBatchPlacementPreset(state, name: presetName) }
             Button("Cancel", role: .cancel) {}
         } message: { Text("Stores this mockup, design layer, mode and background for future batches. A name already in use is updated.") }
+    }
+
+    private var designAspect: Double {
+        guard let d = doc, let i = layerIndex, d.layers.indices.contains(i),
+              let q = MockupPlacement.quad(of: d.layers[i]) else { return 1 }
+        return q.aspect
     }
 
     private func rightsLine(_ art: StudioAsset) -> String {
@@ -4497,13 +4540,87 @@ struct BatchPlaceSheet: View {
         let layer = layerIndex, mode = state.mode, bg = state.background.rgb
         for art in arts {
             guard !Task.isCancelled else { return }
-            guard let pixels = model.artPixels(art, maxPixel: 340) else { continue }
+            guard let pixels = model.artPixels(art, maxPixel: 480) else { continue }
+            if let source = MediaRenderer.cgImage(pixels) { sourceImages[art.id] = source }
+            let crop = mode == .fill ? state.crops[art.id] : nil
             let result = await Task.detached(priority: .userInitiated) {
-                StudioLibrary.renderPlaced(art: pixels, doc: doc, layer: layer, mode: mode, crop: nil, background: bg)
+                StudioLibrary.renderPlaced(art: pixels, doc: doc, layer: layer, mode: mode, crop: crop, background: bg)
             }.value
             guard !Task.isCancelled else { return }
             if let result, let image = MediaRenderer.cgImage(result, maxPixel: 360) { previews[art.id] = image }
         }
+    }
+}
+
+/// Per-art framing in the batch. The white outline is the visible design region; moving and
+/// resizing it updates only this artwork, while the preset's layer, mode and background stay shared.
+struct BatchArtCropper: View {
+    let art: StudioAsset
+    let image: CGImage?
+    let mode: PlacementMode
+    let areaAspect: Double
+    @Binding var crop: BoardRect?
+    @State private var dragStart: BoardRect?
+    private let canvas = CGSize(width: 320, height: 250)
+
+    private var artAspect: Double { guard let image else { return 1 }; return Double(image.width) / Double(max(1, image.height)) }
+    private var box: CGSize {
+        let aspect = CGFloat(artAspect)
+        return aspect > canvas.width / canvas.height
+            ? CGSize(width: canvas.width, height: canvas.width / aspect)
+            : CGSize(width: canvas.height * aspect, height: canvas.height)
+    }
+    private var region: BoardRect { MockupPlacement.region(mode: mode, artAspect: artAspect, areaAspect: areaAspect, crop: crop) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Frame artwork", systemImage: "crop.rotate").font(.headline)
+                Spacer()
+                Button("Reset") { crop = nil }.disabled(crop == nil).buttonStyle(.borderless)
+            }
+            Text(art.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            ZStack { artCropper.frame(width: canvas.width, height: canvas.height) }
+                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
+            Text("Drag the frame to move it; drag the corner to zoom. This crop saves with this artwork's editable placement.")
+                .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16).frame(width: 352).background(Theme.backdrop)
+    }
+
+    private var artCropper: some View {
+        let b = box, r0 = region
+        let x0 = max(0, r0.x), y0 = max(0, r0.y), x1 = min(1, r0.x + r0.w), y1 = min(1, r0.y + r0.h)
+        let r = CGRect(x: x0 * b.width, y: y0 * b.height, width: max(0, x1 - x0) * b.width, height: max(0, y1 - y0) * b.height)
+        return ZStack(alignment: .topLeading) {
+            if let image { Image(decorative: image, scale: 1).resizable().interpolation(.high).frame(width: b.width, height: b.height) }
+            Group {
+                Rectangle().frame(width: b.width, height: r.minY)
+                Rectangle().frame(width: b.width, height: max(0, b.height - r.maxY)).offset(y: r.maxY)
+                Rectangle().frame(width: r.minX, height: r.height).offset(y: r.minY)
+                Rectangle().frame(width: max(0, b.width - r.maxX), height: r.height).offset(x: r.maxX, y: r.minY)
+            }.foregroundStyle(Color.black.opacity(0.62)).allowsHitTesting(false)
+            Rectangle().stroke(.white, lineWidth: 1.5).frame(width: r.width, height: r.height)
+                .offset(x: r.minX, y: r.minY).contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 1).onChanged { value in
+                    let start = dragStart ?? r0; if dragStart == nil { dragStart = start }
+                    var next = start
+                    next.x = min(1 - next.w, max(0, start.x + Double(value.translation.width / b.width)))
+                    next.y = min(1 - next.h, max(0, start.y + Double(value.translation.height / b.height)))
+                    crop = next
+                }.onEnded { _ in dragStart = nil })
+            RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 13, height: 13)
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(.white, lineWidth: 1.5))
+                .offset(x: r.maxX - 6.5, y: r.maxY - 6.5)
+                .gesture(DragGesture(minimumDistance: 1).onChanged { value in
+                    let start = dragStart ?? r0; if dragStart == nil { dragStart = start }
+                    let scale = max(0.1, min((1 - start.x) / start.w, (1 - start.y) / start.h,
+                        1 + Double(value.translation.width / b.width) / start.w))
+                    crop = BoardRect(x: start.x, y: start.y, w: start.w * scale, h: start.h * scale)
+                }.onEnded { _ in dragStart = nil }).help("Drag to zoom")
+        }
+        .frame(width: b.width, height: b.height).clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.hairline))
     }
 }
 

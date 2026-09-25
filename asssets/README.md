@@ -851,3 +851,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Save a named batch placement setup: the exact library mockup, named design layer, Fill/Fit mode and background. Select two or more artworks later, open Batch Place into Mockup and choose a preset to populate the sheet and preview grid. Presets store no artwork, so each batch keeps the current selection and each art's own rights.
 - Named presets live in the catalog across launches. Saving under an existing case-insensitive name updates it, and Manage can delete presets; both are undoable. A removed/moved mockup or renamed layer does not silently switch sources: the sheet shows the problem and keeps current settings until the mockup is located or a fresh preset is saved.
 - Core logic and persistence tests live in `MockupPlacement.swift`, `Studio.swift` and `MockupPlacementTests.swift`.
+
+## 1.33.0: per-art batch framing
+
+- Each artwork in Batch Place has its own Crop control. Drag the outlined visible region to move it or its corner to zoom; the mockup preview rerenders that artwork with its framing. Reset returns to the automatic center crop. In Fit, the whole art is shown, so the Crop control is disabled and no crop is saved.
+- Per-art crops persist in the new render's editable placement recipe. The named preset still sets only the shared mockup, layer, Fill/Fit and background; choosing one leaves each artwork's framing and rights intact. The 1.33 native proof includes two distinct adjusted artworks and the results, while the plain batch demo checks the no-crop path.
