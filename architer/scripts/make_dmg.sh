@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 APP=ARCHITER
 PRODUCT=architer
-VERSION=${VERSION:-3.3.1}
+VERSION=${VERSION:-3.4.0}
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 APP_DIR="$STAGE/$APP.app"

@@ -39,7 +39,8 @@ public struct DiceRollerView: View {
                 initialStarredOnly: Bool = false, initialHistoryFilter: String = "",
                 initialSavingFilterPreset: Bool = false,
                 initialFilterPresetNameDraft: String = "",
-                initialConfirmingFilteredDelete: Bool = false) {
+                initialConfirmingFilteredDelete: Bool = false,
+                initialConfirmingClearAll: Bool = false) {
         _historyLatestSession = State(initialValue: initialLatestSession)
         _historyCritsOnly = State(initialValue: initialCritsOnly)
         _historyStarredOnly = State(initialValue: initialStarredOnly)
@@ -47,6 +48,7 @@ public struct DiceRollerView: View {
         _savingFilterPreset = State(initialValue: initialSavingFilterPreset)
         _filterPresetNameDraft = State(initialValue: initialFilterPresetNameDraft)
         _confirmingFilteredDelete = State(initialValue: initialConfirmingFilteredDelete)
+        _confirmingClearAll = State(initialValue: initialConfirmingClearAll)
     }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
@@ -79,6 +81,10 @@ public struct DiceRollerView: View {
     /// Filtered-delete confirm (3.3.0): true while the bar asks before
     /// removing the filter-visible subset; Undo restores it.
     @State private var confirmingFilteredDelete = false
+    /// Clear-all confirm (3.4.0): true while the bar asks before
+    /// emptying the whole log; Clear has no undo - the confirm
+    /// carries the weight.
+    @State private var confirmingClearAll = false
 
     private var visibleHistory: [RollResult] {
         let name = historyForCharacter ? model.selected?.wrappedValue.name : nil
@@ -245,7 +251,8 @@ public struct DiceRollerView: View {
                 // wraps; the naming controls take the space instead.
                 // 3.3.1: the same collapse while the filtered-delete
                 // confirm is open - the confirm controls take the space.
-                if !savingFilterPreset && !confirmingFilteredDelete {
+                // 3.4.0: and while the Clear-all confirm is open.
+                if !savingFilterPreset && !confirmingFilteredDelete && !confirmingClearAll {
                     // 2.97.0: the button says when the filter narrows what it
                     // copies - the journal's explicit Copy filtered (2.63.0)
                     // sets the precedent; the action already rides
@@ -268,7 +275,7 @@ public struct DiceRollerView: View {
                 // 2.99.0: file the filtered subset into the journal as
                 // one digest entry titled with the query - the filter
                 // view's counterpart of Digest starred.
-                if !savingFilterPreset,
+                if !savingFilterPreset && !confirmingClearAll,
                    !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
                     // 3.3.1: Digest/Export collapse while the delete
                     // confirm is open - the confirm controls take the
@@ -317,7 +324,8 @@ public struct DiceRollerView: View {
                 }
                 // 2.85.0: the highlight reel - visible only while stars exist.
                 // 3.0.1: also hidden while the preset naming form is open.
-                if !savingFilterPreset && !model.rollHistory.starredRolls.isEmpty {
+                // 3.4.0: and while the Clear-all confirm is open.
+                if !savingFilterPreset && !confirmingClearAll && !model.rollHistory.starredRolls.isEmpty {
                     // 3.2.0: with the filter cluster also in the bar the
                     // four star actions collapse into one menu so the
                     // bar stays on one line; without a filter they keep
@@ -356,7 +364,28 @@ public struct DiceRollerView: View {
                             .help("Add the starred rolls to the journal as one entry")
                     }
                 }
-                Button("Clear") { model.clearRollHistory() }.controlSize(.small)
+                // 3.4.0: confirm parity - Clear asks inline before
+                // emptying the whole log, the same idiom as Delete
+                // filtered (3.3.0). Unlike the filtered delete, Clear
+                // has no undo; the confirm carries the weight.
+                if confirmingClearAll {
+                    Text("Clear all \(model.rollHistory.count) rolls?")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                    Button("Clear") {
+                        model.clearRollHistory()
+                        confirmingClearAll = false
+                    }
+                    .controlSize(.small)
+                    .help("Empty the roll history - this cannot be undone")
+                    Button("Cancel") { confirmingClearAll = false }
+                        .controlSize(.small)
+                } else {
+                    Button("Clear") { confirmingClearAll = true }
+                        .controlSize(.small)
+                        .disabled(model.rollHistory.isEmpty)
+                        .help("Empty the roll history, behind a confirm")
+                }
             }
             HistoryListView(rolls: visibleHistory)
         }

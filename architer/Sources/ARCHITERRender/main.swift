@@ -818,6 +818,14 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-delete", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.4.0 render: the Clear-all confirm - "Clear all 13 rolls?" with
+    // Clear/Cancel, the Copy/Digest/star clusters collapsed for space.
+    renderPNG(
+        DiceRollerView(initialConfirmingClearAll: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-clear-confirm", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 proof: the model cycle end to end - delete the filtered
     // subset, then the one undo step restores the full log. Runs last
     // so every earlier proof's counts stay stable.
