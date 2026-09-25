@@ -963,6 +963,28 @@ struct SessionSegmentTests {
         #expect(log.togglingStar(on: absent) == log)
     }
 
+    // 2.85.0: the starred share text heads with the count and lists the
+    /// starred rolls oldest first; an unstarred log still heads honestly.
+    @Test func starredShareTextCountsAndLists() throws {
+        let t = try #require(ISO8601DateFormatter().date(from: "2026-09-24T20:00:00Z"))
+        var a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 20, kept: true)],
+                           modifier: 0, total: 20, alternateTotal: nil)
+        a.label = "Death save"
+        a.rolledAt = t
+        a.starred = true
+        let b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        let text = [a, b].starredShareText
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        #expect(lines.count == 2)
+        #expect(lines[0] == "Starred rolls (1)")
+        #expect(lines[1].contains("Death save"))
+        #expect(!text.contains("2d6"))
+        #expect([b].starredShareText.hasPrefix("Starred rolls (0)"))
+    }
+
     // 2.71.0: noted() carries the session note; blank clears it. The
     // note rides the copy text under the stats line and follows its
     // session's name into export headers in parentheses.

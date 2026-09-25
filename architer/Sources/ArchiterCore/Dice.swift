@@ -697,6 +697,13 @@ public extension Array where Element == RollResult {
         filter { $0.starred == true }
     }
 
+    /// Share text for the starred rolls (2.85.0): a one-line header so
+    /// the paste says what it is, then the starred rolls oldest first.
+    var starredShareText: String {
+        let starred = starredRolls
+        return "Starred rolls (\(starred.count))\n" + starred.historyText
+    }
+
     /// The log with the first entry equal to `roll`'s star flipped
     /// (2.84.0). nil and false both read as unstarred; toggling a
     /// starred roll clears back to nil so saved logs stay lean.

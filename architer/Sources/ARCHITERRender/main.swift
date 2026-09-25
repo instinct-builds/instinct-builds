@@ -574,6 +574,19 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-star", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.85.0 proof: copy starred - the exact paste the Copy starred
+    // button produces for the one starred roll.
+    let starredCopyLines = ["Copy starred (2.85.0)", "",
+                            model.rollHistory.starredShareText]
+    try? starredCopyLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/starred-copy.txt"),
+               atomically: true, encoding: .utf8)
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-starred-copy", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

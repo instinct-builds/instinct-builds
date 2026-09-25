@@ -189,6 +189,12 @@ public struct DiceRollerView: View {
                     .controlSize(.small)
                     .disabled(visibleHistory.isEmpty)
                     .help("Copy the shown rolls (scope and filter applied) as text, oldest first")
+                // 2.85.0: the highlight reel - visible only while stars exist.
+                if !model.rollHistory.starredRolls.isEmpty {
+                    Button("Copy starred") { model.copyStarredToPasteboard() }
+                        .controlSize(.small)
+                        .help("Copy just the starred rolls as text, oldest first")
+                }
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }
             HistoryListView(rolls: visibleHistory)

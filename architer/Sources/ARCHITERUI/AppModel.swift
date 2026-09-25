@@ -310,6 +310,14 @@ public final class AppModel: ObservableObject {
         pb.setString(rolls.historyText, forType: .string)
     }
 
+    /// Copy the starred rolls (2.85.0): the night's highlight reel,
+    /// oldest first, with a header so the paste says what it is.
+    public func copyStarredToPasteboard() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(rollHistory.starredShareText, forType: .string)
+    }
+
     /// Copy one roll (2.83.0): the roll's own history line, for sharing
     /// the moment without copying a whole session.
     public func copyRollToPasteboard(_ roll: RollResult) {
