@@ -733,6 +733,14 @@ public struct FilterPreset: Equatable, Codable, Sendable {
     }
 }
 
+/// Why a preset name can't be used (3.7.0).
+public enum FilterPresetNameIssue: Equatable, Sendable {
+    /// The trimmed name is empty.
+    case blank
+    /// Another preset already owns the name; carries its actual name.
+    case taken(String)
+}
+
 public extension Array where Element == FilterPreset {
     /// Insert the preset, replacing an existing one with the same name
     /// (any case) in place so the menu keeps its order.
@@ -751,6 +759,26 @@ public extension Array where Element == FilterPreset {
     /// The preset saved under `name`, matching any case.
     func preset(named name: String) -> FilterPreset? {
         first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// The issue with saving a preset under `name` (3.7.0), ignoring
+    /// the preset named `replacing` (any case) so a rename onto its
+    /// own name passes. Nil means the name is usable.
+    func nameIssue(_ name: String, replacing: String? = nil) -> FilterPresetNameIssue? {
+        let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return .blank }
+        if let existing = first(where: {
+            guard $0.name.caseInsensitiveCompare(t) == .orderedSame
+            else { return false }
+            if let replacing,
+               $0.name.caseInsensitiveCompare(replacing) == .orderedSame {
+                return false
+            }
+            return true
+        }) {
+            return .taken(existing.name)
+        }
+        return nil
     }
 
     /// Rename the preset saved under `from` (any case) to `to`, keeping

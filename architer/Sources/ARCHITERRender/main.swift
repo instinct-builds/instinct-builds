@@ -830,6 +830,47 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-preset-rename", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.7.0 proof: the preset forms say why they stay open - the txt
+    // records the nameIssue for blank, clashing, own-name, and fresh
+    // names; the render opens the rename form with a clashing draft,
+    // the hint inline and Rename disabled.
+    do {
+        func issueLine(_ label: String, _ issue: FilterPresetNameIssue?) -> String {
+            let desc: String
+            if let issue {
+                switch issue {
+                case .blank:
+                    desc = "blank - hint shown, button disabled"
+                case .taken(let name):
+                    desc = "taken by \"\(name)\" - hint shown, button disabled"
+                }
+            } else {
+                desc = "usable"
+            }
+            return label + " -> " + desc
+        }
+        let lines = ["Preset form hints (3.7.0)",
+                     issueLine("rename \"Bridge checks\" to blank",
+                               model.filterPresets.nameIssue("  ", replacing: "Bridge checks")),
+                     issueLine("rename \"Bridge checks\" to \"Fire damage\"",
+                               model.filterPresets.nameIssue("Fire damage", replacing: "Bridge checks")),
+                     issueLine("rename \"Bridge checks\" to \"BRIDGE CHECKS\"",
+                               model.filterPresets.nameIssue("BRIDGE CHECKS", replacing: "Bridge checks")),
+                     issueLine("rename \"Bridge checks\" to \"Trail checks\"",
+                               model.filterPresets.nameIssue("Trail checks", replacing: "Bridge checks")),
+                     issueLine("save under \"Fire damage\" (existing)",
+                               model.filterPresets.nameIssue("Fire damage"))]
+        try? lines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-preset-hints.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialRenamingPresetOriginal: "Bridge checks",
+                       initialRenamePresetDraft: "Fire damage")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-preset-hint", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(

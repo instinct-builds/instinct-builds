@@ -239,6 +239,9 @@ public struct DiceRollerView: View {
                     TextField("Preset name", text: $filterPresetNameDraft)
                         .textFieldStyle(InsetFieldStyle())
                         .frame(maxWidth: 120)
+                    // 3.7.0: the form says why it stays open - a blank
+                    // name disables Save; an existing name notes the
+                    // replace instead of overwriting silently.
                     Button("Save") {
                         if model.saveFilterPreset(name: filterPresetNameDraft,
                                                   query: historyFilter) {
@@ -246,23 +249,42 @@ public struct DiceRollerView: View {
                         }
                     }
                     .controlSize(.small)
+                    .disabled(model.filterPresets.nameIssue(filterPresetNameDraft) == .blank)
                     .help("Save the current filter under this name")
                     Button("Cancel") { savingFilterPreset = false }
                         .controlSize(.small)
+                    if model.filterPresets.nameIssue(filterPresetNameDraft) == .blank {
+                        Text("Enter a preset name.")
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                    } else if let existing = model.filterPresets.preset(named: filterPresetNameDraft) {
+                        Text("Replaces \"\(existing.name)\".")
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                    }
                 }
                 if let original = renamingPresetOriginal {
                     TextField("New preset name", text: $renamePresetDraft)
                         .textFieldStyle(InsetFieldStyle())
                         .frame(maxWidth: 120)
+                    // 3.7.0: a rejected rename (blank, or clashing with
+                    // another preset) says so inline and disables
+                    // Rename instead of silently staying open.
                     Button("Rename") {
                         if model.renameFilterPreset(from: original, to: renamePresetDraft) {
                             renamingPresetOriginal = nil
                         }
                     }
                     .controlSize(.small)
+                    .disabled(model.filterPresets.nameIssue(renamePresetDraft, replacing: original) != nil)
                     .help("Rename the preset, keeping its filter")
                     Button("Cancel") { renamingPresetOriginal = nil }
                         .controlSize(.small)
+                    if let issue = model.filterPresets.nameIssue(renamePresetDraft, replacing: original) {
+                        Text(presetNameIssueMessage(issue))
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                    }
                 }
                 if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text("\(visibleHistory.count) of \(model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)")
@@ -948,6 +970,16 @@ struct RollCard: View {
             .foregroundStyle(die.kept ? Theme.ink : Theme.inkFaint)
             .strikethrough(!die.kept)
             .help("d\(die.sides)\(die.kept ? "" : " (dropped)")")
+    }
+}
+
+/// 3.7.0: the inline reason a preset name can't be used.
+private func presetNameIssueMessage(_ issue: FilterPresetNameIssue) -> String {
+    switch issue {
+    case .blank:
+        return "Enter a preset name."
+    case .taken(let name):
+        return "\"\(name)\" is already saved."
     }
 }
 #endif

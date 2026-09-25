@@ -1457,6 +1457,17 @@ struct FilterPresetTests {
         #expect(recased[0].name == "FIRE")
     }
 
+    @Test func nameIssueFlagsBlankTakenAndUsableNames() throws {
+        let fire = try #require(FilterPreset(name: "Fire", query: "fire"))
+        let bridge = try #require(FilterPreset(name: "Bridge", query: "bridge"))
+        let list = [fire, bridge]
+        #expect(list.nameIssue("  ") == .blank)
+        #expect(list.nameIssue("fire") == .taken("Fire"))
+        #expect(list.nameIssue("fire", replacing: "Fire") == nil)
+        #expect(list.nameIssue("Bridge", replacing: "Fire") == .taken("Bridge"))
+        #expect(list.nameIssue("New", replacing: "Fire") == nil)
+    }
+
     @Test func renamedRejectsBlankMissingAndClashingNames() throws {
         let fire = try #require(FilterPreset(name: "Fire", query: "fire"))
         let bridge = try #require(FilterPreset(name: "Bridge", query: "bridge"))
