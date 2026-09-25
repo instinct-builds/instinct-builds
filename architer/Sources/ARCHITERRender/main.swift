@@ -611,14 +611,19 @@ func run(model: AppModel, character: Character, outDir: String) {
     // 2.87.0 proof: session stars - one tap on the divider stars every
     // roll in the newest session; rolls outside it stay unstarred.
     if let topSession = model.namedSessions(model.rollHistory).first {
+        // Capture the outside set BEFORE toggling: RollResult equality
+        // includes the star, so post-star rolls no longer match their
+        // pre-star copies inside topSession.rolls.
+        let outsideRolls = model.rollHistory.filter { !topSession.rolls.contains($0) }
         model.toggleSessionStars(topSession)
         let outsideStarred = model.rollHistory.filter {
-            !topSession.rolls.contains($0) && $0.starred == true
+            outsideRolls.contains($0) && $0.starred == true
         }.count
         let sessionStarLines = ["Session stars (2.87.0)", "",
                                 "session: \(topSession.title)",
                                 "rolls in session: \(topSession.rolls.count)",
                                 "starred after one tap: \(model.rollHistory.starredRolls.count)",
+                                "rolls outside session: \(outsideRolls.count)",
                                 "starred outside session: \(outsideStarred)"]
         try? sessionStarLines.joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/session-star.txt"),
