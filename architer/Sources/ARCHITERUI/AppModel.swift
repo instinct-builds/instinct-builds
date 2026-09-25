@@ -392,6 +392,14 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 2.87.0: star a whole session from its divider - or clear its
+    /// stars when they are all set. Bulk curation: "that whole fight
+    /// was the night."
+    public func toggleSessionStars(_ session: RollSession) {
+        rollHistory = rollHistory.togglingStars(on: session.rolls)
+        rollHistoryStore.save(rollHistory)
+    }
+
     /// 2.82.0: rename a roll's label in place; blank restores the raw
     /// expression as the card's title.
     public func renameRoll(_ roll: RollResult, to label: String) {

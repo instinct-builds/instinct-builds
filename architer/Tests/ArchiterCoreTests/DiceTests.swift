@@ -984,6 +984,33 @@ struct SessionSegmentTests {
         #expect([RollResult]().clearingStars().isEmpty)
     }
 
+    // 2.87.0: togglingStars stars every listed roll, leaves the rest
+    /// untouched, and toggles back to nil when all are already starred.
+    @Test func togglingStarsSessionWide() {
+        let a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 20, kept: true)],
+                           modifier: 0, total: 20, alternateTotal: nil)
+        let b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        let c = RollResult(expression: "d8",
+                           dice: [DieResult(sides: 8, value: 3, kept: true)],
+                           modifier: 0, total: 3, alternateTotal: nil)
+        let log = [a, b, c]
+        let starred = log.togglingStars(on: [a, b])
+        #expect(starred[0].starred == true)
+        #expect(starred[1].starred == true)
+        #expect(starred[2].starred == nil)
+        #expect(starred.starredRolls.count == 2)
+        let cleared = starred.togglingStars(on: [starred[0], starred[1]])
+        #expect(cleared.allSatisfy { $0.starred == nil })
+        var d = c
+        d.starred = true
+        let mixed = [a, d].togglingStars(on: [a, d])
+        #expect(mixed.allSatisfy { $0.starred == true })
+        #expect(log.togglingStars(on: []) == log)
+    }
+
     // 2.85.0: the starred share text heads with the count and lists the
     /// starred rolls oldest first; an unstarred log still heads honestly.
     @Test func starredShareTextCountsAndLists() throws {

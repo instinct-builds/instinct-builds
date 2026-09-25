@@ -398,6 +398,17 @@ public struct HistoryListView: View {
                                         .foregroundStyle(Theme.inkFaint)
                                         .help("Copy this day's rolls as text")
                                 }
+                                // 2.87.0: star the whole session from its
+                                // divider - the bulk version of a card's
+                                // star. Filled once every roll is starred;
+                                // a tap then clears them all.
+                                let sessionStarred = !session.rolls.isEmpty
+                                    && session.rolls.allSatisfy { $0.starred == true }
+                                Button { model.toggleSessionStars(session) }
+                                    label: { Image(systemName: sessionStarred ? "star.fill" : "star") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(sessionStarred ? Theme.accent : Theme.inkFaint)
+                                    .help(sessionStarred ? "Unstar every roll in this session" : "Star every roll in this session")
                                 // 2.70.0: copy the session as plain
                                 // text - title, stats line, rolls.
                                 Button { model.copySessionToPasteboard(session) }

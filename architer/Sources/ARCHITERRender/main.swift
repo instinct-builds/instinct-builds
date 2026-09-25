@@ -608,6 +608,28 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-unstar-all", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.87.0 proof: session stars - one tap on the divider stars every
+    // roll in the newest session; rolls outside it stay unstarred.
+    if let topSession = model.namedSessions(model.rollHistory).first {
+        model.toggleSessionStars(topSession)
+        let outsideStarred = model.rollHistory.filter {
+            !topSession.rolls.contains($0) && $0.starred == true
+        }.count
+        let sessionStarLines = ["Session stars (2.87.0)", "",
+                                "session: \(topSession.title)",
+                                "rolls in session: \(topSession.rolls.count)",
+                                "starred after one tap: \(model.rollHistory.starredRolls.count)",
+                                "starred outside session: \(outsideStarred)"]
+        try? sessionStarLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/session-star.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-session-star", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -726,6 +726,21 @@ public extension Array where Element == RollResult {
         }
     }
 
+    /// The log with every roll in `sessionRolls` starred - or cleared
+    /// back to nil when they all already are (2.87.0): bulk curation
+    /// from the session divider, the whole-fight version of a card's
+    /// star. Matching is by value, like togglingStar.
+    func togglingStars(on sessionRolls: [RollResult]) -> [RollResult] {
+        let allStarred = !sessionRolls.isEmpty
+            && sessionRolls.allSatisfy { $0.starred == true }
+        return map { roll in
+            guard sessionRolls.contains(roll) else { return roll }
+            var copy = roll
+            copy.starred = allStarred ? nil : true
+            return copy
+        }
+    }
+
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }
