@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1; wtProfileBlend = 1; wtProfilePreview = false; wtProfileCreate = false;
+        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1; wtProfileBlend = 1; wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; wtProfileSpanAnchor = -1;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -137,7 +137,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
-    if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; } // a different sound starts on page 1, with no table history
+    if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; } // a different sound starts on page 1, with no table history
     current = p;
     currentIndex = index;
     edited = wasEdited;
@@ -160,7 +160,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     currentIndex = i;
     current = lib.at(i);
     matrixPage = 0;
-    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; // 0.32.0: undo never crosses into another preset
+    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; // 0.32.0: undo never crosses into another preset
     wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
     wtCmpSnap[0] = wtCmpSnap[1] = false; // 0.36.0: a new sound drops any SNAP
     for (int o = 0; o < 2; ++o) {
@@ -1137,10 +1137,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             if (h > kEditablePartials) continue;
             const double v = dbh(peak > 0 ? std::abs(specAfter[h]) / peak : 0), o = dbh(peak > 0 ? std::abs(specBefore[h]) / peak : 0);
             const CGFloat x = spectrum.origin.x + k * bw;
+            if (wtPartialLarge && wtProfile.valid && wtProfile.includes(h))
+                FillRound(NSMakeRect(x, spectrum.origin.y, bw, barTop + 1), 1, C(0xf2b65c, .10));
             if (wtPartial == h) FillRound(NSMakeRect(x, spectrum.origin.y, bw, barTop + 1), 1, C(0x5adac8, .18));
             FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), 1), 0, C(0x1b222c));
             if (v > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), std::max<CGFloat>(1.5, barTop * v)), 1, [col colorWithAlphaComponent:.35 + .55 * v]);
             if (changed && o > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * o - .5, std::max<CGFloat>(1, bw - 1), 1.2), 0, C(0x8793a3));
+            if (wtPartialLarge && wtProfile.valid && wtProfilePreview && wtProfile.includes(h)) {
+                // Source profile as amber ticks, destination as pale ticks, proposed blend as solid bars.
+                const double src = dbh(wtProfile.ratio[h]);
+                if (src > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * src - .5,
+                    std::max<CGFloat>(1, bw - 1), 1.4), 0, C(0xf2b65c, .95));
+            }
             if (showBrushBase && brushPeak > 0 && std::isfinite(wtBrush.targetDb[h])) {
                 const double original = dbh(std::abs(brushBefore[h]) / brushPeak);
                 FillRound(NSMakeRect(x, spectrum.origin.y + barTop * original - .75,
@@ -1158,8 +1166,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                       3, wtRange.active((int)t.size()) ? C(0xddeff0) : C(0x697683));
             TextA([NSString stringWithFormat:@"%.0f%%", wtBrushTaper * 100], NSMakeRect(NSMaxX(taper) + 3, taper.origin.y - 2, 32, 10),
                   6.5, wtRange.active((int)t.size()) ? col : C(0x697683), NSFontWeightBold, NSTextAlignmentRight);
-            TextA(@"OPTION-DRAG TO PAINT", NSMakeRect(pv.origin.x + 104, NSMaxY(pv) - 27, 85, 9),
-                  5.9, C(0x8b9a9f), NSFontWeightSemibold, NSTextAlignmentRight);
+            TextA(wtProfile.valid ? [NSString stringWithFormat:@"SPAN H%d-%d", wtProfile.firstH, wtProfile.lastH]
+                  : @"SHIFT-DRAG SPAN", NSMakeRect(pv.origin.x + 98, NSMaxY(pv) - 27, 91, 9),
+                  6.2, wtProfile.valid ? C(0xf2b65c) : C(0x8b9a9f), NSFontWeightSemibold, NSTextAlignmentRight);
             for (int i = 0; i < 4; ++i) {
                 const NSRect b = [self wtPartialPageRect:i];
                 FillRound(b, 3, i == wtPartialPage ? [col colorWithAlphaComponent:.26] : C(0x1d2830));
@@ -3364,8 +3373,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
 - (NSString*)muewProfileText {
-    return [NSString stringWithFormat:@"valid=%d source=%d preview=%d create=%d blend=%.2f",
-        wtProfile.valid, wtProfile.sourceFrame + 1, wtProfilePreview, wtProfileCreate, wtProfileBlend];
+    return [NSString stringWithFormat:@"valid=%d source=%d preview=%d create=%d blend=%.2f span=%d-%d",
+        wtProfile.valid, wtProfile.sourceFrame + 1, wtProfilePreview, wtProfileCreate, wtProfileBlend,
+        wtProfile.firstH, wtProfile.lastH];
 }
 - (NSString*)muewBrushTaperText {
     return [NSString stringWithFormat:@"edge=%.2f", wtBrushTaper];
@@ -3497,6 +3507,12 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
                 if (NSPointInRect(p, [self wtPartialPageRect:i])) { wtPartialPage = i; wtPartial = partialPageStart(i); [self setNeedsDisplay:YES]; return; }
             const NSRect big = [self wtPartialLargeArea];
             if (NSPointInRect(p, big)) {
+                if (wtProfile.valid && (event.modifierFlags & NSEventModifierFlagShift)) {
+                    wtProfileSpanSelecting = true;
+                    wtProfileSpanAnchor = [self wtBrushH:p];
+                    wtProfile.span(wtProfileSpanAnchor, wtProfileSpanAnchor);
+                    [self setNeedsDisplay:YES]; return;
+                }
                 if (event.modifierFlags & NSEventModifierFlagOption) {
                     wtBrushActive = true; wtBrushChanged = false; wtBrushLastH = -1;
                     wtBrushBase = t; wtBrush.clear(); [self wtBrushTo:p];
@@ -4049,6 +4065,9 @@ static int SortForColumn(int c) {
 - (void)mouseDragged:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
+    if (wtProfileSpanSelecting && wtProfile.valid) {
+        wtProfile.span(wtProfileSpanAnchor, [self wtBrushH:p]); [self setNeedsDisplay:YES]; return;
+    }
     if (wtTaperDrag >= 0) { [self wtTaperTo:p]; return; }
     if (wtBrushActive) { [self wtBrushTo:p]; return; }
     if (wtDrawing && wtEdit >= 0) { [self tableStrokeTo:p first:NO]; return; }
@@ -4160,6 +4179,7 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseUp:(NSEvent*)e {
+    if (wtProfileSpanSelecting) { wtProfileSpanSelecting = false; [self setNeedsDisplay:YES]; return; }
     if (wtTaperDrag >= 0) { wtTaperDrag = -1; return; }
     if (wtBrushActive) { [self wtBrushEnd]; return; }
     if (wtDrawing) { wtDrawing = false; [self applySound]; } // one engine update per stroke

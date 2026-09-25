@@ -331,3 +331,15 @@ explicitly armed, in which case new harmonics use a predictable sine phase.
 SEED resets off after PASTE. COPY and PREVIEW are in-memory editor state, not
 part of the preset. One PASTE takes one undo step and stored sound state
 round-trips through existing presets.
+
+## 0.44.0 Harmonic-span spectral transfer
+
+After COPY, Shift-drag across the expanded SPEC bars to choose an inclusive
+harmonic span, across whichever page is open. The selected bins have a warm
+highlight and the H-first-to-last span appears above them. PREVIEW shows
+three readings together: amber source-profile ticks in the chosen span, pale
+destination ticks, and filled proposed result bars. Only the selected
+harmonics transfer on PASTE; every harmonic outside the span keeps its
+relative magnitude and phase. SEED remains the explicit gate for silent bins,
+BLEND scales the transfer, EDGE tapers a selected frame range, and the paste
+is one undo step. COPY resets the span to all 127 harmonics.

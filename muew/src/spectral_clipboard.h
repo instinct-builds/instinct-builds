@@ -8,6 +8,12 @@ struct SpectralClipboard {
     std::array<double, kEditablePartials + 1> ratio{};
     bool valid = false;
     int sourceFrame = -1;
+    int firstH = 1, lastH = kEditablePartials;
+    void span(int a, int b) {
+        firstH = std::clamp(std::min(a, b), 1, kEditablePartials);
+        lastH = std::clamp(std::max(a, b), 1, kEditablePartials);
+    }
+    bool includes(int h) const { return h >= firstH && h <= lastH; }
     bool capture(const Frame& f, int frame = -1) {
         if (f.size() != kFrameSize) return false;
         const auto s = frameSpectrum(f);
@@ -18,7 +24,7 @@ struct SpectralClipboard {
             ratio[h] = std::abs(s[h]) >= peak * 1e-7 ? std::abs(s[h]) / peak : 0;
         valid = true; sourceFrame = frame; return true;
     }
-    void clear() { valid = false; sourceFrame = -1; ratio.fill(0); }
+    void clear() { valid = false; sourceFrame = -1; firstH = 1; lastH = kEditablePartials; ratio.fill(0); }
 };
 inline bool applySpectralProfile(Frame& f, const SpectralClipboard& copy, double strength = 1,
                                  bool createSilent = false) {
@@ -31,6 +37,7 @@ inline bool applySpectralProfile(Frame& f, const SpectralClipboard& copy, double
     strength = std::clamp(strength, 0.0, 1.0);
     bool changed = false;
     for (int h = 1; h <= kEditablePartials; ++h) {
+        if (!copy.includes(h)) continue;
         double old = std::abs(original[h]), target = peak * copy.ratio[h];
         if (old < peak * 1e-7 && !createSilent) continue;
         if (target < peak * 1e-7) target = 0;

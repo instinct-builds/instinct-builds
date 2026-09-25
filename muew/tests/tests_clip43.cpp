@@ -30,5 +30,15 @@ int main(){
  TableHistory history;int frame=7;history.push(base,frame,"PROFILE RANGE");
  check(history.undoDepth()==1&&history.undo(table,frame)&&table==base&&history.redo(table,frame)&&table==replay,"one undo/redo for range paste");
  Preset preset;preset.voice.osc1Shape=kCustomShape;preset.tables[0]=table;Preset loaded;check(loaded.parse(preset.serialize())&&loaded.tables[0]==table,"profile result survives preset round-trip");
+ SpectralClipboard spanClip=clip;spanClip.span(4,8);Frame spanDest=dest;
+ check(applySpectralProfile(spanDest,spanClip,1),"selected harmonic span changes frame");
+ auto spanSpec=frameSpectrum(spanDest);auto baseSpec=frameSpectrum(dest);
+ double ratio=std::abs(spanSpec[1])/std::abs(baseSpec[1]);bool outsideRatios=true;
+ for(int h=1;h<=kEditablePartials;++h)if(h<4||h>8)
+   outsideRatios &= std::abs(spanSpec[h]-baseSpec[h]*ratio)<.003*std::max(1.0,std::abs(spanSpec[h]));
+ check(outsideRatios,"unselected harmonic ratios and phases remain unchanged");
+ check(spanClip.includes(4)&&spanClip.includes(8)&&!spanClip.includes(3)&&!spanClip.includes(9),"span bounds are inclusive");
+ spanClip.span(100,97);check(spanClip.firstH==97&&spanClip.lastH==100,"reverse drag resolves to ascending span");
+ spanClip.clear();check(spanClip.firstH==1&&spanClip.lastH==127,"clipboard reset restores full span");
  puts(failures?"CLIP43 FAILED":"ALL CLIP43 TESTS PASSED");return failures?1:0;
 }
