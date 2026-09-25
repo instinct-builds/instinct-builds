@@ -320,10 +320,13 @@ public struct DiceRollerView: View {
                 if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
                     // 3.11.0: when the filtered subset carries notes
                     // the count says how many, so a notes-hunt knows
-                    // there is something to find.
+                    // there is something to find. 3.13.0: the starred
+                    // count rides the same line, mirroring the notes.
                     let noted = visibleHistory.notedCount
+                    let starred = visibleHistory.starredCount
                     Text("\(visibleHistory.count) of \(model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)"
-                         + (noted > 0 ? ", \(noted) with notes" : ""))
+                         + (noted > 0 ? ", \(noted) with notes" : "")
+                         + (starred > 0 ? ", \(starred) starred" : ""))
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkMuted)
                 }

@@ -1435,6 +1435,19 @@ struct RollListNoteTests {
         #expect(list.notedCount == 1)
         #expect([RollResult]().notedCount == 0)
     }
+
+    @Test func starredCountCountsOnlyStarredRolls() throws {
+        func roll(_ starred: Bool) -> RollResult {
+            var r = RollResult(expression: "1d6", dice: [], modifier: 0,
+                               total: 3, alternateTotal: nil)
+            if starred { r.starred = true }
+            return r
+        }
+        // Cleared stars land on nil, not false - only true counts.
+        let list = [roll(false), roll(true), roll(true)]
+        #expect(list.starredCount == 2)
+        #expect([RollResult]().starredCount == 0)
+    }
 }
 
 struct FilterPresetTests {

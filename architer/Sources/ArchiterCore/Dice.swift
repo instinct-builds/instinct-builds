@@ -974,6 +974,12 @@ public extension Array where Element == RollResult {
         }.count
     }
 
+    /// Starred rolls in the subset (3.13.0) - the filtered count's
+    /// "K starred" reads from it, mirroring notedCount.
+    var starredCount: Int {
+        filter { $0.starred == true }.count
+    }
+
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }
         return filter { $0.characterName == name }

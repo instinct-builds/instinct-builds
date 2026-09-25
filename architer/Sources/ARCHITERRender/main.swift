@@ -1017,6 +1017,32 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/filter-delete.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.13.0 proof: the filtered count also names its starred rolls.
+    // One fire roll's star is toggled off here - LAST, after every
+    // earlier proof - so the bar shows a discriminating count
+    // ("5 starred" of 6) instead of a trivially-all-starred one.
+    // The txt records both sides from the model.
+    do {
+        let filtered = model.rollHistory.matching("fire")
+        let beforeStars = filtered.starredCount
+        if let roll = filtered.first {
+            model.toggleStar(roll)
+        }
+        let after = model.rollHistory.matching("fire")
+        try? (["Filtered count with stars (3.13.0)",
+               "filter \"fire\" -> \(filtered.count) rolls, \(filtered.notedCount) with notes, \(beforeStars) starred",
+               "one star toggled off -> \(after.starredCount) starred",
+               "the bar shows the same numbers as \"N of M, K with notes, S starred\""])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-count-starred.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-count-starred", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
