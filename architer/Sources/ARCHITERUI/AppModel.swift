@@ -605,6 +605,17 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
+    /// One-tap starred digest (2.89.0): file the highlight reel into
+    /// the journal as one entry - the star arc's journal destination,
+    /// in the same shape as a session digest.
+    public func addStarredToJournal(title: String? = nil, format: DigestFormat? = nil) {
+        let reel = rollHistory.starredDigestSession()
+        guard !reel.rolls.isEmpty, var c = selected?.wrappedValue else { return }
+        c.journal.append(JournalEntry(sessionDigest: reel, title: title,
+                                      format: format ?? digestFormat))
+        selected?.wrappedValue = c
+    }
+
     /// Level-up assistant: roll the hit die or take the average, then apply.
     public func levelUp(rollHP: Bool) {
         guard var c = selected?.wrappedValue, c.level < 20 else { return }

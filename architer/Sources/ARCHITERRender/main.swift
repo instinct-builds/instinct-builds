@@ -646,6 +646,25 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-starred-export", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.89.0 proof: starred digest - the reel filed into the journal as
+    // one entry; the journal block shows it with its count title.
+    model.addStarredToJournal()
+    if let sel = model.selected?.wrappedValue,
+       let entry = sel.journal.last {
+        let digestLines = ["Starred digest (2.89.0)", "",
+                           "journal entry: \(entry.title)",
+                           "body lines: \(entry.text.components(separatedBy: "\n").count)",
+                           "journal entries: \(sel.journal.count)"]
+        try? digestLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/starred-digest.txt"),
+                   atomically: true, encoding: .utf8)
+        renderPNG(
+            JournalBlock(character: .constant(sel))
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "dice-starred-digest", outDir: outDir)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -204,6 +204,12 @@ public struct DiceRollerView: View {
                     Button("Export starred") { model.exportStarredMarkdown() }
                         .controlSize(.small)
                         .help("Save the starred rolls as a Markdown file")
+                    // 2.89.0: file the reel into the journal as one
+                    // entry - the star arc's journal destination.
+                    Button("Digest starred") { model.addStarredToJournal() }
+                        .controlSize(.small)
+                        .disabled(model.selected == nil)
+                        .help("Add the starred rolls to the journal as one entry")
                 }
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }

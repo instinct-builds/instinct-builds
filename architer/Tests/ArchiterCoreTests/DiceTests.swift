@@ -1039,6 +1039,27 @@ struct SessionSegmentTests {
         #expect(starredMarkdown([b]).hasPrefix("# Starred rolls (0)\n"))
     }
 
+    // 2.89.0: the digest session wraps the starred rolls under a count
+    /// title, newest first, ready for JournalEntry(sessionDigest:).
+    @Test func starredDigestSessionWrapsReel() {
+        var a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 20, kept: true)],
+                           modifier: 0, total: 20, alternateTotal: nil)
+        a.starred = true
+        let b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        var c = RollResult(expression: "d8",
+                           dice: [DieResult(sides: 8, value: 3, kept: true)],
+                           modifier: 0, total: 3, alternateTotal: nil)
+        c.starred = true
+        let reel = [c, b, a].starredDigestSession()
+        #expect(reel.title == "Starred rolls (2)")
+        #expect(reel.rolls == [c, a])
+        #expect(reel.key == nil)
+        #expect([b].starredDigestSession().title == "Starred rolls (0)")
+    }
+
     // 2.85.0: the starred share text heads with the count and lists the
     /// starred rolls oldest first; an unstarred log still heads honestly.
     @Test func starredShareTextCountsAndLists() throws {

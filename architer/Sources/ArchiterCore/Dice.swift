@@ -716,6 +716,14 @@ public extension Array where Element == RollResult {
         filter { $0.starred == true }
     }
 
+    /// The starred rolls as a digest-ready session (2.89.0): titled
+    /// with the count so a journal entry filed from it reads standalone.
+    func starredDigestSession() -> RollSession {
+        let starred = starredRolls
+        return RollSession(number: 0, title: "Starred rolls (\(starred.count))",
+                           key: nil, rolls: starred)
+    }
+
     /// Share text for the starred rolls (2.85.0): a one-line header so
     /// the paste says what it is, then the starred rolls oldest first.
     var starredShareText: String {
