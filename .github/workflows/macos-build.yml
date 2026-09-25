@@ -241,6 +241,9 @@ jobs:
           DELAY=24 shoot batch-license-row 1920x1200 batch-license-row
           shoot duplicates-merge 1920x1200 duplicates-merge
           shoot library-health 1920x1200 library-health
+          DELAY=18 shoot folder-relink 1920x1200 folder-relink
+          DELAY=18 shoot folder-relink-apply 1920x1200 folder-relink-apply demo-folder-relink.txt
+          grep -q '^done relinked=2 unmatched=1$' "$SUP/demo-folder-relink.txt"
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-board-gallery-web.png" "$BU?demo=grid" || true
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"

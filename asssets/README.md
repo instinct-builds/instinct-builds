@@ -880,3 +880,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 ## 1.38.0: native Fit-mode proof
 
 - The focused comparison now has a native `batch-focus-fit` proof: Blueprint 2K in the Poster Frame Mockup with Fit and Slate background selected. The shot should show the whole art beside a placed render with visible background margin, the footer caption "Fit shows the whole artwork", and a disabled Adjust Crop button. The core Fit rendering test checks margin pixels; source and crop handling are otherwise unchanged.
+
+## 1.39.0: relink a relocated folder
+
+- Library Health offers Relink Folder for missing imported files. Enter the old folder root and choose the new folder; Preview Exact Paths lists each affected asset with its old and proposed path. Only the same relative path under the chosen new root counts as a match. Missing targets, destinations already owned by another asset, non-files, and symlinks escaping the chosen folder are not relinked. Files outside the old root remain out of scope. No basename search or automatic substitution.
+- Relink N Matches rechecks both catalog and disk against the preview immediately before writing. If the set changed, it replaces the preview and asks for review again. The accepted matches change in one undoable catalog operation, preserving asset IDs, rights, boards and editable recipes; disk files are untouched. The native CI demo shows a two-match/one-unmatched preview and checks two relinks while the unmatched path stays old.

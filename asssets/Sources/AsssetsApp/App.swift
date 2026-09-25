@@ -1567,6 +1567,42 @@ final class StudioLibrary: ObservableObject {
     @Published var health: LibraryHealth?
     @Published var healthOpen = false
     @Published var healthScanning = false
+    @Published var folderRelinkOpen = false
+    @Published var folderRelinkPreview: FolderRelinkPreview?
+
+    func previewFolderRelink(oldRoot: String, newRoot: String) {
+        let fm = FileManager.default
+        folderRelinkPreview = FolderRelinkPreview(catalog: catalog, oldRoot: oldRoot, newRoot: newRoot,
+            exists: { fm.fileExists(atPath: $0) }, isFile: { path in
+                guard let attrs = try? fm.attributesOfItem(atPath: path) else { return false }
+                return attrs[.type] as? FileAttributeType == .typeRegular
+            })
+    }
+
+    func applyFolderRelink() {
+        guard let preview = folderRelinkPreview, !preview.matched.isEmpty else { return }
+        let fm = FileManager.default
+        // Disk and catalog can change while the sheet is open: never commit a stale preview.
+        let fresh = FolderRelinkPreview(catalog: catalog, oldRoot: preview.oldRoot, newRoot: preview.newRoot,
+            exists: { fm.fileExists(atPath: $0) }, isFile: { path in
+                guard let attrs = try? fm.attributesOfItem(atPath: path) else { return false }
+                return attrs[.type] as? FileAttributeType == .typeRegular
+            })
+        let accepted = Set(preview.matched.map { "\($0.id):\($0.oldPath):\($0.newPath)" })
+        let current = Set(fresh.matched.map { "\($0.id):\($0.oldPath):\($0.newPath)" })
+        guard accepted == current else {
+            folderRelinkPreview = fresh
+            flash("Files changed since preview. Review the updated matches before relinking.")
+            return
+        }
+        var n = 0
+        mutate("Relink Moved Folder") { n = $0.relinkFolder(fresh) }
+        missing = catalog.missingIDs { fm.fileExists(atPath: $0) }
+        folderRelinkPreview = nil
+        folderRelinkOpen = false
+        refreshHealth()
+        flash("Relinked \(n) \(n == 1 ? "file" : "files"). Unmatched files stayed untouched.")
+    }
 
     /// Checks files, license copies and sizes off the main thread. `full` also hashes same-size files to count identical sets.
     func refreshHealth(full: Bool = false) {
@@ -2481,7 +2517,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2570,6 +2606,38 @@ final class StudioLibrary: ObservableObject {
             case "duplicates-merge":
                 show(collection: StudioCatalog.inboxCollection)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.findDuplicates() }
+            case "folder-relink", "folder-relink-apply":
+                let previous = drop.appendingPathComponent("Moved Project")
+                let current = fm.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Relocated Project")
+                try? fm.removeItem(at: previous); try? fm.removeItem(at: current)
+                try? fm.createDirectory(at: previous.appendingPathComponent("Campaign"), withIntermediateDirectories: true)
+                try? fm.createDirectory(at: current.appendingPathComponent("Campaign"), withIntermediateDirectories: true)
+                for (source, name) in [("risograph-4k.png", "Campaign/Poster.png"),
+                                       ("ink-fiber-4k.png", "Campaign/Texture.png"),
+                                       ("blueprint-4k.png", "Campaign/Unmatched.png")] {
+                    let old = previous.appendingPathComponent(name)
+                    try? fm.copyItem(at: starterRoot.appendingPathComponent(source), to: old)
+                    _ = catalog.importFile(path: old.path)
+                    if name != "Campaign/Unmatched.png" {
+                        try? fm.moveItem(at: old, to: current.appendingPathComponent(name))
+                    } else { try? fm.removeItem(at: old) }
+                }
+                missing = catalog.missingIDs { fm.fileExists(atPath: $0) }
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    self.openLibraryHealth()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        self.folderRelinkOpen = true
+                        self.previewFolderRelink(oldRoot: previous.path, newRoot: current.path)
+                        if ProcessInfo.processInfo.arguments.contains("folder-relink-apply") {
+                            self.applyFolderRelink()
+                            let paths = self.catalog.assets.compactMap(\.importedPath)
+                            let n = paths.filter { $0.hasPrefix(current.path + "/") }.count
+                            let old = paths.filter { $0.hasPrefix(previous.path + "/") }.count
+                            try? "done relinked=\(n) unmatched=\(old)".write(to: self.supportRoot.appendingPathComponent("demo-folder-relink.txt"), atomically: true, encoding: .utf8)
+                        }
+                    }
+                }
             case "library-health":
                 // One file moved away, one license copy deleted, a stray file in the Licenses folder, and a licensed photo with no credit.
                 if let atrium = find("Atrium Cork Wall.png"), let p = atrium.importedPath {
@@ -7047,8 +7115,8 @@ struct LibraryHealthSheet: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if !h.missingFiles.isEmpty {
                         HealthCard(symbol: "exclamationmark.triangle.fill", tint: Theme.danger, title: "\(h.missingFiles.count) missing \(h.missingFiles.count == 1 ? "file" : "files")",
-                                   detail: "Moved or deleted outside ASSSETS. Locate each one to relink it; tags, rights and boards stay.",
-                                   action: ("Show All", { model.healthOpen = false; model.show(collection: StudioLibrary.missingCollection) })) {
+                                   detail: "Moved or deleted outside ASSSETS. Relink a moved folder or locate files one by one; tags, rights and boards stay.",
+                                   action: ("Relink Folder…", { model.folderRelinkOpen = true })) {
                             ForEach(h.missingFiles.prefix(3), id: \.self) { id in
                                 if let a = byID[id] {
                                     HealthRow(asset: a, detail: a.importedPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "") {
@@ -7118,6 +7186,95 @@ struct LibraryHealthSheet: View {
         }
         .frame(minWidth: 720, idealWidth: 780, minHeight: 520, idealHeight: 640)
         .background(Theme.panel)
+        .sheet(isPresented: $model.folderRelinkOpen) { FolderRelinkSheet().environmentObject(model) }
+    }
+}
+
+/// Preview exact relative paths before changing any library identity or touching the disk.
+struct FolderRelinkSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State private var oldRoot = ""
+    @State private var newRoot = ""
+    var body: some View {
+        let preview = model.folderRelinkPreview
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "folder.badge.arrow.forward").foregroundStyle(Theme.accent)
+                Text("Relink Moved Folder").font(.system(size: 18, weight: .bold))
+                Spacer()
+                Text("Preview first · files on disk stay put").font(.caption).foregroundStyle(.secondary)
+            }
+            Text("Use the old folder path and the folder holding its files now. ASSSETS checks the same relative path under the new folder. It never searches by filename.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Text("Old folder").frame(width: 85, alignment: .leading)
+                TextField("/old/project", text: $oldRoot).textFieldStyle(.roundedBorder)
+            }
+            HStack {
+                Text("New folder").frame(width: 85, alignment: .leading)
+                TextField("/new/project", text: $newRoot).textFieldStyle(.roundedBorder)
+                Button("Choose…") {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.prompt = "Use Folder"
+                    if panel.runModal() == .OK, let url = panel.url { newRoot = url.standardizedFileURL.path; model.folderRelinkPreview = nil }
+                }
+            }
+            HStack {
+                Button("Preview Exact Paths") {
+                    model.previewFolderRelink(oldRoot: oldRoot, newRoot: newRoot)
+                }.disabled(oldRoot.isEmpty || newRoot.isEmpty || !oldRoot.hasPrefix("/") || !newRoot.hasPrefix("/"))
+                Spacer()
+                if let preview {
+                    Text("\(preview.matched.count) matched · \(preview.unmatched.count) unmatched · \(preview.ambiguous.count) ambiguous · \(preview.outOfScopeCount) outside old folder")
+                        .font(.caption.weight(.semibold)).foregroundStyle(preview.ambiguous.isEmpty ? Theme.accent : Theme.warning)
+                }
+            }
+            if let preview {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 7) {
+                        ForEach(preview.rows) { row in
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: row.status == .matched ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                    .foregroundStyle(row.status == .matched ? Theme.watch : Theme.warning)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(row.title).font(.caption.weight(.semibold))
+                                    Text(row.oldPath + " → " + row.newPath).font(.caption2.monospaced())
+                                        .lineLimit(2).truncationMode(.middle).foregroundStyle(.secondary)
+                                    Text(row.status.rawValue.capitalized + " · " + row.reason).font(.caption2)
+                                        .foregroundStyle(row.status == .matched ? Theme.watch : Theme.warning)
+                                }
+                                Spacer(minLength: 0)
+                            }.padding(8).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                    }
+                }.frame(height: 315)
+            } else {
+                Text("No changes yet. Preview the proposed mappings before relinking.")
+                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 315)
+                    .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+            }
+            HStack {
+                Text("Only matched paths change. Unmatched and ambiguous files remain where they are.")
+                    .font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel") { model.folderRelinkOpen = false }.keyboardShortcut(.cancelAction)
+                Button("Relink \(preview?.matched.count ?? 0) Matches") { model.applyFolderRelink() }
+                    .buttonStyle(.borderedProminent).disabled(preview?.matched.isEmpty ?? true)
+            }
+        }
+        .padding(20).frame(width: 780).background(Theme.backdrop)
+        .onChange(of: oldRoot) { _, _ in model.folderRelinkPreview = nil }
+        .onChange(of: newRoot) { _, _ in model.folderRelinkPreview = nil }
+        .onAppear {
+            if let preview = model.folderRelinkPreview {
+                oldRoot = preview.oldRoot; newRoot = preview.newRoot
+                // The onChange handlers run as part of the same render; the demo also rechecks the preview below.
+                DispatchQueue.main.async { model.previewFolderRelink(oldRoot: preview.oldRoot, newRoot: preview.newRoot) }
+            } else if oldRoot.isEmpty,
+                      let missing = model.health?.missingFiles.compactMap({ id in model.catalog.assets.first { $0.id == id }?.importedPath }).first {
+                oldRoot = URL(fileURLWithPath: missing).deletingLastPathComponent().path
+            }
+        }
     }
 }
 
