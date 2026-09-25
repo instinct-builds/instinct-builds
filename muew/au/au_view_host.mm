@@ -31,6 +31,7 @@
 #endif
 #include "MUEWProperties.h"
 #include "preset.h"
+#include "frame_tools.h"
 #include "au_params.h"
 #include "ui_model.h"
 #include "spectral_process.h"
@@ -946,6 +947,50 @@ int main() {
             if (keptFx) [view setValue:keptFx forKey:@"fxDetail"];
             if ([view respondsToSelector:openEd]) ((void (*)(id, SEL))[view methodForSelector:openEd])(view, openEd);
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab
+            fflush(stdout);
+        });
+        After(6.99946, ^{ // 0.37.0: selected-frame spectral chips, host persistence, undo/redo
+            CGFloat top = view.bounds.size.height - 100;
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC tab
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() > 32, "frame tools start with the 64-frame table");
+            if (!ok0 || before.tables[0].size() <= 32) { fflush(stdout); return; }
+            // Select the known bright imported frame, making FOCUS and BLUR measurable.
+            SEL frameSel = NSSelectorFromString(@"selectTableFrame:");
+            if ([view respondsToSelector:frameSel]) ((void (*)(id, SEL, int))[view methodForSelector:frameSel])(view, frameSel, 32);
+            bool selected = State(before);
+            const int frame = 32;
+            Check(selected && std::fabs(before.voice.osc1WtPos - 32.0 / 63) < .001, "the editor selected frame 33 for spectral tools");
+            // Click the same chips a person uses, not a private harness method.
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 22, top - 184 + 8 + 43 + 7));      // FOCUS
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 47 + 22, top - 184 + 8 + 43 + 7)); // BLUR
+            muew::Preset changed; bool ok1 = State(changed);
+            SEL histSel = NSSelectorFromString(@"muewHistoryText");
+            NSString* history = [view respondsToSelector:histSel] ? [view valueForKey:@"muewHistoryText"] : @"";
+            printf("frame37: frame %d, %s\n", frame + 1, history.UTF8String ?: "");
+            bool neighbours = ok1 && changed.tables[0].size() == before.tables[0].size();
+            if (neighbours) for (int i = 0; i < (int)changed.tables[0].size(); ++i)
+                if (i != frame) neighbours &= changed.tables[0][i] == before.tables[0][i];
+            Check(neighbours && changed.tables[0][frame] != before.tables[0][frame], "FOCUS and BLUR modify one frame, leaving the rest byte-identical in the AU");
+            Check(std::string(history.UTF8String ?: "").find("last=BLUR") != std::string::npos, "frame tools are labelled undo steps");
+            Snapshot(view, "MUEW_FRAME37_PNG", "selected-frame spectral chips snapshot written");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5)); // undo BLUR
+            muew::Preset once; bool ok2 = State(once);
+            Check(ok2 && once.tables[0][frame] == muew::spectralFrameTool(before.tables[0][frame], muew::FrameTool::Focus), "UNDO restores the earlier FOCUS frame");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5)); // undo FOCUS
+            muew::Preset again; bool ok3 = State(again);
+            Check(ok3 && again.tables[0] == before.tables[0], "second UNDO restores the original table");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == changed.tables[0], "two REDO steps restore the edited table");
+            // Restore the earlier sound and 3D page so older harness steps retain their preconditions.
+            NSString* text = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf = (__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &cf, sizeof(cf));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5));
             fflush(stdout);
         });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars

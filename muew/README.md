@@ -249,3 +249,16 @@ samples, band-limited per frame and crossfaded by a frame position.
   factory preset renders byte-identical.
 - Four new factory presets (45-48): Sub Pressure, Breath Flute, Formant
   Talker, Comb Pluck.
+
+## 0.37.0 Selected-frame spectral tools
+
+The WT editor's SPEC page adds FOCUS, BLUR, ALIGN and FLIP on the selected
+256-sample frame. FOCUS smoothly gates partials quieter than 18% of the
+strongest; BLUR averages magnitudes across five adjacent harmonics, preserving
+phase; ALIGN sets the active partials to sine phase; FLIP reverses the cycle
+by conjugating its spectrum. Other frames remain untouched. Each click gets a
+labelled undo step, and the result lives in the normal AU/preset table state.
+The preview still supports separate whole-table FORMANT, STRETCH, TILT and
+ODD/EVEN. `tests_frame37.cpp` checks spectral properties, single-frame edits,
+undo/redo and state round-trip; `render_demo_frame37.cpp` renders an original
+four-scene phrase (base, FOCUS, BLUR, ALIGN+FLIP).

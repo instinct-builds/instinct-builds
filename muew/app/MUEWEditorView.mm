@@ -3,6 +3,7 @@
 #include "user_presets.h"
 #include "au_params.h"
 #include "table_import.h"
+#include "frame_tools.h"
 #include <cmath>
 #include <complex>
 
@@ -802,6 +803,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtCmpRect:(int)i { return NSMakeRect(134 + i * 15, [self top] - 32, 14, 17); } // 0.33.0 A / B compare
 - (NSRect)wtMorphBar { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, cv.origin.y + 33, 60, 6); } // 0.33.0 (0.34.0: 60 wide, driver chip after it)
 - (NSRect)wtMorphChip { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 337, cv.origin.y + 29.5, 40, 13); } // 0.34.0 morph driver
+- (NSRect)wtFrameToolRect:(int)i { NSRect pv = [self wtSpecPreview]; return NSMakeRect(pv.origin.x + 4 + i * 47, pv.origin.y + 43, 44, 14); } // 0.37.0 selected-frame spectral tools
 - (NSRect)wtSnapRect { NSRect pv = [self wtSpecPreview]; return NSMakeRect(NSMaxX(pv) - 42, NSMaxY(pv) - 16, 36, 12); } // 0.36.0 SNAP A
 - (NSRect)wtMorphButton { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 214, cv.origin.y + 8, 52, 18); } // 0.33.0
 - (NSRect)modField:(int)j {
@@ -1082,7 +1084,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         FillRound(pv, 6, C(0x0d1117));
         // 0.31.0 fix2: the wave gets the top of the preview, the partial spectrum its own band below it.
         const CGFloat specH = 38;
-        const NSRect wv = NSMakeRect(pv.origin.x, pv.origin.y + specH + 4, pv.size.width, pv.size.height - specH - 4);
+        const NSRect wv = NSMakeRect(pv.origin.x, pv.origin.y + specH + 20, pv.size.width, pv.size.height - specH - 20);
         const NSRect sp = NSMakeRect(pv.origin.x + 4, pv.origin.y + 4, pv.size.width - 8, specH - 4);
         for (int i = 1; i < 4; ++i) FillRound(NSMakeRect(wv.origin.x + wv.size.width * i / 4, wv.origin.y + 4, 1, wv.size.height - 8), 0, C(0x161c25));
         FillRound(NSMakeRect(wv.origin.x + 4, NSMidY(wv) - .5, wv.size.width - 8, 1), 0, C(0x222a36));
@@ -1109,6 +1111,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(NSMakeRect(x + .5, sp.origin.y, bw - 1, 1), 0, C(0x1b222c));
             if (v > 0) FillRound(NSMakeRect(x + .5, sp.origin.y, bw - 1, std::max<CGFloat>(1.5, barTop * v)), 1, [col colorWithAlphaComponent:.35 + .55 * v]);
             if (changed && o > 0) FillRound(NSMakeRect(x + .5, sp.origin.y + barTop * o - .5, bw - 1, 1.2), 0, C(0x8793a3));
+        }
+        // Selected frame only. Chips sit above the partial band and below the wave trace.
+        NSArray* toolNames = @[@"FOCUS", @"BLUR", @"ALIGN", @"FLIP"];
+        for (int i = 0; i < 4; ++i) {
+            const NSRect b = [self wtFrameToolRect:i];
+            FillRound(b, 3, C(0x1d2830));
+            TextA(toolNames[i], NSMakeRect(b.origin.x, b.origin.y + 2.2, b.size.width, 10), 6.7, C(0xa9dcd4), NSFontWeightBold, NSTextAlignmentCenter);
         }
         TextA(@"PARTIALS 1-32", NSMakeRect(sp.origin.x + 2, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
         TextA(changed ? @"GREY = BEFORE" : @"48 dB", NSMakeRect(NSMaxX(sp) - 92, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x4a5462), NSFontWeightBold, NSTextAlignmentRight);
@@ -3148,6 +3157,17 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     wtCmpHas[o] = true; wtCmpSnap[o] = true;
     [self setNeedsDisplay:YES];
 }
+- (void)wtFrameTool:(int)i {
+    if (wtEdit < 0 || wtEdit > 1 || i < 0 || i > 3) return;
+    TableFrames& t = current.tables[wtEdit];
+    if (wtFrame < 0 || wtFrame >= (int)t.size()) return;
+    static const char* labels[4] = {"FOCUS", "BLUR", "ALIGN", "FLIP"};
+    const Frame next = spectralFrameTool(t[wtFrame], (FrameTool)i);
+    if (next == t[wtFrame]) return; // an identity edit does not consume history
+    [self wtRemember:labels[i]];
+    t[wtFrame] = next;
+    edited = true; [self applySound]; [self setNeedsDisplay:YES];
+}
 - (void)muewSnapA { [self wtSnapA]; }
 - (void)muewCloseTableEditor { wtEdit = -1; [self setNeedsDisplay:YES]; } // 0.36.0 harness: the main OSC displays
 - (void)muewOpenTableEditorA { // back to OSC A's editor with no side effects on the sound
@@ -3247,6 +3267,8 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     for (int i = 0; i < 2; ++i) // 0.32.0 UNDO / REDO
         if (NSPointInRect(p, NSInsetRect([self wtUndoRect:i], -1, -2))) { [self wtStep:i == 1]; return; }
     if (wtMode == 3 && NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { // 0.31.0 SPECTRAL page
+        for (int i = 0; i < 4; ++i)
+            if (NSPointInRect(p, [self wtFrameToolRect:i])) { [self wtFrameTool:i]; return; }
         for (int i = 0; i < 4; ++i)
             if (NSPointInRect(p, NSInsetRect([self wtSpecBar:i], -6, -7))) { wtSpecDrag = i; [self specDragTo:p]; return; }
         if (NSPointInRect(p, NSInsetRect([self wtMorphBar], -6, -6)) && !ui::morphSpec(current.voice, wtEdit).isIdentity()) { wtSpecDrag = 4; [self specDragTo:p]; return; }
