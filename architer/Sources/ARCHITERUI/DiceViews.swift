@@ -235,28 +235,34 @@ public struct DiceRollerView: View {
                         .controlSize(.small)
                         .help("Restore the last deleted roll or session")
                 }
-                // 2.97.0: the button says when the filter narrows what it
-                // copies - the journal's explicit Copy filtered (2.63.0)
-                // sets the precedent; the action already rides
-                // visibleHistory, notes included via shareLines.
-                Button(historyFilter.trimmingCharacters(in: .whitespaces).isEmpty ? "Copy" : "Copy filtered") {
-                    let query = historyFilter.trimmingCharacters(in: .whitespaces)
-                    if query.isEmpty {
-                        model.copyRollsToPasteboard(visibleHistory)
-                    } else {
-                        // 2.98.0: the paste says it was narrowed.
-                        model.copyFilteredRollsToPasteboard(
-                            visibleHistory, query: query,
-                            ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
+                // 3.0.1: while the preset naming form is open the
+                // Copy/Digest/star cluster collapses so the bar never
+                // wraps; the naming controls take the space instead.
+                if !savingFilterPreset {
+                    // 2.97.0: the button says when the filter narrows what it
+                    // copies - the journal's explicit Copy filtered (2.63.0)
+                    // sets the precedent; the action already rides
+                    // visibleHistory, notes included via shareLines.
+                    Button(historyFilter.trimmingCharacters(in: .whitespaces).isEmpty ? "Copy" : "Copy filtered") {
+                        let query = historyFilter.trimmingCharacters(in: .whitespaces)
+                        if query.isEmpty {
+                            model.copyRollsToPasteboard(visibleHistory)
+                        } else {
+                            // 2.98.0: the paste says it was narrowed.
+                            model.copyFilteredRollsToPasteboard(
+                                visibleHistory, query: query,
+                                ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
+                        }
                     }
+                        .controlSize(.small)
+                        .disabled(visibleHistory.isEmpty)
+                        .help("Copy the shown rolls (scope and filter applied) as text, oldest first")
                 }
-                    .controlSize(.small)
-                    .disabled(visibleHistory.isEmpty)
-                    .help("Copy the shown rolls (scope and filter applied) as text, oldest first")
                 // 2.99.0: file the filtered subset into the journal as
                 // one digest entry titled with the query - the filter
                 // view's counterpart of Digest starred.
-                if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !savingFilterPreset,
+                   !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button("Digest filtered") {
                         model.addFilteredRollsToJournal(
                             visibleHistory,
@@ -267,7 +273,8 @@ public struct DiceRollerView: View {
                         .help("Add the filtered rolls to the journal as one entry titled with the filter")
                 }
                 // 2.85.0: the highlight reel - visible only while stars exist.
-                if !model.rollHistory.starredRolls.isEmpty {
+                // 3.0.1: also hidden while the preset naming form is open.
+                if !savingFilterPreset && !model.rollHistory.starredRolls.isEmpty {
                     Button("Copy starred") { model.copyStarredToPasteboard() }
                         .controlSize(.small)
                         .help("Copy just the starred rolls as text, oldest first")
