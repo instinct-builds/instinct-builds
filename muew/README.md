@@ -407,3 +407,7 @@ The FILTER 2 + SUB page adds CLASSIC, AIR, GRAIN and DUST character with continu
 ## 0.52.0 Noise color modulation
 
 NOISE COLOR is append-only destination 32 in the modulation matrix. Route an LFO, MSEG, velocity or macro to sweep the AIR, GRAIN or DUST COLOR control within 0-100%; CLASSIC ignores it. Routes use the existing `route` line, with no new AU parameter ID. Old factory presets keep their exact sound and state.
+
+## 0.53.0 Stereo noise WIDTH
+
+FILTER 2 + SUB adds a compact noise WIDTH control. At zero, the original single noise source and its mono rendering remain untouched. Above zero, an independent right-hand noise stream opens the stereo field, including in HQ mode; `noisew` is optional so old preset lines and the 40 AU parameter IDs stay unchanged.

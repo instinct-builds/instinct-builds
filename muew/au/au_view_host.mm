@@ -1772,6 +1772,14 @@ int main() {
             [view setValue:@(-1) forKey:@"msegEdit"];
             SEL closeColor=NSSelectorFromString(@"muewCloseTableEditor");
             if ([view respondsToSelector:closeColor]) ((void (*)(id, SEL))[view methodForSelector:closeColor])(view,closeColor);
+            // 0.53.0: fit WIDTH in the narrow strip between NOISE/TONE,
+            // then inspect the routed matrix and the controls together.
+            Click(view,w,NSMakePoint(666+40,t-233+6.5)); // WIDTH 80
+            muew::Preset wideState; bool wideOk=State(wideState);
+            Check(wideOk && std::fabs(wideState.voice.noiseWidth-.8)<.02 &&
+                  wideState.serialize().find("\nnoisew 0.8\n")!=std::string::npos,
+                  "noise WIDTH 80 reached the AU without changing the color route");
+            Snapshot(view,"MUEW_NOISE53_PNG","stereo noise WIDTH panel snapshot written");
             Snapshot(view, "MUEW_NOISE52_PNG", "NOISE COLOR matrix route snapshot written");
             Snapshot(view, "MUEW_NOISE51_PNG", "noise character panel snapshot written");
             Snapshot(view, "MUEW_FILTER2_PNG", "FILTER 2 routing panel snapshot written");

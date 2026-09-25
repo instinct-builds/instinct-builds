@@ -142,6 +142,7 @@ struct VoiceParams {
     double noiseTone = 1.0;    // 0 dark .. 1 white
     int noiseCharacter = 0;    // 0 legacy, 1 AIR, 2 GRAIN, 3 DUST
     double noiseColor = 0.5;   // new modes only; old NOISE TONE behavior unchanged
+    double noiseWidth = 0.0;   // 0.53.0: 0 mono legacy, 1 decorrelated stereo
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
@@ -224,7 +225,7 @@ public:
         lfo3_.setSampleRate(sr); lfo4_.setSampleRate(sr); env3_.setSampleRate(sr);
         mseg1_.setSampleRate(sr);
         sub_.setSampleRate(hq_ ? 2 * sr : sr); sub_.setTable(table);
-        noise_.setSampleRate(sr);
+        noise_.setSampleRate(sr); noiseR_.setSampleRate(sr);
         dcL_.setSampleRate(sr); dcR_.setSampleRate(sr);
         f2L_.setSampleRate(sr); f2R_.setSampleRate(sr);
     }
@@ -282,8 +283,8 @@ public:
             if (r.dest == ModRoute::Dest::NoiseColor && !sourceIsRack((int)r.source)) usesNoiseColor_ = true;
         }
         sub_.setShape(subTableShape(p.subShape));
-        noise_.setTone(p.noiseTone);
-        noise_.setCharacter(p.noiseCharacter, p.noiseColor);
+        noise_.setTone(p.noiseTone); noiseR_.setTone(p.noiseTone);
+        noise_.setCharacter(p.noiseCharacter, p.noiseColor); noiseR_.setCharacter(p.noiseCharacter, p.noiseColor);
         const int t2 = std::clamp(p.filter2Type, 0, kFilter2Types - 1);
         if (t2 != f2Type_) { f2Type_ = t2; f2L_.setType(t2); f2R_.setType(t2); f2L_.reset(); f2R_.reset(); }
         f2L_.setMorph(p.filter2Morph); f2R_.setMorph(p.filter2Morph); // 0.22.0
@@ -336,6 +337,7 @@ public:
         sub_.setPhase(0.0);
         dcL_.reset(); dcR_.reset(); dcOn_ = false;
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
+        noiseR_.reset(0x6c8e9cf5u ^ (uint32_t)(note * 2246822519u));
     }
 
     // 0.23.0 glide: slide the pitch from `fromHz` to the current note over
@@ -374,7 +376,7 @@ public:
         filter_.reset(); filterR_.reset(); f2L_.reset(); f2R_.reset();
         dcL_.reset(); dcR_.reset();
         glideLeft_ = 0; glideSemi_ = 0.0;
-        hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset(); // 0.30.0 / 0.31.0
+        hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset(); hbNoiseR_.reset(); // 0.30.0 / 0.31.0 / 0.53.0
     }
     // 0.30.0: oscillator oversampling on/off (the synth passes the effective QUALITY).
     void setHQ(bool on) {
@@ -383,7 +385,7 @@ public:
         const double osr = on ? 2.0 * sr_ : sr_;
         for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setSampleRate(osr); osc2_[i].setSampleRate(osr); }
         sub_.setSampleRate(osr); // 0.31.0
-        hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset();
+        hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset(); hbNoiseR_.reset();
     }
     bool hq() const { return hq_; }
     static constexpr double kHQLatency = Halfband2x::kLatency * 0.5; // 7.5 samples at 1x
@@ -522,12 +524,25 @@ public:
             l += sv; r += sv;
         }
         if (usesNoise_) {
-            if (params_.noiseCharacter != 0 && usesNoiseColor_)
-                noise_.setCharacter(params_.noiseCharacter, std::clamp(params_.noiseColor + modSum(ModRoute::Dest::NoiseColor), 0.0, 1.0));
+            if (params_.noiseCharacter != 0 && usesNoiseColor_) {
+                const double color = std::clamp(params_.noiseColor + modSum(ModRoute::Dest::NoiseColor), 0.0, 1.0);
+                noise_.setCharacter(params_.noiseCharacter, color);
+                if (params_.noiseWidth > 0) noiseR_.setCharacter(params_.noiseCharacter, color);
+            }
             const float lv = (float)std::clamp(params_.noiseLevel + modSum(ModRoute::Dest::NoiseLevel), 0.0, 1.0);
             float nv = noise_.process() * lv;
-            if (hq_) nv = (float)hbNoise_.down(nv, nv); // 0.31.0: same 7.5-sample alignment as the oscillators
-            l += nv; r += nv;
+            if (hq_) nv = (float)hbNoise_.down(nv, nv); // legacy left/mono alignment
+            l += nv;
+            if (params_.noiseWidth > 0) {
+                const double width = std::clamp(params_.noiseWidth, 0.0, 1.0);
+                float nr = noiseR_.process() * lv;
+                if (hq_) nr = (float)hbNoiseR_.down(nr, nr);
+                // Keep the left legacy stream untouched. Normalize the right
+                // blend's power; width 1 is an independent right channel.
+                const double mid = 1.0 - width;
+                r += (float)((mid * nv + width * nr) / std::sqrt(mid * mid + width * width));
+                stereo = true;
+            } else r += nv; // exact old operations and single RNG stream
         }
         const float preL = l, preR = r;
 
@@ -595,7 +610,7 @@ private:
     double sr_ = 44100.0;
     bool hq_ = false;          // 0.30.0
     Halfband2x hbL_, hbR_;
-    Halfband2x hbSub_, hbNoise_; // 0.31.0 sub / noise alignment in HQ
+    Halfband2x hbSub_, hbNoise_, hbNoiseR_; // 0.31.0 sub / noise alignment in HQ
     int note_ = -1;
     float velocity_ = 0.0f;
     double baseFreq_ = 440.0;
@@ -755,7 +770,7 @@ private:
     }
 
     Oscillator sub_;
-    NoiseSource noise_;
+    NoiseSource noise_, noiseR_;
     DCBlocker dcL_, dcR_;
     bool dcOn_ = false;
     Filter2 f2L_, f2R_;

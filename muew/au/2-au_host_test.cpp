@@ -795,6 +795,19 @@ int main() {
         printf("NOISE COLOR destination 32 recalled through AU; 40 published parameter IDs unchanged\n");
     }
 
+    // 0.53.0: stereo width is a separate optional line, not a new AU parameter.
+    {
+        muew::Preset p=muew::factoryPresets()[0],got;
+        p.voice.noiseLevel=.6; p.voice.noiseCharacter=1; p.voice.noiseWidth=.8;
+        AudioUnit t=openUnit();bool ok=t && setState(t,p) && getState(t,got);
+        auto saved=got.serialize();
+        if(!ok || !(got==p) || saved.find("\nnoisew 0.8\n")==std::string::npos){
+            printf("FAIL: AU stereo noise width state\n");return 1;
+        }
+        AudioUnitUninitialize(t);AudioComponentInstanceDispose(t);
+        printf("stereo noise WIDTH recalled through AU; legacy noise and noisex lines intact\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;
