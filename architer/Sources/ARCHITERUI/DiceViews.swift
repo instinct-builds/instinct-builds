@@ -241,8 +241,12 @@ public struct DiceRollerView: View {
                     .help("Automatically add every roll to the journal")
                 // 2.81.0: undo the last per-roll or per-session delete.
                 // Visible only while a deletion is unconsumed.
-                if model.lastDeletion != nil {
-                    Button("Undo") { model.undoDelete() }
+                if let deletion = model.lastDeletion {
+                    // 3.5.0: the button names its target - how many
+                    // rolls the restore brings back.
+                    Button(deletion.removedCount == 1
+                           ? "Undo delete (1 roll)"
+                           : "Undo delete (\(deletion.removedCount) rolls)") { model.undoDelete() }
                         .controlSize(.small)
                         .help("Restore the last deleted roll or session")
                 }

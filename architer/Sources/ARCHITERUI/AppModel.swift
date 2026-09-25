@@ -385,6 +385,9 @@ public final class AppModel: ObservableObject {
         public let sessionKey: String?
         public let sessionName: String?
         public let sessionNote: String?
+        /// Rolls the deletion removed (3.5.0) - the Undo button names
+        /// its target with it.
+        public let removedCount: Int
     }
     @Published public private(set) var lastDeletion: HistoryDeletion?
 
@@ -393,7 +396,8 @@ public final class AppModel: ObservableObject {
     /// indistinguishable, so the first match goes.
     public func deleteRoll(_ roll: RollResult) {
         lastDeletion = HistoryDeletion(historySnapshot: rollHistory,
-                                       sessionKey: nil, sessionName: nil, sessionNote: nil)
+                                       sessionKey: nil, sessionName: nil, sessionNote: nil,
+                                       removedCount: 1)
         rollHistory = rollHistory.removingFirst(roll)
         rollHistoryStore.save(rollHistory)
     }
@@ -403,7 +407,8 @@ public final class AppModel: ObservableObject {
     /// deletions; the snapshot restores the full log exactly.
     public func deleteFilteredRolls(_ rolls: [RollResult]) {
         lastDeletion = HistoryDeletion(historySnapshot: rollHistory,
-                                       sessionKey: nil, sessionName: nil, sessionNote: nil)
+                                       sessionKey: nil, sessionName: nil, sessionNote: nil,
+                                       removedCount: rolls.count)
         rollHistory = rollHistory.removingAll(in: rolls)
         rollHistoryStore.save(rollHistory)
     }
@@ -477,7 +482,8 @@ public final class AppModel: ObservableObject {
         lastDeletion = HistoryDeletion(historySnapshot: rollHistory,
                                        sessionKey: session.key,
                                        sessionName: session.key.flatMap { sessionNames[$0] },
-                                       sessionNote: session.key.flatMap { sessionNotes[$0] })
+                                       sessionNote: session.key.flatMap { sessionNotes[$0] },
+                                       removedCount: doomed.count)
         rollHistory = rollHistory.removingAll(in: doomed)
         if let key = session.key {
             renameSession(key, to: "")
