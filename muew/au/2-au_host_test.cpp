@@ -761,6 +761,22 @@ int main() {
         printf("ARP chance and LIVE recalled through AU; arpx/arpr/arpo layouts unchanged\n");
     }
 
+    // 0.51.0: new character state is optional and preserves the old noise line.
+    {
+        muew::Preset p = muew::factoryPresets()[0], got;
+        p.voice.noiseLevel = .6; p.voice.noiseTone = .4;
+        p.voice.noiseCharacter = 3; p.voice.noiseColor = .75;
+        AudioUnit t = openUnit();
+        bool ok = t && setState(t, p) && getState(t, got);
+        auto saved = got.serialize();
+        if (!ok || !(got == p) || saved.find("\nnoise 0.6 0.4\n") == std::string::npos ||
+            saved.find("\nnoisex 3 0.75\n") == std::string::npos) {
+            printf("FAIL: AU noise character state / append-only noisex line\n"); return 1;
+        }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("noise character and color recalled through AU; old noise line unchanged\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;

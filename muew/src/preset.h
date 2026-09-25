@@ -58,6 +58,7 @@ struct PresetInfo {
 //                  0.26.0 adds optional `arpx <clocksync> <pattern on> <length> (<velocity> <kind>)x16`.
 //                  0.49.0 adds optional `arpo <octave shift>x16` (-1..+1); prior lines unchanged.
 //                  0.50.0 adds optional `arpc <live> <chance>x16` (100/75/50/25).
+//                  0.51.0 adds optional `noisex <character> <color>`; noise stays unchanged.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
@@ -127,6 +128,7 @@ struct Preset {
             if (v.subLevel != d.subLevel || v.subOctave != d.subOctave || v.subShape != d.subShape)
                 o << "sub " << v.subLevel << " " << v.subOctave << " " << v.subShape << "\n";
             if (v.noiseLevel != d.noiseLevel || v.noiseTone != d.noiseTone) o << "noise " << v.noiseLevel << " " << v.noiseTone << "\n";
+            if (v.noiseCharacter != d.noiseCharacter || v.noiseColor != d.noiseColor) o << "noisex " << v.noiseCharacter << " " << v.noiseColor << "\n";
             if (v.filter2Type != d.filter2Type || v.filter2Cutoff != d.filter2Cutoff || v.filter2Reso != d.filter2Reso || v.filterRouting != d.filterRouting)
                 o << "filter2 " << v.filter2Type << " " << v.filter2Cutoff << " " << v.filter2Reso << " " << v.filterRouting << "\n";
             // 0.33.0 live spectral morph and output trim
@@ -438,6 +440,13 @@ struct Preset {
                 voice.noiseLevel = std::clamp(voice.noiseLevel, 0.0, 1.0);
                 voice.noiseTone = std::clamp(voice.noiseTone, 0.0, 1.0);
             }
+            else if (key == "noisex") {
+                int mode = 0; double color = 0.5;
+                if (ls >> mode >> color && std::isfinite(color)) {
+                    voice.noiseCharacter = std::clamp(mode, 0, 3);
+                    voice.noiseColor = std::clamp(color, 0.0, 1.0);
+                }
+            }
             else if (key == "filter2") {
                 ls >> voice.filter2Type >> voice.filter2Cutoff >> voice.filter2Reso >> voice.filterRouting;
                 voice.filter2Type = std::clamp(voice.filter2Type, 0, kFilter2Types - 1);
@@ -641,7 +650,7 @@ struct Preset {
             && a.env3A == b.env3A && a.env3D == b.env3D && a.env3S == b.env3S && a.env3R == b.env3R
             && a.osc1WtPos == b.osc1WtPos && a.osc2WtPos == b.osc2WtPos
             && a.subLevel == b.subLevel && a.subOctave == b.subOctave && a.subShape == b.subShape
-            && a.noiseLevel == b.noiseLevel && a.noiseTone == b.noiseTone
+            && a.noiseLevel == b.noiseLevel && a.noiseTone == b.noiseTone && a.noiseCharacter == b.noiseCharacter && a.noiseColor == b.noiseColor
             && a.filter2Type == b.filter2Type && a.filter2Cutoff == b.filter2Cutoff && a.filter2Reso == b.filter2Reso
             && a.filterRouting == b.filterRouting
             && a.osc1SpecMorph == b.osc1SpecMorph && a.osc2SpecMorph == b.osc2SpecMorph

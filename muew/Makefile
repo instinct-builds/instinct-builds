@@ -271,3 +271,9 @@ build/muew-tests-chance50: tests/tests_chance50.cpp src/synth.h src/preset.h | b
 
 build/muew-demo-chance50: src/render_demo_chance50.cpp src/synth.h src/wav_writer.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-tests-noise51: tests/tests_noise51.cpp src/layers.h src/voice.h src/preset.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-demo-noise51: src/render_demo_noise51.cpp src/synth.h src/wav_writer.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<

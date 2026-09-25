@@ -20,7 +20,7 @@ inline int subTableShape(int s) { static const int m[kSubShapes] = {0, 1, 3}; re
 class NoiseSource {
 public:
     void setSampleRate(double sr) { sr_ = sr; tone_ = -1; }
-    void reset(uint32_t seed) { state_ = seed ? seed : 0x9e3779b9u; lp_ = 0; }
+    void reset(uint32_t seed) { state_ = seed ? seed : 0x9e3779b9u; lp_ = 0; characterLp_ = 0; grain_ = 0; grainCounter_ = 0; dust_ = 0; }
     void setTone(double tone) {
         tone = std::clamp(tone, 0.0, 1.0);
         if (tone == tone_) return;
@@ -28,9 +28,33 @@ public:
         const double fc = 200.0 * std::pow(2.0, tone * 7.0); // 200 Hz .. 25.6 kHz
         a_ = tone >= 1.0 ? 1.0 : 1.0 - std::exp(-2.0 * M_PI * std::min(fc, sr_ * 0.45) / sr_);
     }
+    void setCharacter(int mode, double color) {
+        mode_ = std::clamp(mode, 0, 3);
+        color_ = std::clamp(color, 0.0, 1.0);
+        // Only new modes consult these coefficients. Legacy mode's operations
+        // and RNG sequence remain identical for old factory presets.
+        const double fc = 250.0 * std::pow(2.0, 5.0 * color_);
+        characterA_ = 1.0 - std::exp(-2.0 * M_PI * std::min(fc, sr_ * 0.45) / sr_);
+        grainPeriod_ = std::max(2, (int)std::lround(48.0 - 42.0 * color_));
+        dustThreshold_ = 0.004 + 0.032 * color_;
+    }
     inline float process() {
         state_ ^= state_ << 13; state_ ^= state_ >> 17; state_ ^= state_ << 5; // xorshift32
         const double w = (double)state_ / 2147483648.0 - 1.0;
+        if (mode_ == 1) { // AIR: high-passed hiss, color opens the body below it
+            characterLp_ += characterA_ * (w - characterLp_);
+            return static_cast<float>(0.7 * (w - characterLp_));
+        }
+        if (mode_ == 2) { // GRAIN: held random texture, gently slew the steps
+            if (grainCounter_-- <= 0) { grain_ = w; grainCounter_ = grainPeriod_ - 1; }
+            characterLp_ += 0.28 * (grain_ - characterLp_);
+            return static_cast<float>(1.25 * characterLp_);
+        }
+        if (mode_ == 3) { // DUST: sparse, decaying grains, never unbounded feedback
+            dust_ *= 0.88;
+            if ((double)(state_ & 0xffffu) / 65536.0 < dustThreshold_) dust_ += 0.55 * w;
+            return static_cast<float>(std::clamp(dust_, -1.0, 1.0));
+        }
         lp_ += a_ * (w - lp_);
         // Dark noise loses level through the lowpass; give some of it back.
         return static_cast<float>(lp_ * (1.0 + 1.5 * (1.0 - tone_)));
@@ -38,6 +62,8 @@ public:
 private:
     double sr_ = 44100.0, tone_ = -1, a_ = 1.0, lp_ = 0.0;
     uint32_t state_ = 0x9e3779b9u;
+    int mode_ = 0, grainCounter_ = 0, grainPeriod_ = 27;
+    double color_ = 0.5, characterA_ = 0.1, characterLp_ = 0, grain_ = 0, dust_ = 0, dustThreshold_ = 0.02;
 };
 
 // Filter 2 types (stored in presets, append only). Off skips the stage.

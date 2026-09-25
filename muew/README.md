@@ -399,3 +399,7 @@ Each ON step may shift its selected pitch by -1, 0 or +1 octave; ratchets repeat
 ## 0.50.0 ARP step chance
 
 Each ON step can play with 100, 75, 50 or 25 percent chance. Click the center step badge to cycle it; unchanged 100% cells stay visually quiet. A skipped ON acts like REST and cannot be revived by a following TIE. Fixed mode hashes absolute step cycles, so host seek and rewind repeat; the LIVE switch opts into changing passes. The optional `arpc` line stores chance and LIVE without changing old pattern data or factory sound.
+
+## 0.51.0 Noise character
+
+The FILTER 2 + SUB page adds CLASSIC, AIR, GRAIN and DUST character with continuous COLOR. CLASSIC uses the old NOISE TONE and renders old presets byte-identically. The new modes shape airy hiss, stepped grains or soft dusty impulses; COLOR changes each mode. `noisex` is optional, leaving the old `noise` line and 40 AU parameter IDs unchanged.

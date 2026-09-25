@@ -823,6 +823,8 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     return f[std::clamp(id, 0, 6)];
 }
 - (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 190 - i * 19, 48, 15); } // 0.22.0: 4 pt lower, clear of the MIX bars
+- (NSRect)noiseCharacterRect { return NSMakeRect(615, [self top] - 190, 62, 15); }
+- (NSRect)noiseColorRect { return NSMakeRect(615, [self top] - 209, 62, 15); }
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 306, 440, 306); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
@@ -1843,6 +1845,19 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [self knob:ui::Sub accent:C(0x6cb6ff)];
         [self knob:ui::Noise accent:C(0xc3cbd6)];
         [self knob:ui::NoiseTone accent:C(0xc3cbd6)];
+        NSRect character = [self noiseCharacterRect];
+        FillRound(character, 4, v.noiseCharacter ? C(0x3b3424) : C(0x1b222c));
+        NSArray<NSString*>* names = @[@"CLASSIC", @"AIR", @"GRAIN", @"DUST"];
+        TextA(names[std::clamp(v.noiseCharacter, 0, 3)], NSMakeRect(character.origin.x, character.origin.y + 2.5, character.size.width, 10),
+              7, v.noiseCharacter ? C(0xf5cc78) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+        NSRect color = [self noiseColorRect];
+        FillRound(color, 3, C(0x1c232d));
+        FillRound(NSMakeRect(color.origin.x, color.origin.y, color.size.width * v.noiseColor, color.size.height), 3,
+                  v.noiseCharacter ? C(0xf5cc78, .55) : C(0x4a5462, .6));
+        TextA(@"COLOR", NSMakeRect(color.origin.x + 4, color.origin.y + 2, 35, 10), 6.5,
+              v.noiseCharacter ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
+        TextA([NSString stringWithFormat:@"%.0f", v.noiseColor * 100], NSMakeRect(color.origin.x + 38, color.origin.y + 2, 20, 10),
+              6.5, v.noiseCharacter ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
         NSString* pills[2] = {v.subOctave >= 2 ? @"-2 OCT" : @"-1 OCT", S(ui::subShapeName(v.subShape))};
         for (int i = 0; i < 2; ++i) {
             NSRect r = [self subPill:i];
@@ -3689,6 +3704,8 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (!hit && NSPointInRect(p, [self f2Display])) { v.filter2Type = (v.filter2Type + 1) % kFilter2Types; hit = true; }
     if (!hit && NSPointInRect(p, [self subPill:0])) { v.subOctave = v.subOctave >= 2 ? 1 : 2; hit = true; }
     if (!hit && NSPointInRect(p, [self subPill:1])) { v.subShape = (v.subShape + 1) % kSubShapes; hit = true; }
+    if (!hit && NSPointInRect(p, [self noiseCharacterRect])) { v.noiseCharacter = (v.noiseCharacter + 1) % 4; hit = true; }
+    if (!hit && NSPointInRect(p, [self noiseColorRect])) { NSRect r = [self noiseColorRect]; v.noiseColor = std::round(std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0) * 100) / 100.0; hit = true; }
     if (!hit) return NO;
     edited = true;
     [self applySound];

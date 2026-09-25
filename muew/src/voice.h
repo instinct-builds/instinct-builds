@@ -139,6 +139,8 @@ struct VoiceParams {
     int subShape = 0;          // kSubShapes: SINE, TRI, SQUARE
     double noiseLevel = 0.0;   // 0..1
     double noiseTone = 1.0;    // 0 dark .. 1 white
+    int noiseCharacter = 0;    // 0 legacy, 1 AIR, 2 GRAIN, 3 DUST
+    double noiseColor = 0.5;   // new modes only; old NOISE TONE behavior unchanged
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
@@ -279,6 +281,7 @@ public:
         }
         sub_.setShape(subTableShape(p.subShape));
         noise_.setTone(p.noiseTone);
+        noise_.setCharacter(p.noiseCharacter, p.noiseColor);
         const int t2 = std::clamp(p.filter2Type, 0, kFilter2Types - 1);
         if (t2 != f2Type_) { f2Type_ = t2; f2L_.setType(t2); f2R_.setType(t2); f2L_.reset(); f2R_.reset(); }
         f2L_.setMorph(p.filter2Morph); f2R_.setMorph(p.filter2Morph); // 0.22.0

@@ -1742,6 +1742,16 @@ int main() {
             Click(view, w, NSMakePoint(686 + 5 + 39 + 18.5, t - 138 + 4 + 6.5)); // PAR
             Click(view, w, NSMakePoint(494 + 71 + 0.6 * 67, t - 167 + 6.5));      // F2 MIX bar at 60%
             Click(view, w, NSMakePoint(494 + 142 + 0.3 * 67, t - 167 + 6.5));     // BALANCE bar at 30%
+            // 0.51.0 noise character and color on the same page, without touching NOISE TONE.
+            muew::Preset beforeNoise; State(beforeNoise);
+            for (int i = 0; i < 2; ++i) Click(view, w, NSMakePoint(615 + 31, t - 190 + 7)); // CLASSIC -> AIR -> GRAIN
+            Click(view, w, NSMakePoint(615 + 46, t - 209 + 7)); // COLOR 74%
+            muew::Preset noiseState; bool noiseOk = State(noiseState);
+            Check(noiseOk && noiseState.voice.noiseCharacter == 2 && std::fabs(noiseState.voice.noiseColor - .74) < .02 &&
+                  noiseState.voice.noiseTone == beforeNoise.voice.noiseTone &&
+                  noiseState.serialize().find("\nnoisex 2 0.74\n") != std::string::npos,
+                  "GRAIN/COLOR reached AU and left old NOISE TONE untouched");
+            Snapshot(view, "MUEW_NOISE51_PNG", "noise character panel snapshot written");
             Snapshot(view, "MUEW_FILTER2_PNG", "FILTER 2 routing panel snapshot written");
             muew::Preset st;
             bool ok = State(st);
