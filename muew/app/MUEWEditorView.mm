@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1;
+        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -137,7 +137,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
-    if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); } // a different sound starts on page 1, with no table history
+    if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); } // a different sound starts on page 1, with no table history
     current = p;
     currentIndex = index;
     edited = wasEdited;
@@ -160,7 +160,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     currentIndex = i;
     current = lib.at(i);
     matrixPage = 0;
-    wtHistory[0].clear(); wtHistory[1].clear(); // 0.32.0: undo never crosses into another preset
+    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); // 0.32.0: undo never crosses into another preset
     wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
     wtCmpSnap[0] = wtCmpSnap[1] = false; // 0.36.0: a new sound drops any SNAP
     for (int o = 0; o < 2; ++o) {
@@ -1119,6 +1119,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(b, 3, C(0x1d2830));
             TextA(toolNames[i], NSMakeRect(b.origin.x, b.origin.y + 2.2, b.size.width, 10), 6.7, C(0xa9dcd4), NSFontWeightBold, NSTextAlignmentCenter);
         }
+        if (wtRange.active((int)t.size()))
+            TextA([NSString stringWithFormat:@"%d-%d", wtRange.first((int)t.size()) + 1, wtRange.last((int)t.size()) + 1],
+                  NSMakeRect(pv.origin.x + 108, NSMaxY(pv) - 14, 42, 10), 7, col, NSFontWeightBold, NSTextAlignmentRight);
         TextA(@"PARTIALS 1-32", NSMakeRect(sp.origin.x + 2, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
         TextA(changed ? @"GREY = BEFORE" : @"48 dB", NSMakeRect(NSMaxX(sp) - 92, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x4a5462), NSFontWeightBold, NSTextAlignmentRight);
         NSString* pvLabel = wtCmpA == wtEdit ? (wtCmpSnap[wtEdit] ? @"A \u2022 SNAPSHOT" : @"A \u2022 AS LOADED") : pending ? @"PREVIEW" : changed ? [NSString stringWithFormat:@"MORPH %.0f%%", morphAmt * 100] : @"FRAME";
@@ -1234,14 +1237,21 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         }
     }
 
-    // Frame strip.
+    // Frame strip: sampled thumbnails with a continuous range rail above them.
     const int nT = (int)t.size(), selT = ThumbFor(wtFrame, nT);
+    if (wtRange.active(nT)) {
+        const int firstThumb = ThumbFor(wtRange.first(nT), nT);
+        const int lastThumb = ThumbFor(wtRange.last(nT), nT);
+        const NSRect a = [self wtThumb:firstThumb], b = [self wtThumb:lastThumb];
+        FillRound(NSMakeRect(NSMidX(a), NSMaxY(a) + 2, std::max<CGFloat>(2, NSMidX(b) - NSMidX(a)), 3), 1.5, col);
+    }
     for (int i = 0; i < 16; ++i) {
         NSRect r = [self wtThumb:i];
         if (i < std::min(nT, 16)) {
             const bool on = i == selT;
             const int fi = on ? wtFrame : ThumbFrame(i, nT); // 0.31.0 fix2: the selected thumb shows the frame being edited
-            FillRound(r, 4, on ? [col colorWithAlphaComponent:.22] : C(0x0f141b));
+            const bool inRange = wtRange.contains(fi, nT);
+            FillRound(r, 4, on ? [col colorWithAlphaComponent:.22] : inRange ? [col colorWithAlphaComponent:.14] : C(0x0f141b));
             if (nT > 16) { // 0.21.0: the frame number gets its own band under the wave instead of sitting on it
                 StrokeFrame(t[fi], NSMakeRect(r.origin.x + 2, r.origin.y + 11, r.size.width - 4, r.size.height - 13), .4,
                             on ? col : [col colorWithAlphaComponent:.55], 1);
@@ -1250,7 +1260,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                       on ? C(0xeaf1f8) : C(0xa8b2c1), NSFontWeightSemibold, NSTextAlignmentCenter);
             } else
                 StrokeFrame(t[fi], NSInsetRect(r, 2, 4), .4, on ? col : [col colorWithAlphaComponent:.55], 1);
-            if (on) {
+            if (on || inRange) {
                 NSBezierPath* sel = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, .5, .5) xRadius:4 yRadius:4];
                 [col setStroke]; sel.lineWidth = 1; [sel stroke];
             }
@@ -3053,7 +3063,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         wtCmpRef[o] = t; wtCmpRefMs[o] = ui::morphSpec(v, o); wtCmpRefAmt[o] = ui::specMorphAmount(v, o); wtCmpHas[o] = true;
     }
     OscShape(v, o) = kCustomShape;
-    wtEdit = o;
+    wtEdit = o; wtRange.clear();
     wtFrame = std::clamp((int)std::lround(OscWtPos(v, o) * ((int)t.size() - 1)), 0, (int)t.size() - 1);
     edited = true;
     [self applySound];
@@ -3104,7 +3114,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     TableFrames in = importAudio(bytes);
     if (in.empty()) return NO;
     [self wtRemember:"IMPORT"];
-    current.tables[wtEdit] = in;
+    current.tables[wtEdit] = in; wtRange.clear();
     OscShape(current.voice, wtEdit) = kCustomShape;
     [self selectTableFrame:0];
     return YES;
@@ -3162,10 +3172,13 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     TableFrames& t = current.tables[wtEdit];
     if (wtFrame < 0 || wtFrame >= (int)t.size()) return;
     static const char* labels[4] = {"FOCUS", "BLUR", "ALIGN", "FLIP"};
-    const Frame next = spectralFrameTool(t[wtFrame], (FrameTool)i);
-    if (next == t[wtFrame]) return; // an identity edit does not consume history
-    [self wtRemember:labels[i]];
-    t[wtFrame] = next;
+    TableFrames next = t;
+    bool changed = wtRange.active((int)t.size()) ? applyFrameRange(next, wtRange, (FrameTool)i)
+        : (next[wtFrame] = spectralFrameTool(t[wtFrame], (FrameTool)i), next[wtFrame] != t[wtFrame]);
+    if (!changed) return; // an identity edit does not consume history
+    static const char* rangeLabels[4] = {"FOCUS RANGE", "BLUR RANGE", "ALIGN RANGE", "FLIP RANGE"};
+    [self wtRemember:wtRange.active((int)t.size()) ? rangeLabels[i] : labels[i]];
+    t = std::move(next);
     edited = true; [self applySound]; [self setNeedsDisplay:YES];
 }
 - (void)muewSnapA { [self wtSnapA]; }
@@ -3186,6 +3199,12 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 }
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
+- (NSString*)muewRangeText {
+    if (wtEdit < 0 || wtEdit > 1) return @"";
+    const int n = (int)current.tables[wtEdit].size();
+    if (!wtRange.active(n)) return @"none";
+    return [NSString stringWithFormat:@"%d-%d of %d", wtRange.first(n) + 1, wtRange.last(n) + 1, n];
+}
 - (NSString*)muewHistoryText {
     if (wtEdit < 0 || wtEdit > 1) return @"";
     const auto& h = wtHistory[wtEdit];
@@ -3198,25 +3217,25 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     switch (i) {
     case 0: // add a fresh frame at the end
         if (n >= kMaxFrames) { NSBeep(); return; }
-        [self wtRemember:"ADD"];
+        wtRange.clear(); [self wtRemember:"ADD"];
         t.push_back(shapeFrame(2));
         [self selectTableFrame:n];
         return;
     case 1: // duplicate the selected frame after itself
         if (n >= kMaxFrames) { NSBeep(); return; }
-        [self wtRemember:"DUP"];
+        wtRange.clear(); [self wtRemember:"DUP"];
         { Frame copy = t[wtFrame]; t.insert(t.begin() + wtFrame + 1, copy); }
         [self selectTableFrame:wtFrame + 1];
         return;
     case 2:
         if (n <= 1) { NSBeep(); return; }
-        [self wtRemember:"DELETE"];
+        wtRange.clear(); [self wtRemember:"DELETE"];
         t.erase(t.begin() + wtFrame);
         [self selectTableFrame:std::min(wtFrame, n - 2)];
         return;
     case 3: { // 0.20.0 spectral morph: rebuild as the next of 8/16/32/64 frames through every key frame
         if (n < 2) { NSBeep(); return; }
-        [self wtRemember:"MORPH"];
+        wtRange.clear(); [self wtRemember:"MORPH"];
         const int N = morphTarget(n);
         const double at = n > 1 ? (double)wtFrame / (n - 1) : 0.0;
         t = spectralMorph(t, N);
@@ -3255,7 +3274,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     const double c = n ? frameCentroid(current.tables[wtEdit][std::clamp(wtFrame, 0, n - 1)]) : 0;
     return [NSString stringWithFormat:@"mode=%d formant=%.1f stretch=%.2f tilt=%.1f oddeven=%.2f frames=%d centroid=%.3f", wtMode, wtSpec.formantSt, wtSpec.stretch, wtSpec.tiltDb, wtSpec.oddEven, n, c];
 }
-- (void)tableMouseDown:(NSPoint)p {
+- (void)tableMouseDown:(NSPoint)p event:(NSEvent*)event {
     TableFrames& t = current.tables[wtEdit];
     for (int i = 0; i < 2; ++i) // 0.33.0 A / B
         if (NSPointInRect(p, NSInsetRect([self wtCmpRect:i], -1, -2))) { [self wtCompare:i == 0]; return; }
@@ -3266,6 +3285,14 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }
     for (int i = 0; i < 2; ++i) // 0.32.0 UNDO / REDO
         if (NSPointInRect(p, NSInsetRect([self wtUndoRect:i], -1, -2))) { [self wtStep:i == 1]; return; }
+    for (int i = 0; i < std::min((int)t.size(), 16); ++i)
+        if (NSPointInRect(p, [self wtThumb:i])) {
+            const int f = ThumbFrame(i, (int)t.size());
+            const bool extend = (event.modifierFlags & NSEventModifierFlagShift) != 0;
+            if (extend && !wtRange.active((int)t.size())) wtRange.anchor = wtFrame;
+            wtRange.select(f, (int)t.size(), extend);
+            [self selectTableFrame:f]; return;
+        }
     if (wtMode == 3 && NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { // 0.31.0 SPECTRAL page
         for (int i = 0; i < 4; ++i)
             if (NSPointInRect(p, [self wtFrameToolRect:i])) { [self wtFrameTool:i]; return; }
@@ -3291,8 +3318,6 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         if (NSPointInRect(p, [self wtSpecButton:1])) { wtSpec = SpectralProcess{}; [self setNeedsDisplay:YES]; return; }
         return; // the SPECTRAL page never draws into the frame
     }
-    for (int i = 0; i < std::min((int)t.size(), 16); ++i)
-        if (NSPointInRect(p, [self wtThumb:i])) { [self selectTableFrame:ThumbFrame(i, (int)t.size())]; return; }
     if (wtMode == 2 && NSPointInRect(p, [self wtCanvas])) { // 3D: pick the frame whose wave row is under the pointer
         NSRect cv = [self wtCanvas];
         const int n = (int)t.size();
@@ -3715,7 +3740,7 @@ static int SortForColumn(int c) {
         edited = true; [self applySound]; [self setNeedsDisplay:YES]; return;
     }
     if (NSPointInRect(p, [self expandRect]) || NSPointInRect(p, [self presetDisplayRect])) { [self setBrowserOpen:true]; return; }
-    if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p]; return; }
+    if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p event:e]; return; }
     if ([self voiceStripMouseDown:p event:e]) return; // 0.23.0
     if ([self oscMouseDown:p event:e]) return;
     if ([self filterPanelMouseDown:p event:e]) return;

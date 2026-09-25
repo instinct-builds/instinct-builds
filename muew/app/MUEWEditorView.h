@@ -7,6 +7,7 @@
 #include "ui_model.h"
 #include "spectral_process.h"
 #include "table_history.h"
+#include "frame_range.h"
 #include <set>
 #include <string>
 #include <vector>
@@ -104,6 +105,7 @@ struct MUEWEditorHost {
     // and the oscillator whose WT POS bar is being dragged (-1 = none).
     int wtEdit;
     int wtFrame;
+    muew::FrameRange wtRange; // 0.38.0 shift-click frame strip to select an inclusive range
     int wtMode;
     int wtLastIdx;
     double wtLastVal;

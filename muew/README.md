@@ -262,3 +262,13 @@ The preview still supports separate whole-table FORMANT, STRETCH, TILT and
 ODD/EVEN. `tests_frame37.cpp` checks spectral properties, single-frame edits,
 undo/redo and state round-trip; `render_demo_frame37.cpp` renders an original
 four-scene phrase (base, FOCUS, BLUR, ALIGN+FLIP).
+
+## 0.38.0 Frame-range operations
+
+Shift-click a second frame in the WT strip to select the inclusive range
+between the earlier frame and the clicked one; shift-click again to extend
+from that anchor. Ordinary click clears it. The selected thumbnail band gets
+a colored rail, and the SPEC preview shows both endpoint frame numbers.
+FOCUS, BLUR, ALIGN and FLIP then transform the range as one labelled undo
+step. Frames outside it stay untouched; a click without a range still edits
+one frame. The selection is UI-only, not serialized into the sound.

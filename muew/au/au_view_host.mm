@@ -993,6 +993,53 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5));
             fflush(stdout);
         });
+        After(6.99947, ^{ // 0.38.0: shift-select a frame range, apply FOCUS once, undo/redo as one batch
+            CGFloat top = view.bounds.size.height - 100;
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() == 64, "range tools begin with the 64-frame AU sound");
+            if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
+            NSPoint a = NSMakePoint(40 + 3 * 25.5 + 11, top - 220 + 14);
+            NSPoint b = NSMakePoint(40 + 9 * 25.5 + 11, top - 220 + 14);
+            Click(view, w, a); // anchor frame 14
+            [view mouseDown:[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:b modifierFlags:NSEventModifierFlagShift
+                timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1]];
+            [view mouseUp:[NSEvent mouseEventWithType:NSEventTypeLeftMouseUp location:b modifierFlags:NSEventModifierFlagShift
+                timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1]];
+            muew::Preset selected; bool ok1 = State(selected);
+            NSString* range = [view respondsToSelector:NSSelectorFromString(@"muewRangeText")] ? [view valueForKey:@"muewRangeText"] : @"";
+            printf("range38: %s\n", range.UTF8String ?: "");
+            Check(ok1 && std::string(range.UTF8String ?: "").find("14-39") != std::string::npos, "shift-click selected frames 14 through 39");
+            Snapshot(view, "MUEW_RANGE38_PNG", "range highlight snapshot written");
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 22, top - 184 + 8 + 43 + 7)); // FOCUS on the range
+            muew::Preset changed; bool ok2 = State(changed);
+            NSString* hist = [view respondsToSelector:NSSelectorFromString(@"muewHistoryText")] ? [view valueForKey:@"muewHistoryText"] : @"";
+            const int first = (int)std::lround(3 * 63.0 / 15), last = (int)std::lround(9 * 63.0 / 15);
+            bool exact = ok2 && changed.tables[0].size() == selected.tables[0].size();
+            int modified = 0;
+            if (exact) for (int i = 0; i < 64; ++i) {
+                const auto& orig = selected.tables[0][i];
+                const auto want = i >= first && i <= last ? muew::spectralFrameTool(orig, muew::FrameTool::Focus) : orig;
+                exact &= changed.tables[0][i] == want;
+                modified += changed.tables[0][i] != orig;
+            }
+            Check(exact && modified > 2, "FOCUS processes precisely the inclusive range, leaving outside frames intact");
+            Check(std::string(hist.UTF8String ?: "").find("last=FOCUS RANGE") != std::string::npos, "the batch creates one labelled undo step");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5));
+            muew::Preset undone; bool ok3 = State(undone);
+            Check(ok3 && undone.tables[0] == selected.tables[0], "one UNDO restores all selected frames");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == changed.tables[0], "one REDO reapplies the entire range");
+            NSString* text = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf = (__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &cf, sizeof(cf));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, a); // clear range via ordinary click
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab
