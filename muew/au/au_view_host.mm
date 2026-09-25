@@ -1790,6 +1790,21 @@ int main() {
                   burstState.serialize().find("\nnoiseb 0.24\n")!=std::string::npos,
                   "noise BURST 240ms reached AU without disturbing WIDTH/TONE");
             Snapshot(view,"MUEW_NOISE55_PNG","noise BURST envelope panel snapshot written");
+            // 0.57.0: the small FILTER-page strip opens a full-size shape
+            // editor over the matrix so the three noise controls do not crowd.
+            Click(view,w,NSMakePoint(662,t-252+6));
+            Click(view,w,NSMakePoint(113,179)); // 25% attack, within the 240ms duration
+            Click(view,w,NSMakePoint(102,145)); // -0.50: a faster decay tail
+            muew::Preset shaped; bool shapedOk=State(shaped);
+            Check(shapedOk && std::fabs(shaped.voice.noiseBurst-.24)<.012 &&
+                  std::fabs(shaped.voice.noiseBurstAttack-.25)<.015 &&
+                  std::fabs(shaped.voice.noiseBurstCurve+.5)<.015 &&
+                  shaped.voice.noiseWidth==burstState.voice.noiseWidth &&
+                  shaped.serialize().find("\nnoiseenv 0.25 -0.5\n")!=std::string::npos,
+                  "noise BURST shape panel edits ATTACK/CURVE without altering duration or width");
+            Snapshot(view,"MUEW_NOISE57_PNG","noise BURST shape panel snapshot written");
+            Click(view,w,NSMakePoint(440,232)); // close shape panel before matrix proof
+
             // 0.54.0: the matrix meter follows signed, curved/AUX-scaled
             // engine contributions. Snapshot while the routed note sounds.
             muew::Preset metered=wideState;

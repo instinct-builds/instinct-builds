@@ -80,7 +80,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeMeterClock = 0;
-        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
+        matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
         wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1; wtProfileBlend = 1; wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; wtProfileSpanAnchor = -1;
@@ -862,7 +862,12 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)noiseCharacterRect { return NSMakeRect(666, [self top] - 190, 50, 15); }
 - (NSRect)noiseColorRect { return NSMakeRect(666, [self top] - 209, 50, 15); }
 - (NSRect)noiseWidthRect { return NSMakeRect(666, [self top] - 233, 50, 13); } // narrow gap between NOISE/TONE rings, below COLOR
-- (NSRect)noiseBurstRect { return NSMakeRect(712, [self top] - 252, 62, 13); } // below WIDTH/TONE, clear of both rings
+- (NSRect)noiseBurstRect { return NSMakeRect(712, [self top] - 252, 62, 13); } // legacy duration slider, below WIDTH/TONE
+- (NSRect)noiseBurstDetailRect { return NSMakeRect(626, [self top] - 252, 80, 13); } // unused lower-left lane, clear of WIDTH and rings
+- (NSRect)burstPanel { return NSMakeRect(36, 48, 424, 200); } // replaces the matrix temporarily, not the crowded FILTER panel
+- (NSRect)burstClose { NSRect r = [self burstPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
+- (NSRect)burstBar:(int)i { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 22, NSMaxY(r) - 76 - i * 34, 176, 15); }
+- (NSRect)burstPlot { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 218, r.origin.y + 38, 186, 114); }
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 306, 440, 306); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
@@ -1902,6 +1907,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextA(@"WIDTH", NSMakeRect(width.origin.x + 2, width.origin.y + 1.5, 29, 10), 6.3, v.noiseWidth > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
         TextA([NSString stringWithFormat:@"%.0f", v.noiseWidth * 100], NSMakeRect(width.origin.x + 32, width.origin.y + 1.5, 16, 10), 6.5,
               v.noiseWidth > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
+        NSRect detail = [self noiseBurstDetailRect];
+        FillRound(detail, 3, burstDetail ? C(0x554326) : C(0x27303b));
+        TextA(@"SHAPE  ›", NSInsetRect(detail, 2, 1), 7, burstDetail ? C(0xf5cc78) : C(0xcbd4df), NSFontWeightBold, NSTextAlignmentCenter);
         NSRect burst = [self noiseBurstRect];
         FillRound(burst, 3, C(0x1c232d));
         if (v.noiseBurst > 0) FillRound(NSMakeRect(burst.origin.x, burst.origin.y, burst.size.width * v.noiseBurst / .5, burst.size.height), 3, C(0xf5cc78, .62));
@@ -2106,11 +2114,63 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [C(accHex[u]) setStroke]; o.lineWidth = 1; [o stroke];
         TextA(S(names[u]), NSMakeRect(g.origin.x, g.origin.y + 6, g.size.width, 12), 9, C(accHex[u]), NSFontWeightBold, NSTextAlignmentCenter);
     }
-    if (msegEdit >= 0) [self drawMsegEditor];
+    if (burstDetail) [self drawBurstDetail];
+    else if (msegEdit >= 0) [self drawMsegEditor];
     else if (fxDetail >= 0) [self drawFxDetail];
     [self drawTableEditor];
     [self drawDragBadge];
     if (browserOpen) [self drawBrowser];
+}
+
+// A dedicated editor keeps the duration, attack, and decay curve legible.
+// OFF bypasses the entire envelope; the preview is dimmed until duration is on.
+- (void)drawBurstDetail {
+    NSRect P = [self burstPanel];
+    FillRound(P, 10, C(0x19202a));
+    NSBezierPath* outline = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(P, .5, .5) xRadius:10 yRadius:10];
+    [C(0xf5cc78, .5) setStroke]; outline.lineWidth = 1; [outline stroke];
+    Text(@"NOISE BURST SHAPE", NSMakeRect(P.origin.x + 20, NSMaxY(P) - 25, 220, 16), 11, C(0xf5cc78), NSFontWeightBold);
+    Text(current.voice.noiseBurst > 0 ? [NSString stringWithFormat:@"%.0f ms total", current.voice.noiseBurst * 1000] : @"OFF - sustained noise",
+         NSMakeRect(P.origin.x + 20, NSMaxY(P) - 44, 180, 13), 8, C(0x9ca6b4), NSFontWeightMedium);
+    NSRect cl = [self burstClose];
+    TextA(@"×", cl, 16, C(0xc3cbd6), NSFontWeightRegular, NSTextAlignmentCenter);
+    for (int i = 0; i < 2; ++i) {
+        NSRect r = [self burstBar:i];
+        const double norm = i ? (current.voice.noiseBurstCurve + 1) * .5 : current.voice.noiseBurstAttack / .8;
+        FillRound(r, 4, C(0x10161d));
+        FillRound(NSMakeRect(r.origin.x, r.origin.y, r.size.width * norm, r.size.height), 4, C(0xf5cc78, .52));
+        NSString* name = i ? @"DECAY CURVE" : @"ATTACK";
+        NSString* value = i ? [NSString stringWithFormat:@"%+.2f", current.voice.noiseBurstCurve] : [NSString stringWithFormat:@"%.0f%%", current.voice.noiseBurstAttack * 100];
+        TextA(name, NSMakeRect(r.origin.x + 6, r.origin.y + 3, 100, 10), 8, C(0xe8edf3), NSFontWeightBold, NSTextAlignmentLeft);
+        TextA(value, NSMakeRect(NSMaxX(r) - 48, r.origin.y + 3, 42, 10), 8, C(0xe8edf3), NSFontWeightSemibold, NSTextAlignmentRight);
+    }
+    Text(@"fast tail", NSMakeRect(P.origin.x + 22, P.origin.y + 53, 76, 11), 7, C(0x758192));
+    TextA(@"slow tail", NSMakeRect(P.origin.x + 122, P.origin.y + 53, 76, 11), 7, C(0x758192), NSFontWeightRegular, NSTextAlignmentRight);
+    NSRect plot = [self burstPlot]; FillRound(plot, 5, C(0x0e141b));
+    Text(@"AMP", NSMakeRect(plot.origin.x + 5, NSMaxY(plot) - 14, 40, 10), 7, C(0x758192), NSFontWeightBold);
+    TextA(@"TIME →", NSMakeRect(NSMaxX(plot) - 54, plot.origin.y + 3, 48, 10), 7, C(0x758192), NSFontWeightBold, NSTextAlignmentRight);
+    NSBezierPath* path = [NSBezierPath bezierPath];
+    for (int k = 0; k <= 64; ++k) {
+        const CGFloat x = plot.origin.x + 9 + (plot.size.width - 18) * k / 64.0;
+        const float y = noiseBurstGain(k, 64, current.voice.noiseBurstAttack, current.voice.noiseBurstCurve);
+        NSPoint pt = NSMakePoint(x, plot.origin.y + 17 + y * (plot.size.height - 30));
+        if (k) [path lineToPoint:pt]; else [path moveToPoint:pt];
+    }
+    [C(current.voice.noiseBurst > 0 ? 0xf5cc78 : 0x657181) setStroke]; path.lineWidth = 2; [path stroke];
+    Text(@"Duration remains in FILTER 2 + SUB. Double-click a bar to reset.",
+         NSMakeRect(P.origin.x + 20, P.origin.y + 15, P.size.width - 40, 12), 8, C(0x8793a3));
+}
+- (BOOL)burstDetailMouseDown:(NSPoint)p event:(NSEvent*)e {
+    if (!burstDetail || !NSPointInRect(p, [self burstPanel])) return NO;
+    if (NSPointInRect(p, NSInsetRect([self burstClose], -4, -4))) { burstDetail = false; [self setNeedsDisplay:YES]; return YES; }
+    for (int i = 0; i < 2; ++i) if (NSPointInRect(p, NSInsetRect([self burstBar:i], -3, -3))) {
+        NSRect r = [self burstBar:i];
+        const double x = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
+        if (i) current.voice.noiseBurstCurve = e.clickCount == 2 ? 0.0 : std::round((2 * x - 1) * 100) / 100.0;
+        else current.voice.noiseBurstAttack = e.clickCount == 2 ? 0.0 : std::round(x * 80) / 100.0;
+        edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
+    }
+    return YES; // panel masks the matrix underneath
 }
 
 - (void)drawMatrix {
@@ -3768,6 +3828,11 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (!hit && NSPointInRect(p, [self subPill:1])) { v.subShape = (v.subShape + 1) % kSubShapes; hit = true; }
     if (!hit && NSPointInRect(p, [self noiseCharacterRect])) { v.noiseCharacter = (v.noiseCharacter + 1) % 4; hit = true; }
     if (!hit && NSPointInRect(p, [self noiseColorRect])) { NSRect r = [self noiseColorRect]; v.noiseColor = std::round(std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0) * 100) / 100.0; hit = true; }
+    if (!hit && NSPointInRect(p, [self noiseBurstDetailRect])) {
+        burstDetail = !burstDetail;
+        if (burstDetail) { msegEdit = -1; fxDetail = -1; }
+        [self setNeedsDisplay:YES]; return YES;
+    }
     if (!hit && NSPointInRect(p, [self noiseBurstRect])) {
         NSRect r = [self noiseBurstRect];
         const double norm = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
@@ -4123,6 +4188,7 @@ static int SortForColumn(int c) {
     if (wtEdit >= 0 && NSPointInRect(p, [self wtPanel])) { [self tableMouseDown:p event:e]; return; }
     if ([self voiceStripMouseDown:p event:e]) return; // 0.23.0
     if ([self oscMouseDown:p event:e]) return;
+    if ([self burstDetailMouseDown:p event:e]) return;
     if ([self filterPanelMouseDown:p event:e]) return;
     if ([self msegMouseDown:p event:e]) return;
     if ([self fxDetailMouseDown:p event:e]) return;
@@ -4367,7 +4433,7 @@ static int SortForColumn(int c) {
         if (click) { // a click (no drag) opens the unit's detail panel, or closes it
             int u = current.fx.order.slot[fxMove];
             fxDetail = fxDetail == u ? -1 : u;
-            if (fxDetail >= 0) msegEdit = -1;
+            if (fxDetail >= 0) { msegEdit = -1; burstDetail = false; }
         } else if (fxDrop >= 0 && current.fx.order.move(fxMove, fxDrop)) { edited = true; [self applySound]; }
     }
     fxMove = -1; fxDrop = -1;

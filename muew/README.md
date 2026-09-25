@@ -444,3 +444,14 @@ continues to follow the latest signed render value. Opposite-polarity peaks
 can replace a weaker hold immediately. Holds reset on route or preset edits,
 and vacant or unsupported routes do not show them. This is only display
 ballistics in the standalone and AU editors: no new sound or preset state.
+
+## 0.57.0 Noise burst shape
+
+The optional note-on noise burst now has an attack fraction (0-80% of the
+fixed total duration) and a decay curve (-1 fast, 0 linear, +1 slow). The
+SHAPE chip opens a larger editor over the modulation matrix with a live
+amplitude preview, leaving the crowded FILTER 2 + SUB controls in place.
+With BURST OFF, noise remains sustained and ignores both shape settings.
+Older bursts retain their byte-exact linear behavior; old presets and the 40
+AU parameter IDs stay unchanged. The optional `noiseenv <attack> <curve>`
+line saves non-default shaping.

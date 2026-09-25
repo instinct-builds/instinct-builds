@@ -822,6 +822,19 @@ int main() {
         printf("noise BURST recalled through AU; 40 published parameter IDs unchanged\n");
     }
 
+    // 0.57.0: attack/curve extend burst state without publishing a new parameter.
+    {
+        muew::Preset p=muew::factoryPresets()[0],got;
+        p.voice.noiseLevel=.7; p.voice.noiseBurst=.24; p.voice.noiseBurstAttack=.25; p.voice.noiseBurstCurve=-.5;
+        AudioUnit t=openUnit(); bool ok=t && setState(t,p) && getState(t,got);
+        auto saved=got.serialize();
+        if(!ok || !(got==p) || saved.find("\nnoiseb 0.24\nnoiseenv 0.25 -0.5\n")==std::string::npos){
+            printf("FAIL: AU noise burst envelope state\n");return 1;
+        }
+        AudioUnitUninitialize(t);AudioComponentInstanceDispose(t);
+        printf("noise BURST attack/curve recalled through AU; 40 published parameter IDs unchanged\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;
