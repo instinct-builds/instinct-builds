@@ -33,8 +33,10 @@ public struct DiceRollerView: View {
     @EnvironmentObject var model: AppModel
 
     /// 2.74.0: harness hook - start with the Latest session scope on.
-    public init(initialLatestSession: Bool = false) {
+    /// 2.78.0: or with the crits-only filter on.
+    public init(initialLatestSession: Bool = false, initialCritsOnly: Bool = false) {
         _historyLatestSession = State(initialValue: initialLatestSession)
+        _historyCritsOnly = State(initialValue: initialCritsOnly)
     }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
@@ -52,6 +54,9 @@ public struct DiceRollerView: View {
     /// Latest-session scope (2.74.0): true shows only the newest
     /// session's rolls - the common case at the table.
     @State private var historyLatestSession = false
+    /// Crits-only filter (2.78.0): true shows only rolls with a kept
+    /// natural 20 or natural 1 - the moments that mattered.
+    @State private var historyCritsOnly = false
     /// Text filter over history labels and expressions; blank shows all.
     @State private var historyFilter = ""
 
@@ -59,7 +64,8 @@ public struct DiceRollerView: View {
         let name = historyForCharacter ? model.selected?.wrappedValue.name : nil
         let base = model.rollHistory.forCharacter(name)
         let scoped = historyLatestSession ? base.latestSession() : base
-        return scoped.matching(historyFilter)
+        let critted = historyCritsOnly ? scoped.critRolls : scoped
+        return critted.matching(historyFilter)
     }
 
     public var body: some View {
@@ -145,6 +151,10 @@ public struct DiceRollerView: View {
                     .toggleStyle(.checkbox)
                     .font(Theme.Typeface.caption)
                     .help("Show only the newest session's rolls - pane, count, and Copy all follow")
+                Toggle("Crits", isOn: $historyCritsOnly)
+                    .toggleStyle(.checkbox)
+                    .font(Theme.Typeface.caption)
+                    .help("Show only rolls with a kept natural 20 or natural 1")
                 TextField("Filter rolls", text: $historyFilter)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(maxWidth: 160)

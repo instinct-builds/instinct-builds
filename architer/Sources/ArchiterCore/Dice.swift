@@ -28,6 +28,12 @@ public struct DieResult: Equatable, Codable, Sendable {
     public let sides: Int
     public let value: Int
     public let kept: Bool
+
+    public init(sides: Int, value: Int, kept: Bool) {
+        self.sides = sides
+        self.value = value
+        self.kept = kept
+    }
 }
 
 public struct RollResult: Equatable, Codable, Sendable {
@@ -49,6 +55,22 @@ public struct RollResult: Equatable, Codable, Sendable {
     /// which fall back to a plain reroll of the expression. Optional so
     /// old saves decode unchanged.
     public var reroll: RerollSpec? = nil
+
+    /// Explicit public init: the memberwise one is internal, and the
+    /// render harness (a separate module) builds crafted history rolls.
+    public init(expression: String, dice: [DieResult], modifier: Int, total: Int,
+                alternateTotal: Int?, label: String? = nil, characterName: String? = nil,
+                rolledAt: Date? = nil, reroll: RerollSpec? = nil) {
+        self.expression = expression
+        self.dice = dice
+        self.modifier = modifier
+        self.total = total
+        self.alternateTotal = alternateTotal
+        self.label = label
+        self.characterName = characterName
+        self.rolledAt = rolledAt
+        self.reroll = reroll
+    }
 }
 
 /// The roll path a history card replays (2.40.0).
@@ -623,6 +645,14 @@ public extension Array where Element == RollResult {
     func latestSession(now: Date = Date(),
                        calendar: Calendar = .current) -> [RollResult] {
         sessionSegments(self, now: now, calendar: calendar).first?.rolls ?? []
+    }
+
+    /// Rolls showing a crit the table saw (2.78.0): a kept d20 face of
+    /// 20 or 1 - an unkept advantage die is not a crit (2.69.0).
+    var critRolls: [RollResult] {
+        filter { roll in
+            roll.dice.contains { $0.kept && $0.sides == 20 && ($0.value == 20 || $0.value == 1) }
+        }
     }
 
     /// Rolls made for one character. nil returns the full table log.

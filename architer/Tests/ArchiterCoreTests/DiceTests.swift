@@ -866,6 +866,28 @@ struct SessionSegmentTests {
         #expect(lines[3].contains("d20: 10"))
     }
 
+    // 2.78.0: the crits-only filter keeps rolls with a kept natural 20
+    // or natural 1; an unkept advantage die is not a crit the table saw.
+    @Test func critRollsKeepOnlyTableSeenCrits() {
+        let nat20 = RollResult(expression: "d20",
+                               dice: [DieResult(sides: 20, value: 20, kept: true)],
+                               modifier: 0, total: 20, alternateTotal: nil)
+        let nat1 = RollResult(expression: "d20",
+                              dice: [DieResult(sides: 20, value: 1, kept: true)],
+                              modifier: 0, total: 1, alternateTotal: nil)
+        let droppedCrit = RollResult(expression: "d20",
+                                     dice: [DieResult(sides: 20, value: 20, kept: false),
+                                            DieResult(sides: 20, value: 7, kept: true)],
+                                     modifier: 0, total: 7, alternateTotal: 20)
+        let plain = RollResult(expression: "2d6",
+                               dice: [DieResult(sides: 6, value: 6, kept: true)],
+                               modifier: 0, total: 6, alternateTotal: nil)
+        let crits = [nat20, nat1, droppedCrit, plain].critRolls
+        #expect(crits.count == 2)
+        #expect(crits.contains { $0.total == 20 })
+        #expect(crits.contains { $0.total == 1 })
+    }
+
     // 2.71.0: noted() carries the session note; blank clears it. The
     // note rides the copy text under the stats line and follows its
     // session's name into export headers in parentheses.

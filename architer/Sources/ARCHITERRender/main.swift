@@ -445,6 +445,22 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? stampedPdf.write(to: URL(fileURLWithPath: "\(outDir)/sample-sheet-stamped.pdf"))
     try? SheetExporter.exportHTML(character).write(toFile: "\(outDir)/sample-sheet.html", atomically: true, encoding: .utf8)
     try? SheetExporter.exportMarkdown(character).write(toFile: "\(outDir)/sample-sheet.md", atomically: true, encoding: .utf8)
+    // 2.78.0 proof: the crits-only filter - a deterministic natural 20
+    // joins the history last so no other artifact changes, and the pane
+    // shows only rolls with a kept natural 20 or 1.
+    var critProof = RollResult(expression: "d20",
+                               dice: [DieResult(sides: 20, value: 20, kept: true)],
+                               modifier: 5, total: 25, alternateTotal: nil)
+    critProof.label = "Death save"
+    critProof.characterName = character.name
+    critProof.rolledAt = Date()
+    model.rollHistory.insert(critProof, at: 0)
+    renderPNG(
+        DiceRollerView(initialCritsOnly: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-crits", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
