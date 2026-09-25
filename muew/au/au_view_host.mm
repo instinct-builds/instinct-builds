@@ -34,6 +34,7 @@
 #include "frame_tools.h"
 #include "partial_edit.h"
 #include "partial_view.h"
+#include "partial_brush.h"
 #include "au_params.h"
 #include "ui_model.h"
 #include "spectral_process.h"
