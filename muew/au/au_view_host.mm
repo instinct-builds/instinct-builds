@@ -32,6 +32,7 @@
 #include "MUEWProperties.h"
 #include "preset.h"
 #include "frame_tools.h"
+#include "partial_edit.h"
 #include "au_params.h"
 #include "ui_model.h"
 #include "spectral_process.h"
