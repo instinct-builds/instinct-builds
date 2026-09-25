@@ -198,6 +198,19 @@ public struct DiceRollerView: View {
                 TextField("Filter rolls", text: $historyFilter)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(maxWidth: 160)
+                // 3.10.0: clear the filter with one click instead of
+                // select-all-delete; hidden while the field is empty.
+                if !historyFilter.isEmpty {
+                    Button {
+                        historyFilter = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.inkMuted)
+                    .controlSize(.small)
+                    .help("Clear the filter")
+                }
                 // 3.0.0: named filter presets - save the current filter
                 // under a name and re-apply it from the menu.
                 Menu {

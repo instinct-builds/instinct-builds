@@ -930,6 +930,23 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-preset-prefill", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.10.0 proof: the filter clear X - visible with text in the
+    // field, hidden when empty. The render shows it next to the
+    // active filter; the txt states the rule it renders.
+    do {
+        try? (["Filter clear X (3.10.0)",
+               "filter \"fire damage\" -> clear X visible in the bar",
+               "filter empty -> clear X hidden"])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-clear.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire damage")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-clear", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(
