@@ -863,7 +863,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)noiseColorRect { return NSMakeRect(666, [self top] - 209, 50, 15); }
 - (NSRect)noiseWidthRect { return NSMakeRect(666, [self top] - 233, 50, 13); } // narrow gap between NOISE/TONE rings, below COLOR
 - (NSRect)noiseBurstRect { return NSMakeRect(712, [self top] - 252, 62, 13); } // legacy duration slider, below WIDTH/TONE
-- (NSRect)noiseBurstDetailRect { return NSMakeRect(626, [self top] - 258, 80, 11); } // at panel foot: below the NOISE label, clear of WIDTH and rings
+- (NSRect)noiseBurstDetailRect { return NSMakeRect(662, [self top] - 252, 44, 13); } // right of NOISE label and left of duration, clear of rings
 - (NSRect)burstPanel { return NSMakeRect(36, 48, 424, 200); } // replaces the matrix temporarily, not the crowded FILTER panel
 - (NSRect)burstClose { NSRect r = [self burstPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)burstBar:(int)i { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 22, NSMaxY(r) - 76 - i * 34, 176, 15); }
@@ -1909,7 +1909,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
               v.noiseWidth > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
         NSRect detail = [self noiseBurstDetailRect];
         FillRound(detail, 3, burstDetail ? C(0x554326) : C(0x27303b));
-        TextA(@"SHAPE  ›", NSInsetRect(detail, 2, .5), 7, burstDetail ? C(0xf5cc78) : C(0xcbd4df), NSFontWeightBold, NSTextAlignmentCenter);
+        TextA(@"SHAPE", NSInsetRect(detail, 2, 1), 6.5, burstDetail ? C(0xf5cc78) : C(0xcbd4df), NSFontWeightBold, NSTextAlignmentCenter);
         NSRect burst = [self noiseBurstRect];
         FillRound(burst, 3, C(0x1c232d));
         if (v.noiseBurst > 0) FillRound(NSMakeRect(burst.origin.x, burst.origin.y, burst.size.width * v.noiseBurst / .5, burst.size.height), 3, C(0xf5cc78, .62));
