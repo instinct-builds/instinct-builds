@@ -931,3 +931,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Each Source Changes receipt in an asset inspector has a View receipt control. The dedicated, read-only sheet gives the acceptance date, small Before/After snapshots, source path, full size and dimensions, complete palette lists and complete SHA-256 digests together. The images are only visual references; neither is a source backup or a way to restore older bytes.
 - Missing images on older or unsupported receipts are marked as absent. CI opens the focused receipt from a native accepted-refresh demo and verifies the two images and changed digest.
+
+## 1.49.0: navigate source receipts
+
+- The focused receipt sheet now has Older and Newer controls with a position count. It stays scoped to the same asset's accepted receipts, newest first, and only presents catalog facts plus small bounded visual references where available. The first and last controls disable at the ends; nothing in history changes when browsing.
+- CI creates two accepted source refreshes and captures the older receipt in the same focused sheet, proving the navigation and both snapshot sides without implying recovery of original file bytes.

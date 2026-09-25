@@ -54,6 +54,28 @@ struct SourceHistoryTests {
         #expect(decoded.sourceHistoryPreviewIDs(for: id) == retained)
     }
 
+    @Test func timelineStaysWithOneAssetAndFindsNeighbors() throws {
+        var c = StudioCatalog()
+        let id = c.importFile(path: "/one.png")!
+        let other = c.importFile(path: "/two.png")!
+        _ = c.seedSourceFingerprint(SourceFingerprint(size: 1, modified: 1, sha256: "0"), for: id, path: "/one.png")
+        _ = c.seedSourceFingerprint(SourceFingerprint(size: 1, modified: 1, sha256: "a"), for: other, path: "/two.png")
+        for n in 1...3 {
+            let next = SourceFingerprint(size: Int64(n + 1), modified: Double(n + 1), sha256: String(n))
+            _ = c.acceptChangedSource(next, for: id, path: "/one.png", palette: [], resolution: "x", at: Date(timeIntervalSince1970: Double(n)))
+        }
+        _ = c.acceptChangedSource(SourceFingerprint(size: 2, modified: 2, sha256: "b"), for: other, path: "/two.png", palette: [], resolution: "x", at: Date())
+        let history = c.sourceHistory(for: id)
+        let newest = SourceReceiptTimeline(catalog: c, assetID: id, selectedID: history[0].id)
+        #expect(newest.receipts.count == 3 && newest.position == 1)
+        #expect(newest.newer == nil && newest.older?.id == history[1].id)
+        let middle = SourceReceiptTimeline(catalog: c, assetID: id, selectedID: history[1].id)
+        #expect(middle.position == 2 && middle.newer?.id == history[0].id && middle.older?.id == history[2].id)
+        let oldest = SourceReceiptTimeline(catalog: c, assetID: id, selectedID: history[2].id)
+        #expect(oldest.position == 3 && oldest.older == nil && oldest.newer?.id == history[1].id)
+        #expect(!newest.receipts.contains(where: { $0.assetID == other }))
+    }
+
     @Test func legacyCatalogHasEmptyHistory() throws {
         var c = StudioCatalog()
         _ = c.importFile(path: "/old.png")

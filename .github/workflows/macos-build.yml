@@ -256,6 +256,8 @@ jobs:
           grep -q '^done before=true after=true bounded=true$' "$SUP/demo-source-history-previews.txt"
           DELAY=20 shoot source-receipt-focus 1920x1200 source-receipt-focus demo-source-receipt-focus.txt
           grep -q '^done receipt=true$' "$SUP/demo-source-receipt-focus.txt"
+          DELAY=25 shoot source-receipt-timeline 1920x1200 source-receipt-timeline demo-source-receipt-timeline.txt
+          grep -q '^done count=2 older=true$' "$SUP/demo-source-receipt-timeline.txt"
           python3 - "$SUP/studio-catalog.json" <<'PY2'
           import json,sys
           c=json.load(open(sys.argv[1])); r=c['sourceRefreshHistory']; assert len(r)==1, r

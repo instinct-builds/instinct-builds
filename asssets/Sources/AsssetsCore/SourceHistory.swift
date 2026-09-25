@@ -47,3 +47,19 @@ extension StudioCatalog {
         Set(sourceHistory(for: id).prefix(5).map(\.id))
     }
 }
+
+/// Read-only navigation across one asset's accepted receipts, newest first.
+public struct SourceReceiptTimeline: Sendable {
+    public let receipts: [SourceRefreshRecord]
+    public let selected: Int
+
+    public init(catalog: StudioCatalog, assetID: UUID, selectedID: UUID) {
+        receipts = catalog.sourceHistory(for: assetID)
+        selected = receipts.firstIndex(where: { $0.id == selectedID }) ?? 0
+    }
+
+    public var current: SourceRefreshRecord? { receipts.indices.contains(selected) ? receipts[selected] : nil }
+    public var older: SourceRefreshRecord? { receipts.indices.contains(selected + 1) ? receipts[selected + 1] : nil }
+    public var newer: SourceRefreshRecord? { selected > 0 && receipts.indices.contains(selected - 1) ? receipts[selected - 1] : nil }
+    public var position: Int { receipts.isEmpty ? 0 : selected + 1 }
+}

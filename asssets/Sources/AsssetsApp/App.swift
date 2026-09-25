@@ -2862,7 +2862,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2985,7 +2985,7 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
@@ -3039,7 +3039,7 @@ final class StudioLibrary: ObservableObject {
                                 self.selection = [source.id]; self.focusID = source.id
                                 self.inspectorAnchor = "source-changes"
                             }
-                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" {
+                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" {
                                 self.reviewChangedSource(source.id)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                     self.reviewedSourceID = nil
@@ -3049,14 +3049,40 @@ final class StudioLibrary: ObservableObject {
                                     let a = self.catalog.assets.first { $0.id == source.id }
                                     let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == expectedRights
                                         && self.catalog.boardsUsing(source.id).count > 0 && self.catalog.sourceHistory(for: source.id).count == 1
-                                    if demo == "source-history-inspector" || demo == "source-receipt-focus" {
+                                    if demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" {
                                         self.healthOpen = false
                                         self.selection = [source.id]; self.focusID = source.id
                                         self.inspectorAnchor = "source-changes"
-                                        if demo == "source-receipt-focus",
+                                        if demo == "source-receipt-focus" || demo == "source-receipt-timeline",
                                            let receipt = self.catalog.sourceHistory(for: source.id).first {
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                                                self.receiptFocusID = receipt.id
+                                                if demo == "source-receipt-timeline" {
+                                                    let currentPath = receipt.path
+                                                    let replacement = self.starterRoot.appendingPathComponent("blueprint-4k.png")
+                                                    // The first accepted miniature must finish before disk changes again.
+                                                    func replaceWhenCaptured(_ tries: Int) {
+                                                        guard self.receiptPreview(receipt, side: "after") != nil || tries == 0 else {
+                                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { replaceWhenCaptured(tries - 1) }
+                                                            return
+                                                        }
+                                                        try? fm.removeItem(atPath: currentPath)
+                                                        try? fm.copyItem(at: replacement, to: URL(fileURLWithPath: currentPath))
+                                                        self.refreshHealth(full: true)
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                                            self.reviewChangedSource(source.id)
+                                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+                                                                self.reviewedSourceID = nil
+                                                                self.refreshChangedSource(source.id)
+                                                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                                                    self.receiptFocusID = self.catalog.sourceHistory(for: source.id).first?.id
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    replaceWhenCaptured(10)
+                                                } else {
+                                                    self.receiptFocusID = receipt.id
+                                                }
                                             }
                                         }
                                     }
@@ -8137,8 +8163,11 @@ struct SourceReceiptSheet: View {
     @EnvironmentObject var model: StudioLibrary
     @Environment(\.dismiss) private var dismiss
     let receipt: SourceRefreshRecord
+    @State private var selectedID: UUID?
 
     var body: some View {
+        let timeline = SourceReceiptTimeline(catalog: model.catalog, assetID: receipt.assetID, selectedID: selectedID ?? receipt.id)
+        let receipt = timeline.current ?? receipt
         let before = model.receiptPreview(receipt, side: "before")
         let after = model.receiptPreview(receipt, side: "after")
         let title = model.catalog.assets.first(where: { $0.id == receipt.assetID })?.title ?? "Removed asset"
@@ -8149,7 +8178,18 @@ struct SourceReceiptSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            Text(title).font(.headline)
+            HStack {
+                Text(title).font(.headline)
+                Spacer()
+                if timeline.receipts.count > 1 {
+                    Button { selectedID = timeline.older?.id } label: { Label("Older", systemImage: "chevron.left") }
+                        .disabled(timeline.older == nil).controlSize(.small)
+                    Text("\(timeline.position) of \(timeline.receipts.count)")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(minWidth: 44)
+                    Button { selectedID = timeline.newer?.id } label: { Label("Newer", systemImage: "chevron.right") }
+                        .disabled(timeline.newer == nil).controlSize(.small)
+                }
+            }
             Text(receipt.refreshedAt.formatted(date: .complete, time: .shortened))
                 .font(.caption).foregroundStyle(.secondary)
             Text((receipt.path as NSString).abbreviatingWithTildeInPath)
@@ -8170,6 +8210,18 @@ struct SourceReceiptSheet: View {
         }
         .padding(20).frame(width: 700).background(Theme.panel)
         .onAppear {
+            selectedID = receipt.id
+            if ProcessInfo.processInfo.arguments.contains("source-receipt-timeline"), timeline.receipts.count == 2 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    selectedID = timeline.older?.id
+                    if let old = timeline.older {
+                        let ok = model.receiptPreview(old, side: "before") != nil &&
+                            model.receiptPreview(old, side: "after") != nil &&
+                            timeline.current?.id != old.id
+                        try? "done count=2 older=\(ok)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-timeline.txt"), atomically: true, encoding: .utf8)
+                    }
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("source-receipt-focus") {
                 let ok = before != nil && after != nil && receipt.before.sha256 != receipt.after.sha256
                 try? "done receipt=\(ok)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-focus.txt"), atomically: true, encoding: .utf8)
