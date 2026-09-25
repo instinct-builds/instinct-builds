@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false;
+        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -1111,8 +1111,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         // A compact first 32 partials, or a large 32-bin viewport over all 127.
         const int nP = 32, firstH = wtPartialLarge ? partialPageStart(wtPartialPage) : 1;
         const NSRect spectrum = wtPartialLarge ? [self wtPartialLargeArea] : sp;
-        if (wtPartialLarge) FillRound(spectrum, 3, C(0x101a21));
+        if (wtPartialLarge) {
+            FillRound(spectrum, 3, C(0x101a21));
+        }
         const auto specAfter = frameSpectrum(pf), specBefore = frameSpectrum(f);
+        const bool showBrushBase = wtPartialLarge && wtBrushActive && wtFrame < (int)wtBrushBase.size();
+        const auto brushBefore = showBrushBase ? frameSpectrum(wtBrushBase[wtFrame]) : specBefore;
+        double brushPeak = 0;
+        if (showBrushBase) for (int h = 1; h <= kEditablePartials; ++h)
+            brushPeak = std::max(brushPeak, std::abs(brushBefore[h]));
         double peak = 0;
         for (int h = 1; h <= kEditablePartials; ++h) peak = std::max(peak, std::abs(specAfter[h]));
         auto dbh = [](double a) { return a <= 0 ? 0.0 : std::clamp(1.0 + 20.0 * std::log10(a) / 48.0, 0.0, 1.0); };
@@ -1126,8 +1133,15 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), 1), 0, C(0x1b222c));
             if (v > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), std::max<CGFloat>(1.5, barTop * v)), 1, [col colorWithAlphaComponent:.35 + .55 * v]);
             if (changed && o > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * o - .5, std::max<CGFloat>(1, bw - 1), 1.2), 0, C(0x8793a3));
+            if (showBrushBase && brushPeak > 0 && std::isfinite(wtBrush.targetDb[h])) {
+                const double original = dbh(std::abs(brushBefore[h]) / brushPeak);
+                FillRound(NSMakeRect(x, spectrum.origin.y + barTop * original - .75,
+                    bw, 1.5), .5, C(0xe5ecf0, .95));
+            }
         }
         if (wtPartialLarge) {
+            TextA(@"OPTION-DRAG TO PAINT", NSMakeRect(pv.origin.x + 4, pv.origin.y + 58, 150, 9),
+                  6.5, C(0x667f86), NSFontWeightSemibold, NSTextAlignmentLeft);
             for (int i = 0; i < 4; ++i) {
                 const NSRect b = [self wtPartialPageRect:i];
                 FillRound(b, 3, i == wtPartialPage ? [col colorWithAlphaComponent:.26] : C(0x1d2830));
@@ -3205,6 +3219,37 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     wtCmpHas[o] = true; wtCmpSnap[o] = true;
     [self setNeedsDisplay:YES];
 }
+- (int)wtBrushH:(NSPoint)p {
+    const NSRect r = [self wtPartialLargeArea];
+    return std::min(kEditablePartials, partialPageStart(wtPartialPage) +
+        std::clamp((int)((p.x - r.origin.x) * 32 / r.size.width), 0, 31));
+}
+- (double)wtBrushDb:(NSPoint)p {
+    const NSRect r = [self wtPartialLargeArea];
+    const double n = std::clamp((p.y - r.origin.y) / std::max<CGFloat>(1, r.size.height - 14), 0.0, 1.0);
+    return std::round((-48.0 + n * 60.0) * 2) / 2.0;
+}
+- (void)wtBrushTo:(NSPoint)p {
+    if (!wtBrushActive || wtEdit < 0 || wtEdit > 1) return;
+    const int h = [self wtBrushH:p]; const double db = [self wtBrushDb:p];
+    if (wtBrushLastH < 0) wtBrush.paint(h, db);
+    else wtBrush.line(wtBrushLastH, wtBrushLastDb, h, db);
+    wtBrushLastH = h; wtBrushLastDb = db; wtPartial = h;
+    TableFrames next = wtBrushBase;
+    wtBrushChanged = applyBrushTable(next, wtRange, wtFrame, wtBrush);
+    if (wtBrushChanged) {
+        current.tables[wtEdit] = std::move(next);
+        edited = true; [self applySound];
+    }
+    [self setNeedsDisplay:YES];
+}
+- (void)wtBrushEnd {
+    if (!wtBrushActive) return;
+    if (wtBrushChanged) wtHistory[wtEdit].push(wtBrushBase, wtFrame,
+        wtRange.active((int)wtBrushBase.size()) ? "BRUSH RANGE" : "BRUSH");
+    wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrush.clear(); wtBrushBase.clear();
+    [self setNeedsDisplay:YES];
+}
 - (void)wtPartialCreateNow {
     if (wtEdit < 0 || wtEdit > 1 || wtPartial < 1 || wtPartial > kEditablePartials) return;
     TableFrames& t = current.tables[wtEdit];
@@ -3370,8 +3415,13 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
                 if (NSPointInRect(p, [self wtPartialPageRect:i])) { wtPartialPage = i; wtPartial = partialPageStart(i); [self setNeedsDisplay:YES]; return; }
             const NSRect big = [self wtPartialLargeArea];
             if (NSPointInRect(p, big)) {
-                wtPartial = std::min(kEditablePartials, partialPageStart(wtPartialPage) + std::clamp((int)((p.x - big.origin.x) * 32 / big.size.width), 0, 31));
-                [self setNeedsDisplay:YES]; return;
+                if (event.modifierFlags & NSEventModifierFlagOption) {
+                    wtBrushActive = true; wtBrushChanged = false; wtBrushLastH = -1;
+                    wtBrushBase = t; wtBrush.clear(); [self wtBrushTo:p];
+                } else {
+                    wtPartial = [self wtBrushH:p]; [self setNeedsDisplay:YES];
+                }
+                return;
             }
             return; // the expanded spectrum does not trigger compact-page tools beneath it
         }
@@ -3917,6 +3967,7 @@ static int SortForColumn(int c) {
 - (void)mouseDragged:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
+    if (wtBrushActive) { [self wtBrushTo:p]; return; }
     if (wtDrawing && wtEdit >= 0) { [self tableStrokeTo:p first:NO]; return; }
     if (wtSpecDrag >= 0 && wtEdit >= 0) { [self specDragTo:p]; return; } // 0.31.0
     if (wtPosDrag >= 0) { // WT POS bar: the full bar width is 0..100%
@@ -4026,6 +4077,7 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseUp:(NSEvent*)e {
+    if (wtBrushActive) { [self wtBrushEnd]; return; }
     if (wtDrawing) { wtDrawing = false; [self applySound]; } // one engine update per stroke
     if (wtSpecDrag >= 0) { wtSpecDrag = -1; [self setNeedsDisplay:YES]; } // 0.31.0
     if (wtPosDrag >= 0 && host) host->parameterGesture(wtPosDrag ? params::WtPosB : params::WtPosA, false);

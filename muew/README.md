@@ -294,3 +294,14 @@ strongest partial with sine phase; it never overwrites an existing partial
 and does nothing on an all-silent frame. A frame range is still one undo
 step. The view/page selection stays UI-only; the created harmonic is stored
 in the normal table state.
+
+## 0.41.0 Harmonic brush
+
+In the expanded SPEC spectrum, Option-drag across bars to paint their
+absolute levels on a -48 to +12 dB scale. Fast movement fills skipped
+harmonics. The editor replays the whole gesture from a frozen table baseline
+on every move, so gains do not compound; grey caps show each painted
+harmonic's original level. A selected frame range receives the same gesture
+on every frame. Mouse-up records one undo step (or none for a no-op). The
+brush never creates silent partials; the explicit CREATE control still owns
+that decision. The painted table is stored in the ordinary sound state.

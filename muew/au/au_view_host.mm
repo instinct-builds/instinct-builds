@@ -1135,6 +1135,59 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
             fflush(stdout);
         });
+        After(6.999495, ^{ // 0.41.0: Option-drag H4 to H8 over a selected frame range, one undo step
+            CGFloat top = view.bounds.size.height - 100;
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() == 64, "brush gesture starts with the 64-frame sound");
+            if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // expand
+            NSPoint a = NSMakePoint(40 + 3 * 25.5 + 11, top - 220 + 14);
+            NSPoint b = NSMakePoint(40 + 9 * 25.5 + 11, top - 220 + 14);
+            Click(view, w, a);
+            auto event = [&](NSEventType kind, NSPoint p, NSEventModifierFlags flags) -> NSEvent* {
+                return [NSEvent mouseEventWithType:kind location:p modifierFlags:flags
+                    timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+            };
+            [view mouseDown:event(NSEventTypeLeftMouseDown, b, NSEventModifierFlagShift)];
+            [view mouseUp:event(NSEventTypeLeftMouseUp, b, NSEventModifierFlagShift)];
+            muew::Preset selected; bool ok1 = State(selected);
+            NSString* range = [view respondsToSelector:NSSelectorFromString(@"muewRangeText")] ? [view valueForKey:@"muewRangeText"] : @"";
+            Check(ok1 && std::string(range.UTF8String ?: "").find("14-39") != std::string::npos, "brush range spans frames 14-39");
+            const CGFloat bx = 40 + 8 + 4, by = top - 184 + 8 + 63;
+            // Paint two harmonic positions. The brush interpolates H5-7 and replays from the baseline.
+            NSPoint p0 = NSMakePoint(bx + 3.5 * 188.0 / 32, by + 12); // H4, around -36 dB
+            NSPoint p1 = NSMakePoint(bx + 7.5 * 188.0 / 32, by + 24); // H8, around -23 dB
+            [view mouseDown:event(NSEventTypeLeftMouseDown, p0, NSEventModifierFlagOption)];
+            [view mouseDragged:event(NSEventTypeLeftMouseDragged, p1, NSEventModifierFlagOption)];
+            Snapshot(view, "MUEW_BRUSH41_PNG", "brush before/after snapshot written");
+            [view mouseUp:event(NSEventTypeLeftMouseUp, p1, NSEventModifierFlagOption)];
+            muew::Preset changed; bool ok2 = State(changed);
+            NSString* hist = [view respondsToSelector:NSSelectorFromString(@"muewHistoryText")] ? [view valueForKey:@"muewHistoryText"] : @"";
+            bool outside = ok1 && ok2 && changed.tables[0].size() == selected.tables[0].size();
+            int insideChanged = 0;
+            if (outside) for (int i = 0; i < 64; ++i) {
+                if (i < 13 || i > 38) outside &= changed.tables[0][i] == selected.tables[0][i];
+                else insideChanged += changed.tables[0][i] != selected.tables[0][i];
+            }
+            Check(outside && insideChanged > 4, "brush changes multiple frames in range, none outside");
+            Check(std::string(hist.UTF8String ?: "").find("last=BRUSH RANGE") != std::string::npos, "one gesture is one labelled history step");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5));
+            muew::Preset undone; bool ok3 = State(undone);
+            Check(ok3 && undone.tables[0] == selected.tables[0], "one UNDO removes the whole brush stroke");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == changed.tables[0], "one REDO restores the whole brush stroke");
+            NSString* resetText = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef reset = (__bridge CFStringRef)resetText;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &reset, sizeof(reset));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, a); // clear range
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // collapse
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab
