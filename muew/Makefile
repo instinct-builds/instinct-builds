@@ -259,3 +259,9 @@ build/muew-tests-ratchet48: tests/tests_ratchet48.cpp src/synth.h src/preset.h |
 
 build/muew-demo-ratchet48: src/render_demo_ratchet48.cpp src/synth.h src/wav_writer.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-tests-octave49: tests/tests_octave49.cpp src/synth.h src/preset.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-demo-octave49: src/render_demo_octave49.cpp src/synth.h src/wav_writer.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<

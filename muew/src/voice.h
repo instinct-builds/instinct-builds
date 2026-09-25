@@ -173,6 +173,7 @@ struct VoiceParams {
     int arpPatVel[16] = {127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127}; // 1..127
     int arpPatKind[16] = {};                              // arp::StepKind
     int arpPatRatchet[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}; // retriggers per ON step, 1..4
+    int arpPatOctave[16] = {}; // 0.49.0 ON-step octave shift, -1..+1; TIE retains sounding pitch
     bool arpPatDefault() const {
         for (int i = 0; i < 16; ++i) if (arpPatVel[i] != 127 || arpPatKind[i] != 0) return false;
         return !arpPatOn && arpPatLen == 16;

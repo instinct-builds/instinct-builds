@@ -391,3 +391,7 @@ holds through, and non-pattern playback is unchanged. In HOST SYNC the
 ratchets follow the host beat and swing grid; the step boundaries stay put.
 The new optional `arpr` line stores 16 counts only when one differs from 1.
 Old `arpx` lines stay byte-identical and load with one strike per step.
+
+## 0.49.0 ARP octave lane
+
+Each ON step may shift its selected pitch by -1, 0 or +1 octave; ratchets repeat the shifted pitch. TIE holds the previous sounding pitch and REST stays silent. The lower step badge cycles the octave, while the top badge still controls ratchets. An optional `arpo` line stores non-default shifts without changing `arpx` or `arpr`, so older patterns and factory sounds retain their values.

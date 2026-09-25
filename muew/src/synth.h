@@ -397,7 +397,7 @@ private:
         if (!clockSync_ && locked_) { locked_ = false; arpGridLast_ = kNoGrid; }
         patOn_ = p.arpPatOn;
         patLen_ = std::clamp(p.arpPatLen, 1, arp::kPatSteps);
-        for (int i = 0; i < arp::kPatSteps; ++i) { patVel_[i] = std::clamp(p.arpPatVel[i], 1, 127); patKind_[i] = std::clamp(p.arpPatKind[i], 0, arp::kStepKinds - 1); patRatchet_[i] = std::clamp(p.arpPatRatchet[i], 1, 4); }
+        for (int i = 0; i < arp::kPatSteps; ++i) { patVel_[i] = std::clamp(p.arpPatVel[i], 1, 127); patKind_[i] = std::clamp(p.arpPatKind[i], 0, arp::kStepKinds - 1); patRatchet_[i] = std::clamp(p.arpPatRatchet[i], 1, 4); patOctave_[i] = std::clamp(p.arpPatOctave[i], -1, 1); }
         const bool latch = p.arpLatch;
         if (arpLatch_ && !latch) { // latch off: drop keys that are no longer held
             int w = 0;
@@ -454,10 +454,10 @@ private:
     // pattern. Returns the gate as a fraction of the step (>= 1 holds through).
     double arpBeginStep() {
         ratchetCount_ = 1; ratchetIndex_ = 0;
-        int kind = arp::StepOn; float vel = 1.0f; bool nextTie = false;
+        int kind = arp::StepOn, octaveShift = 0; float vel = 1.0f; bool nextTie = false;
         if (patOn_) {
             const int k = arp::wrapStep(arpStep_, patLen_);
-            kind = patKind_[k]; vel = patVel_[k] / 127.0f;
+            kind = patKind_[k]; vel = patVel_[k] / 127.0f; octaveShift = patOctave_[k];
             if (kind == arp::StepOn && patKind_[arp::wrapStep(arpStep_ + 1, patLen_)] != arp::StepTie)
                 ratchetCount_ = patRatchet_[k];
             nextTie = patKind_[arp::wrapStep(arpStep_ + 1, patLen_)] == arp::StepTie;
@@ -482,16 +482,23 @@ private:
             arpNotes_[arpSounding_++] = seq_[arpLastIdx_];
             arpIdx_ = arpLastIdx_ + 1;
         }
+        // Keep each selected key's velocity before octave clamping can make
+        // its pitch coincide with another held key.
+        for (int i = 0; i < arpSounding_; ++i) ratchetKeyVel_[i] = poolVelocity(arpNotes_[i]);
+        // Shift only a newly selected ON step. TIE returned above with the
+        // previous sounding note; ratchet repeats these shifted pitches.
+        if (octaveShift) for (int i = 0; i < arpSounding_; ++i)
+            arpNotes_[i] = std::clamp(arpNotes_[i] + 12 * octaveShift, 0, 127);
         ratchetVelocity_ = vel;
         ratchetNotesCount_ = arpSounding_;
         for (int i = 0; i < ratchetNotesCount_; ++i) ratchetNotes_[i] = arpNotes_[i];
-        for (int i = 0; i < arpSounding_; ++i) noteOnImpl(arpNotes_[i], patOn_ ? poolVelocity(arpNotes_[i]) * vel : poolVelocity(arpNotes_[i]));
+        for (int i = 0; i < arpSounding_; ++i) noteOnImpl(arpNotes_[i], patOn_ ? ratchetKeyVel_[i] * vel : ratchetKeyVel_[i]);
         return nextTie ? 1.0 : arpGate_;
     }
     void arpRetrigger() {
         arpRelease();
         for (int i = 0; i < ratchetNotesCount_; ++i) { const int note = ratchetNotes_[i]; arpNotes_[arpSounding_++] = note;
-            noteOnImpl(note, poolVelocity(note) * ratchetVelocity_); }
+            noteOnImpl(note, ratchetKeyVel_[i] * ratchetVelocity_); }
     }
     // 0.26.0: host bar grid. A step starts when the host beat enters it; the
     // first step after the keys go down plays at once unless under a quarter
@@ -553,8 +560,8 @@ private:
     bool clockSync_ = false, locked_ = false, patOn_ = false;
     double beat_ = 0.0, beatInc_ = 0.0, arpGateEnd_ = 0.0;
     long long arpGridLast_ = kNoGrid;
-    int patLen_ = 16, patVel_[arp::kPatSteps] = {}, patKind_[arp::kPatSteps] = {}, patRatchet_[arp::kPatSteps] = {}, arpPatIdx_ = -1;
-    int ratchetCount_ = 1, ratchetIndex_ = 0, ratchetNotesCount_ = 0, ratchetNotes_[arp::kPool] = {}; float ratchetVelocity_ = 1;
+    int patLen_ = 16, patVel_[arp::kPatSteps] = {}, patKind_[arp::kPatSteps] = {}, patRatchet_[arp::kPatSteps] = {}, patOctave_[arp::kPatSteps] = {}, arpPatIdx_ = -1;
+    int ratchetCount_ = 1, ratchetIndex_ = 0, ratchetNotesCount_ = 0, ratchetNotes_[arp::kPool] = {}; float ratchetKeyVel_[arp::kPool] = {}; float ratchetVelocity_ = 1;
     double ratchetStartBeat_ = 0, ratchetStepBeats_ = 0;
     int poolNote_[arp::kPool] = {};
     float poolVel_[arp::kPool] = {};

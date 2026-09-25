@@ -1880,6 +1880,10 @@ int main() {
                 // 0.48.0 top badges: step 1 -> x3, step 2 -> x4. TIE/REST retain x1.
                 for (int i = 0; i < 2; ++i) Click(view, w, NSMakePoint(cellX(0), t - 246 + 33));
                 for (int i = 0; i < 3; ++i) Click(view, w, NSMakePoint(cellX(1), t - 246 + 33));
+                // 0.49.0 lower badge: first ON -> +1, second ON -> -1. TIE has no octave change.
+                Click(view, w, NSMakePoint(cellX(0), t - 246 + 14));
+                Click(view, w, NSMakePoint(cellX(1), t - 246 + 14));
+                Click(view, w, NSMakePoint(cellX(1), t - 246 + 14));
                 Click(view, w, NSMakePoint(636 + 31, t - 205 + 9));                         // HOST SYNC
                 muew::Preset ps;
                 const bool okp = State(ps);
@@ -1889,11 +1893,14 @@ int main() {
                 Check(okp && pv.clockSync && pv.arpPatOn && pv.arpPatLen == 8 && pv.arpPatVel[1] == 64 && pv.arpPatKind[1] == 0 && pv.arpPatKind[2] == 1
                       && pv.arpPatKind[4] == 2 && pv.arpPatKind[3] == 0 && ps.serialize().find("\narpx 1 1 8 127 0 64 0 127 1 127 0 127 2 ") != std::string::npos,
                       "PATTERN, LEN, step velocity, REST, TIE and HOST SYNC reached the AU's sound");
-                Check(arpText().find(" sync=1 locked=0 pat=1 len=8 ") != std::string::npos && arpText().find("steps=O127/x3,O64/x4,R127/x1,O127/x1,T127/x1,") != std::string::npos,
+                Check(arpText().find(" sync=1 locked=0 pat=1 len=8 ") != std::string::npos && arpText().find("steps=O127/x3/o+1,O64/x4/o-1,R127/x1/o+0,O127/x1/o+0,T127/x1/o+0,") != std::string::npos,
                       "the ARP page reports the pattern and ratchets; no transport = free clock");
                 Check(okp && pv.arpPatRatchet[0] == 3 && pv.arpPatRatchet[1] == 4 && pv.arpPatRatchet[2] == 1 &&
                       ps.serialize().find("\narpr 3 4 1 1 1 ") != std::string::npos,
                       "step badges set x3/x4, REST keeps x1, and arpr state reaches AU");
+                Check(okp && pv.arpPatOctave[0] == 1 && pv.arpPatOctave[1] == -1 && pv.arpPatOctave[4] == 0 &&
+                      ps.serialize().find("\narpo 1 -1 0 0 0 ") != std::string::npos,
+                      "lower badges set +1/-1 octave, TIE remains neutral, arpo reaches AU");
             }
             for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x90, k, 100, 0);
             for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x80, k, 0, 0);   // LATCH keeps them
@@ -1914,6 +1921,7 @@ int main() {
             printf("arp: AU on %u pool %d step %d index %d note %d; editor %s\n", (unsigned)pf.arpOn, (int)pf.poolCount, (int)pf.arpStep, (int)pf.arpIndex, (int)pf.arpNote, txt.c_str());
             Check(pf.arpOn == 1 && pf.poolCount == 3 && pf.arpStep >= 3 && pf.arpNote >= 60 && txt.find("page=2 on=1 mode=UP/DN oct=2 rate=1/16 gate=0.62 swing=0.25 latch=1 live=1 pool=60,64,67") == 0,
                   "the latched chord plays; the ARP page shows the AU's pool and step");
+            Snapshot(view, "MUEW_OCTAVE49_PNG", "ARP octave pattern snapshot written");
             Snapshot(view, "MUEW_RATCHET48_PNG", "ARP ratchet pattern snapshot written");
             Snapshot(view, "MUEW_ARP_PNG", "ARP page snapshot written");
             // Back: LATCH off (drops the released keys), ARP OFF, FILTER 1 page.

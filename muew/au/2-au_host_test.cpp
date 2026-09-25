@@ -724,6 +724,24 @@ int main() {
         printf("ARP ratchet state recalled through AU; arpx layout unchanged\n");
     }
 
+    // 0.49.0: per-step octave data is separate from the older arpx/arpr lines.
+    {
+        muew::Preset p = muew::factoryPresets()[0], got;
+        p.voice.arpOn = true; p.voice.arpPatOn = true; p.voice.arpPatLen = 2;
+        p.voice.arpPatRatchet[0] = 3;
+        p.voice.arpPatOctave[0] = 1; p.voice.arpPatOctave[1] = -1;
+        AudioUnit t = openUnit();
+        bool ok = t && setState(t, p) && getState(t, got);
+        auto saved = got.serialize();
+        if (!ok || !(got == p) || saved.find("\narpo 1 -1 0 0 ") == std::string::npos ||
+            saved.find("\narpr 3 1 1 1 ") == std::string::npos ||
+            saved.find("\narpx 0 1 2 ") == std::string::npos) {
+            printf("FAIL: AU octave state / append-only arpo line\n"); return 1;
+        }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("ARP octave shift recalled through AU; arpx/arpr layouts unchanged\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;
