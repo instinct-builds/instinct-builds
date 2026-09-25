@@ -1295,6 +1295,12 @@ int main() {
             [view mouseUp:event(NSEventTypeLeftMouseUp, b, NSEventModifierFlagShift)];
             NSString* range = [view respondsToSelector:NSSelectorFromString(@"muewRangeText")] ? [view valueForKey:@"muewRangeText"] : @"";
             Check(std::string(range.UTF8String ?: "").find("14-39") != std::string::npos, "profile range is 14-39");
+            // Keep the selected range, but audition from an interior frame where EDGE strength is nonzero.
+            SEL frameSel = NSSelectorFromString(@"selectTableFrame:");
+            if ([view respondsToSelector:frameSel]) ((void (*)(id, SEL, int))[view methodForSelector:frameSel])(view, frameSel, 25);
+            NSString* rangeAfter = [view respondsToSelector:NSSelectorFromString(@"muewRangeText")] ? [view valueForKey:@"muewRangeText"] : @"";
+            Check(std::string(rangeAfter.UTF8String ?: "").find("14-39") != std::string::npos,
+                  "preview frame 26 retains selected 14-39 range");
             Click(view, w, NSMakePoint(40 + 72 + 74, top - 184 + 14 + 3)); // EDGE 100%
             Click(view, w, NSMakePoint(310 + 50, top - 274 + 3)); // BLEND 50%
             Click(view, w, NSMakePoint(40 + 56 + 26, top - 278 + 7)); // PREVIEW
@@ -1305,6 +1311,10 @@ int main() {
             Snapshot(view, "MUEW_CLIP43_PNG", "spectral profile preview snapshot written");
             muew::Preset still; bool okPreview = State(still);
             Check(ok1 && okPreview && still.tables[0] == baseline.tables[0], "preview leaves AU table untouched");
+            muew::SpectralClipboard previewProfile; previewProfile.capture(setup.tables[0][0], 0);
+            auto innerPreview = baseline.tables[0][25];
+            Check(muew::applySpectralProfile(innerPreview, previewProfile, .5, false) &&
+                  innerPreview != baseline.tables[0][25], "interior preview has a real, audible spectral difference");
             Click(view, w, NSMakePoint(40 + 2 * 56 + 26, top - 278 + 7)); // PASTE
             muew::Preset changed; bool ok2 = State(changed);
             muew::SpectralClipboard expected; expected.capture(setup.tables[0][0], 0);
