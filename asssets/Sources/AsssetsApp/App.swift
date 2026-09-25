@@ -33,6 +33,7 @@ struct ASSSETSApp: App {
                 Button("Cull Current View") { library.openCull() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(!library.canCull)
                 Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Place into Mockup…") { library.openPlaceIntoMockup() }.keyboardShortcut("p", modifiers: [.command, .option]).disabled(!library.canPlaceFocus)
                 Button("Batch Rename…") { library.openBatchRename() }.keyboardShortcut("r", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
                 Divider()
                 Button("Stack as Versions") { library.stackSelection() }.keyboardShortcut("g", modifiers: [.command]).disabled(!library.canStack)
@@ -1110,6 +1111,108 @@ final class StudioLibrary: ObservableObject {
         }
     }
 
+    // MARK: Place into Mockup (1.29)
+
+    @Published var placing: PlaceState?
+    private var psdCache: [String: PsdDocument] = [:]
+
+    /// Layered PSD mockups in the library whose file is still there (bundled and the user's own).
+    var mockupAssets: [StudioAsset] {
+        catalog.assets.filter { a in
+            guard let p = a.importedPath, p.lowercased().hasSuffix(".psd") else { return false }
+            return FileManager.default.fileExists(atPath: p)
+        }.sorted { ($0.isStarter ? 1 : 0, $0.title) < ($1.isStarter ? 1 : 0, $1.title) }
+    }
+    func canPlace(_ a: StudioAsset) -> Bool {
+        a.kind != .audio && a.kind != .video && a.importedPath?.lowercased().hasSuffix(".psd") != true
+    }
+    var canPlaceFocus: Bool { focusID.flatMap { id in catalog.assets.first { $0.id == id } }.map(canPlace) ?? false }
+
+    func psdDocument(_ a: StudioAsset) -> PsdDocument? {
+        guard let p = a.importedPath else { return nil }
+        if let d = psdCache[p] { return d }
+        guard let d = (try? Data(contentsOf: URL(fileURLWithPath: p))).flatMap({ try? PsdLayers.read($0) }) else { return nil }
+        psdCache[p] = d
+        return d
+    }
+
+    /// The art as straight RGBA with the long side at most `maxPixel` (any still: photos, vectors, generated studies).
+    func artPixels(_ a: StudioAsset, maxPixel: Int) -> PixelBuffer? {
+        guard let img = MediaRenderer.exportBase(a, effect: .original, amount: 0) else { return nil }
+        return MediaRenderer.pixelBuffer(from: img, maxPixel: maxPixel)
+    }
+
+    func openPlaceIntoMockup(_ artID: UUID? = nil, mockup: UUID? = nil) {
+        guard let id = artID ?? focusID, let art = catalog.assets.first(where: { $0.id == id }), canPlace(art) else { flash("Pick an image to place into a mockup"); return }
+        let mockups = mockupAssets.filter { psdDocument($0).map { !MockupPlacement.targetLayers($0).isEmpty } ?? false }
+        guard !mockups.isEmpty else { flash("No layered PSD mockups in the library"); return }
+        guard let px = artPixels(art, maxPixel: 900) else { flash("Could not read \(art.title)"); return }
+        let pick = mockup.flatMap { m in mockups.first { $0.id == m } } ?? mockups[0]
+        placing = PlaceState(art: art, preview: px, mockups: mockups.map(\.id), mockup: pick.id)
+    }
+
+    /// Renders one mockup with the art at full mockup size; the placed composite and the layer used.
+    nonisolated static func renderPlaced(art: PixelBuffer, doc: PsdDocument, layer: Int?, mode: PlacementMode, crop: BoardRect?, background: (UInt8, UInt8, UInt8)) -> PixelBuffer? {
+        MockupPlacement.place(art, into: doc, layer: layer, mode: mode, crop: crop, background: background)?.composite()
+    }
+
+    /// Writes the render next to the library and files it on the mockup's version stack. Returns the new asset id.
+    @discardableResult
+    func savePlaced(_ buf: PixelBuffer, art: StudioAsset, mockup: StudioAsset, undo: String? = "Place into Mockup") -> UUID? {
+        let dir = supportRoot.appendingPathComponent("Placed", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(DragOut.safeName("\(art.title) on \(mockup.title)") + "-" + String(UUID().uuidString.prefix(6)) + ".png")
+        guard let cg = MediaRenderer.cgImage(buf), let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, cg, nil)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        let small = MediaRenderer.pixelBuffer(from: cg, maxPixel: 160)
+        var id: UUID?
+        mutate(undo) { c in
+            id = c.addPlacedMockup(path: url.path, art: art.id, mockup: mockup.id, resolution: "\(buf.width) × \(buf.height)")
+            if let id, let i = c.assets.firstIndex(where: { $0.id == id }), let small {
+                let colors = PaletteExtractor.colors(from: small, count: 5).map(\.hex)
+                if colors.count >= 3 { c.assets[i].palette = colors }
+            }
+        }
+        return id
+    }
+
+    func commitPlace(_ st: PlaceState) {
+        guard let mockup = catalog.assets.first(where: { $0.id == st.mockup }), let doc = psdDocument(mockup),
+              let art = artPixels(st.art, maxPixel: 2400),
+              let buf = Self.renderPlaced(art: art, doc: doc, layer: st.layer, mode: st.mode, crop: st.crop, background: st.background.rgb),
+              let id = savePlaced(buf, art: st.art, mockup: mockup) else { flash("Could not place \(st.art.title)"); return }
+        placing = nil
+        refreshAutoTags()
+        selection = [id]; focusID = id
+        flash("Saved \u{201C}\(st.art.title) on \(mockup.title)\u{201D} as a new version")
+    }
+
+    /// Every mockup gets the art in its best design layer with the sheet's Fill/Fit, crop and background;
+    /// the renders land on each mockup's stack and open as one contact sheet.
+    func placeIntoAll(_ st: PlaceState, checked: Bool = false, then done: ((Int) -> Void)? = nil) {
+        placing = nil
+        let mockups = st.mockups.compactMap { m in catalog.assets.first { $0.id == m } }
+        guard let art = artPixels(st.art, maxPixel: 2400) else { flash("Could not read \(st.art.title)"); return }
+        flash("Placing \(st.art.title) into \(mockups.count) mockups…")
+        let jobs = mockups.compactMap { m in psdDocument(m).map { (m, $0) } }
+        let mode = st.mode, crop = st.crop, bg = st.background.rgb
+        let before = catalog
+        Task { @MainActor in
+            var ids: [UUID] = []
+            for (m, doc) in jobs {
+                let buf = await Task.detached(priority: .userInitiated) { Self.renderPlaced(art: art, doc: doc, layer: nil, mode: mode, crop: crop, background: bg) }.value
+                if let buf, let id = savePlaced(buf, art: st.art, mockup: m, undo: nil) { ids.append(id) }
+            }
+            if !ids.isEmpty { _ = history.record("Place into All Mockups", before: before, after: catalog) }
+            refreshAutoTags()
+            guard !ids.isEmpty else { flash("Nothing could be placed"); return }
+            selection = Set(ids); focusID = ids.first
+            openContactSheet(ids: ids, title: "\(st.art.title) in \(ids.count) Mockups", checked: checked)
+            done?(ids.count)
+        }
+    }
+
     // MARK: Contact sheets and brand kits (1.5)
 
     @Published var sheetPreview: SheetPreview?
@@ -1692,6 +1795,26 @@ final class StudioLibrary: ObservableObject {
                     // Swap to the alternate backdrop and switch the glare off, like a user would.
                     let flips = doc.layers.indices.filter { doc.layers[$0].hidden || doc.layers[$0].name == "Screen Glare" }
                     psdToggled[a.id] = Set(flips)
+                }
+            }
+        case "place-mockup", "place-all":
+            // The risograph print into every bundled mockup: the sheet on the poster frame with a dragged crop, or all ten at once.
+            let starters = catalog.assets.filter(\.isStarter)
+            if let art = starters.first(where: { $0.importedPath?.hasSuffix("risograph-4k.png") == true }) {
+                show(collection: art.collection)
+                selection = [art.id]; focusID = art.id
+                let poster = mockupAssets.first { $0.importedPath?.hasSuffix("poster-frame-mockup.psd") == true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.openPlaceIntoMockup(art.id, mockup: poster?.id)
+                    guard var st = self.placing else { return }
+                    st.crop = BoardRect(x: 0.18, y: 0.12, w: 0.5, h: 0.5)
+                    if demo == "place-all" {
+                        self.placeIntoAll(st, checked: true) { n in
+                            try? "done placed=\(n)".write(to: self.supportRoot.appendingPathComponent("demo-place-all.txt"), atomically: true, encoding: .utf8)
+                        }
+                    } else {
+                        self.placing = st
+                    }
                 }
             }
         case "smart":
@@ -4008,6 +4131,289 @@ struct ArrowLabel: View {
     }
 }
 
+// MARK: - Place into Mockup (1.29)
+
+enum PlaceBackground: String, CaseIterable, Identifiable {
+    case white = "White", paper = "Paper", slate = "Slate", black = "Black"
+    var id: String { rawValue }
+    var rgb: (UInt8, UInt8, UInt8) {
+        switch self {
+        case .white: return (255, 255, 255)
+        case .paper: return (243, 238, 228)
+        case .slate: return (52, 56, 66)
+        case .black: return (12, 12, 14)
+        }
+    }
+    var color: Color { let c = rgb; return Color(red: Double(c.0) / 255, green: Double(c.1) / 255, blue: Double(c.2) / 255) }
+}
+
+struct PlaceState: Identifiable {
+    let id = UUID()
+    let art: StudioAsset
+    /// A small copy of the art for the live preview; saving re-reads it at full size.
+    let preview: PixelBuffer
+    let mockups: [UUID]
+    var mockup: UUID
+    /// The design layer (nil: the mockup's best one).
+    var layer: Int?
+    var mode: PlacementMode = .fill
+    /// Part of the art (fractions) the user dragged to; Fill only.
+    var crop: BoardRect?
+    var background: PlaceBackground = .white
+    var artAspect: Double { Double(preview.width) / Double(max(1, preview.height)) }
+}
+
+/// Pick a mockup, a design layer, Fill or Fit and the part of the art to show; the preview renders on this Mac.
+struct PlaceMockupSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State var state: PlaceState
+    @State private var rendered: CGImage?
+    @State private var rendering = false
+    @State private var dragStart: BoardRect?
+    private let previewBox = CGSize(width: 470, height: 352)
+    private let artBox = CGSize(width: 214, height: 160)
+
+    private var mockup: StudioAsset? { model.catalog.assets.first { $0.id == state.mockup } }
+    private var doc: PsdDocument? { mockup.flatMap { model.psdDocument($0) } }
+    private var layers: [Int] { doc.map { MockupPlacement.targetLayers($0) } ?? [] }
+    private var layerIndex: Int? { state.layer ?? layers.first }
+    private var areaAspect: Double {
+        guard let d = doc, let i = layerIndex, d.layers.indices.contains(i), let q = MockupPlacement.quad(of: d.layers[i]) else { return 1 }
+        return q.aspect
+    }
+    /// What the design area shows, in art fractions (Fit runs past the edges).
+    private var region: BoardRect { MockupPlacement.region(mode: state.mode, artAspect: state.artAspect, areaAspect: areaAspect, crop: state.mode == .fill ? state.crop : nil) }
+    private var renderKey: String {
+        let c = state.crop.map { "\($0.x),\($0.y),\($0.w),\($0.h)" } ?? "-"
+        return "\(state.mockup)|\(layerIndex ?? -1)|\(state.mode.rawValue)|\(c)|\(state.background.rawValue)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.on.rectangle.angled").foregroundStyle(Theme.accent)
+                Text("Place into Mockup").font(.system(size: 15, weight: .bold))
+                Text(state.art.title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                Label("Renders on this Mac", systemImage: "cpu").font(.caption).foregroundStyle(.tertiary)
+            }
+            HStack(alignment: .top, spacing: 14) {
+                mockupList
+                VStack(alignment: .leading, spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.35))
+                        if let rendered {
+                            Image(decorative: rendered, scale: 1).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        }
+                        if rendering || rendered == nil { ProgressView().controlSize(.small).padding(8).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing) }
+                    }
+                    .frame(width: previewBox.width, height: previewBox.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline))
+                    HStack(spacing: 8) {
+                        Text("Design layer").font(.caption).foregroundStyle(.secondary)
+                        Menu {
+                            ForEach(layers, id: \.self) { i in Button(layerName(i)) { state.layer = i } }
+                        } label: {
+                            Text(layerIndex.map(layerName) ?? "None").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        }
+                        .menuStyle(.borderlessButton).fixedSize()
+                        .disabled(layers.count < 2)
+                        Spacer()
+                        Text(doc.map { "\($0.width) × \($0.height) PNG" } ?? "").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                    }
+                }
+                controls
+            }
+            HStack {
+                Button("Cancel") { model.placing = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Place into All \(state.mockups.count) Mockups") { model.placeIntoAll(state) }
+                    .help("Render every mockup with this art and open them as a contact sheet")
+                Button("Save as New Version") { model.commitPlace(state) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                    .disabled(layerIndex == nil)
+            }
+        }
+        .padding(20)
+        .frame(width: 900)
+        .background(Theme.backdrop)
+        .environment(\.colorScheme, .dark)
+        .task(id: renderKey) { await render() }
+    }
+
+    private var mockupList: some View {
+        ScrollView {
+            VStack(spacing: 8) {
+                ForEach(state.mockups, id: \.self) { id in
+                    if let m = model.catalog.assets.first(where: { $0.id == id }) {
+                        Button {
+                            state.mockup = id; state.layer = nil
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Thumbnail(asset: m, pixels: 240).frame(width: 128, height: 80).clipShape(RoundedRectangle(cornerRadius: 7))
+                                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(id == state.mockup ? Theme.accent : Theme.hairline, lineWidth: id == state.mockup ? 2 : 1))
+                                Text(m.title).font(.system(size: 11, weight: id == state.mockup ? .semibold : .regular)).lineLimit(1)
+                                    .foregroundStyle(id == state.mockup ? .primary : .secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(width: 136, height: previewBox.height + 30)
+    }
+
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            InspectorLabel(text: "ARTWORK")
+            artCropper
+            HStack(spacing: 6) {
+                ForEach(PlacementMode.allCases) { m in
+                    Button(m == .fill ? "Fill" : "Fit") { state.mode = m }
+                        .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(state.mode == m ? Theme.accent.opacity(0.35) : Color.white.opacity(0.07), in: Capsule())
+                }
+                Spacer()
+                Button("Reset") { state.crop = nil }.buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                    .disabled(state.crop == nil)
+            }
+            Text(state.mode == .fill ? "Drag the frame to choose what shows. Drag the corner to zoom." : "The whole artwork shows; the margins take the background.")
+                .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+            InspectorLabel(text: "BACKGROUND").padding(.top, 4)
+            HStack(spacing: 8) {
+                ForEach(PlaceBackground.allCases) { b in
+                    Button { state.background = b } label: {
+                        Circle().fill(b.color).frame(width: 20, height: 20)
+                            .overlay(Circle().stroke(state.background == b ? Theme.accent : Color.white.opacity(0.25), lineWidth: state.background == b ? 2.5 : 1))
+                    }
+                    .buttonStyle(.plain).help(b.rawValue)
+                }
+                Spacer()
+            }
+            InspectorLabel(text: "SAVES WITH").padding(.top, 4)
+            VStack(alignment: .leading, spacing: 4) {
+                Label(rightsLine, systemImage: "checkmark.seal").lineLimit(2)
+                Label("Stacked on \(mockup?.title ?? "the mockup")", systemImage: "square.stack.3d.up").lineLimit(1)
+                if !state.art.licenseDocs.isEmpty { Label("\(state.art.licenseDocs.count) license file\(state.art.licenseDocs.count == 1 ? "" : "s")", systemImage: "doc.text") }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .frame(width: artBox.width, height: previewBox.height + 30, alignment: .topLeading)
+    }
+
+    private var rightsLine: String {
+        if let r = state.art.rights, !r.isEmpty {
+            return [r.license.rawValue, r.credit.isEmpty ? r.source : r.credit].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        return state.art.isStarter ? "Own work · ASSSETS bundled library" : "No rights info yet"
+    }
+
+    private var artCropper: some View {
+        let box = fitted(artBox)
+        let r0 = region
+        // Only the part inside the art can be shown as a frame.
+        let x0 = max(0, r0.x), y0 = max(0, r0.y), x1 = min(1, r0.x + r0.w), y1 = min(1, r0.y + r0.h)
+        let r = CGRect(x: x0 * box.width, y: y0 * box.height, width: (x1 - x0) * box.width, height: (y1 - y0) * box.height)
+        return ZStack(alignment: .topLeading) {
+            if let cg = MediaRenderer.cgImage(state.preview) {
+                Image(decorative: cg, scale: 1).resizable().interpolation(.high).frame(width: box.width, height: box.height)
+            }
+            Group {
+                Rectangle().frame(width: box.width, height: r.minY)
+                Rectangle().frame(width: box.width, height: max(0, box.height - r.maxY)).offset(y: r.maxY)
+                Rectangle().frame(width: r.minX, height: r.height).offset(y: r.minY)
+                Rectangle().frame(width: max(0, box.width - r.maxX), height: r.height).offset(x: r.maxX, y: r.minY)
+            }
+            .foregroundStyle(Color.black.opacity(0.6)).allowsHitTesting(false)
+            Rectangle().stroke(Color.white, lineWidth: 1.5)
+                .frame(width: r.width, height: r.height).offset(x: r.minX, y: r.minY)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 1).onChanged { v in
+                    guard state.mode == .fill else { return }
+                    let s0 = dragStart ?? r0; if dragStart == nil { dragStart = s0 }
+                    var n = s0
+                    n.x = min(1 - n.w, max(0, s0.x + Double(v.translation.width / box.width)))
+                    n.y = min(1 - n.h, max(0, s0.y + Double(v.translation.height / box.height)))
+                    state.crop = n
+                }.onEnded { _ in dragStart = nil })
+            if state.mode == .fill {
+                RoundedRectangle(cornerRadius: 3).fill(Theme.accent).frame(width: 13, height: 13)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(.white, lineWidth: 1.5))
+                    .offset(x: r.maxX - 6.5, y: r.maxY - 6.5)
+                    .gesture(DragGesture(minimumDistance: 1).onChanged { v in
+                        let s0 = dragStart ?? r0; if dragStart == nil { dragStart = s0 }
+                        // Zoom about the top-left corner, keeping the design area's shape.
+                        let scale = max(0.1, min((1 - s0.x) / s0.w, (1 - s0.y) / s0.h, 1 + Double(v.translation.width / box.width) / s0.w))
+                        state.crop = BoardRect(x: s0.x, y: s0.y, w: s0.w * scale, h: s0.h * scale)
+                    }.onEnded { _ in dragStart = nil })
+                    .help("Drag to zoom")
+            }
+        }
+        .frame(width: box.width, height: box.height)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.hairline))
+    }
+
+    private func fitted(_ limit: CGSize) -> CGSize {
+        let n = CGFloat(max(0.1, state.artAspect))
+        return n >= limit.width / limit.height ? CGSize(width: limit.width, height: (limit.width / n).rounded())
+                                               : CGSize(width: (limit.height * n).rounded(), height: limit.height)
+    }
+
+    private func layerName(_ i: Int) -> String {
+        guard let d = doc, d.layers.indices.contains(i) else { return "Layer" }
+        return d.layers[i].name.replacingOccurrences(of: " (Smart Object)", with: "")
+    }
+
+    private func render() async {
+        guard let doc else { rendered = nil; return }
+        rendering = true
+        let art = state.preview, layer = layerIndex, mode = state.mode, crop = state.crop, bg = state.background.rgb
+        let buf = await Task.detached(priority: .userInitiated) {
+            StudioLibrary.renderPlaced(art: art, doc: doc, layer: layer, mode: mode, crop: crop, background: bg)
+        }.value
+        guard !Task.isCancelled else { return }
+        rendered = buf.flatMap { MediaRenderer.cgImage($0) }
+        rendering = false
+    }
+}
+
+/// Inspector strip: a few mockups to drop the focused art into.
+struct PlaceStrip: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    var body: some View {
+        let mockups = Array(model.mockupAssets.prefix(4))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                InspectorLabel(text: "PLACE INTO MOCKUP")
+                Spacer()
+                Button("Choose…") { model.openPlaceIntoMockup(asset.id) }
+                    .buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                    .help("Place this art into a PSD mockup (⌥⌘P)")
+            }
+            if mockups.isEmpty {
+                Text("Import a layered PSD mockup to place art into it.").font(.caption2).foregroundStyle(.tertiary)
+            } else {
+                HStack(spacing: 8) {
+                    ForEach(mockups, id: \.id) { m in
+                        Button { model.openPlaceIntoMockup(asset.id, mockup: m.id) } label: {
+                            Thumbnail(asset: m, pixels: 160).frame(width: 58, height: 42).clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.hairline))
+                        }
+                        .buttonStyle(.plain).help(m.title)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Crop sheet (1.19)
 
 struct CropState: Identifiable {
@@ -4309,6 +4715,7 @@ struct StudioView: View {
         } message: { Text("Files on disk stay where they are.") }
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
         .sheet(item: $model.cropping) { st in CropSheet(state: st).environmentObject(model) }
+        .sheet(item: $model.placing) { st in PlaceMockupSheet(state: st).environmentObject(model) }
         .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
         .sheet(item: $model.rightsWarning) { w in RightsWarningSheet(warning: w).environmentObject(model) }
         .sheet(item: $model.presetDraft) { d in PresetSaveSheet(draft: d).environmentObject(model) }
@@ -5161,6 +5568,7 @@ struct AssetMenu: View {
             Button("Reveal in Finder") { model.reveal(ids) }
         }
         if !many && primary.kind != .audio { Button("Find Similar") { model.findSimilar(primary.id) } }
+        if !many && model.canPlace(primary) { Button("Place into Mockup…") { model.openPlaceIntoMockup(primary.id) } }
         Button("Share…") { model.share(ids) }
         Button("Copy Keywords") { model.copyKeywords(ids) }
         Menu(many ? "Export \(ids.count) Assets" : "Export") {
@@ -6237,6 +6645,7 @@ struct Inspector: View {
                         OnBoardsSection(asset: asset)
                         if asset.stackID != nil { VersionStrip(asset: asset) }
                         if asset.kind != .audio { SimilarStrip(asset: asset) }
+                        if model.canPlace(asset) { PlaceStrip(asset: asset) }
                         if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
                         InspectorLabel(text: "COLOR PALETTE")
                         HStack(spacing: 5) {

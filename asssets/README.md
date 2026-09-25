@@ -778,6 +778,14 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   Include Credits Page in the board Export menu.
 - Logic and tests: `Rights.swift`, `RightsTests.swift`.
 
+## 1.29.0: Place into Mockup
+
+- **Put your art into a mockup without Photoshop.** Select an image and choose Place into Mockup… (inspector, right-click, or ⌥⌘P). Pick any layered PSD mockup in the library, the ten bundled ones or your own, and ASSSETS finds its design layer (the smart-object layer, like "Your Design" or "Screen Design") and draws the art into it in perspective. The layer's shape is the mask, so rounded screens and printed areas stay clean, and the shading and glare layers above still sit on top. Everything renders on your Mac.
+- **Fill or Fit, and choose what shows.** Fill covers the design area. Drag the frame on the artwork to pick the part that shows, or drag its corner to zoom. Fit shows the whole artwork with a background of your choice (white, paper, slate or black). A mockup with more than one design layer lets you pick the layer.
+- **Saved as a version.** Save as New Version writes a PNG next to the library and stacks it on the mockup, titled "Art on Mockup". It takes the art's rights, credit and license files, since the artwork is what a client licenses, plus the tags of both. Bundled art is marked as ASSSETS bundled library, so the render is never flagged for missing rights. Undo removes it from the library.
+- **Place into All Mockups** renders the art into every mockup at once, stacks each render on its mockup, and opens the results as one contact sheet.
+- Logic and tests: `MockupPlacement.swift` (design-layer choice, corner finding for tilted layers, the perspective mapping, Fill/Fit regions), `MockupPlacementTests.swift`.
+
 ## 1.28.0: lossless duplicate merge and Library Health
 
 - **Nothing lost when merging duplicates.** Find Duplicates (⌥⌘D) used to keep only tags, favorite and collection from the copies it removed. Now the copy you keep also takes the highest star rating, a color label, license files, client notes and version stack from the others. It takes their rights too when it has none. Board cards and client picks that pointed at a removed copy now point at the kept one instead of disappearing.

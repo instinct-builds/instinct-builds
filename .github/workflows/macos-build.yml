@@ -111,7 +111,7 @@ jobs:
           # Every shot after the first starts from the same fresh catalog, so one demo's files never leak into the next.
           shoot() {
             if [ -f /tmp/asssets-pristine.json ]; then cp /tmp/asssets-pristine.json "$SUP/studio-catalog.json"; rm -rf "$HOME/Pictures/Client Drops" "$SUP/Licenses"; fi
-            open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep 9; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
+            open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep "${DELAY:-9}"; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
             # Optional 4th arg: a file the demo writes in the background; keep the app alive until it lands.
             if [ -n "${4:-}" ]; then for i in $(seq 1 90); do [ -s "$SUP/$4" ] && break; sleep 1; done; echo "waited ${i}s for $4"; fi
             pkill -x ASSSETS || true; sleep 2
@@ -237,7 +237,8 @@ jobs:
           shoot license-files 1920x1200 license-files
           shoot rights-presets 1920x1200 rights-presets
           shoot export-guard 1920x1200 export-guard
-          shoot batch-license-row 1920x1200 batch-license-row
+          # Wait for the watch-folder import and thumbnails to settle before the capture (1.28 fix1 caught it mid-load).
+          DELAY=24 shoot batch-license-row 1920x1200 batch-license-row
           shoot duplicates-merge 1920x1200 duplicates-merge
           shoot library-health 1920x1200 library-health
           BU=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$BG/index.html")
@@ -245,6 +246,8 @@ jobs:
           test -s "ASSSETS-$ASSSETS_VERSION-board-gallery-web.png"
           shoot color-smart-editor 1920x1200 color-smart-editor
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
+          shoot place-mockup 1920x1200 place-mockup
+          DELAY=14 shoot place-all 1920x1200 place-all demo-place-all.txt
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
           cp "$SUP/demo-contact-sheet-all.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"
