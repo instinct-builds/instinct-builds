@@ -857,10 +857,14 @@ func run(model: AppModel, character: Character, outDir: String) {
                      issueLine("rename \"Bridge checks\" to \"BRIDGE CHECKS\"",
                                model.filterPresets.nameIssue("BRIDGE CHECKS", replacing: "Bridge checks")),
                      issueLine("rename \"Bridge checks\" to \"Trail checks\"",
-                               model.filterPresets.nameIssue("Trail checks", replacing: "Bridge checks")),
-                     issueLine("save under \"Fire damage\" (existing)",
-                               model.filterPresets.nameIssue("Fire damage"))]
-        try? lines.joined(separator: "\n")
+                               model.filterPresets.nameIssue("Trail checks", replacing: "Bridge checks"))]
+        // 3.7.1: the save case is not a rejection - an existing name
+        // shows the replace note and Save stays enabled, so the line
+        // describes that instead of borrowing the rename wording.
+        let overwrite = model.filterPresets.preset(named: "Fire damage")
+        let saveLine = "save under \"Fire damage\" (existing) -> note 'Replaces \"\(overwrite?.name ?? "Fire damage")\".' shown, Save stays enabled"
+        let allLines = lines + [saveLine]
+        try? allLines.joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/filter-preset-hints.txt"),
                    atomically: true, encoding: .utf8)
     }
