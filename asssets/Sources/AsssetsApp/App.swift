@@ -28,6 +28,7 @@ struct ASSSETSApp: App {
                 Button("Import Files…") { library.importFiles() }.keyboardShortcut("i")
                 Button("Watch Folder…") { library.addWatchFolder() }.keyboardShortcut("i", modifiers: [.command, .shift])
                 Button("Find Duplicates…") { library.findDuplicates() }.keyboardShortcut("d", modifiers: [.command, .option])
+                Button("Library Health…") { library.openLibraryHealth() }.keyboardShortcut("l", modifiers: [.command, .option])
                 Button("Compare Selection") { library.openCompare() }.keyboardShortcut("c", modifiers: [.command, .option]).disabled(!library.canCompare)
                 Button("Cull Current View") { library.openCull() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(!library.canCull)
                 Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
@@ -600,7 +601,7 @@ final class StudioLibrary: ObservableObject {
         startWatching()
         refreshAutoTags()
         applyLaunchArguments()
-        if !isDemo { checkRightsSinceLastLaunch(); pruneLicenseFiles() }
+        if !isDemo { checkRightsSinceLastLaunch(); pruneLicenseFiles(); refreshHealth() }
         installKeyMonitor()
     }
 
@@ -1243,24 +1244,129 @@ final class StudioLibrary: ObservableObject {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    func keep(_ keeper: UUID, in group: [UUID]) {
-        var removed = 0
-        mutate("Merge Duplicates") { removed = $0.mergeDuplicates(keep: keeper, remove: Set(group)) }
-        duplicates?.groups.removeAll { $0.contains(keeper) }
-        flash("Kept 1, removed \(removed) duplicate\(removed == 1 ? "" : "s"). Files on disk are untouched.")
+    // MARK: Lossless merge and Library Health (1.28)
+
+    /// Per duplicate set (keyed by its first id): the copy the user picked to keep, and whose rights win when they disagree.
+    @Published var duplicateKeeper: [UUID: UUID] = [:]
+    @Published var duplicateRights: [UUID: UUID] = [:]
+
+    func keeper(for group: [UUID]) -> UUID? {
+        if let k = duplicateKeeper[group[0]], group.contains(k) { return k }
+        return Duplicates.suggestedKeeper(group.compactMap { id in catalog.assets.first { $0.id == id } })
     }
 
+    func mergePlan(for group: [UUID]) -> MergePreview? {
+        guard let k = keeper(for: group) else { return nil }
+        return catalog.mergePreview(keep: k, group: group, rightsFrom: duplicateRights[group[0]])
+    }
+
+    /// A set is ready when its rights agree or the user picked whose rights to keep.
+    func mergeReady(_ group: [UUID]) -> Bool {
+        guard let p = mergePlan(for: group) else { return false }
+        return !p.hasRightsConflict || duplicateRights[group[0]] != nil
+    }
+
+    func keep(_ keeper: UUID, in group: [UUID]) {
+        var removed = 0
+        let plan = catalog.mergePreview(keep: keeper, group: group, rightsFrom: duplicateRights[group[0]])
+        let rightsFrom = duplicateRights[group[0]]
+        mutate("Merge Duplicates") { removed = $0.mergeDuplicates(keep: keeper, remove: Set(group), rightsFrom: rightsFrom) }
+        duplicates?.groups.removeAll { $0.contains(keeper) }
+        duplicateKeeper[group[0]] = nil; duplicateRights[group[0]] = nil
+        var carried: [String] = []
+        if let p = plan {
+            if p.ratingRaised { carried.append("rating") }
+            if p.labelAdopted { carried.append("label") }
+            if p.rightsAdopted { carried.append("rights") }
+            if p.licenseFilesAdded > 0 { carried.append("license files") }
+            if p.boardCardsMoved > 0 { carried.append("board cards") }
+        }
+        if health != nil { refreshHealth(full: true) }
+        flash("Kept 1, removed \(removed) duplicate\(removed == 1 ? "" : "s")" + (carried.isEmpty ? "" : ", moved over its " + carried.joined(separator: ", ")) + ". Files on disk are untouched.")
+    }
+
+    /// Merges every set that is ready. Sets whose rights disagree wait for a choice.
     func keepSuggestedForAll() {
         guard let groups = duplicates?.groups else { return }
+        let ready = groups.filter(mergeReady)
         var removed = 0
+        // Resolve keepers and rights choices first: the merge closure must not read the catalog it is changing.
+        let plans: [(UUID, [UUID], UUID?)] = ready.compactMap { g in keeper(for: g).map { ($0, g, duplicateRights[g[0]]) } }
         mutate("Merge Duplicates") { c in
-            for g in groups {
-                let members = g.compactMap { id in c.assets.first { $0.id == id } }
-                if let k = Duplicates.suggestedKeeper(members) { removed += c.mergeDuplicates(keep: k, remove: Set(g)) }
+            for (k, g, r) in plans { removed += c.mergeDuplicates(keep: k, remove: Set(g), rightsFrom: r) }
+        }
+        for g in ready { duplicateKeeper[g[0]] = nil; duplicateRights[g[0]] = nil }
+        duplicates?.groups.removeAll { g in ready.contains(g) }
+        let waiting = duplicates?.groups.count ?? 0
+        flash("Removed \(removed) duplicates from the library." + (waiting > 0 ? " \(waiting) \(waiting == 1 ? "set needs" : "sets need") a rights choice." : " Files on disk are untouched."))
+    }
+
+    @Published var health: LibraryHealth?
+    @Published var healthOpen = false
+    @Published var healthScanning = false
+
+    /// Checks files, license copies and sizes off the main thread. `full` also hashes same-size files to count identical sets.
+    func refreshHealth(full: Bool = false) {
+        let c = catalog
+        let paths = Dictionary(uniqueKeysWithValues: c.assets.filter { !$0.isStarter }.compactMap { a in a.importedPath.map { (a.id, $0) } })
+        let root = licensesRoot
+        let order = c.assets.map(\.id)
+        if full { healthScanning = true }
+        Task.detached(priority: .utility) {
+            let fm = FileManager.default
+            var sizes: [UUID: Int64] = [:]
+            for (id, p) in paths { if let n = (try? fm.attributesOfItem(atPath: p))?[.size] as? NSNumber { sizes[id] = n.int64Value } }
+            let folder = (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
+            var sets: Int? = nil
+            if full {
+                var hashes: [UUID: String] = [:]
+                for id in Duplicates.needsHash(sizes: sizes) { if let p = paths[id], let h = Self.sha256(path: p) { hashes[id] = "\(sizes[id] ?? 0)-\(h)" } }
+                sets = Duplicates.groups(hashes: hashes, order: order).count
+            }
+            let report = c.health(exists: { fm.fileExists(atPath: $0) }, licenseExists: { fm.fileExists(atPath: root.appendingPathComponent($0.stored).path) },
+                                  licenseFolder: folder, sizes: sizes, duplicateSets: sets)
+            await MainActor.run {
+                var r = report
+                if !full, let old = self.health?.duplicateSets { r.duplicateSets = old }
+                self.health = r
+                self.healthScanning = false
             }
         }
-        duplicates?.groups = []
-        flash("Removed \(removed) duplicates from the library. Files on disk are untouched.")
+    }
+
+    func openLibraryHealth() {
+        healthOpen = true
+        refreshHealth(full: true)
+    }
+
+    /// Deletes license records nothing uses and stray files in the Licenses folder.
+    func cleanUpLicenseFolder() {
+        guard let h = health else { return }
+        let n = h.licenseCleanupCount
+        pruneLicenseFiles()
+        for f in h.strayLicenseFiles { try? FileManager.default.removeItem(at: licensesRoot.appendingPathComponent(f)) }
+        flash("Removed \(n) unused license \(n == 1 ? "file" : "files")")
+        refreshHealth()
+    }
+
+    func forgetMissingLicenseFiles() {
+        guard let ids = health?.missingLicenseFiles, !ids.isEmpty else { return }
+        var n = 0
+        mutate("Detach Missing License Files") { n = $0.forgetMissingLicenseFiles(Set(ids)) }
+        flash("Detached \(n) missing license \(n == 1 ? "file" : "files")")
+        refreshHealth()
+    }
+
+    /// Closes Library Health and shows these assets selected in All Assets.
+    func showFromHealth(_ ids: [UUID]) {
+        healthOpen = false
+        show(collection: StudioCatalog.allAssets)
+        selection = Set(ids); focusID = ids.first
+    }
+
+    func reviewDuplicatesFromHealth() {
+        healthOpen = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { self.findDuplicates() }
     }
 
     /// System share menu (AirDrop, Mail, Messages, Notes...) with the same files a drag-out would give.
@@ -2051,7 +2157,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2063,6 +2169,18 @@ final class StudioLibrary: ObservableObject {
                                              ("terrazzo-texture.png", "Wire Terrazzo.png"), ("device-stage-mockup.png", "Stage Mockup.png")]
             for (src, dst) in files where fm.fileExists(atPath: starterRoot.appendingPathComponent(src).path) {
                 try? fm.copyItem(at: starterRoot.appendingPathComponent(src), to: drop.appendingPathComponent(dst))
+            }
+            if demo == "duplicates-merge" || demo == "library-health" {
+                // 1.28: the client re-sent two files. Same bytes, different names, and each copy picked up its own metadata.
+                try? fm.createDirectory(at: drop.appendingPathComponent("Round 2"), withIntermediateDirectories: true)
+                try? fm.copyItem(at: starterRoot.appendingPathComponent("marble-veins-texture.png"), to: drop.appendingPathComponent("Round 2/Lobby Hero final.png"))
+                try? fm.copyItem(at: starterRoot.appendingPathComponent("terrazzo-texture.png"), to: drop.appendingPathComponent("Round 2/Terrazzo Swatch.png"))
+            }
+            if demo == "library-health" {
+                // A walkthrough render the client sent: a bundled loop padded out past the big-file line.
+                let mov = drop.appendingPathComponent("Lobby Walkthrough.mp4")
+                try? fm.copyItem(at: starterRoot.appendingPathComponent("motion-loop-01.mp4"), to: mov)
+                if let h = try? FileHandle(forWritingTo: mov) { try? h.truncate(atOffset: UInt64(LibraryHealth.bigFileBytes) + 36 * 1024 * 1024); try? h.close() }
             }
             watch([drop.path])
             scanWatchFolders()
@@ -2103,7 +2221,44 @@ final class StudioLibrary: ObservableObject {
                     for (f, x, y, w) in place { if let a = find(f) { _ = b.addAsset(a.id, aspect: Moodboard.aspect(resolution: a.resolution), width: w, at: (x: x, y: y)) } }
                 }
             }
+            if demo == "duplicates-merge" || demo == "library-health" {
+                // The re-sent lobby photo was rated, labeled, tagged and pinned on the board; the terrazzo copy came with
+                // an agency license that disagrees with the editorial-only original.
+                if let hero = find("Lobby Hero final.png") {
+                    mutate { c in
+                        _ = c.setRating([hero.id], 4)
+                        _ = c.toggleLabel([hero.id], .purple)
+                        _ = c.addTags("hero, lobby", to: [hero.id])
+                        _ = c.updateBoard(id) { b in _ = b.addAsset(hero.id, aspect: Moodboard.aspect(resolution: hero.resolution), width: 300, at: (x: 880, y: 620)) }
+                    }
+                }
+                if let sw = find("Terrazzo Swatch.png") {
+                    setRights(UsageRights(license: .licensed, source: "Harbor Stock · order HS-3381", credit: "Harbor Stock / K. Maru", uses: "Web and print"), for: [sw.id], quiet: true)
+                }
+            }
             switch demo {
+            case "batch-license-row":
+                // Both Northlight photos: the order covers both, the receipt only the lobby, so the receipt shows "Add to all".
+                show(collection: StudioCatalog.inboxCollection)
+                let pair = ["Northlight Lobby.png", "Atrium Cork Wall.png"].compactMap { find($0)?.id }
+                selection = Set(pair); focusID = pair.first
+                inspectorAnchor = "license-files"
+            case "duplicates-merge":
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.findDuplicates() }
+            case "library-health":
+                // One file moved away, one license copy deleted, a stray file in the Licenses folder, and a licensed photo with no credit.
+                if let atrium = find("Atrium Cork Wall.png"), let p = atrium.importedPath {
+                    try? fm.moveItem(atPath: p, toPath: fm.temporaryDirectory.appendingPathComponent("Atrium Cork Wall.png").path)
+                }
+                if let harbor = find("Harbor Night.png"), let d = catalog.licenseDocs(for: harbor.id).first { try? fm.removeItem(at: licenseURL(d)) }
+                try? "Harbor Stock quote, superseded".write(to: licensesRoot.appendingPathComponent("old-quote-HS-3102.txt"), atomically: true, encoding: .utf8)
+                if let stage = find("Stage Mockup.png") {
+                    setRights(UsageRights(license: .licensed, source: "Mockup Market · order MM-889", uses: "Pitch decks"), for: [stage.id], quiet: true)
+                }
+                missing = catalog.missingIDs { fm.fileExists(atPath: $0) }
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.openLibraryHealth() }
             case "rights-inspector":
                 show(collection: StudioCatalog.inboxCollection)
                 if let a = find("Northlight Lobby.png") { selection = [a.id]; focusID = a.id }
@@ -4162,6 +4317,7 @@ struct StudioView: View {
         .sheet(isPresented: Binding(get: { model.duplicates != nil }, set: { if !$0 { model.duplicates = nil } })) {
             DuplicatesSheet().environmentObject(model)
         }
+        .sheet(isPresented: $model.healthOpen) { LibraryHealthSheet().environmentObject(model) }
         .overlay {
             if let id = model.viewerID, let asset = model.catalog.assets.first(where: { $0.id == id }) {
                 AssetViewer(asset: asset).transition(.opacity)
@@ -4228,6 +4384,12 @@ struct Sidebar: View {
                         }
                         .help("\(alerts.expired) expired · \(alerts.expiring) ending within \(StudioAsset.rightsWarningDays) days")
                     }
+                    let issues = model.health?.issueCount ?? 0
+                    SidebarRow(title: "Library Health", symbol: issues > 0 ? "stethoscope" : "checkmark.seal", count: issues > 0 ? issues : nil,
+                               selected: model.healthOpen, accent: issues > 0 ? .warning : .standard, badge: (model.health?.urgentCount ?? 0) > 0 ? Theme.danger : nil) {
+                        model.openLibraryHealth()
+                    }
+                    .help(issues > 0 ? "\(issues) things to look at" : "Check files, license paperwork and duplicates")
                 }
 
                 SidebarSection(title: "COLLECTIONS", trailing: AnyView(
@@ -5548,7 +5710,7 @@ struct DuplicatesSheet: View {
                     Text("Duplicates").font(.system(size: 20, weight: .bold))
                     Text(scan.scanning ? "Comparing file contents…"
                          : scan.groups.isEmpty ? "No identical files among \(scan.checked) files."
-                         : "\(scan.groups.count) \(scan.groups.count == 1 ? "set" : "sets") of \(scan.near ? "identical or look-alike" : "identical") files among \(scan.checked). Keep one per set; the others leave the library, files on disk stay.")
+                         : "\(scan.groups.count) \(scan.groups.count == 1 ? "set" : "sets") of \(scan.near ? "identical or look-alike" : "identical") files among \(scan.checked). Pick the copy to keep; everything on the others moves onto it. Files on disk stay.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -5569,10 +5731,15 @@ struct DuplicatesSheet: View {
                 }.padding(20)
             }
             Divider().overlay(Theme.hairline)
-            HStack {
+            HStack(spacing: 12) {
                 if !scan.groups.isEmpty {
-                    Button { model.keepSuggestedForAll() } label: { Label("Keep Suggested for All \(scan.groups.count)", systemImage: "checkmark.circle") }
-                        .buttonStyle(.borderedProminent)
+                    let ready = scan.groups.filter(model.mergeReady).count
+                    Button { model.keepSuggestedForAll() } label: { Label(ready == scan.groups.count ? "Merge All \(ready)" : "Merge \(ready) Ready", systemImage: "arrow.triangle.merge") }
+                        .buttonStyle(.borderedProminent).disabled(ready == 0)
+                        .help("Merges each set into its picked copy. Ratings, labels, rights, license files, notes, stacks and board cards move over.")
+                    if ready < scan.groups.count {
+                        Label("\(scan.groups.count - ready) waiting for a rights choice", systemImage: "exclamationmark.shield").font(.caption).foregroundStyle(Theme.warning)
+                    }
                 }
                 Spacer()
                 Button("Done") { model.duplicates = nil }.keyboardShortcut(.cancelAction)
@@ -5588,31 +5755,336 @@ struct DuplicateGroupRow: View {
     let group: [UUID]
     var body: some View {
         let members = group.compactMap { id in model.catalog.assets.first { $0.id == id } }
-        let suggested = Duplicates.suggestedKeeper(members)
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(members) { a in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Thumbnail(asset: a, pixels: 320).frame(width: 170, height: 118).clipShape(RoundedRectangle(cornerRadius: 9))
-                            .overlay(alignment: .topLeading) {
-                                if a.id == suggested {
-                                    Label("Suggested", systemImage: "star.fill").font(.system(size: 9.5, weight: .bold))
-                                        .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.accent, in: Capsule()).padding(6)
-                                }
-                            }
-                        Text(a.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                        Label(a.collection, systemImage: a.isStarter ? "shippingbox" : "folder").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                        Text(a.importedPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "").font(.caption2.monospaced()).foregroundStyle(.tertiary)
-                            .lineLimit(1).truncationMode(.middle)
-                        Button { model.keep(a.id, in: group) } label: { Text("Keep This").frame(maxWidth: .infinity) }
-                            .buttonStyle(.bordered).tint(a.id == suggested ? Theme.accent : nil).controlSize(.small)
-                    }
-                    .frame(width: 170)
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Theme.raised))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(a.id == suggested ? Theme.accent : Theme.hairline, lineWidth: a.id == suggested ? 1.5 : 1))
+        let keeper = model.keeper(for: group)
+        let plan = model.mergePlan(for: group)
+        let conflict = plan?.hasRightsConflict == true
+        let chosenRights = model.duplicateRights[group[0]]
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("\(members.count) copies").font(.system(size: 12, weight: .bold))
+                Text("Click the one to keep").font(.caption).foregroundStyle(.tertiary)
+                Spacer()
+                if conflict {
+                    Label("Rights differ", systemImage: "exclamationmark.shield.fill").font(.system(size: 10.5, weight: .bold)).foregroundStyle(Theme.danger)
+                        .padding(.horizontal, 8).padding(.vertical, 3).background(Theme.danger.opacity(0.14), in: Capsule())
                 }
             }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(members) { a in DuplicateCopyCard(asset: a, keep: a.id == keeper, rightsWin: conflict && plan?.rightsFrom == a.id) {
+                        model.duplicateKeeper[group[0]] = a.id
+                    } }
+                }
+            }
+            if let plan { MergeSummary(plan: plan, keeperTitle: members.first { $0.id == plan.keeper }?.title ?? "", sourceTitle: plan.rightsFrom.flatMap { id in members.first { $0.id == id }?.title }) }
+            if conflict {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("These copies carry different rights. Choose which to keep; the others' rights are dropped.").font(.caption).foregroundStyle(.secondary)
+                    WrapLayout(spacing: 6) {
+                        ForEach(members.filter { $0.rights != nil }) { a in
+                            let on = chosenRights == a.id
+                            Button { model.duplicateRights[group[0]] = a.id } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: on ? "largecircle.fill.circle" : "circle").font(.system(size: 10))
+                                    Image(systemName: a.rights!.license.symbol).font(.system(size: 10))
+                                    Text(a.rights!.license.rawValue + (a.rights!.source.isEmpty ? "" : " · " + a.rights!.source)).font(.caption).lineLimit(1)
+                                }
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(on ? Theme.accent.opacity(0.22) : Color.white.opacity(0.05), in: Capsule())
+                                .overlay(Capsule().stroke(on ? Theme.accent : Theme.hairline))
+                            }.buttonStyle(.plain).help("From \(a.title)")
+                        }
+                    }
+                }
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.danger.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.danger.opacity(0.3)))
+            }
+            HStack {
+                Spacer()
+                if let k = keeper, let title = members.first(where: { $0.id == k })?.title {
+                    Button { model.keep(k, in: group) } label: { Label("Merge into \(title)", systemImage: "arrow.triangle.merge").lineLimit(1) }
+                        .buttonStyle(.bordered).tint(Theme.accent).controlSize(.small)
+                        .disabled(!model.mergeReady(group))
+                        .help(model.mergeReady(group) ? "Keep this copy and remove the others from the library" : "Choose whose rights to keep first")
+                }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.raised))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(conflict && chosenRights == nil ? Theme.danger.opacity(0.45) : Theme.hairline))
+    }
+}
+
+/// One copy in a duplicate set: what it carries, and whether it is the one staying.
+struct DuplicateCopyCard: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    let keep: Bool
+    let rightsWin: Bool
+    let pick: () -> Void
+    var body: some View {
+        let cards = model.catalog.boards.reduce(0) { n, b in n + b.items.filter { $0.kind == .asset && $0.assetID == asset.id }.count }
+        Button(action: pick) {
+            VStack(alignment: .leading, spacing: 5) {
+                Thumbnail(asset: asset, pixels: 320).frame(width: 156, height: 100).clipShape(RoundedRectangle(cornerRadius: 8))
+                    .opacity(keep ? 1 : 0.55)
+                    .overlay(alignment: .topLeading) {
+                        Text(keep ? "KEEP" : "REMOVE").font(.system(size: 9, weight: .heavy)).tracking(0.8)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(keep ? Theme.accent : Color.black.opacity(0.6), in: Capsule()).foregroundStyle(.white).padding(6)
+                    }
+                Text(asset.title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
+                Text(asset.importedPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? asset.collection).font(.system(size: 9.5).monospaced()).foregroundStyle(.tertiary)
+                    .lineLimit(1).truncationMode(.middle)
+                HStack(spacing: 6) {
+                    if asset.rating > 0 { Text(String(repeating: "★", count: asset.rating)).font(.system(size: 9.5)).foregroundStyle(Theme.warning) }
+                    if let l = asset.label { Circle().fill(Color(hex: l.hex)).frame(width: 8, height: 8) }
+                    if asset.favorite { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(.pink) }
+                    if let r = asset.rights { Image(systemName: r.license.symbol).font(.system(size: 9.5)).foregroundStyle(rightsWin ? Theme.accent : Color.secondary).help(r.license.rawValue) }
+                    if !asset.licenseDocs.isEmpty { Label("\(asset.licenseDocs.count)", systemImage: "paperclip").font(.system(size: 9.5)).foregroundStyle(.secondary) }
+                    if cards > 0 { Label("\(cards)", systemImage: "rectangle.on.rectangle").font(.system(size: 9.5)).foregroundStyle(.secondary).help("On \(cards) board \(cards == 1 ? "card" : "cards")") }
+                    if asset.rating == 0 && asset.label == nil && !asset.favorite && asset.rights == nil && asset.licenseDocs.isEmpty && cards == 0 {
+                        Text("No ratings, rights or boards").font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                    }
+                }.frame(height: 12)
+            }
+            .frame(width: 156)
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 11).fill(keep ? Theme.accent.opacity(0.1) : Color.black.opacity(0.18)))
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(keep ? Theme.accent : Theme.hairline, lineWidth: keep ? 1.5 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: 11))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// "What moves over": the merge spelled out before it happens.
+struct MergeSummary: View {
+    let plan: MergePreview
+    let keeperTitle: String
+    let sourceTitle: String?
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "arrow.triangle.merge").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.accent).padding(.top, 4)
+            if plan.keeperUnchanged {
+                Text("Nothing to move over. \(plan.removing == 1 ? "The copy leaves" : "The copies leave") the library; \(keeperTitle) stays as it is.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.top, 3)
+            } else {
+                WrapLayout(spacing: 6) {
+                    if plan.ratingRaised { chip(String(repeating: "★", count: plan.rating) + " rating", "star.fill") }
+                    if plan.labelAdopted, let l = plan.label { chip(l.name + " label", "circle.fill", tint: Color(hex: l.hex)) }
+                    if plan.becomesFavorite { chip("Favorite", "heart.fill") }
+                    if !plan.tagsAdded.isEmpty { chip("+\(plan.tagsAdded.count) \(plan.tagsAdded.count == 1 ? "tag" : "tags")", "tag") }
+                    if let c = plan.collection { chip("Filed in \(c)", "folder") }
+                    if plan.rightsAdopted, let r = plan.rights { chip("Rights: \(r.license.rawValue)" + (sourceTitle.map { " from \($0)" } ?? ""), r.license.symbol) }
+                    if plan.licenseFilesAdded > 0 { chip("\(plan.licenseFilesAdded) license \(plan.licenseFilesAdded == 1 ? "file" : "files")", "paperclip") }
+                    if plan.notesAdded > 0 { chip("\(plan.notesAdded) client \(plan.notesAdded == 1 ? "note" : "notes")", "text.bubble") }
+                    if plan.boardCardsMoved > 0 { chip("\(plan.boardCardsMoved) board \(plan.boardCardsMoved == 1 ? "card follows" : "cards follow")", "rectangle.on.rectangle") }
+                    if plan.joinsStack { chip("Joins version stack", "square.stack.3d.up") }
+                }
+            }
+        }
+    }
+    private func chip(_ text: String, _ symbol: String, tint: Color = Theme.accent) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol).font(.system(size: 9, weight: .semibold)).foregroundStyle(tint)
+            Text(text).font(.system(size: 10.5, weight: .medium)).lineLimit(1)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Theme.accent.opacity(0.1), in: Capsule())
+        .overlay(Capsule().stroke(Theme.accent.opacity(0.3)))
+    }
+}
+
+/// Library Health (1.28): what needs attention, each with the fix one click away.
+struct LibraryHealthSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    var body: some View {
+        let h = model.health ?? LibraryHealth()
+        let byID = Dictionary(uniqueKeysWithValues: model.catalog.assets.map { ($0.id, $0) })
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    Circle().fill((h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning).opacity(0.16)).frame(width: 46, height: 46)
+                    Image(systemName: h.isHealthy ? "checkmark.seal.fill" : "stethoscope").font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Library Health").font(.system(size: 20, weight: .bold))
+                    Text(model.healthScanning && model.health == nil ? "Checking files…"
+                         : h.isHealthy ? "Everything checks out across \(model.catalog.assets.count) assets."
+                         : "\(h.issueCount) \(h.issueCount == 1 ? "thing needs" : "things need") a look" + (h.urgentCount > 0 ? ", \(h.urgentCount) of them can't open right now." : "."))
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if model.healthScanning { ProgressView().controlSize(.small) }
+                Button { model.refreshHealth(full: true) } label: { Label("Check Again", systemImage: "arrow.clockwise") }.controlSize(.small).disabled(model.healthScanning)
+            }
+            .padding(20)
+            Divider().overlay(Theme.hairline)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !h.missingFiles.isEmpty {
+                        HealthCard(symbol: "exclamationmark.triangle.fill", tint: Theme.danger, title: "\(h.missingFiles.count) missing \(h.missingFiles.count == 1 ? "file" : "files")",
+                                   detail: "Moved or deleted outside ASSSETS. Locate each one to relink it; tags, rights and boards stay.",
+                                   action: ("Show All", { model.healthOpen = false; model.show(collection: StudioLibrary.missingCollection) })) {
+                            ForEach(h.missingFiles.prefix(3), id: \.self) { id in
+                                if let a = byID[id] {
+                                    HealthRow(asset: a, detail: a.importedPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "") {
+                                        Button("Locate…") { model.locate(id); model.refreshHealth() }.controlSize(.small)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !h.missingLicenseFiles.isEmpty {
+                        let docs = h.missingLicenseFiles.compactMap { model.catalog.licenseDoc($0) }
+                        HealthCard(symbol: "doc.badge.ellipsis", tint: Theme.danger, title: "\(docs.count) license \(docs.count == 1 ? "file is" : "files are") gone",
+                                   detail: "The record is there but the stored copy was deleted from the Licenses folder. Attach it again, or detach the empty record.",
+                                   action: ("Detach \(docs.count)", { model.forgetMissingLicenseFiles() })) {
+                            ForEach(docs) { d in
+                                let on = model.catalog.assets.filter { $0.licenseDocs.contains(d.id) }
+                                HealthDocRow(name: d.name, detail: on.isEmpty ? "On a rights preset" : "On " + on.prefix(2).map(\.title).joined(separator: ", ") + (on.count > 2 ? " +\(on.count - 2)" : ""))
+                            }
+                        }
+                    }
+                    if let sets = h.duplicateSets, sets > 0 {
+                        HealthCard(symbol: "square.on.square", tint: Theme.warning, title: "\(sets) \(sets == 1 ? "set" : "sets") of identical files",
+                                   detail: "The same file indexed more than once. Merging keeps one copy and moves ratings, rights, license files and board cards onto it.",
+                                   action: ("Review…", { model.reviewDuplicatesFromHealth() })) { EmptyView() }
+                    }
+                    if !h.noCredit.isEmpty {
+                        HealthCard(symbol: "text.badge.xmark", tint: Theme.warning, title: "\(h.noCredit.count) licensed \(h.noCredit.count == 1 ? "asset has" : "assets have") no credit",
+                                   detail: "Credits print on galleries, round summaries and contact sheets. Select them to fill the credit in once for all.",
+                                   action: ("Select \(h.noCredit.count)", { model.showFromHealth(h.noCredit) })) {
+                            ForEach(h.noCredit.prefix(3), id: \.self) { id in
+                                if let a = byID[id] { HealthRow(asset: a, detail: (a.rights?.license.rawValue ?? "") + (a.rights.map { $0.source.isEmpty ? "" : " · " + $0.source } ?? "")) { EmptyView() } }
+                            }
+                        }
+                    }
+                    if h.licenseCleanupCount > 0 {
+                        HealthCard(symbol: "paperclip.badge.ellipsis", tint: Theme.smart, title: "\(h.licenseCleanupCount) unused license \(h.licenseCleanupCount == 1 ? "file" : "files")",
+                                   detail: "In the Licenses folder but not attached to any asset or preset.",
+                                   action: ("Clean Up", { model.cleanUpLicenseFolder() })) {
+                            ForEach((h.unusedLicenseFiles.compactMap { model.catalog.licenseDoc($0)?.name } + h.strayLicenseFiles).prefix(3), id: \.self) { n in
+                                HealthDocRow(name: n, detail: "Not attached")
+                            }
+                        }
+                    }
+                    if !h.bigFiles.isEmpty {
+                        HealthCard(symbol: "externaldrive.badge.exclamationmark", tint: Theme.smart, title: "\(h.bigFiles.count) very large \(h.bigFiles.count == 1 ? "file" : "files")",
+                                   detail: "Over \(ByteCountFormatter.string(fromByteCount: LibraryHealth.bigFileBytes, countStyle: .file)). They slow exports and galleries; consider a lighter version for sharing.",
+                                   action: nil) {
+                            ForEach(h.bigFiles.prefix(3), id: \.id) { f in
+                                if let a = byID[f.id] {
+                                    HealthRow(asset: a, detail: ByteCountFormatter.string(fromByteCount: f.bytes, countStyle: .file)) {
+                                        Button { model.reveal([f.id]) } label: { Image(systemName: "folder") }.controlSize(.small).help("Reveal in Finder")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HealthAllClear(h: h, scanned: h.duplicateSets != nil)
+                }
+                .padding(20)
+            }
+            Divider().overlay(Theme.hairline)
+            HStack {
+                Text("Files on disk are only changed by Clean Up, which deletes unused copies in the library's Licenses folder.").font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+                Button("Done") { model.healthOpen = false }.keyboardShortcut(.cancelAction)
+            }.padding(16)
+        }
+        .frame(minWidth: 720, idealWidth: 780, minHeight: 520, idealHeight: 640)
+        .background(Theme.panel)
+    }
+}
+
+struct HealthCard<Rows: View>: View {
+    let symbol: String
+    let tint: Color
+    let title: String
+    let detail: String
+    let action: (String, () -> Void)?
+    @ViewBuilder let rows: Rows
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(tint)
+                    .frame(width: 30, height: 30).background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13.5, weight: .bold))
+                    Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if let action {
+                    Button(action.0, action: action.1).buttonStyle(.bordered).controlSize(.small).tint(tint).fixedSize()
+                }
+            }
+            rows
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.raised))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.28)))
+    }
+}
+
+struct HealthRow<Trailing: View>: View {
+    let asset: StudioAsset
+    let detail: String
+    @ViewBuilder let trailing: Trailing
+    var body: some View {
+        HStack(spacing: 10) {
+            Thumbnail(asset: asset, pixels: 120).frame(width: 44, height: 32).clipShape(RoundedRectangle(cornerRadius: 5))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(asset.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Text(detail).font(.caption2).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 6)
+            trailing
+        }
+        .padding(.leading, 42)
+    }
+}
+
+struct HealthDocRow: View {
+    let name: String
+    let detail: String
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: name.lowercased().hasSuffix(".pdf") ? "doc.richtext" : "doc").font(.system(size: 13)).foregroundStyle(.secondary)
+                .frame(width: 44, height: 32).background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                Text(detail).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+        }
+        .padding(.leading, 42)
+    }
+}
+
+/// The checks that passed, so an empty section doesn't read as "not checked".
+struct HealthAllClear: View {
+    let h: LibraryHealth
+    let scanned: Bool
+    var body: some View {
+        let passed: [String] = [
+            h.missingFiles.isEmpty ? "Every file opens" : nil,
+            h.missingLicenseFiles.isEmpty ? "License files in place" : nil,
+            scanned && h.duplicateSets == 0 ? "No identical files" : nil,
+            h.noCredit.isEmpty ? "Licensed assets credited" : nil,
+            h.licenseCleanupCount == 0 ? "No unused license files" : nil,
+            h.bigFiles.isEmpty ? "No oversized files" : nil,
+        ].compactMap { $0 }
+        if !passed.isEmpty {
+            WrapLayout(spacing: 6) {
+                ForEach(passed, id: \.self) { t in
+                    Label(t, systemImage: "checkmark.circle.fill").font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.watch)
+                        .padding(.horizontal, 8).padding(.vertical, 4).background(Theme.watch.opacity(0.1), in: Capsule())
+                }
+            }.padding(.top, 4)
         }
     }
 }
@@ -6697,6 +7169,7 @@ struct BatchInspector: View {
     var body: some View {
         let ids = Set(assets.map(\.id))
         let common = model.catalog.commonTags(ids)
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ZStack {
@@ -6748,6 +7221,13 @@ struct BatchInspector: View {
                 Button(role: .destructive) { model.pendingRemoval = ids } label: { Label("Remove from Library…", systemImage: "trash") }.buttonStyle(.borderless).padding(.top, 4)
             }
             .padding(16)
+        }
+        .onAppear {
+            // Demo only: scroll a section into view for its screenshot.
+            if let anchor = model.inspectorAnchor {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { withAnimation { proxy.scrollTo(anchor, anchor: .top) } }
+            }
+        }
         }
         .background(Theme.panel)
     }
@@ -8123,7 +8603,7 @@ struct BulkRightsSection: View {
                 }
                 .buttonStyle(.bordered).controlSize(.small).font(.caption)
             }
-            LicenseFilesBlock(ids: ids).padding(.top, 2)
+            LicenseFilesBlock(ids: ids).padding(.top, 2).id("license-files")
         }
         .onAppear { if loadedFor != Set(ids) { reset() } }
         .onChange(of: ids) { _, _ in reset() }

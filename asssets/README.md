@@ -778,6 +778,20 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   Include Credits Page in the board Export menu.
 - Logic and tests: `Rights.swift`, `RightsTests.swift`.
 
+## 1.28.0: lossless duplicate merge and Library Health
+
+- **Nothing lost when merging duplicates.** Find Duplicates (⌥⌘D) used to keep only tags, favorite and collection from the copies it removed. Now the copy you keep also takes the highest star rating, a color label, license files, client notes and version stack from the others. It takes their rights too when it has none. Board cards and client picks that pointed at a removed copy now point at the kept one instead of disappearing.
+- **See it before it happens.** Each set in the review sheet shows every copy with its rating, label, rights, license files and board cards. Click a copy to keep it. A summary line lists exactly what will move over ("★★★★ rating · Purple label · 2 license files · 1 board card follows"). When copies carry different rights, the set is flagged "Rights differ" and waits until you pick whose rights to keep. "Merge All" skips those sets until then.
+- **Library Health** (sidebar, or ⌥⌘L) lists what needs attention, each with its fix:
+  - missing files, with Locate…
+  - license files whose stored copy is gone, with Detach
+  - sets of identical files, with Review…
+  - licensed assets with no credit, with Select to fill them in at once
+  - unused files in the Licenses folder, with Clean Up
+  - files over 200 MB
+  Checks that pass are listed too, so an empty section never reads as "not checked". Clean Up is the only action that touches files on disk, and it only deletes unused copies inside the library's Licenses folder.
+- Logic and tests: `Duplicates.swift`, `LibraryHealth.swift`, `LosslessMergeTests.swift`.
+
 ## 1.27.0: license files and rights presets
 
 - **License files.** Attach the paperwork behind a license (order PDF, receipt, email export) to one asset or a whole selection: use the button in the Rights section or drop files onto it. ASSSETS keeps a copy in the library, so the original can move. Click a file to open it in Quick Look. In the batch inspector, each file shows how many of the selected assets it's attached to, with "Add to all".
