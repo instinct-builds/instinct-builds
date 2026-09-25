@@ -329,6 +329,13 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         } else if (used) {
             FillRound(NSMakeRect(NSMidX(bar) - 3, bar.origin.y + 1, 6, 1.5), 0.75, C(0x3a4452));
         }
+        if (used && kind == arp::StepOn) {
+            const int count = std::clamp(v.arpPatRatchet[i], 1, 4);
+            FillRound(NSMakeRect(c.origin.x + 2, NSMaxY(c) - 9, c.size.width - 4, 8), 2,
+                      count > 1 ? C(0x38243a) : C(0x1b202a));
+            TextA([NSString stringWithFormat:@"%d", count], NSMakeRect(c.origin.x, NSMaxY(c) - 9, c.size.width, 8),
+                  6, count > 1 ? pink : C(0x697683), NSFontWeightBold, NSTextAlignmentCenter);
+        }
         NSString* tag = kind == arp::StepOn ? @"" : kind == arp::StepRest ? @"R" : @"T";
         FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 1.5, c.size.width - 4, 6), 1.5, used && kind != arp::StepOn ? C(0x232b36) : C(0x151b23));
         if (tag.length) TextA(tag, NSMakeRect(c.origin.x, c.origin.y + 1, c.size.width, 7), 5, used ? C(0x8793a3) : C(0x3a4452), NSFontWeightBold, NSTextAlignmentCenter);
@@ -416,7 +423,9 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         const NSRect c = [self arpPatCell:i];
         v.arpPatOn = true;
         if (i >= v.arpPatLen) v.arpPatLen = i + 1; // clicking past the end grows the pattern
-        if (p.y < c.origin.y + 9) v.arpPatKind[i] = (v.arpPatKind[i] + 1) % arp::kStepKinds; // kind strip: ON -> REST -> TIE
+        if (v.arpPatKind[i] == arp::StepOn && p.y >= NSMaxY(c) - 10) // top badge cycles retriggers
+            v.arpPatRatchet[i] = v.arpPatRatchet[i] % 4 + 1;
+        else if (p.y < c.origin.y + 9) v.arpPatKind[i] = (v.arpPatKind[i] + 1) % arp::kStepKinds; // kind strip: ON -> REST -> TIE
         else { v.arpPatKind[i] = arp::StepOn; [self setPatVelocity:i at:p]; patDrag = i; }
         [self voiceParamEdited:-1];
         return YES;
@@ -549,7 +558,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     for (int i = 0; i < arpLivePoolN; ++i) [s appendFormat:@"%s%d", i ? "," : "", arpLivePool[i]];
     [s appendFormat:@" index=%d note=%d", arpLiveIndex, arpLiveNote];
     [s appendFormat:@" sync=%d locked=%d pat=%d len=%d cell=%d steps=", v.clockSync ? 1 : 0, arpLiveLocked ? 1 : 0, v.arpPatOn ? 1 : 0, v.arpPatLen, arpLivePatCell]; // 0.26.0
-    for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%c%d", i ? "," : "", "ORT"[std::clamp(v.arpPatKind[i], 0, 2)], v.arpPatVel[i]];
+    for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%c%d/x%d", i ? "," : "", "ORT"[std::clamp(v.arpPatKind[i], 0, 2)], v.arpPatVel[i], v.arpPatRatchet[i]];
     return s;
 }
 - (void)drawVoiceStrip {

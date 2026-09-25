@@ -253,3 +253,9 @@ build/muew-tests-page47: tests/tests_page47.cpp src/partial_view.h src/spectral_
 
 build/muew-demo-page47: src/render_demo_page47.cpp src/spectral_clipboard.h src/synth.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-tests-ratchet48: tests/tests_ratchet48.cpp src/synth.h src/preset.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-demo-ratchet48: src/render_demo_ratchet48.cpp src/synth.h src/wav_writer.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<

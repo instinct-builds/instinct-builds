@@ -379,3 +379,15 @@ ticks show only the visible part of that same span on each page. Ordinary chip
 clicks and wheel page navigation never change the span. This is editor-only
 navigation: the original DSP, REVERSE, feather, SEED, EDGE, phase and undo
 semantics are unchanged.
+
+## 0.48.0 ARP step ratchets
+
+Each ON step in the ARP pattern has a top-edge count badge. Click the badge
+to cycle 1-4 strikes of that step's selected note at its existing velocity.
+The strikes divide that step's length evenly, with GATE applied to each
+substep. The next arp note is still selected once per step, not once per
+strike. REST remains silent, a following TIE suppresses retriggers so it
+holds through, and non-pattern playback is unchanged. In HOST SYNC the
+ratchets follow the host beat and swing grid; the step boundaries stay put.
+The new optional `arpr` line stores 16 counts only when one differs from 1.
+Old `arpx` lines stay byte-identical and load with one strike per step.

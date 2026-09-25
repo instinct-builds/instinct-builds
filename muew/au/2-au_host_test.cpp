@@ -707,6 +707,23 @@ int main() {
         printf("arp clock sync + step pattern (grid wait, odd steps, stop, state): ok\n");
     }
 
+    // 0.48.0: host-recalled per-step ratchet counts are an optional line,
+    // while the original arpx layout and factory preset numbering stay fixed.
+    {
+        muew::Preset p = muew::factoryPresets()[0], got;
+        p.voice.arpOn = true; p.voice.arpPatOn = true; p.voice.arpPatLen = 2;
+        p.voice.arpPatRatchet[0] = 3; p.voice.arpPatRatchet[1] = 4;
+        AudioUnit t = openUnit();
+        bool ok = t && setState(t, p) && getState(t, got);
+        auto saved = got.serialize();
+        if (!ok || !(got == p) || saved.find("\narpr 3 4 1 1 ") == std::string::npos ||
+            saved.find("\narpx 0 1 2 ") == std::string::npos) {
+            printf("FAIL: AU ratchet state / append-only arpr line\n"); return 1;
+        }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("ARP ratchet state recalled through AU; arpx layout unchanged\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;
