@@ -1423,6 +1423,20 @@ struct SessionSegmentTests {
 }
 
 @Suite("History filter presets")
+struct RollListNoteTests {
+    @Test func notedCountCountsOnlyNonBlankNotes() throws {
+        func roll(_ note: String?) -> RollResult {
+            var r = RollResult(expression: "1d6", dice: [], modifier: 0,
+                               total: 3, alternateTotal: nil)
+            r.note = note
+            return r
+        }
+        let list = [roll(nil), roll("  "), roll("the bridge collapses")]
+        #expect(list.notedCount == 1)
+        #expect([RollResult]().notedCount == 0)
+    }
+}
+
 struct FilterPresetTests {
     @Test func initTrimsAndRejectsBlank() throws {
         #expect(FilterPreset(name: "   ", query: "fire") == nil)

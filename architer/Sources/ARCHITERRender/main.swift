@@ -947,6 +947,24 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-clear", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.11.0 proof: the filtered count names its noted rolls - with
+    // the "fire" filter the subset carries the Fireball's note, so
+    // the bar reads "N of M, 1 with notes". The txt records the count.
+    do {
+        let filtered = model.rollHistory.matching("fire")
+        try? (["Filtered count with notes (3.11.0)",
+               "filter \"fire\" -> \(filtered.count) rolls, \(filtered.notedCount) with notes",
+               "the bar shows the same numbers as \"N of M, K with notes\""])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-count-notes.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-count-notes", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(

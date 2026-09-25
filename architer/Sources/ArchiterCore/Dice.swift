@@ -965,6 +965,15 @@ public extension Array where Element == RollResult {
     }
 
     /// Rolls made for one character. nil returns the full table log.
+    /// Rolls carrying a non-blank note (3.11.0) - the filtered
+    /// count's "K with notes" reads from it.
+    var notedCount: Int {
+        filter {
+            ($0.note?.trimmingCharacters(in: .whitespacesAndNewlines))
+                .map { !$0.isEmpty } ?? false
+        }.count
+    }
+
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }
         return filter { $0.characterName == name }
