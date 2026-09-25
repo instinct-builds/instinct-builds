@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0;
+        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -807,6 +807,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtPartialPageRect:(int)i { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4 + i * 48, p.origin.y + 43, 45, 14); }
 - (NSRect)wtPartialCreate { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 75, p.origin.y + 30, 47, 11); }
 - (NSRect)wtPartialLargeArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 63, p.size.width - 8, p.size.height - 68); }
+- (NSRect)wtTaperBar { NSRect c = [self wtCanvas]; return NSMakeRect(c.origin.x + 72, c.origin.y + 14, 74, 6); }
 - (NSRect)wtPartialBarArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 4, p.size.width - 8, 22); }
 - (NSRect)wtPartialStep:(int)i { NSRect p = [self wtSpecPreview]; return NSMakeRect(NSMaxX(p) - 51 + i * 24, p.origin.y + 30, 22, 11); }
 - (NSRect)wtFrameToolRect:(int)i { NSRect pv = [self wtSpecPreview]; return NSMakeRect(pv.origin.x + 4 + i * 47, pv.origin.y + 43, 44, 14); } // 0.37.0 selected-frame spectral tools
@@ -1140,6 +1141,16 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             }
         }
         if (wtPartialLarge) {
+            const NSRect taper = [self wtTaperBar];
+            TextA(@"EDGE", NSMakeRect(pv.origin.x + 5, taper.origin.y - 2, 31, 10), 6.5,
+                  wtRange.active((int)t.size()) ? col : C(0x56616d), NSFontWeightBold, NSTextAlignmentLeft);
+            FillRound(taper, 3, C(0x26313c));
+            FillRound(NSMakeRect(taper.origin.x, taper.origin.y, std::max<CGFloat>(2, taper.size.width * wtBrushTaper), taper.size.height),
+                      3, [col colorWithAlphaComponent:.8]);
+            FillRound(NSMakeRect(taper.origin.x + taper.size.width * wtBrushTaper - 3, taper.origin.y - 2, 6, 10),
+                      3, wtRange.active((int)t.size()) ? C(0xddeff0) : C(0x697683));
+            TextA([NSString stringWithFormat:@"%.0f%%", wtBrushTaper * 100], NSMakeRect(NSMaxX(taper) + 3, taper.origin.y - 2, 32, 10),
+                  6.5, wtRange.active((int)t.size()) ? col : C(0x697683), NSFontWeightBold, NSTextAlignmentRight);
             TextA(@"OPTION-DRAG TO PAINT", NSMakeRect(pv.origin.x + 104, NSMaxY(pv) - 27, 85, 9),
                   5.9, C(0x8b9a9f), NSFontWeightSemibold, NSTextAlignmentRight);
             for (int i = 0; i < 4; ++i) {
@@ -1296,6 +1307,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         const int lastThumb = ThumbFor(wtRange.last(nT), nT);
         const NSRect a = [self wtThumb:firstThumb], b = [self wtThumb:lastThumb];
         FillRound(NSMakeRect(NSMidX(a), NSMaxY(a) + 2, std::max<CGFloat>(2, NSMidX(b) - NSMidX(a)), 3), 1.5, col);
+        if (wtMode == 3 && wtPartialLarge) for (int i = 0; i < 16; ++i) {
+            const NSRect r = [self wtThumb:i];
+            const int frame = ThumbFrame(i, nT);
+            if (!wtRange.contains(frame, nT)) continue;
+            const double strength = brushRangeStrength(frame, wtRange, nT, wtBrushTaper);
+            FillRound(NSMakeRect(NSMidX(r) - 8, NSMaxY(r) + 7, 16 * strength, 2), 1, [col colorWithAlphaComponent:.8]);
+        }
     }
     for (int i = 0; i < 16; ++i) {
         NSRect r = [self wtThumb:i];
@@ -3219,6 +3237,11 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     wtCmpHas[o] = true; wtCmpSnap[o] = true;
     [self setNeedsDisplay:YES];
 }
+- (void)wtTaperTo:(NSPoint)p {
+    const NSRect b = [self wtTaperBar];
+    wtBrushTaper = std::round(std::clamp((p.x - b.origin.x) / b.size.width, 0.0, 1.0) * 20) / 20.0;
+    [self setNeedsDisplay:YES];
+}
 - (int)wtBrushH:(NSPoint)p {
     const NSRect r = [self wtPartialLargeArea];
     return std::min(kEditablePartials, partialPageStart(wtPartialPage) +
@@ -3236,10 +3259,13 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     else wtBrush.line(wtBrushLastH, wtBrushLastDb, h, db);
     wtBrushLastH = h; wtBrushLastDb = db; wtPartial = h;
     TableFrames next = wtBrushBase;
-    wtBrushChanged = applyBrushTable(next, wtRange, wtFrame, wtBrush);
+    wtBrushChanged = applyBrushTable(next, wtRange, wtFrame, wtBrush, wtBrushTaper);
     if (wtBrushChanged) {
         current.tables[wtEdit] = std::move(next);
         edited = true; [self applySound];
+    } else if (current.tables[wtEdit] != wtBrushBase) {
+        current.tables[wtEdit] = wtBrushBase;
+        [self applySound];
     }
     [self setNeedsDisplay:YES];
 }
@@ -3311,6 +3337,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 }
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
+- (NSString*)muewBrushTaperText {
+    return [NSString stringWithFormat:@"edge=%.2f", wtBrushTaper];
+}
 - (NSString*)muewRangeText {
     if (wtEdit < 0 || wtEdit > 1) return @"";
     const int n = (int)current.tables[wtEdit].size();
@@ -3411,6 +3440,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         if (NSPointInRect(p, [self wtPartialCreate])) { [self wtPartialCreateNow]; return; }
         if (NSPointInRect(p, [self wtPartialToggle])) { wtPartialLarge = !wtPartialLarge; wtPartialPage = partialPageFor(wtPartial); [self setNeedsDisplay:YES]; return; }
         if (wtPartialLarge) {
+            if (wtRange.active((int)t.size()) && NSPointInRect(p, NSInsetRect([self wtTaperBar], -5, -7))) {
+                wtTaperDrag = 0; [self wtTaperTo:p]; return;
+            }
             for (int i = 0; i < 4; ++i)
                 if (NSPointInRect(p, [self wtPartialPageRect:i])) { wtPartialPage = i; wtPartial = partialPageStart(i); [self setNeedsDisplay:YES]; return; }
             const NSRect big = [self wtPartialLargeArea];
@@ -3967,6 +3999,7 @@ static int SortForColumn(int c) {
 - (void)mouseDragged:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
+    if (wtTaperDrag >= 0) { [self wtTaperTo:p]; return; }
     if (wtBrushActive) { [self wtBrushTo:p]; return; }
     if (wtDrawing && wtEdit >= 0) { [self tableStrokeTo:p first:NO]; return; }
     if (wtSpecDrag >= 0 && wtEdit >= 0) { [self specDragTo:p]; return; } // 0.31.0
@@ -4077,6 +4110,7 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseUp:(NSEvent*)e {
+    if (wtTaperDrag >= 0) { wtTaperDrag = -1; return; }
     if (wtBrushActive) { [self wtBrushEnd]; return; }
     if (wtDrawing) { wtDrawing = false; [self applySound]; } // one engine update per stroke
     if (wtSpecDrag >= 0) { wtSpecDrag = -1; [self setNeedsDisplay:YES]; } // 0.31.0

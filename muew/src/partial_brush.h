@@ -23,8 +23,20 @@ struct PartialBrush {
         for (int h = lo; h <= hi; ++h) paint(h, da + (db - da) * (h - a) / (double)(b - a));
     }
 };
-inline bool applyBrushFrame(Frame& f, const PartialBrush& brush) {
-    if (f.size() != kFrameSize || !brush.hasEdits()) return false;
+// A full edge taper is zero at both ends, one at the central frame(s).
+// Zero taper keeps the original uniform range behavior.
+inline double brushRangeStrength(int index, const FrameRange& range, int count, double taper) {
+    if (!range.active(count) || !range.contains(index, count)) return 1.0;
+    const int a = range.first(count), b = range.last(count), n = b - a + 1;
+    if (n < 3) return 1.0;
+    const double midpoint = (n - 1) / 2.0;
+    const double edgeDistance = std::max(0.0, std::abs(index - a - midpoint) - (n % 2 == 0 ? 0.5 : 0.0));
+    const double radius = midpoint - (n % 2 == 0 ? 0.5 : 0.0);
+    return 1.0 - std::clamp(taper, 0.0, 1.0) * std::clamp(edgeDistance / radius, 0.0, 1.0);
+}
+inline bool applyBrushFrame(Frame& f, const PartialBrush& brush, double strength = 1.0) {
+    if (f.size() != kFrameSize || !brush.hasEdits() || strength <= 0) return false;
+    strength = std::clamp(strength, 0.0, 1.0);
     auto s = frameSpectrum(f);
     double peak = 0;
     for (int h = 1; h <= kEditablePartials; ++h) peak = std::max(peak, std::abs(s[h]));
@@ -34,7 +46,7 @@ inline bool applyBrushFrame(Frame& f, const PartialBrush& brush) {
         if (!std::isfinite(brush.targetDb[h])) continue;
         const double mag = std::abs(s[h]);
         if (mag < peak * 1e-7) continue; // CREATE remains explicit for numerical FFT dust
-        const double target = peak * std::pow(10.0, brush.targetDb[h] / 20.0);
+        const double target = mag * std::pow((peak * std::pow(10.0, brush.targetDb[h] / 20.0)) / mag, strength);
         if (std::fabs(target - mag) < peak * 1e-6) continue;
         s[h] *= target / mag; s[kFrameSize - h] = std::conj(s[h]); changed = true;
     }
@@ -45,12 +57,12 @@ inline bool applyBrushFrame(Frame& f, const PartialBrush& brush) {
     if (mx > 0) for (auto& x : out) x /= mx;
     f = std::move(out); return true;
 }
-inline bool applyBrushTable(TableFrames& t, const FrameRange& range, int selected, const PartialBrush& brush) {
+inline bool applyBrushTable(TableFrames& t, const FrameRange& range, int selected, const PartialBrush& brush, double taper = 0.0) {
     if (t.empty()) return false;
     int a = range.active((int)t.size()) ? range.first((int)t.size()) : std::clamp(selected, 0, (int)t.size() - 1);
     int b = range.active((int)t.size()) ? range.last((int)t.size()) : a;
     bool changed = false;
-    for (int i = a; i <= b; ++i) changed |= applyBrushFrame(t[i], brush);
+    for (int i = a; i <= b; ++i) changed |= applyBrushFrame(t[i], brush, brushRangeStrength(i, range, (int)t.size(), taper));
     return changed;
 }
 } // namespace muew

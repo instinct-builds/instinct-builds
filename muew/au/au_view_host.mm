@@ -1195,6 +1195,71 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
             fflush(stdout);
         });
+        After(6.999497, ^{ // 0.42.0: full edge falloff over frames 14-39, isolated and atomic
+            CGFloat top = view.bounds.size.height - 100;
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() == 64, "falloff begins with the 64-frame sound");
+            if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // expand
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 22, top - 184 + 8 + 43 + 7)); // page 1-32
+            NSPoint a = NSMakePoint(40 + 3 * 25.5 + 11, top - 220 + 14);
+            NSPoint b = NSMakePoint(40 + 9 * 25.5 + 11, top - 220 + 14);
+            Click(view, w, a);
+            auto event = [&](NSEventType kind, NSPoint p, NSEventModifierFlags flags) -> NSEvent* {
+                return [NSEvent mouseEventWithType:kind location:p modifierFlags:flags
+                    timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+            };
+            [view mouseDown:event(NSEventTypeLeftMouseDown, b, NSEventModifierFlagShift)];
+            [view mouseUp:event(NSEventTypeLeftMouseUp, b, NSEventModifierFlagShift)];
+            NSString* range = [view respondsToSelector:NSSelectorFromString(@"muewRangeText")] ? [view valueForKey:@"muewRangeText"] : @"";
+            Check(std::string(range.UTF8String ?: "").find("14-39") != std::string::npos, "falloff range is frames 14-39");
+            const NSPoint taper = NSMakePoint(40 + 72 + 74, top - 184 + 14 + 3);
+            Click(view, w, taper); // EDGE 100%, no sound mutation
+            NSString* edge = [view respondsToSelector:NSSelectorFromString(@"muewBrushTaperText")] ? [view valueForKey:@"muewBrushTaperText"] : @"";
+            Check(std::string(edge.UTF8String ?: "").find("edge=1.00") != std::string::npos,
+                  "EDGE control reaches 100 percent");
+            muew::Preset baseline; bool ok1 = State(baseline);
+            const CGFloat bx = 40 + 8 + 4, by = top - 184 + 8 + 63;
+            NSPoint p0 = NSMakePoint(bx + 3.5 * 188.0 / 32, by + 12);
+            NSPoint p1 = NSMakePoint(bx + 7.5 * 188.0 / 32, by + 24);
+            [view mouseDown:event(NSEventTypeLeftMouseDown, p0, NSEventModifierFlagOption)];
+            [view mouseDragged:event(NSEventTypeLeftMouseDragged, p1, NSEventModifierFlagOption)];
+            Snapshot(view, "MUEW_TAPER42_PNG", "falloff strength preview snapshot written");
+            [view mouseUp:event(NSEventTypeLeftMouseUp, p1, NSEventModifierFlagOption)];
+            muew::Preset changed; bool ok2 = State(changed);
+            bool exact = ok1 && ok2 && baseline.tables[0].size() == 64 && changed.tables[0].size() == 64;
+            int middle = 0;
+            if (exact) for (int i = 0; i < 64; ++i) {
+                if (i < 13 || i > 38 || i == 13 || i == 38) exact &= changed.tables[0][i] == baseline.tables[0][i];
+                if (i >= 20 && i <= 31) middle += changed.tables[0][i] != baseline.tables[0][i];
+            }
+            Check(exact && middle > 4, "falloff keeps outside and edges bit-identical, edits center");
+            muew::PartialBrush expected; expected.line(4, -48 + std::round((12.0 / 40.0) * 60.0 * 2) / 2,
+                                                       8, -48 + std::round((24.0 / 40.0) * 60.0 * 2) / 2);
+            auto want = baseline.tables[0]; muew::FrameRange rr{13, 38};
+            muew::applyBrushTable(want, rr, 38, expected, 1);
+            Check(ok2 && want == changed.tables[0], "AU brush matches exact deterministic tapered range result");
+            NSString* hist = [view respondsToSelector:NSSelectorFromString(@"muewHistoryText")] ? [view valueForKey:@"muewHistoryText"] : @"";
+            Check(std::string(hist.UTF8String ?: "").find("last=BRUSH RANGE") != std::string::npos,
+                  "tapered gesture is one undo step");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5));
+            muew::Preset undone; bool ok3 = State(undone);
+            Check(ok3 && undone.tables[0] == baseline.tables[0], "one UNDO removes whole tapered stroke");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == changed.tables[0], "one REDO restores whole tapered stroke");
+            NSString* resetText = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef reset = (__bridge CFStringRef)resetText;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &reset, sizeof(reset));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(40 + 72, top - 184 + 14 + 3)); // reset EDGE to the uniform default for later tests
+            Click(view, w, a); // clear range
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // collapse
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab

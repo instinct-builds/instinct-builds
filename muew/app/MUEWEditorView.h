@@ -122,6 +122,8 @@ struct MUEWEditorHost {
     bool wtPartialLarge; // expanded spectrum view
     bool wtBrushActive; // 0.41.0 one pending harmonic brush gesture
     bool wtBrushChanged;
+    double wtBrushTaper; // 0.42.0 range edge taper, zero is uniform legacy behavior
+    int wtTaperDrag;
     int wtBrushLastH;
     double wtBrushLastDb;
     muew::TableFrames wtBrushBase;

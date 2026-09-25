@@ -305,3 +305,15 @@ harmonic's original level. A selected frame range receives the same gesture
 on every frame. Mouse-up records one undo step (or none for a no-op). The
 brush never creates silent partials; the explicit CREATE control still owns
 that decision. The painted table is stored in the ordinary sound state.
+
+## 0.42.0 Brush range-edge falloff
+
+The expanded SPEC view adds an EDGE slider (0-100%) when an inclusive frame
+range is selected. At zero, harmonic painting still writes uniformly to each
+frame as before. At 100%, the first and last selected frames remain exactly
+untouched, while the middle receives the full brush stroke; intermediate
+frames blend the harmonic gains in dB space. Short one- and two-frame ranges
+stay full-strength. A miniature strength rail above the frame thumbnails
+shows the taper before painting. The EDGE control does not change the sound
+by itself, and the brush gesture still makes only one undo step. The level
+blend is replayed from the gesture's frozen baseline, including on long drags.
