@@ -406,6 +406,14 @@ public struct HistoryListView: View {
                                         .help("Add this session's rolls to the journal as one entry")
                                         .disabled(model.selected == nil)
                                 }
+                                // 2.80.0: delete the whole session - the
+                                // middle ground between a card's trash
+                                // and Clear. Removes its name and note too.
+                                Button { model.deleteSession(session) }
+                                    label: { Image(systemName: "trash") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Theme.inkFaint)
+                                    .help("Delete this whole session from history")
                             }
                         }
                         .padding(.vertical, 4)

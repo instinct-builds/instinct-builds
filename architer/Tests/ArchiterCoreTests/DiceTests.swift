@@ -907,6 +907,21 @@ struct SessionSegmentTests {
         #expect(once.removingFirst(absent) == once)
     }
 
+    // 2.80.0: per-session delete drops one instance per removed entry -
+    // duplicates elsewhere in the log survive.
+    @Test func removingAllDropsOneInstancePerEntry() {
+        let a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 12, kept: true)],
+                           modifier: 0, total: 12, alternateTotal: nil)
+        let b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        let log = [a, b, a, b]
+        #expect(log.removingAll(in: [a, b]) == [a, b])
+        #expect(log.removingAll(in: [a, a]) == [b, b])
+        #expect(log.removingAll(in: []) == log)
+    }
+
     // 2.71.0: noted() carries the session note; blank clears it. The
     // note rides the copy text under the stats line and follows its
     // session's name into export headers in parentheses.

@@ -664,6 +664,17 @@ public extension Array where Element == RollResult {
         return copy
     }
 
+    /// History minus one instance of each entry in `removed` (2.80.0):
+    /// the per-session delete. Each removed roll takes exactly one
+    /// equal entry with it, so duplicates elsewhere in the log survive.
+    func removingAll(in removed: [RollResult]) -> [RollResult] {
+        var copy = self
+        for roll in removed {
+            if let i = copy.firstIndex(of: roll) { copy.remove(at: i) }
+        }
+        return copy
+    }
+
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }

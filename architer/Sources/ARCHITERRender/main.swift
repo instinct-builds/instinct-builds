@@ -482,6 +482,29 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-delete", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.80.0 proof: per-session delete - the oldest session leaves the
+    // history via its divider's trash; the txt records the session list
+    // before and after.
+    let sessionsBefore = model.namedSessions(model.rollHistory)
+    if let oldest = sessionsBefore.last { model.deleteSession(oldest) }
+    let sessionsAfter = model.namedSessions(model.rollHistory)
+    func sessionLine(_ s: RollSession) -> String {
+        "  " + s.title + " - \(s.rolls.count) rolls"
+    }
+    let beforeSessionLines = sessionsBefore.map(sessionLine)
+    let afterSessionLines = sessionsAfter.map(sessionLine)
+    let sessionDeleteLines = ["Per-session delete (2.80.0)", "",
+                              "before (\(sessionsBefore.count) sessions):"] + beforeSessionLines
+        + ["", "after (\(sessionsAfter.count) sessions):"] + afterSessionLines
+    try? sessionDeleteLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/session-delete.txt"),
+               atomically: true, encoding: .utf8)
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-session-delete", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

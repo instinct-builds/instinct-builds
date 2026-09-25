@@ -348,6 +348,29 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 2.80.0: per-session delete - a divider's trash drops the whole
+    /// session (the middle ground between per-roll delete and Clear),
+    /// along with its custom name and note. The session is re-segmented
+    /// from the FULL log so a filtered view still deletes every roll in
+    /// it; the undated session (no key) is exactly the unstamped rolls.
+    public func deleteSession(_ session: RollSession) {
+        let doomed: [RollResult]
+        if let key = session.key,
+           let full = sessionSegments(rollHistory).first(where: { $0.key == key }) {
+            doomed = full.rolls
+        } else if session.key == nil {
+            doomed = rollHistory.filter { $0.rolledAt == nil }
+        } else {
+            doomed = session.rolls
+        }
+        rollHistory = rollHistory.removingAll(in: doomed)
+        if let key = session.key {
+            renameSession(key, to: "")
+            setSessionNote(key, to: "")
+        }
+        rollHistoryStore.save(rollHistory)
+    }
+
     private func record(_ r: RollResult) {
         var r = r
         r.characterName = selected?.wrappedValue.name
