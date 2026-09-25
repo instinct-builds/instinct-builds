@@ -1957,7 +1957,7 @@ final class StudioLibrary: ObservableObject {
                     psdToggled[a.id] = Set(flips)
                 }
             }
-        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results", "batch-compare", "batch-focus", "batch-focus-next":
+        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results", "batch-compare", "batch-focus", "batch-focus-next", "batch-focus-last":
             let starters = catalog.assets.filter(\.isStarter)
             let names = ["risograph-4k.png", "blueprint-4k.png", "ink-fiber-4k.png"]
             let art = names.compactMap { name in starters.first { $0.importedPath?.hasSuffix(name) == true } }
@@ -1976,7 +1976,7 @@ final class StudioLibrary: ObservableObject {
                             self.batchPlacement = active
                         }
                     }
-                    if demo == "batch-crop" || demo == "batch-crop-results" || demo == "batch-compare" || demo == "batch-focus" || demo == "batch-focus-next" {
+                    if demo == "batch-crop" || demo == "batch-crop-results" || demo == "batch-compare" || demo == "batch-focus" || demo == "batch-focus-next" || demo == "batch-focus-last" {
                         self.batchPlacement?.crops[art[0].id] = BoardRect(x: 0.18, y: 0.12, w: 0.5, h: 0.5)
                         self.batchPlacement?.crops[art[1].id] = BoardRect(x: 0.05, y: 0.25, w: 0.7, h: 0.6)
                     }
@@ -4527,7 +4527,9 @@ struct BatchPlaceSheet: View {
             if ProcessInfo.processInfo.arguments.contains("batch-crop"), cropArt == nil {
                 cropArt = arts.first
             }
-            if ProcessInfo.processInfo.arguments.contains("batch-focus-next"), focusedArt == nil {
+            if ProcessInfo.processInfo.arguments.contains("batch-focus-last"), focusedArt == nil {
+                focusedArt = arts.last
+            } else if ProcessInfo.processInfo.arguments.contains("batch-focus-next"), focusedArt == nil {
                 focusedArt = arts.dropFirst().first
             } else if ProcessInfo.processInfo.arguments.contains("batch-focus"), focusedArt == nil {
                 focusedArt = arts.first
@@ -4690,13 +4692,17 @@ struct BatchFocusedComparison: View {
                 Spacer(minLength: 0)
                 Button { selectedID = arts[index - 1].id } label: {
                     Label("Previous", systemImage: "chevron.left")
-                }.disabled(index == 0).help("Inspect the previous artwork")
+                }.disabled(index == 0)
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+                    .help("Inspect the previous artwork (←)")
                 Text("\(arts.isEmpty ? 0 : index + 1) of \(arts.count)")
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     .frame(minWidth: 38)
                 Button { selectedID = arts[index + 1].id } label: {
                     Label("Next", systemImage: "chevron.right")
-                }.disabled(index >= arts.count - 1).help("Inspect the next artwork")
+                }.disabled(index >= arts.count - 1)
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+                    .help("Inspect the next artwork (→)")
                 Button("Back to Batch") { close() }.keyboardShortcut(.cancelAction)
                 Button("Adjust Crop…") { if let art { edit(art) } }
                     .buttonStyle(.borderedProminent).disabled(mode == .fit || art == nil)

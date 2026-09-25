@@ -871,3 +871,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Previous and Next inside Inspect Placement move through the current batch in order, keeping the large source framing beside the placed mockup. A position label makes the current artwork clear, and the controls disable at the ends instead of wrapping. Inspect and Adjust Crop continue to target the artwork shown. Back to Batch returns to all three editable cards without saving or changing their choices.
 - The native `batch-focus` and `batch-focus-next` captures check both the first custom crop and the next unadjusted artwork at 1024x768. The existing batch-crop proof and recipe assertions remain.
+
+## 1.37.0: arrow-key review in focused comparison
+
+- Left and right arrow keys invoke the focused Inspect Placement sheet's Previous and Next actions without Command. The shortcuts live on those sheet buttons, so the disabled state at the first and last artwork also disables its key action. These are not installed as global key monitors: the batch sheet and the per-art crop editor retain their own keyboard behavior.
+- `batch-focus`, `batch-focus-next` and `batch-focus-last` native captures show the controls at the first, middle and last artworks. Keyboard activation itself needs an interactive check; screenshots only prove placement and disabled states.

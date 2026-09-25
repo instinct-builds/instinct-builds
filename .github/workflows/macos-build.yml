@@ -257,6 +257,7 @@ jobs:
           DELAY=16 shoot batch-compare 1920x1200 batch-compare
           DELAY=16 shoot batch-focus 1920x1200 batch-focus
           DELAY=16 shoot batch-focus-next 1920x1200 batch-focus-next
+          DELAY=16 shoot batch-focus-last 1920x1200 batch-focus-last
           DELAY=16 shoot batch-crop 1920x1200 batch-crop
           DELAY=16 shoot batch-crop-results 1920x1200 batch-crop-results demo-batch-place.txt
           grep -q '^done placed=3 recipes=3 rights=3 unique-art=3 cropped=2$' "$SUP/demo-batch-place.txt"
