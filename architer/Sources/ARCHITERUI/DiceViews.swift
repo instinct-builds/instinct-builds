@@ -183,17 +183,28 @@ public struct DiceRollerView: View {
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 220)
                 }
+                // 3.14.0: bar chips never wrap - the label takes its
+                // ideal one-line width and the spacer/field yield,
+                // same treatment as the 3.13.1 count. "Latest session"
+                // was the last wrap left in the bar; Crits and
+                // Starred get it too for consistency.
                 Toggle("Latest session", isOn: $historyLatestSession)
                     .toggleStyle(.checkbox)
                     .font(Theme.Typeface.caption)
+                    .lineLimit(1)
+                    .fixedSize()
                     .help("Show only the newest session's rolls - pane, count, and Copy all follow")
                 Toggle("Crits", isOn: $historyCritsOnly)
                     .toggleStyle(.checkbox)
                     .font(Theme.Typeface.caption)
+                    .lineLimit(1)
+                    .fixedSize()
                     .help("Show only rolls with a kept natural 20 or natural 1")
                 Toggle("Starred", isOn: $historyStarredOnly)
                     .toggleStyle(.checkbox)
                     .font(Theme.Typeface.caption)
+                    .lineLimit(1)
+                    .fixedSize()
                     .help("Show only rolls the table starred")
                 TextField("Filter rolls", text: $historyFilter)
                     .textFieldStyle(InsetFieldStyle())

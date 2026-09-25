@@ -1043,6 +1043,27 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-count-starred", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.14.0 proof: the bar chips never wrap. Maximum-pressure case:
+    // Latest session ON plus the fire filter plus the full
+    // notes+starred count - every chip label sits on one line. Runs
+    // last, after the 3.13.0 star toggle.
+    do {
+        let scoped = model.rollHistory.latestSession().matching("fire")
+        try? (["Bar chips never wrap (3.14.0)",
+               "Latest session + Crits + Starred labels stay on one line under bar pressure",
+               "render has Latest session ON, filter \"fire\": \(scoped.count) rolls",
+               "the count keeps its 3.13.1 one-line treatment in the same bar"])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/latest-chip.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire",
+                       initialLatestSession: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-latest-chip", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
