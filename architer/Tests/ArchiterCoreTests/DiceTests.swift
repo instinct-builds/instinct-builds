@@ -249,6 +249,19 @@ struct RerollSpecTests {
         #expect(back.reroll?.damageType == "fire")
     }
 
+    @Test func noteRoundTrips() throws {
+        // 2.92.0: the note is part of the saved roll; pre-2.92.0 saves
+        // carry no note key and decode to nil (same optional pattern as
+        // reroll above).
+        var roll = RollResult(expression: "8d6", dice: [], modifier: 0, total: 27, alternateTotal: nil)
+        roll.label = "Fireball"
+        roll.note = "The bridge collapses behind them"
+        let data = try JSONEncoder().encode(roll)
+        let back = try JSONDecoder().decode(RollResult.self, from: data)
+        #expect(back == roll)
+        #expect(back.note == "The bridge collapses behind them")
+    }
+
     @Test func checkSpecCarriesModeAndBonus() throws {
         let spec = RerollSpec(kind: .check, baseLabel: "Stealth check", mode: .advantage, checkBonus: 7)
         #expect(spec.mode == .advantage)
@@ -269,6 +282,18 @@ struct SessionLogMarkdownTests {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         return cal
+    }
+
+    // 2.92.0: the note rides the Roll cell after a dash, and pipes in
+    /// notes are escaped like pipes in labels.
+    @Test func noteRidesTheRollCell() throws {
+        let cal = utc
+        let t = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 9, minute: 42)))
+        var r = stamped("8d6", label: "Fireball", total: 27, at: t)
+        r.note = "The bridge collapses | behind them"
+        let groups = groupRollsByDay([r], now: t, calendar: cal)
+        let text = sessionLogMarkdown(character: "Wren Halloway", range: .all, groups: groups)
+        #expect(text.contains("| Fireball (8d6) - The bridge collapses \\| behind them | 27 |"))
     }
 
     @Test func oneTablePerDayGroup() throws {
@@ -372,6 +397,24 @@ struct SessionLogTextTests {
         """)
     }
 
+    // 2.92.0: a note row follows its roll, indented two spaces deeper.
+    @Test func noteLinesIndentPastTheRoll() {
+        let rows: [SessionLogRow] = [
+            .dayHeader("Today"),
+            .roll("[04:25] Fireball: 27 (8d6)"),
+            .note("The bridge collapses behind them"),
+        ]
+        let text = sessionLogText(character: "Wren Halloway", range: .today, rows: rows)
+        #expect(text == """
+        Wren Halloway - Session Log (Today)
+
+        Today
+          [04:25] Fireball: 27 (8d6)
+            The bridge collapses behind them
+
+        """)
+    }
+
     @Test func emptyRangeSaysSo() {
         let text = sessionLogText(character: "Wren Halloway", range: .last7Days, rows: [])
         #expect(text == """
@@ -452,6 +495,18 @@ struct SessionLogRowTests {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         return cal
+    }
+
+    // 2.92.0: a noted roll's row is followed by its note row.
+    @Test func notedRollEmitsNoteRow() throws {
+        let cal = utc
+        let t = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 23, hour: 9, minute: 42)))
+        var r = stamped("8d6", label: "Fireball", at: t)
+        r.note = "The bridge collapses behind them"
+        let rows = sessionLogRows([r], now: t, calendar: cal)
+        #expect(rows.count == 3)
+        #expect(rows[1] == .roll(line("Fireball", "8d6", at: t)))
+        #expect(rows[2] == .note("The bridge collapses behind them"))
     }
 
     private func line(_ label: String, _ expression: String, at: Date) -> String {
@@ -940,6 +995,27 @@ struct SessionSegmentTests {
         let cleared = renamed.relabelingFirst(renamed[0], to: "   ")
         #expect(cleared[0].label == nil)
         #expect(log.relabelingFirst(a, to: "X")[0].label == "X")
+    }
+
+    // 2.92.0: noting sets the story under the label, blank clears it,
+    /// and an absent roll leaves the log unchanged.
+    @Test func notingFirstNotesAndClears() {
+        let a = RollResult(expression: "8d6",
+                           dice: [DieResult(sides: 6, value: 5, kept: true)],
+                           modifier: 0, total: 27, alternateTotal: nil)
+        let b = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 11, kept: true)],
+                           modifier: 0, total: 11, alternateTotal: nil)
+        let absent = RollResult(expression: "d8",
+                                dice: [DieResult(sides: 8, value: 3, kept: true)],
+                                modifier: 0, total: 3, alternateTotal: nil)
+        let log = [a, b]
+        let noted = log.notingFirst(a, to: "The bridge collapses behind them")
+        #expect(noted[0].note == "The bridge collapses behind them")
+        #expect(noted[1].note == nil)
+        let cleared = noted.notingFirst(noted[0], to: "   ")
+        #expect(cleared[0].note == nil)
+        #expect(log.notingFirst(absent, to: "X") == log)
     }
 
     // 2.84.0: starring flips the first match on, then back to nil;

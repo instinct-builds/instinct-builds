@@ -597,6 +597,14 @@ public enum SheetPDFExporter {
                             cursor.put(margin + 10, line, size: 8, gray: 0.15)
                             cursor.advance(11)
                         }
+                    case .note(let text):
+                        // 2.92.0: the roll's story note, indented past
+                        // the roll and greyed back.
+                        for line in wrap(text, width: contentW - 20, size: 8) {
+                            cursor.ensure(11)
+                            cursor.put(margin + 20, line, size: 8, gray: 0.4)
+                            cursor.advance(11)
+                        }
                     }
                 }
             }

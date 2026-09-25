@@ -45,6 +45,11 @@ public struct RollResult: Equatable, Codable, Sendable {
     public let alternateTotal: Int?
     /// What the roll was for ("Stealth check", "Longsword damage"); nil for raw notation.
     public var label: String? = nil
+    /// The story behind the roll (2.92.0), shown under the card's label
+    /// and carried into the session-log exports; nil for rolls without
+    /// one and pre-2.92.0 saves. Optional so old saves decode unchanged
+    /// and nil stays unencoded.
+    public var note: String? = nil
     /// Name of the character selected when the roll was made; nil for
     /// rolls made with no character selected (or pre-2.2 saves).
     public var characterName: String? = nil
@@ -63,7 +68,8 @@ public struct RollResult: Equatable, Codable, Sendable {
     /// Explicit public init: the memberwise one is internal, and the
     /// render harness (a separate module) builds crafted history rolls.
     public init(expression: String, dice: [DieResult], modifier: Int, total: Int,
-                alternateTotal: Int?, label: String? = nil, characterName: String? = nil,
+                alternateTotal: Int?, label: String? = nil, note: String? = nil,
+                characterName: String? = nil,
                 rolledAt: Date? = nil, reroll: RerollSpec? = nil, starred: Bool? = nil) {
         self.expression = expression
         self.dice = dice
@@ -71,6 +77,7 @@ public struct RollResult: Equatable, Codable, Sendable {
         self.total = total
         self.alternateTotal = alternateTotal
         self.label = label
+        self.note = note
         self.characterName = characterName
         self.rolledAt = rolledAt
         self.reroll = reroll
@@ -533,6 +540,8 @@ public func summarizedDayGroups(_ groups: [RollDayGroup], now: Date = Date(),
 public enum SessionLogRow: Equatable, Sendable {
     case dayHeader(String)
     case roll(String)
+    /// A roll's story note (2.92.0), following its roll row.
+    case note(String)
 }
 
 /// Chronological session-log rows for the compact-PDF appendix: oldest
@@ -548,7 +557,12 @@ public func sessionLogRows(_ rolls: [RollResult], names: [String: String] = [:],
     summarizedDayGroups(namedDayGroups(Array(rolls.reversed()), names: names, notes: notes,
                                        now: now, calendar: calendar),
                         now: now, calendar: calendar).flatMap { group in
-        [SessionLogRow.dayHeader(group.title)] + group.rolls.map { SessionLogRow.roll($0.historyLine) }
+        [SessionLogRow.dayHeader(group.title)] + group.rolls.flatMap { roll -> [SessionLogRow] in
+            // 2.92.0: a roll's note follows its line, indented deeper.
+            var rows: [SessionLogRow] = [.roll(roll.historyLine)]
+            if let note = roll.note { rows.append(.note(note)) }
+            return rows
+        }
     }
 }
 
@@ -586,6 +600,7 @@ public func sessionLogText(character: String, range: SessionLogRange,
             switch row {
             case .dayHeader(let title): lines.append(title)
             case .roll(let text): lines.append("  " + text)
+            case .note(let text): lines.append("    " + text)
             }
         }
     }
@@ -612,7 +627,8 @@ public func sessionLogMarkdown(character: String, range: SessionLogRange,
             for roll in group.rolls {
                 let stamp = roll.rolledAt
                     .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
-                let what = (roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
+                let what = ((roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
+                    + (roll.note.map { " - \($0)" } ?? ""))
                     .replacingOccurrences(of: "|", with: "\\|")
                 lines.append("| \(stamp) | \(what) | \(roll.total) |")
             }
@@ -713,6 +729,18 @@ public extension Array where Element == RollResult {
         guard let i = copy.firstIndex(of: roll) else { return copy }
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
         copy[i].label = trimmed.isEmpty ? nil : trimmed
+        return copy
+    }
+
+    /// The log with the first entry equal to `roll` noted (2.92.0): a
+    /// free-text note under the label - the story the short label leaves
+    /// out. Blank clears the note; an absent roll leaves the log
+    /// unchanged.
+    func notingFirst(_ roll: RollResult, to note: String) -> [RollResult] {
+        var copy = self
+        guard let i = copy.firstIndex(of: roll) else { return copy }
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy[i].note = trimmed.isEmpty ? nil : trimmed
         return copy
     }
 

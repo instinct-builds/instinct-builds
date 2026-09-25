@@ -569,6 +569,10 @@ struct RollCard: View {
     /// field; blank restores the expression as the title.
     @State private var editingLabel = false
     @State private var labelDraft = ""
+    /// 2.92.0: inline note editing - the note button swaps in a field;
+    /// blank clears the note.
+    @State private var editingNote = false
+    @State private var noteDraft = ""
 
     private var crit: Bool {
         roll.dice.contains { $0.sides == 20 && $0.kept && $0.value == 20 }
@@ -607,6 +611,20 @@ struct RollCard: View {
                             .font(Theme.Typeface.caption.monospacedDigit())
                             .foregroundStyle(Theme.inkMuted)
                     }
+                }
+                // 2.92.0: the story behind the roll, under the label.
+                if editingNote {
+                    TextField("Note", text: $noteDraft)
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(width: 220)
+                        .onSubmit {
+                            model.noteRoll(roll, to: noteDraft)
+                            editingNote = false
+                        }
+                } else if let note = roll.note {
+                    Text(note)
+                        .font(Theme.Typeface.captionSmall.italic())
+                        .foregroundStyle(Theme.inkMuted)
                 }
             }
             Spacer()
@@ -649,6 +667,15 @@ struct RollCard: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.inkFaint)
                 .help("Rename this roll's label")
+            // 2.92.0: add or edit the roll's note - the story the short
+            // label leaves out.
+            Button {
+                noteDraft = roll.note ?? ""
+                editingNote = true
+            } label: { Image(systemName: "note.text") }
+                .buttonStyle(.plain)
+                .foregroundStyle(roll.note == nil ? Theme.inkFaint : Theme.inkMuted)
+                .help(roll.note == nil ? "Add a note to this roll" : "Edit this roll's note")
             // 2.83.0: copy just this roll's line.
             Button { model.copyRollToPasteboard(roll) }
                 label: { Image(systemName: "doc.on.doc") }

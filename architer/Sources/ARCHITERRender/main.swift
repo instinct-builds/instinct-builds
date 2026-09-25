@@ -248,6 +248,12 @@ func run(model: AppModel, character: Character, outDir: String) {
         model.renameSession(key, to: "Ember Warrens delve")
         model.setSessionNote(key, to: "The bridge over the Ember")
     }
+    // 2.92.0 proof: note a roll - the Fireball carries the table's story
+    // under its label; the compact-PDF appendix and the session-log
+    // text/Markdown exports below all carry the note with it.
+    if let fireball = model.rollHistory.first(where: { $0.label?.hasPrefix("Fireball") == true }) {
+        model.noteRoll(fireball, to: "The bridge collapses behind them")
+    }
     // 2.39.0/2.41.0 proof: the compact export carries the character's
     // session-log appendix, ranged to Today - the Yesterday group is
     // filtered out, the rerolled 4d6kh3 stays.
@@ -704,6 +710,24 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .environmentObject(model),
             width: width, name: "dice-reroll-star", outDir: outDir, minHeight: 420, maxHeight: 1100)
     }
+    // 2.92.0 proof (render + lines): the noted Fireball card shows the
+    // note under its label; the export carriage is proven by the
+    // session-log files written above, which now include the note.
+    let notedRoll = model.rollHistory.first(where: { $0.note != nil })
+    let notedCount = model.rollHistory.filter { $0.note != nil }.count
+    let rollNoteLines = ["Per-roll notes (2.92.0)", "",
+                         "roll: \(notedRoll?.label ?? "<missing>")",
+                         "note: \(notedRoll?.note ?? "<missing>")",
+                         "noted rolls in history: \(notedCount)"]
+    try? rollNoteLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/roll-note.txt"),
+               atomically: true, encoding: .utf8)
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-roll-note", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

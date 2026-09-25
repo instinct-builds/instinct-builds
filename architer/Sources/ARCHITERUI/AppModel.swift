@@ -407,6 +407,15 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 2.92.0: attach a free-text note to a roll - the story the short
+    /// label leaves out; blank clears it. Notes show under the card's
+    /// label and ride the session-log text/Markdown exports and the
+    /// compact-PDF appendix.
+    public func noteRoll(_ roll: RollResult, to note: String) {
+        rollHistory = rollHistory.notingFirst(roll, to: note)
+        rollHistoryStore.save(rollHistory)
+    }
+
     /// 2.81.0: restore the last deleted roll or session - rolls, custom
     /// name, and note - then consume the undo.
     public func undoDelete() {
