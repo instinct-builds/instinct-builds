@@ -678,6 +678,32 @@ func run(model: AppModel, character: Character, outDir: String) {
                                                    names: model.sessionNames, notes: model.sessionNotes))
         .write(to: URL(fileURLWithPath: "\(outDir)/session-log-starred.md"),
                atomically: true, encoding: .utf8)
+    // 2.91.0 proof: reroll-and-star - rolling a starred card again
+    // carries the star onto the new top of history; the original keeps
+    // its own star, so the highlight reel survives the re-roll. Runs
+    // last: the extra roll must not disturb any earlier proof's counts.
+    if let topStarred = model.rollHistory.first(where: { $0.starred == true }) {
+        let preCount = model.rollHistory.count
+        let preStarred = model.rollHistory.starredRolls.count
+        model.rollAgain(topStarred)
+        let newTop = model.rollHistory.first
+        let rerollStarLines = ["Reroll-and-star (2.91.0)", "",
+                               "source: \(topStarred.label ?? topStarred.expression) (starred)",
+                               "history before: \(preCount) rolls, \(preStarred) starred",
+                               "history after: \(model.rollHistory.count) rolls, \(model.rollHistory.starredRolls.count) starred",
+                               "new top: \(newTop?.label ?? newTop?.expression ?? "<missing>")",
+                               "new top starred: \(newTop?.starred == true)",
+                               "original still starred: \(model.rollHistory.contains(topStarred))"]
+        try? rerollStarLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/reroll-star.txt"),
+                   atomically: true, encoding: .utf8)
+        renderPNG(
+            DiceRollerView()
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "dice-reroll-star", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

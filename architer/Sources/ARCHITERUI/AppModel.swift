@@ -515,25 +515,38 @@ public final class AppModel: ObservableObject {
         // 2.43.0 variants: advantage/disadvantage override the requested
         // d20 mode (conditions still apply); +/-2 shifts a check bonus or
         // appends to a plain/damage expression.
-        guard let spec = source.reroll else {
+        // 2.91.0: remember the top so the star carry below can tell a
+        // recorded reroll from a silent no-op (unparseable expression,
+        // incoming damage).
+        let previousTop = rollHistory.first
+        if let spec = source.reroll {
+            switch spec.kind {
+            case .plain:
+                if let base = spec.baseLabel { rollLabeled(base, source.expression.withRerollModifier(variant)) }
+                else { roll(source.expression.withRerollModifier(variant)) }
+            case .check:
+                let adjusted = spec.adjusted(for: variant)
+                rollCheck(adjusted.baseLabel ?? source.label ?? "Check",
+                          bonus: adjusted.checkBonus ?? 0, mode: adjusted.mode ?? .normal)
+            case .outgoingDamage:
+                recordDamageRoll(spec.baseLabel ?? source.label ?? "Damage",
+                                 source.expression.withRerollModifier(variant),
+                                 type: spec.damageType.flatMap { DamageType(rawValue: $0) })
+            case .incomingDamage:
+                break
+            }
+        } else {
             if let label = source.label { rollLabeled(label, source.expression.withRerollModifier(variant)) }
             else { roll(source.expression.withRerollModifier(variant)) }
-            return
         }
-        switch spec.kind {
-        case .plain:
-            if let base = spec.baseLabel { rollLabeled(base, source.expression.withRerollModifier(variant)) }
-            else { roll(source.expression.withRerollModifier(variant)) }
-        case .check:
-            let adjusted = spec.adjusted(for: variant)
-            rollCheck(adjusted.baseLabel ?? source.label ?? "Check",
-                      bonus: adjusted.checkBonus ?? 0, mode: adjusted.mode ?? .normal)
-        case .outgoingDamage:
-            recordDamageRoll(spec.baseLabel ?? source.label ?? "Damage",
-                             source.expression.withRerollModifier(variant),
-                             type: spec.damageType.flatMap { DamageType(rawValue: $0) })
-        case .incomingDamage:
-            break
+        // 2.91.0 reroll-and-star: a starred card's reroll inherits the
+        // star, so the highlight reel survives the re-roll. The original
+        // keeps its own star; the carry no-ops when the reroll recorded
+        // nothing (top unchanged), so incoming damage stays safe.
+        let carried = rollHistory.carryingStarToRerolledTop(from: source, previousTop: previousTop)
+        if carried != rollHistory {
+            rollHistory = carried
+            rollHistoryStore.save(rollHistory)
         }
     }
 

@@ -774,6 +774,22 @@ public extension Array where Element == RollResult {
         }
     }
 
+    /// The log with a reroll's star carried forward (2.91.0): after a
+    /// roll-again, when the source roll was starred the new top of
+    /// history inherits the star, so the table's highlight reel survives
+    /// the re-roll. The original keeps its own star untouched.
+    /// `previousTop` is the history top from before the reroll; an
+    /// unchanged top means the reroll recorded nothing (unparseable
+    /// expression, incoming damage) and the log is returned as-is.
+    func carryingStarToRerolledTop(from source: RollResult,
+                                   previousTop: RollResult?) -> [RollResult] {
+        guard source.starred == true else { return self }
+        guard let top = first, top != previousTop else { return self }
+        var copy = self
+        copy[0].starred = true
+        return copy
+    }
+
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }

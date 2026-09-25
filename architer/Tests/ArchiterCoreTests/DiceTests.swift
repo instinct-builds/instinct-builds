@@ -1012,6 +1012,32 @@ struct SessionSegmentTests {
         #expect(log.togglingStars(on: []) == log)
     }
 
+    // 2.91.0: a starred roll's reroll inherits the star on the new top;
+    /// the original keeps its own star, an unstarred source carries
+    /// nothing, and an unchanged top (a reroll that recorded nothing)
+    /// leaves the log untouched.
+    @Test func carryingStarToRerolledTop() {
+        var source = RollResult(expression: "d20",
+                                dice: [DieResult(sides: 20, value: 20, kept: true)],
+                                modifier: 0, total: 20, alternateTotal: nil)
+        source.starred = true
+        let oldTop = RollResult(expression: "2d6",
+                                dice: [DieResult(sides: 6, value: 4, kept: true)],
+                                modifier: 0, total: 4, alternateTotal: nil)
+        let rerolled = RollResult(expression: "d20",
+                                  dice: [DieResult(sides: 20, value: 11, kept: true)],
+                                  modifier: 0, total: 11, alternateTotal: nil)
+        let log = [rerolled, oldTop, source]
+        let carried = log.carryingStarToRerolledTop(from: source, previousTop: oldTop)
+        #expect(carried[0].starred == true)
+        #expect(carried[1].starred == nil)
+        #expect(carried[2].starred == true)
+        #expect(carried.starredRolls.count == 2)
+        #expect(log.carryingStarToRerolledTop(from: oldTop, previousTop: oldTop) == log)
+        #expect(log.carryingStarToRerolledTop(from: source, previousTop: rerolled) == log)
+        #expect([RollResult]().carryingStarToRerolledTop(from: source, previousTop: nil).isEmpty)
+    }
+
     // 2.88.0: the starred Markdown heads with the count and tables the
     /// starred rolls oldest first; unstarred rolls never reach the file.
     @Test func starredMarkdownCountsAndTables() throws {
