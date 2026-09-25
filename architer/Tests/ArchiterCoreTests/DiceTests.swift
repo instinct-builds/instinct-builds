@@ -854,6 +854,7 @@ struct SessionSegmentTests {
         let rolls = [stamped("d20", at: at(cal, 24, 15)),
                      stamped("2d6", at: at(cal, 24, 10))]
         let groups = summarizedDayGroups(namedDayGroups(Array(rolls.reversed()),
+                                                        names: [:],
                                                         now: now, calendar: cal),
                                          now: now, calendar: cal)
         let group = try #require(groups.first)
