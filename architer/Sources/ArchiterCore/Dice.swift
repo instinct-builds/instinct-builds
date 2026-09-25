@@ -675,6 +675,17 @@ public extension Array where Element == RollResult {
         return copy
     }
 
+    /// The log with the first entry equal to `roll` relabeled (2.82.0):
+    /// edit roll label. Blank clears the label, so the card falls back
+    /// to its expression; an absent roll leaves the log unchanged.
+    func relabelingFirst(_ roll: RollResult, to label: String) -> [RollResult] {
+        var copy = self
+        guard let i = copy.firstIndex(of: roll) else { return copy }
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy[i].label = trimmed.isEmpty ? nil : trimmed
+        return copy
+    }
+
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }

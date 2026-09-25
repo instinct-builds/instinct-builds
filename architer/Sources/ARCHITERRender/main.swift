@@ -524,6 +524,25 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-undo", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.82.0 proof: edit roll label - the newest card's label is renamed
+    // in place; the txt records the title before and after.
+    if let target = model.rollHistory.first {
+        let beforeTitle = target.label ?? target.expression
+        model.renameRoll(target, to: "Fire Bolt, into the dark")
+        let afterTitle = model.rollHistory.first?.label ?? "<missing>"
+        let relabelLines = ["Edit roll label (2.82.0)", "",
+                            "before: \(beforeTitle)",
+                            "after:  \(afterTitle)"]
+        try? relabelLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/roll-relabel.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-relabel", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

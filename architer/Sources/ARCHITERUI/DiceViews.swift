@@ -522,6 +522,10 @@ public struct MacroRowView: View {
 struct RollCard: View {
     @EnvironmentObject var model: AppModel
     let roll: RollResult
+    /// 2.82.0: inline label editing - the pencil swaps the title for a
+    /// field; blank restores the expression as the title.
+    @State private var editingLabel = false
+    @State private var labelDraft = ""
 
     private var crit: Bool {
         roll.dice.contains { $0.sides == 20 && $0.kept && $0.value == 20 }
@@ -533,9 +537,19 @@ struct RollCard: View {
     var body: some View {
         HStack(spacing: Theme.Gap.md) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(roll.label ?? roll.expression)
-                    .font(Theme.Typeface.body.bold())
-                    .foregroundStyle(Theme.ink)
+                if editingLabel {
+                    TextField("Roll label", text: $labelDraft)
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(width: 180)
+                        .onSubmit {
+                            model.renameRoll(roll, to: labelDraft)
+                            editingLabel = false
+                        }
+                } else {
+                    Text(roll.label ?? roll.expression)
+                        .font(Theme.Typeface.body.bold())
+                        .foregroundStyle(Theme.ink)
+                }
                 HStack(spacing: 4) {
                     if roll.label != nil {
                         Text(roll.expression)
@@ -578,6 +592,14 @@ struct RollCard: View {
                         }
                     }
             }
+            // 2.82.0: rename the label in place.
+            Button {
+                labelDraft = roll.label ?? ""
+                editingLabel = true
+            } label: { Image(systemName: "pencil") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help("Rename this roll's label")
             // 2.45.0: with auto-log on the roll is already journaled.
             if !model.autoLogRollsToJournal {
                 Button {

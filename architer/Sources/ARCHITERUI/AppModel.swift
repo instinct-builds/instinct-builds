@@ -362,6 +362,13 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 2.82.0: rename a roll's label in place; blank restores the raw
+    /// expression as the card's title.
+    public func renameRoll(_ roll: RollResult, to label: String) {
+        rollHistory = rollHistory.relabelingFirst(roll, to: label)
+        rollHistoryStore.save(rollHistory)
+    }
+
     /// 2.81.0: restore the last deleted roll or session - rolls, custom
     /// name, and note - then consume the undo.
     public func undoDelete() {

@@ -922,6 +922,25 @@ struct SessionSegmentTests {
         #expect(log.removingAll(in: []) == log)
     }
 
+    // 2.82.0: edit roll label renames the first matching entry; blank
+    // clears the label back to the expression, whitespace-only too.
+    @Test func relabelingFirstRenamesAndClears() {
+        var a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 12, kept: true)],
+                           modifier: 0, total: 12, alternateTotal: nil)
+        a.label = "Stealth check"
+        let b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        let log = [a, b]
+        let renamed = log.relabelingFirst(a, to: " Stealth, with boots ")
+        #expect(renamed[0].label == "Stealth, with boots")
+        #expect(renamed[1].label == nil)
+        let cleared = renamed.relabelingFirst(renamed[0], to: "   ")
+        #expect(cleared[0].label == nil)
+        #expect(log.relabelingFirst(a, to: "X")[0].label == "X")
+    }
+
     // 2.71.0: noted() carries the session note; blank clears it. The
     // note rides the copy text under the stats line and follows its
     // session's name into export headers in parentheses.
