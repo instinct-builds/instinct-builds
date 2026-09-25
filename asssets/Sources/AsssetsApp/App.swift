@@ -781,6 +781,15 @@ final class StudioLibrary: ObservableObject {
         }
     }
 
+    static func seedSourceFingerprints(_ c: inout StudioCatalog, ids: [UUID]) {
+        let set = Set(ids)
+        for a in c.assets where set.contains(a.id) && !a.isStarter && a.placementRecipe == nil {
+            if let path = a.importedPath, let fingerprint = sourceFingerprint(path) {
+                c.seedSourceFingerprint(fingerprint, for: a.id, path: path)
+            }
+        }
+    }
+
     /// Writes "<name>.xmp" next to each of the user's files. Existing sidecars keep everything but our four fields.
     func writeMetadata(_ ids: Set<UUID>, quiet: Bool = false) {
         let fm = FileManager.default
@@ -1028,7 +1037,7 @@ final class StudioLibrary: ObservableObject {
         if !found.isEmpty {
             var c = catalog
             added = c.syncWatch(found: found)
-            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
+            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); Self.seedSourceFingerprints(&c, ids: added); c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
         }
         let now = catalog.missingIDs { fm.fileExists(atPath: $0) }
         if now != missing { missing = now }
@@ -1503,7 +1512,9 @@ final class StudioLibrary: ObservableObject {
         guard let h = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? h.close() }
         var hasher = SHA256()
-        while let chunk = try? h.read(upToCount: 1 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+        do {
+            while let chunk = try h.read(upToCount: 1 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+        } catch { return nil }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
@@ -1567,6 +1578,65 @@ final class StudioLibrary: ObservableObject {
     @Published var health: LibraryHealth?
     @Published var healthOpen = false
     @Published var healthScanning = false
+    @Published var sourceRefreshBusy = false
+    @Published var sourceRefreshError: String?
+    @Published var reviewedSourceID: UUID?
+    private var healthGeneration = 0
+
+    nonisolated static func sourceStat(_ path: String) -> (size: Int64, modified: TimeInterval)? {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        guard let size = attrs?[.size] as? NSNumber, let date = attrs?[.modificationDate] as? Date,
+              attrs?[.type] as? FileAttributeType == .typeRegular else { return nil }
+        return (size.int64Value, date.timeIntervalSince1970)
+    }
+
+    nonisolated static func sourceFingerprint(_ path: String) -> SourceFingerprint? {
+        guard let before = sourceStat(path), let digest = sha256(path: path), let after = sourceStat(path),
+              before.size == after.size && before.modified == after.modified else { return nil }
+        return SourceFingerprint(size: after.size, modified: after.modified, sha256: digest)
+    }
+
+    /// Refresh a reviewed changed source without changing its ID or user-authored metadata.
+    func refreshChangedSource(_ id: UUID) {
+        guard !sourceRefreshBusy, let a = catalog.assets.first(where: { $0.id == id }),
+              let path = a.importedPath, let old = a.sourceFingerprint, health?.changedSources.contains(id) == true else { return }
+        sourceRefreshBusy = true; sourceRefreshError = nil
+        Task { @MainActor in
+            // Recheck live bytes before deriving anything. The user may have edited again after the report.
+            guard let current = Self.sourceFingerprint(path), old.status(against: current) == .changed else {
+                sourceRefreshBusy = false; sourceRefreshError = "Source changed since review. Check Again before refreshing."; refreshHealth(full: true); return
+            }
+            var updated = a
+            updated.palette = StudioCatalog.placeholderPalette
+            updated.resolution = "Local file"
+            var temp = StudioCatalog()
+            temp.assets = [updated]
+            enrichStarterMetadata(&temp, userFilesOnly: true)
+            let derived = temp.assets.first
+            guard let confirmed = Self.sourceFingerprint(path), confirmed == current,
+                  catalog.assets.first(where: { $0.id == id })?.sourceFingerprint == old else {
+                sourceRefreshBusy = false; sourceRefreshError = "Source changed during refresh. Check Again before trying again."; refreshHealth(full: true); return
+            }
+            var applied = false
+            guard let derived, derived.resolution != "Local file" else {
+                sourceRefreshBusy = false; sourceRefreshError = "Could not read this source's metadata. It was not refreshed."; return
+            }
+            mutate("Refresh Changed Source") { c in
+                applied = c.acceptChangedSource(confirmed, for: id, path: path,
+                    palette: derived.palette, resolution: derived.resolution)
+            }
+            sourceRefreshBusy = false
+            if applied {
+                sourceRefreshError = nil
+                ThumbnailStore.shared.invalidate(id: id, path: path)
+                psdCache.removeValue(forKey: path)
+                lookCache.removeValue(forKey: lookKey(a))
+                refreshAutoTags()
+                refreshHealth(full: true)
+                flash("Refreshed \(a.title); original ID, rights and versions kept.")
+            }
+        }
+    }
     @Published var folderRelinkOpen = false
     @Published var folderRelinkPreview: FolderRelinkPreview?
     @Published var folderRelinkMoveWatches = false
@@ -1619,6 +1689,8 @@ final class StudioLibrary: ObservableObject {
 
     /// Checks files, license copies and sizes off the main thread. `full` also hashes same-size files to count identical sets.
     func refreshHealth(full: Bool = false) {
+        healthGeneration += 1
+        let generation = healthGeneration
         let c = catalog
         // Every file, bundled ones too, so the identical-set count matches Find Duplicates. Big-file checks skip bundled media.
         let paths = Dictionary(uniqueKeysWithValues: c.assets.compactMap { a in a.importedPath.map { (a.id, $0) } })
@@ -1636,11 +1708,40 @@ final class StudioLibrary: ObservableObject {
                 for id in Duplicates.needsHash(sizes: sizes) { if let p = paths[id], let h = Self.sha256(path: p) { hashes[id] = "\(sizes[id] ?? 0)-\(h)" } }
                 sets = Duplicates.groups(hashes: hashes, order: order).count
             }
-            let report = c.health(exists: { fm.fileExists(atPath: $0) }, licenseExists: { fm.fileExists(atPath: root.appendingPathComponent($0.stored).path) },
+            var report = c.health(exists: { fm.fileExists(atPath: $0) }, licenseExists: { fm.fileExists(atPath: root.appendingPathComponent($0.stored).path) },
                                   licenseFolder: folder, sizes: sizes, duplicateSets: sets)
+            // Normal sweeps use the cheap stat gate. Full Library Health checks hash even with unchanged
+            // size/time, detecting same-path edits whose tools preserved metadata.
+            var baselines: [(UUID, String, SourceFingerprint, Bool)] = []
+            for a in c.assets where !a.isStarter && a.placementRecipe == nil {
+                guard let path = a.importedPath, let stat = Self.sourceStat(path) else { continue }
+                if let old = a.sourceFingerprint,
+                   !full && old.size == stat.size && old.modified == stat.modified { continue }
+                guard let current = Self.sourceFingerprint(path) else { continue }
+                if let old = a.sourceFingerprint {
+                    switch old.status(against: current) {
+                    case .changed: report.changedSources.append(a.id)
+                    case .timestampOnly: baselines.append((a.id, path, current, false))
+                    case .unchanged: break
+                    }
+                } else { baselines.append((a.id, path, current, true)) }
+            }
             await MainActor.run {
+                guard generation == self.healthGeneration else { return }
                 var r = report
                 if !full, let old = self.health?.duplicateSets { r.duplicateSets = old }
+                // Never overwrite a baseline that was added/accepted while this scan was running.
+                var c = self.catalog, changed = false
+                for (id, path, fingerprint, first) in baselines {
+                    if first { changed = c.seedSourceFingerprint(fingerprint, for: id, path: path) || changed }
+                    else { changed = c.acceptTimestampOnly(fingerprint, for: id, path: path) || changed }
+                }
+                if changed { self.catalog = c; self.save() }
+                r.changedSources.removeAll { id in
+                    guard let snapshot = c.assets.first(where: { $0.id == id }),
+                          let live = self.catalog.assets.first(where: { $0.id == id }) else { return true }
+                    return snapshot.importedPath != live.importedPath || snapshot.sourceFingerprint != live.sourceFingerprint
+                }
                 self.health = r
                 self.healthScanning = false
             }
@@ -1960,7 +2061,7 @@ final class StudioLibrary: ObservableObject {
                     for case let file as URL in e { if let id = c.importFile(path: file.path) { added.append(id) } }
                 } else if let id = c.importFile(path: url.path) { added.append(id) }
             }
-            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); c.autoStack() }
+            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); Self.seedSourceFingerprints(&c, ids: added); c.autoStack() }
         }
         if !added.isEmpty { refreshAutoTags(); show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
         else { flash("No new supported files found") }
@@ -2530,7 +2631,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2650,6 +2751,31 @@ final class StudioLibrary: ObservableObject {
                             let n = paths.filter { $0.hasPrefix(current.path + "/") }.count
                             let old = paths.filter { $0.hasPrefix(previous.path + "/") }.count
                             try? "done relinked=\(n) unmatched=\(old) watch=\(watchOK ? "moved" : "not-moved")".write(to: self.supportRoot.appendingPathComponent("demo-folder-relink.txt"), atomically: true, encoding: .utf8)
+                        }
+                    }
+                }
+            case "changed-source", "changed-source-review", "changed-source-apply":
+                show(collection: StudioCatalog.inboxCollection)
+                if let source = find("Northlight Lobby.png"), let path = source.importedPath,
+                   let baseline = Self.sourceFingerprint(path) {
+                    mutate { $0.seedSourceFingerprint(baseline, for: source.id, path: path) }
+                    let replacement = starterRoot.appendingPathComponent("risograph-4k.png")
+                    try? fm.removeItem(atPath: path)
+                    try? fm.copyItem(at: replacement, to: URL(fileURLWithPath: path))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                        self.openLibraryHealth()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            if demo == "changed-source-review" { self.reviewedSourceID = source.id }
+                            if demo == "changed-source-apply" {
+                                self.refreshChangedSource(source.id)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    let a = self.catalog.assets.first { $0.id == source.id }
+                                    let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == source.rights
+                                        && self.catalog.boardsUsing(source.id).count > 0
+                                    try? "done changed=\(passed) rights=\(a?.rights != nil) boards=\(self.catalog.boardsUsing(source.id).count)".write(
+                                        to: self.supportRoot.appendingPathComponent("demo-changed-source.txt"), atomically: true, encoding: .utf8)
+                                }
+                            }
                         }
                     }
                 }
@@ -6921,6 +7047,17 @@ struct DuplicatesSheet: View {
                     .help("Also group images that look the same but are not byte-identical: resized, re-exported or lightly edited copies")
             }
             .padding(20)
+            .alert("Refresh changed source?", isPresented: Binding(get: { model.reviewedSourceID != nil },
+                set: { if !$0 { model.reviewedSourceID = nil } })) {
+                Button("Cancel", role: .cancel) { model.reviewedSourceID = nil }
+                Button("Refresh Source") {
+                    if let id = model.reviewedSourceID { model.refreshChangedSource(id) }
+                    model.reviewedSourceID = nil
+                }
+            } message: {
+                let asset = model.catalog.assets.first { $0.id == model.reviewedSourceID }
+                Text("\(asset?.title ?? "This asset") at \(asset?.importedPath ?? "unknown path") changed on disk. Use these bytes for the preview, palette and file facts? The asset ID, rights, boards and placed versions stay in the catalog. This can't restore the old source bytes.")
+            }
             Divider().overlay(Theme.hairline)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -7138,6 +7275,24 @@ struct LibraryHealthSheet: View {
                                         Button("Locate…") { model.locate(id); model.refreshHealth() }.controlSize(.small)
                                     }
                                 }
+                            }
+                        }
+                    }
+                    if !h.changedSources.isEmpty {
+                        HealthCard(symbol: "arrow.triangle.2.circlepath.circle.fill", tint: Theme.warning,
+                                   title: "\(h.changedSources.count) changed \(h.changedSources.count == 1 ? "source" : "sources")",
+                                   detail: "The file at its known path has new bytes. Review each before updating its preview, palette and file facts; rights, boards and prior versions stay.",
+                                   action: ("Check Again", { model.refreshHealth(full: true) })) {
+                            ForEach(h.changedSources.prefix(5), id: \.self) { id in
+                                if let a = byID[id] {
+                                    HealthRow(asset: a, detail: a.importedPath ?? "") {
+                                        Button("Review…") { model.reviewedSourceID = id }
+                                            .controlSize(.small).disabled(model.sourceRefreshBusy)
+                                    }
+                                }
+                            }
+                            if let error = model.sourceRefreshError {
+                                Text(error).font(.caption2).foregroundStyle(Theme.warning)
                             }
                         }
                     }
@@ -7416,6 +7571,7 @@ struct HealthAllClear: View {
     var body: some View {
         let passed: [String] = [
             h.missingFiles.isEmpty ? "Every file opens" : nil,
+            h.changedSources.isEmpty ? "No changed sources" : nil,
             h.missingLicenseFiles.isEmpty ? "License files in place" : nil,
             scanned && h.duplicateSets == 0 ? "No identical files" : nil,
             h.noCredit.isEmpty ? "Licensed assets credited" : nil,
@@ -8694,6 +8850,7 @@ final class ThumbnailStore: ObservableObject {
     @Published private(set) var revision = 0
     private var cache: [String: CGImage] = [:]
     private var inflight: Set<String> = []
+    private var generations: [String: Int] = [:]
 
     func image(for asset: StudioAsset, pixels: Int) -> CGImage? {
         let key = "\(asset.id.uuidString)|\(asset.importedPath ?? "")|\(pixels)"
@@ -8706,15 +8863,30 @@ final class ThumbnailStore: ObservableObject {
         guard !inflight.contains(key) else { return nil }
         inflight.insert(key)
         let snapshot = asset
+        let generation = generations[key, default: 0]
         Task.detached(priority: .userInitiated) {
             let img = await MediaRenderer.thumbnail(for: snapshot, maxPixel: pixels)
             await MainActor.run {
+                guard self.generations[key, default: 0] == generation else { return }
                 self.cache[key] = img ?? MediaRenderer.generated(snapshot, width: pixels)
                 self.inflight.remove(key)
                 self.revision += 1
             }
         }
         return nil
+    }
+
+    func invalidate(id: UUID, path: String) {
+        let prefix = id.uuidString + "|" + path + "|"
+        cache.keys.filter { $0.hasPrefix(prefix) }.forEach { cache.removeValue(forKey: $0) }
+        inflight.filter { $0.hasPrefix(prefix) }.forEach { key in
+            generations[key, default: 0] += 1
+            inflight.remove(key)
+        }
+        psdDocs.removeValue(forKey: path)
+        psdImages.keys.filter { $0.hasPrefix(path + "|") }.forEach { psdImages.removeValue(forKey: $0) }
+        tileCache.removeAll(); seamCache.removeAll(); fx.removeAll()
+        revision += 1
     }
 
     private var psdDocs: [String: PsdDocument] = [:]

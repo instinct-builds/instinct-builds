@@ -895,3 +895,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Relink Moved Folder groups the preview by outcome with clear section counts: Unmatched, Ambiguous and Matched. Each section can be collapsed or expanded without changing the preview's accepted matches or the watch-folder toggle. Problem groups appear before matches so a large relocation does not bury failures below hundreds of safe mappings. Empty groups still say zero, and rows retain exact old/new paths and reasons.
 - The native `folder-relink` and `folder-relink-collapsed` shots check full and collapsed group layout at 1024x768. The post-apply CI marker still verifies two relinks, one untouched missing file and a moved watch root.
+
+## 1.42.0: review changed source files
+
+- ASSSETS records each new imported or watched source's size, modification date and SHA-256. Older catalogs get a baseline on their next health scan; until then a change made before that first scan cannot be distinguished from the original. Regular scans avoid rehashing unchanged size/date pairs. Check Again hashes every source, including unchanged stat pairs; changes during hashing are skipped for a later scan. A timestamp-only touch with the same hash quietly updates the baseline.
+- Library Health lists files whose bytes changed at the same path. Review shows the exact asset and source path; Refresh Source rechecks the bytes, then updates its thumbnail, palette and file facts. The record's ID, rights, user tags, board references and placed versions remain. The old bytes cannot be restored by undoing the catalog change. Native CI shots show the changed source, review prompt and refreshed state; the marker checks retained rights and board membership.

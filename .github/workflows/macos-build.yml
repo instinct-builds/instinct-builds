@@ -241,6 +241,10 @@ jobs:
           DELAY=24 shoot batch-license-row 1920x1200 batch-license-row
           shoot duplicates-merge 1920x1200 duplicates-merge
           shoot library-health 1920x1200 library-health
+          DELAY=13 shoot changed-source 1920x1200 changed-source
+          DELAY=13 shoot changed-source-review 1920x1200 changed-source-review
+          DELAY=13 shoot changed-source-apply 1920x1200 changed-source-apply demo-changed-source.txt
+          grep -q '^done changed=true rights=true boards=[1-9]' "$SUP/demo-changed-source.txt"
           DELAY=18 shoot folder-relink 1920x1200 folder-relink
           DELAY=18 shoot folder-relink-collapsed 1920x1200 folder-relink-collapsed
           DELAY=18 shoot folder-relink-apply 1920x1200 folder-relink-apply demo-folder-relink.txt

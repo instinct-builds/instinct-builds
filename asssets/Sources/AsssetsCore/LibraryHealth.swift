@@ -11,6 +11,8 @@ public struct LibraryHealth: Equatable, Sendable {
 
     /// The user's own files that have moved or been deleted.
     public var missingFiles: [UUID] = []
+    /// Files whose bytes changed since their reviewed baseline, not just their timestamp.
+    public var changedSources: [UUID] = []
     /// License files no asset or preset uses any more.
     public var unusedLicenseFiles: [UUID] = []
     /// Files in the Licenses folder that no license record points at (left behind by a crash or a copied library).
@@ -33,7 +35,7 @@ public struct LibraryHealth: Equatable, Sendable {
     /// Every problem counted once: each missing file, unused or missing license file, big file and uncredited asset,
     /// plus each duplicate set.
     public var issueCount: Int {
-        missingFiles.count + unusedLicenseFiles.count + strayLicenseFiles.count + missingLicenseFiles.count + bigFiles.count + noCredit.count + (duplicateSets ?? 0)
+        missingFiles.count + changedSources.count + unusedLicenseFiles.count + strayLicenseFiles.count + missingLicenseFiles.count + bigFiles.count + noCredit.count + (duplicateSets ?? 0)
     }
     public var isHealthy: Bool { issueCount == 0 }
     /// Problems that stop something working (a file you can't open, paperwork you can't show) rather than tidy-ups.
