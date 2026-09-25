@@ -282,3 +282,15 @@ A selected frame gets one undo step; with a selected frame range, the same
 click is one labelled batch undo across that range. Silence stays silence,
 and a silent harmonic is not invented by gain. The saved table contains the
 edit; the selected bar is UI-only.
+
+## 0.40.0 Full harmonic viewport
+
+The SPEC page's > button expands the spectral bars, replacing the compact
+waveform and frame-tool chips with a larger 32-bin spectrum. Four page chips
+(1-32, 33-64, 65-96, 97-127) and the mouse wheel reach every editable
+harmonic. Selection, level readout and -3/+3 dB buttons work on any page.
+CREATE explicitly seeds a silent selected partial at -24 dB relative to the
+strongest partial with sine phase; it never overwrites an existing partial
+and does nothing on an all-silent frame. A frame range is still one undo
+step. The view/page selection stays UI-only; the created harmonic is stored
+in the normal table state.

@@ -33,6 +33,7 @@
 #include "preset.h"
 #include "frame_tools.h"
 #include "partial_edit.h"
+#include "partial_view.h"
 #include "au_params.h"
 #include "ui_model.h"
 #include "spectral_process.h"
@@ -1079,6 +1080,59 @@ int main() {
             SEL sync = NSSelectorFromString(@"syncFromAU:");
             if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D for older harness steps
+            fflush(stdout);
+        });
+        After(6.99949, ^{ // 0.40.0: expanded spectrum, high partial, controlled CREATE and undo
+            CGFloat top = view.bounds.size.height - 100;
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() == 64, "expanded spectrum starts from the 64-frame sound");
+            if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
+            SEL frameSel = NSSelectorFromString(@"selectTableFrame:");
+            if ([view respondsToSelector:frameSel]) ((void (*)(id, SEL, int))[view methodForSelector:frameSel])(view, frameSel, 32);
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // expand
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 3 * 48 + 22, top - 184 + 8 + 43 + 7)); // page 97-127
+            NSString* viewText = [view respondsToSelector:NSSelectorFromString(@"muewPartialText")] ? [view valueForKey:@"muewPartialText"] : @"";
+            printf("partial40: %s\n", viewText.UTF8String ?: "");
+            Check(std::string(viewText.UTF8String ?: "").find("h=97") != std::string::npos &&
+                  std::string(viewText.UTF8String ?: "").find("large=1") != std::string::npos, "expanded view navigates to page 97-127");
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 30.5 * (188.0/32), top - 184 + 8 + 63 + 25)); // harmonic 127
+            NSString* selected = [view respondsToSelector:NSSelectorFromString(@"muewPartialText")] ? [view valueForKey:@"muewPartialText"] : @"";
+            Check(std::string(selected.UTF8String ?: "").find("h=127") != std::string::npos, "last bin selects harmonic 127");
+            Snapshot(view, "MUEW_PARTIAL40_PNG", "expanded 127-harmonic view snapshot written");
+            muew::Preset prior; bool ok1 = State(prior);
+            // The imported test frame may contain tiny high-frequency energy. Use a deterministic
+            // sine frame so CREATE has a known silent partial without changing the factory bank.
+            if (ok1) {
+                prior.tables[0][32] = muew::shapeFrame(0);
+                NSString* text = [NSString stringWithUTF8String:prior.serialize().c_str()];
+                CFStringRef cf = (__bridge CFStringRef)text;
+                AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &cf, sizeof(cf));
+                SEL sync = NSSelectorFromString(@"syncFromAU:");
+                if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            }
+            Click(view, w, NSMakePoint(40 + 8 + 75 + 23, top - 184 + 8 + 30 + 5.5)); // explicit CREATE
+            muew::Preset created; bool ok2 = State(created);
+            bool exact = ok1 && ok2 && created.tables[0].size() == prior.tables[0].size();
+            if (exact) for (int i = 0; i < 64; ++i) {
+                auto want = prior.tables[0][i];
+                if (i == 32) muew::seedPartial(want, 127);
+                exact &= created.tables[0][i] == want;
+            }
+            Check(exact && created.tables[0][32] != prior.tables[0][32], "CREATE seeds only H127 of frame 33 at -24 dB");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5));
+            muew::Preset undone; bool ok3 = State(undone);
+            Check(ok3 && undone.tables[0] == prior.tables[0], "UNDO removes created partial");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == created.tables[0], "REDO restores created partial");
+            NSString* resetText = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef reset = (__bridge CFStringRef)resetText;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &reset, sizeof(reset));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // collapse
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
             fflush(stdout);
         });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars

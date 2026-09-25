@@ -9,6 +9,7 @@
 #include "table_history.h"
 #include "frame_range.h"
 #include "partial_edit.h"
+#include "partial_view.h"
 #include <set>
 #include <string>
 #include <vector>
@@ -115,7 +116,9 @@ struct MUEWEditorHost {
     // 0.31.0 SPECTRAL page: pending whole-table process (APPLY writes it into the table) and the bar being dragged.
     muew::SpectralProcess wtSpec;
     int wtSpecDrag;
-    int wtPartial; // 0.39.0 selected harmonic, 1-32
+    int wtPartial; // 0.39.0 selected harmonic, 1-127 since 0.40.0
+    int wtPartialPage; // 0.40.0 zoom/scroll page, 32 bins each
+    bool wtPartialLarge; // expanded spectrum view
     muew::TableHistory wtHistory[2]; // 0.32.0 WT editor undo/redo, one per oscillator
     // 0.33.0 per-oscillator A/B compare: A = the oscillator as the preset loaded it
     // (table, morph target, morph amount), B = the edit. wtCmpA is the oscillator

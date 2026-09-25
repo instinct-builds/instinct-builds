@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1;
+        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -803,6 +803,10 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtCmpRect:(int)i { return NSMakeRect(134 + i * 15, [self top] - 32, 14, 17); } // 0.33.0 A / B compare
 - (NSRect)wtMorphBar { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, cv.origin.y + 33, 60, 6); } // 0.33.0 (0.34.0: 60 wide, driver chip after it)
 - (NSRect)wtMorphChip { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 337, cv.origin.y + 29.5, 40, 13); } // 0.34.0 morph driver
+- (NSRect)wtPartialToggle { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 124, p.origin.y + 30, 20, 11); }
+- (NSRect)wtPartialPageRect:(int)i { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4 + i * 48, p.origin.y + 43, 45, 14); }
+- (NSRect)wtPartialCreate { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 75, p.origin.y + 30, 47, 11); }
+- (NSRect)wtPartialLargeArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 63, p.size.width - 8, p.size.height - 68); }
 - (NSRect)wtPartialBarArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 4, p.size.width - 8, 22); }
 - (NSRect)wtPartialStep:(int)i { NSRect p = [self wtSpecPreview]; return NSMakeRect(NSMaxX(p) - 51 + i * 24, p.origin.y + 30, 22, 11); }
 - (NSRect)wtFrameToolRect:(int)i { NSRect pv = [self wtSpecPreview]; return NSMakeRect(pv.origin.x + 4 + i * 47, pv.origin.y + 43, 44, 14); } // 0.37.0 selected-frame spectral tools
@@ -1098,35 +1102,61 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         const Frame pf = !wtSpec.isIdentity() ? processFrame(f, wtSpec) : ui::morphPreviewFrame(f, ms, morphAmt);
         const bool pending = !wtSpec.isIdentity();
         const bool changed = pending || (morphOn && morphAmt > 0);
-        StrokeFrame(f, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
-        if (!pending && morphOn) // 0.36.0 per-voice ghosts: the other held voices' blends, thin
-            for (double g : [self ghostMorphs:wtEdit]) StrokeFrame(ui::morphPreviewFrame(f, ms, g), NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.4], 1);
-        if (changed) { StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.22], 5); StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, col, 1.8); }
-        // Partials 1-32 on a 48 dB scale: processed bars, original as a grey cap line on each bar.
-        const int nP = 32;
-        std::vector<double> hp = frameHarmonics(pf, nP), ho = frameHarmonics(f, nP);
-        auto dbh = [](double a) { return a <= 0 ? 0.0 : std::clamp(1.0 + 20.0 * std::log10(a) / 48.0, 0.0, 1.0); };
-        const CGFloat bw = sp.size.width / nP, barTop = sp.size.height - 10;
-        for (int k = 0; k < nP; ++k) {
-            const double v = dbh(hp[k]), o = dbh(ho[k]);
-            const CGFloat x = sp.origin.x + k * bw;
-            if (wtPartial == k + 1) FillRound(NSMakeRect(x, sp.origin.y, bw, barTop + 1), 1, C(0x5adac8, .18));
-            FillRound(NSMakeRect(x + .5, sp.origin.y, bw - 1, 1), 0, C(0x1b222c));
-            if (v > 0) FillRound(NSMakeRect(x + .5, sp.origin.y, bw - 1, std::max<CGFloat>(1.5, barTop * v)), 1, [col colorWithAlphaComponent:.35 + .55 * v]);
-            if (changed && o > 0) FillRound(NSMakeRect(x + .5, sp.origin.y + barTop * o - .5, bw - 1, 1.2), 0, C(0x8793a3));
+        if (!wtPartialLarge) {
+            StrokeFrame(f, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
+            if (!pending && morphOn) // 0.36.0 per-voice ghosts: the other held voices' blends, thin
+                for (double g : [self ghostMorphs:wtEdit]) StrokeFrame(ui::morphPreviewFrame(f, ms, g), NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.4], 1);
+            if (changed) { StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.22], 5); StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, col, 1.8); }
         }
-        // Selected frame only. Chips sit above the partial band and below the wave trace.
-        NSArray* toolNames = @[@"FOCUS", @"BLUR", @"ALIGN", @"FLIP"];
-        for (int i = 0; i < 4; ++i) {
-            const NSRect b = [self wtFrameToolRect:i];
-            FillRound(b, 3, C(0x1d2830));
-            TextA(toolNames[i], NSMakeRect(b.origin.x, b.origin.y + 2.2, b.size.width, 10), 6.7, C(0xa9dcd4), NSFontWeightBold, NSTextAlignmentCenter);
+        // A compact first 32 partials, or a large 32-bin viewport over all 127.
+        const int nP = 32, firstH = wtPartialLarge ? partialPageStart(wtPartialPage) : 1;
+        const NSRect spectrum = wtPartialLarge ? [self wtPartialLargeArea] : sp;
+        if (wtPartialLarge) FillRound(spectrum, 3, C(0x101a21));
+        const auto specAfter = frameSpectrum(pf), specBefore = frameSpectrum(f);
+        double peak = 0;
+        for (int h = 1; h <= kEditablePartials; ++h) peak = std::max(peak, std::abs(specAfter[h]));
+        auto dbh = [](double a) { return a <= 0 ? 0.0 : std::clamp(1.0 + 20.0 * std::log10(a) / 48.0, 0.0, 1.0); };
+        const CGFloat bw = spectrum.size.width / nP, barTop = spectrum.size.height - (wtPartialLarge ? 14 : 10);
+        for (int k = 0; k < nP; ++k) {
+            const int h = firstH + k;
+            if (h > kEditablePartials) continue;
+            const double v = dbh(peak > 0 ? std::abs(specAfter[h]) / peak : 0), o = dbh(peak > 0 ? std::abs(specBefore[h]) / peak : 0);
+            const CGFloat x = spectrum.origin.x + k * bw;
+            if (wtPartial == h) FillRound(NSMakeRect(x, spectrum.origin.y, bw, barTop + 1), 1, C(0x5adac8, .18));
+            FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), 1), 0, C(0x1b222c));
+            if (v > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), std::max<CGFloat>(1.5, barTop * v)), 1, [col colorWithAlphaComponent:.35 + .55 * v]);
+            if (changed && o > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * o - .5, std::max<CGFloat>(1, bw - 1), 1.2), 0, C(0x8793a3));
+        }
+        if (wtPartialLarge) {
+            for (int i = 0; i < 4; ++i) {
+                const NSRect b = [self wtPartialPageRect:i];
+                FillRound(b, 3, i == wtPartialPage ? [col colorWithAlphaComponent:.26] : C(0x1d2830));
+                TextA([NSString stringWithFormat:@"%d-%d", partialPageStart(i), partialPageEnd(i)],
+                      NSMakeRect(b.origin.x, b.origin.y + 2, b.size.width, 10), 7, i == wtPartialPage ? col : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+            }
+        } else {
+            NSArray* toolNames = @[@"FOCUS", @"BLUR", @"ALIGN", @"FLIP"];
+            for (int i = 0; i < 4; ++i) {
+                const NSRect b = [self wtFrameToolRect:i];
+                FillRound(b, 3, C(0x1d2830));
+                TextA(toolNames[i], NSMakeRect(b.origin.x, b.origin.y + 2.2, b.size.width, 10), 6.7, C(0xa9dcd4), NSFontWeightBold, NSTextAlignmentCenter);
+            }
         }
         if (wtRange.active((int)t.size()))
             TextA([NSString stringWithFormat:@"%d-%d", wtRange.first((int)t.size()) + 1, wtRange.last((int)t.size()) + 1],
                   NSMakeRect(pv.origin.x + 108, NSMaxY(pv) - 14, 42, 10), 7, col, NSFontWeightBold, NSTextAlignmentRight);
         TextA([NSString stringWithFormat:@"H%02d %+.0f dB", wtPartial, partialLevelDb(f, wtPartial)],
-              NSMakeRect(sp.origin.x + 2, NSMaxY(sp) - 8, 90, 9), 6.5, col, NSFontWeightBold, NSTextAlignmentLeft);
+              NSMakeRect(sp.origin.x + 2, NSMaxY(sp) - 8, 70, 9), 6.5, col, NSFontWeightBold, NSTextAlignmentLeft);
+        {
+            const NSRect b = [self wtPartialCreate];
+            FillRound(b, 2, C(0x26313c));
+            TextA(@"CREATE", NSMakeRect(b.origin.x, b.origin.y + 1, b.size.width, 9), 6.5, C(0xc6e7e1), NSFontWeightBold, NSTextAlignmentCenter);
+        }
+        {
+            const NSRect b = [self wtPartialToggle];
+            FillRound(b, 2, wtPartialLarge ? [col colorWithAlphaComponent:.26] : C(0x26313c));
+            TextA(wtPartialLarge ? @"<" : @">", NSMakeRect(b.origin.x, b.origin.y + 1, b.size.width, 9), 7, col, NSFontWeightBold, NSTextAlignmentCenter);
+        }
         for (int i = 0; i < 2; ++i) {
             const NSRect b = [self wtPartialStep:i];
             FillRound(b, 2, C(0x26313c));
@@ -3175,8 +3205,19 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     wtCmpHas[o] = true; wtCmpSnap[o] = true;
     [self setNeedsDisplay:YES];
 }
+- (void)wtPartialCreateNow {
+    if (wtEdit < 0 || wtEdit > 1 || wtPartial < 1 || wtPartial > kEditablePartials) return;
+    TableFrames& t = current.tables[wtEdit];
+    if (wtFrame < 0 || wtFrame >= (int)t.size()) return;
+    TableFrames next = t;
+    bool changed = wtRange.active((int)t.size()) ? seedPartialRange(next, wtRange, wtPartial)
+        : seedPartial(next[wtFrame], wtPartial);
+    if (!changed) { NSBeep(); return; }
+    [self wtRemember:wtRange.active((int)t.size()) ? "CREATE RANGE" : "CREATE PARTIAL"];
+    t = std::move(next); edited = true; [self applySound]; [self setNeedsDisplay:YES];
+}
 - (void)wtPartialGain:(int)db {
-    if (wtEdit < 0 || wtEdit > 1 || wtPartial < 1 || wtPartial > 32) return;
+    if (wtEdit < 0 || wtEdit > 1 || wtPartial < 1 || wtPartial > kEditablePartials) return;
     TableFrames& t = current.tables[wtEdit];
     if (wtFrame < 0 || wtFrame >= (int)t.size()) return;
     TableFrames next = t;
@@ -3189,9 +3230,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 - (NSString*)muewPartialText {
     if (wtEdit < 0 || wtEdit > 1 || current.tables[wtEdit].empty()) return @"";
     const TableFrames& t = current.tables[wtEdit];
-    return [NSString stringWithFormat:@"h=%d db=%.1f range=%s", wtPartial,
+    return [NSString stringWithFormat:@"h=%d db=%.1f range=%s page=%d large=%d", wtPartial,
         partialLevelDb(t[std::clamp(wtFrame, 0, (int)t.size()-1)], wtPartial),
-        wtRange.active((int)t.size()) ? "on" : "off"];
+        wtRange.active((int)t.size()) ? "on" : "off", wtPartialPage, wtPartialLarge ? 1 : 0];
 }
 - (void)wtFrameTool:(int)i {
     if (wtEdit < 0 || wtEdit > 1 || i < 0 || i > 3) return;
@@ -3300,6 +3341,18 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     const double c = n ? frameCentroid(current.tables[wtEdit][std::clamp(wtFrame, 0, n - 1)]) : 0;
     return [NSString stringWithFormat:@"mode=%d formant=%.1f stretch=%.2f tilt=%.1f oddeven=%.2f frames=%d centroid=%.3f", wtMode, wtSpec.formantSt, wtSpec.stretch, wtSpec.tiltDb, wtSpec.oddEven, n, c];
 }
+- (void)scrollWheel:(NSEvent*)event {
+    if (wtEdit >= 0 && wtMode == 3 && wtPartialLarge) {
+        NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
+        if (NSPointInRect(p, [self wtCanvas])) {
+            const int direction = event.scrollingDeltaY > 0 ? -1 : event.scrollingDeltaY < 0 ? 1 : 0;
+            wtPartialPage = std::clamp(wtPartialPage + direction, 0, 3);
+            wtPartial = partialPageStart(wtPartialPage);
+            [self setNeedsDisplay:YES]; return;
+        }
+    }
+    [super scrollWheel:event];
+}
 - (void)tableMouseDown:(NSPoint)p event:(NSEvent*)event {
     TableFrames& t = current.tables[wtEdit];
     for (int i = 0; i < 2; ++i) // 0.33.0 A / B
@@ -3322,6 +3375,18 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (wtMode == 3 && NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { // 0.31.0 SPECTRAL page
         for (int i = 0; i < 2; ++i)
             if (NSPointInRect(p, [self wtPartialStep:i])) { [self wtPartialGain:i ? 3 : -3]; return; }
+        if (NSPointInRect(p, [self wtPartialCreate])) { [self wtPartialCreateNow]; return; }
+        if (NSPointInRect(p, [self wtPartialToggle])) { wtPartialLarge = !wtPartialLarge; wtPartialPage = partialPageFor(wtPartial); [self setNeedsDisplay:YES]; return; }
+        if (wtPartialLarge) {
+            for (int i = 0; i < 4; ++i)
+                if (NSPointInRect(p, [self wtPartialPageRect:i])) { wtPartialPage = i; wtPartial = partialPageStart(i); [self setNeedsDisplay:YES]; return; }
+            const NSRect big = [self wtPartialLargeArea];
+            if (NSPointInRect(p, big)) {
+                wtPartial = std::min(kEditablePartials, partialPageStart(wtPartialPage) + std::clamp((int)((p.x - big.origin.x) * 32 / big.size.width), 0, 31));
+                [self setNeedsDisplay:YES]; return;
+            }
+            return; // the expanded spectrum does not trigger compact-page tools beneath it
+        }
         const NSRect pa = [self wtPartialBarArea];
         if (NSPointInRect(p, pa)) {
             wtPartial = std::clamp(1 + (int)((p.x - pa.origin.x) * 32 / pa.size.width), 1, 32);
