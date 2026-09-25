@@ -329,6 +329,13 @@ public struct DiceRollerView: View {
                          + (starred > 0 ? ", \(starred) starred" : ""))
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkMuted)
+                        // 3.13.1: the notes + starred suffixes can
+                        // overrun the bar at narrow widths - keep the
+                        // count to one line, scale before truncating,
+                        // and let the spacer/field yield instead.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .layoutPriority(1)
                 }
                 Spacer()
                 // 2.45.0 auto-log: every roll also lands in the journal.
