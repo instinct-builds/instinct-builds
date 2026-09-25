@@ -1176,6 +1176,37 @@ final class StudioLibrary: ObservableObject {
 
     /// Renders each artwork separately and records one undo step for the batch. The selected asset IDs
     /// are resolved again at save time so removed or moved files cannot turn into a different artwork.
+    func saveBatchPlacementPreset(_ state: BatchPlaceState, name: String) {
+        guard let mockup = catalog.assets.first(where: { $0.id == state.mockup }), let doc = psdDocument(mockup),
+              let layer = state.layer ?? MockupPlacement.targetLayers(doc).first,
+              doc.layers.indices.contains(layer) else { flash("Pick a design layer first"); return }
+        let prior = catalog.placementPresets.first { $0.name.caseInsensitiveCompare(name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame }
+        var id: UUID?
+        mutate(prior == nil ? "Save Placement Preset" : "Update Placement Preset") { c in
+            id = c.savePlacementPreset(name: name, mockupID: mockup.id, layerName: doc.layers[layer].name,
+                                       mode: state.mode, background: state.background.rawValue)
+        }
+        flash(id == nil ? "Enter a name for the preset" : "Saved placement preset \(name.trimmingCharacters(in: .whitespacesAndNewlines))")
+    }
+
+    func removePlacementPreset(_ id: UUID) { mutate("Delete Placement Preset") { $0.deletePlacementPreset(id) } }
+
+    /// Either apply the exact saved layer or keep the current choices and show why the preset cannot be used.
+    func usePlacementPreset(_ preset: PlacementPreset, in state: inout BatchPlaceState) -> PlacementPresetStatus {
+        let status = catalog.placementPresetStatus(preset,
+            exists: { FileManager.default.fileExists(atPath: $0) },
+            layers: { a in psdDocument(a).map { d in MockupPlacement.targetLayers(d).map { d.layers[$0].name } } ?? [] })
+        guard case .ready(let index) = status,
+              let mockup = catalog.assets.first(where: { $0.id == preset.mockupID }),
+              let doc = psdDocument(mockup) else { return status }
+        let candidates = MockupPlacement.targetLayers(doc)
+        guard candidates.indices.contains(index) else { return .missingLayer }
+        guard let background = PlaceBackground(rawValue: preset.background) else { return .missingLayer }
+        state.mockup = mockup.id; state.layer = candidates[index]
+        state.mode = preset.mode; state.background = background
+        return status
+    }
+
     func commitBatchPlacement(_ state: BatchPlaceState) {
         guard let mockup = catalog.assets.first(where: { $0.id == state.mockup }), let doc = psdDocument(mockup),
               let layer = state.layer ?? MockupPlacement.targetLayers(doc).first,
@@ -1925,7 +1956,7 @@ final class StudioLibrary: ObservableObject {
                     psdToggled[a.id] = Set(flips)
                 }
             }
-        case "batch-place", "batch-place-results":
+        case "batch-place", "batch-place-results", "placement-presets":
             let starters = catalog.assets.filter(\.isStarter)
             let names = ["risograph-4k.png", "blueprint-4k.png", "ink-fiber-4k.png"]
             let art = names.compactMap { name in starters.first { $0.importedPath?.hasSuffix(name) == true } }
@@ -1935,6 +1966,14 @@ final class StudioLibrary: ObservableObject {
                     self.openBatchPlacement()
                     if let poster = self.mockupAssets.first(where: { $0.importedPath?.hasSuffix("poster-frame-mockup.psd") == true }) {
                         self.batchPlacement?.mockup = poster.id
+                    }
+                    if demo == "placement-presets", let state = self.batchPlacement {
+                        self.saveBatchPlacementPreset(state, name: "Poster Launch")
+                        if let saved = self.catalog.placementPresets.first(where: { $0.name == "Poster Launch" }) {
+                            var active = state
+                            _ = self.usePlacementPreset(saved, in: &active)
+                            self.batchPlacement = active
+                        }
                     }
                     if demo == "batch-place-results", let state = self.batchPlacement { self.commitBatchPlacement(state) }
                 }
@@ -4297,6 +4336,9 @@ struct BatchPlaceSheet: View {
     @EnvironmentObject var model: StudioLibrary
     @State var state: BatchPlaceState
     @State private var previews: [UUID: CGImage] = [:]
+    @State private var presetName = ""
+    @State private var namingPreset = false
+    @State private var presetIssue: String?
     private var mockup: StudioAsset? { model.catalog.assets.first { $0.id == state.mockup } }
     private var doc: PsdDocument? { mockup.flatMap { model.psdDocument($0) } }
     private var layers: [Int] { doc.map { MockupPlacement.targetLayers($0) } ?? [] }
@@ -4312,6 +4354,54 @@ struct BatchPlaceSheet: View {
                 Spacer()
                 Text("\(state.arts.count) artworks · renders on this Mac")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                InspectorLabel(text: "PLACEMENT PRESETS")
+                Menu {
+                    if model.catalog.placementPresets.isEmpty { Text("No saved presets") }
+                    ForEach(model.catalog.placementPresets.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { preset in
+                        Button(preset.name) {
+                            let status = model.usePlacementPreset(preset, in: &state)
+                            switch status {
+                            case .ready: presetIssue = nil
+                            case .missingMockup: presetIssue = "\(preset.name): mockup missing. Locate or replace the source, then try again."
+                            case .missingLayer:
+                                if let m = model.catalog.assets.first(where: { $0.id == preset.mockupID }), state.mockups.contains(m.id) {
+                                    state.mockup = m.id; state.layer = nil
+                                }
+                                presetIssue = "\(preset.name): design layer changed. Pick a layer and save the preset again."
+                            }
+                        }
+                    }
+                } label: { Label("Choose Preset", systemImage: "square.stack.3d.up") }
+                .disabled(model.catalog.placementPresets.isEmpty)
+                Button("Save Current…") {
+                    presetName = (mockup?.title ?? "Mockup") + " · " + state.mode.rawValue
+                    namingPreset = true
+                }.disabled(layerIndex == nil)
+                Spacer()
+                if !model.catalog.placementPresets.isEmpty {
+                    Menu("Manage") {
+                        ForEach(model.catalog.placementPresets) { preset in
+                            Button("Delete \(preset.name)", role: .destructive) { model.removePlacementPreset(preset.id) }
+                        }
+                    }
+                }
+            }.font(.caption)
+            if let presetIssue {
+                HStack(spacing: 6) {
+                    Label(presetIssue, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2).foregroundStyle(Theme.warning).lineLimit(2)
+                    if let preset = model.catalog.placementPresets.first(where: { presetIssue.hasPrefix($0.name + ": mockup missing") }),
+                       model.catalog.assets.contains(where: { $0.id == preset.mockupID }) {
+                        Button("Locate…") {
+                            if model.locate(preset.mockupID) {
+                                if case .ready = model.usePlacementPreset(preset, in: &state) { presetIssue = nil }
+                                else { presetIssue = "\(preset.name): design layer changed. Pick a layer and save the preset again." }
+                            }
+                        }.buttonStyle(.borderless).font(.caption2.weight(.semibold))
+                    }
+                }
             }
             HStack(spacing: 8) {
                 Menu {
@@ -4378,6 +4468,11 @@ struct BatchPlaceSheet: View {
         .padding(20).frame(width: 900).background(Theme.backdrop)
         .environment(\.colorScheme, .dark)
         .task(id: renderKey) { await makePreviews() }
+        .alert("Save Placement Preset", isPresented: $namingPreset) {
+            TextField("Preset name", text: $presetName)
+            Button("Save") { model.saveBatchPlacementPreset(state, name: presetName) }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Stores this mockup, design layer, mode and background for future batches. A name already in use is updated.") }
     }
 
     private func rightsLine(_ art: StudioAsset) -> String {

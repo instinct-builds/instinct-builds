@@ -845,3 +845,9 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Select at least two still artworks, then choose Batch Place into Mockup from the Asset menu or context menu. Pick one layered PSD, its design layer, Fill/Fit and background. A grid previews every artwork in that mockup, with each artwork's own rights and credit underneath. No remote rendering or paid API.
 - Place N Artworks renders one image per artwork, saves separate editable recipes and art-specific rights/license files, and stacks each with its own source artwork (not all on one shared mockup stack). One Undo reverts the library operation. The batch reports partial results when a source file is missing.
 - The 1.29 one-art-into-all-mockups path is unchanged. The 1.30 Edit Placement action can reopen each new batch render separately.
+
+## 1.32.0: placement presets
+
+- Save a named batch placement setup: the exact library mockup, named design layer, Fill/Fit mode and background. Select two or more artworks later, open Batch Place into Mockup and choose a preset to populate the sheet and preview grid. Presets store no artwork, so each batch keeps the current selection and each art's own rights.
+- Named presets live in the catalog across launches. Saving under an existing case-insensitive name updates it, and Manage can delete presets; both are undoable. A removed/moved mockup or renamed layer does not silently switch sources: the sheet shows the problem and keeps current settings until the mockup is located or a fresh preset is saved.
+- Core logic and persistence tests live in `MockupPlacement.swift`, `Studio.swift` and `MockupPlacementTests.swift`.

@@ -48,6 +48,60 @@ public struct PlacementRecipe: Codable, Hashable, Sendable {
     }
 }
 
+/// Named batch-placement setup; artwork is selected at use time, never stored in a preset.
+public struct PlacementPreset: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var mockupID: UUID
+    public var layerName: String
+    public var mode: PlacementMode
+    public var background: String
+
+    public init(id: UUID = UUID(), name: String, mockupID: UUID, layerName: String,
+                mode: PlacementMode = .fill, background: String = "White") {
+        self.id = id; self.name = name; self.mockupID = mockupID; self.layerName = layerName
+        self.mode = mode; self.background = background
+    }
+}
+
+public enum PlacementPresetStatus: Equatable, Sendable {
+    case ready(Int)
+    case missingMockup
+    case missingLayer
+}
+
+extension StudioCatalog {
+    /// Refuse to silently redirect a preset to a lookalike mockup or another design layer.
+    public func placementPresetStatus(_ preset: PlacementPreset, exists: (String) -> Bool,
+                                       layers: (StudioAsset) -> [String]) -> PlacementPresetStatus {
+        guard let mockup = assets.first(where: { $0.id == preset.mockupID }),
+              let path = mockup.importedPath, exists(path) else { return .missingMockup }
+        guard let index = layers(mockup).firstIndex(of: preset.layerName) else { return .missingLayer }
+        return .ready(index)
+    }
+
+    /// Case-insensitive names are unique, so a saved shortcut is never ambiguous.
+    @discardableResult
+    public mutating func savePlacementPreset(name: String, mockupID: UUID, layerName: String,
+                                              mode: PlacementMode, background: String) -> UUID? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, assets.contains(where: { $0.id == mockupID }), !layerName.isEmpty else { return nil }
+        if let i = placementPresets.firstIndex(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            placementPresets[i].name = trimmed; placementPresets[i].mockupID = mockupID
+            placementPresets[i].layerName = layerName; placementPresets[i].mode = mode
+            placementPresets[i].background = background
+            return placementPresets[i].id
+        }
+        let preset = PlacementPreset(name: trimmed, mockupID: mockupID, layerName: layerName, mode: mode, background: background)
+        placementPresets.append(preset)
+        return preset.id
+    }
+
+    public mutating func deletePlacementPreset(_ id: UUID) {
+        placementPresets.removeAll { $0.id == id }
+    }
+}
+
 public enum PlacementSourceStatus: Equatable, Sendable {
     case ready(art: UUID, mockup: UUID)
     case missingArt(UUID)

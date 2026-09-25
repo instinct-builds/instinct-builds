@@ -157,8 +157,10 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var licenseDocs: [LicenseDoc] = []
     /// Saved rights presets (1.27).
     public var rightsPresets: [RightsPreset] = []
+    /// Named reusable mockup/layer combinations (1.32).
+    public var placementPresets: [PlacementPreset] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates, licenseDocs, rightsPresets }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates, licenseDocs, rightsPresets, placementPresets }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -176,6 +178,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         templates = ((try? c.decodeIfPresent([BoardTemplate].self, forKey: .templates)) ?? []).filter { !$0.builtIn }
         licenseDocs = (try? c.decodeIfPresent([LicenseDoc].self, forKey: .licenseDocs)) ?? []
         rightsPresets = (try? c.decodeIfPresent([RightsPreset].self, forKey: .rightsPresets)) ?? []
+        placementPresets = (try? c.decodeIfPresent([PlacementPreset].self, forKey: .placementPresets)) ?? []
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {

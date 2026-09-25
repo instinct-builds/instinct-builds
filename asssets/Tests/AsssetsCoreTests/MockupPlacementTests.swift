@@ -218,3 +218,43 @@ extension PlacementRecipeTests {
         #expect(renderA.placementRecipe?.artID == artA && renderB.placementRecipe?.artID == artB)
     }
 }
+
+@Suite("Placement presets")
+struct PlacementPresetTests {
+    @Test func storesNamedPresetAndUpdatesByCaseInsensitiveName() throws {
+        var c = StudioCatalog()
+        let mockup = c.importFile(path: "/lib/Poster.psd")!
+        let id = c.savePlacementPreset(name: "  Poster Launch  ", mockupID: mockup, layerName: "Artwork",
+                                       mode: .fill, background: "Paper")!
+        #expect(c.placementPresets.count == 1)
+        #expect(c.placementPresets[0].name == "Poster Launch")
+        let same = c.savePlacementPreset(name: "poster launch", mockupID: mockup, layerName: "Design",
+                                         mode: .fit, background: "Black")!
+        #expect(same == id && c.placementPresets.count == 1)
+        let decoded = StudioCatalog.decode(try c.encoded())!
+        #expect(decoded.placementPresets[0].layerName == "Design" && decoded.placementPresets[0].mode == .fit)
+        #expect(decoded.placementPresets[0].background == "Black")
+        c.deletePlacementPreset(id)
+        #expect(c.placementPresets.isEmpty)
+    }
+
+    @Test func missingMockupAndLayerNeverFallBackSilently() {
+        var c = StudioCatalog()
+        let mockup = c.importFile(path: "/lib/Poster.psd")!
+        let preset = PlacementPreset(name: "Poster", mockupID: mockup, layerName: "Artwork")
+        #expect(c.placementPresetStatus(preset, exists: { _ in true }, layers: { _ in ["Other", "Artwork"] }) == .ready(1))
+        #expect(c.placementPresetStatus(preset, exists: { _ in true }, layers: { _ in ["Other"] }) == .missingLayer)
+        #expect(c.placementPresetStatus(preset, exists: { _ in false }, layers: { _ in ["Artwork"] }) == .missingMockup)
+        c.assets.removeAll { $0.id == mockup }
+        #expect(c.placementPresetStatus(preset, exists: { _ in true }, layers: { _ in ["Artwork"] }) == .missingMockup)
+        #expect(c.savePlacementPreset(name: " ", mockupID: mockup, layerName: "Artwork", mode: .fill, background: "White") == nil)
+    }
+
+    @Test func oldCatalogDecodesWithoutPresets() throws {
+        let c = StudioCatalog(assets: [StudioAsset(title: "A", kind: .image, tags: [], collection: "C", palette: [], seed: 1, resolution: "1")])
+        var json = try JSONSerialization.jsonObject(with: c.encoded()) as! [String: Any]
+        json.removeValue(forKey: "placementPresets")
+        let old = try JSONSerialization.data(withJSONObject: json)
+        #expect(StudioCatalog.decode(old)?.placementPresets.isEmpty == true)
+    }
+}
