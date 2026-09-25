@@ -1060,6 +1060,28 @@ struct SessionSegmentTests {
         #expect([b].starredDigestSession().title == "Starred rolls (0)")
     }
 
+    // 2.90.0: the Starred only range keeps starred rolls - even
+    /// unstamped ones - and drops everything else.
+    @Test func withinStarredKeepsOnlyStarred() throws {
+        let t = try #require(ISO8601DateFormatter().date(from: "2026-09-24T20:00:00Z"))
+        var a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 20, kept: true)],
+                           modifier: 0, total: 20, alternateTotal: nil)
+        a.starred = true
+        a.rolledAt = t
+        var b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        b.starred = true
+        var c = RollResult(expression: "d8",
+                           dice: [DieResult(sides: 8, value: 3, kept: true)],
+                           modifier: 0, total: 3, alternateTotal: nil)
+        c.rolledAt = t
+        let out = [a, b, c].within(.starred)
+        #expect(out == [a, b])
+        #expect(SessionLogRange.starred.displayName == "Starred only")
+    }
+
     // 2.85.0: the starred share text heads with the count and lists the
     /// starred rolls oldest first; an unstarred log still heads honestly.
     @Test func starredShareTextCountsAndLists() throws {

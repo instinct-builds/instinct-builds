@@ -665,6 +665,19 @@ func run(model: AppModel, character: Character, outDir: String) {
                 .environmentObject(model),
             width: width, name: "dice-starred-digest", outDir: outDir)
     }
+    // 2.90.0 proof: the session-log exports honor the Starred only
+    // range - the character's day-grouped log carrying just her starred
+    // rolls, as text and as Markdown.
+    let starredLogRolls = model.rollHistory.forCharacter(character.name).within(.starred)
+    try? sessionLogText(character: character.name, range: .starred,
+                        rows: sessionLogRows(starredLogRolls, names: model.sessionNames, notes: model.sessionNotes))
+        .write(to: URL(fileURLWithPath: "\(outDir)/session-log-starred.txt"),
+               atomically: true, encoding: .utf8)
+    try? sessionLogMarkdown(character: character.name, range: .starred,
+                            groups: namedDayGroups(Array(starredLogRolls.reversed()),
+                                                   names: model.sessionNames, notes: model.sessionNotes))
+        .write(to: URL(fileURLWithPath: "\(outDir)/session-log-starred.md"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

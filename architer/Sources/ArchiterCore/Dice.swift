@@ -559,6 +559,7 @@ public enum SessionLogRange: String, CaseIterable, Sendable {
     case all
     case today
     case last7Days
+    case starred
 
     /// Menu label.
     public var displayName: String {
@@ -566,6 +567,7 @@ public enum SessionLogRange: String, CaseIterable, Sendable {
         case .all: return "All rolls"
         case .today: return "Today"
         case .last7Days: return "Last 7 days"
+        case .starred: return "Starred only"
         }
     }
 }
@@ -645,6 +647,10 @@ public extension Array where Element == RollResult {
             return filter { roll in
                 roll.rolledAt.map { $0 >= cutoff && $0 <= now } ?? false
             }
+        case .starred:
+            // 2.90.0: starring is deliberate, not a date range - keep
+            // starred rolls even when they carry no stamp.
+            return starredRolls
         }
     }
 }
