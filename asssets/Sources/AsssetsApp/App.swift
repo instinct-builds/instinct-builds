@@ -598,7 +598,11 @@ final class StudioLibrary: ObservableObject {
     var sourcePreviewRoot: URL { supportRoot.appendingPathComponent("SourcePreviews", isDirectory: true) }
 
     /// A small visual reference, not an original-file backup. Filenames are asset IDs, never source names.
-    nonisolated static func previewFilename(_ id: UUID) -> String { id.uuidString + ".jpg" }
+    nonisolated static func previewFilename(_ id: UUID, hash: String) -> String {
+        let safe = hash.count == 64 && hash.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+        return id.uuidString + "-" + (safe ? hash : "invalid") + ".jpg"
+    }
+    nonisolated static func legacyPreviewFilename(_ id: UUID) -> String { id.uuidString + ".jpg" }
 
     static func previewBytes(for a: StudioAsset) async -> Data? {
         guard let cg = await MediaRenderer.thumbnail(for: a, maxPixel: 240) else { return nil }
@@ -625,7 +629,7 @@ final class StudioLibrary: ObservableObject {
               catalog.assets.first(where: { $0.id == a.id })?.sourceFingerprint == fingerprint else { return }
         let fm = FileManager.default
         try? fm.createDirectory(at: sourcePreviewRoot, withIntermediateDirectories: true)
-        let url = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(a.id))
+        let url = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(a.id, hash: fingerprint.sha256))
         guard (try? data.write(to: url, options: .atomic)) != nil else { return }
         // A source may have changed while the tiny JPEG was written. Never attach it to that baseline.
         guard Self.sourceFingerprint(path) == fingerprint,
@@ -633,7 +637,59 @@ final class StudioLibrary: ObservableObject {
             try? fm.removeItem(at: url)
             return
         }
-        mutate { $0.bindSourcePreview(hash: fingerprint.sha256, for: a.id, path: path) }
+        var bound = false
+        mutate { bound = $0.bindSourcePreview(hash: fingerprint.sha256, for: a.id, path: path) }
+        if bound { try? fm.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.legacyPreviewFilename(a.id))) }
+        else if catalog.assets.first(where: { $0.id == a.id })?.sourcePreviewHash != fingerprint.sha256 {
+            try? fm.removeItem(at: url)
+        }
+        if bound, let latest = catalog.sourceHistory(for: a.id).first,
+           latest.after == fingerprint, latest.path == path {
+            keepReceiptPreview(latest.id, side: "after", data: data)
+            if ProcessInfo.processInfo.arguments.contains("source-history-inspector") {
+                let before = receiptPreview(latest, side: "before") != nil
+                let after = receiptPreview(latest, side: "after") != nil
+                let bounded = catalog.sourceHistoryPreviewIDs(for: a.id).contains(latest.id)
+                try? "done before=\(before) after=\(after) bounded=\(bounded)".write(
+                    to: supportRoot.appendingPathComponent("demo-source-history-previews.txt"), atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    /// At most five accepted receipts per asset keep a pair of small JPEGs each.
+    /// Receipt files are visual references only, never copies of original sources.
+    nonisolated static func receiptPreviewFilename(_ id: UUID, _ side: String) -> String {
+        "receipt-" + id.uuidString + "-" + side + ".jpg"
+    }
+
+    func receiptPreview(_ record: SourceRefreshRecord, side: String) -> CGImage? {
+        guard side == "before" || side == "after" else { return nil }
+        let url = sourcePreviewRoot.appendingPathComponent(Self.receiptPreviewFilename(record.id, side))
+        guard let data = try? Data(contentsOf: url), data.count <= 120_000,
+              let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(src, 0, nil),
+              max(image.width, image.height) <= 240 else { return nil }
+        return image
+    }
+
+    func keepReceiptPreview(_ id: UUID, side: String, data: Data) {
+        guard side == "before" || side == "after", data.count <= 120_000,
+              let record = catalog.sourceRefreshHistory.first(where: { $0.id == id }),
+              catalog.sourceHistoryPreviewIDs(for: record.assetID).contains(id),
+              let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(src, 0, nil),
+              max(image.width, image.height) <= 240 else { return }
+        try? FileManager.default.createDirectory(at: sourcePreviewRoot, withIntermediateDirectories: true)
+        try? data.write(to: sourcePreviewRoot.appendingPathComponent(Self.receiptPreviewFilename(id, side)), options: .atomic)
+    }
+
+    func pruneReceiptPreviews(for assetID: UUID) {
+        let retained = catalog.sourceHistoryPreviewIDs(for: assetID)
+        for record in catalog.sourceHistory(for: assetID) where !retained.contains(record.id) {
+            for side in ["before", "after"] {
+                try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.receiptPreviewFilename(record.id, side)))
+            }
+        }
     }
 
     func captureSourcePreviews(_ ids: [UUID]) {
@@ -647,8 +703,9 @@ final class StudioLibrary: ObservableObject {
 
     func sourcePreview(_ a: StudioAsset) -> CGImage? {
         guard let hash = a.sourcePreviewHash, hash == a.sourceFingerprint?.sha256 else { return nil }
-        let url = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(a.id))
-        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let url = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(a.id, hash: hash))
+        let legacy = sourcePreviewRoot.appendingPathComponent(Self.legacyPreviewFilename(a.id))
+        guard let src = CGImageSourceCreateWithURL(FileManager.default.fileExists(atPath: url.path) ? url as CFURL : legacy as CFURL, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(src, 0, nil)
     }
 
@@ -1139,7 +1196,8 @@ final class StudioLibrary: ObservableObject {
             c.assets[i].sourceFingerprint = nil
             c.assets[i].sourcePreviewHash = nil
         } }
-        try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id)))
+        try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id, hash: a.sourcePreviewHash ?? "")))
+        try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.legacyPreviewFilename(id)))
         captureSourcePreviews([id])
         refreshHealth(full: true)
         missing.remove(id)
@@ -1755,6 +1813,10 @@ final class StudioLibrary: ObservableObject {
             refreshHealth(full: true)
             return
         }
+        let oldURL = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id, hash: reviewed.baseline.sha256))
+        let legacyURL = sourcePreviewRoot.appendingPathComponent(Self.legacyPreviewFilename(id))
+        let oldSnapshot = a.sourcePreviewHash == reviewed.baseline.sha256
+            ? (try? Data(contentsOf: FileManager.default.fileExists(atPath: oldURL.path) ? oldURL : legacyURL)) : nil
         var applied = false
         // A source refresh cannot be undone: the previous disk bytes are not in ASSSETS.
         // Keep the receipt out of transient catalog undo snapshots.
@@ -1764,10 +1826,16 @@ final class StudioLibrary: ObservableObject {
         }
         sourceRefreshBusy = false
         if applied {
+            if let record = catalog.sourceHistory(for: id).first, record.before == reviewed.baseline,
+               let bytes = oldSnapshot {
+                keepReceiptPreview(record.id, side: "before", data: bytes)
+            }
+            pruneReceiptPreviews(for: id)
             sourceQueueSelected = sourceReviewQueue.next(after: id)
             sourceQueueAnchor = sourceQueueSelected
             ThumbnailStore.shared.invalidate(id: id, path: reviewed.path)
-            try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id)))
+            try? FileManager.default.removeItem(at: oldURL)
+            try? FileManager.default.removeItem(at: legacyURL)
             captureSourcePreviews([id])
             psdCache.removeValue(forKey: reviewed.path)
             lookCache.removeValue(forKey: lookKey(a))
@@ -2066,9 +2134,23 @@ final class StudioLibrary: ObservableObject {
     func confirmRemoval() {
         let ids = pendingRemoval
         pendingRemoval = []
+        let previewHashes = Dictionary(uniqueKeysWithValues: catalog.assets.filter { ids.contains($0.id) }.compactMap { a -> (UUID, String)? in
+            guard let hash = a.sourcePreviewHash else { return nil }
+            return (a.id, hash)
+        })
         var n = 0
         mutate("Remove from Library") { n = $0.remove(ids) }
-        for id in ids { try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id))) }
+        for id in ids {
+            if let hash = previewHashes[id] {
+                try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id, hash: hash)))
+            }
+            try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.legacyPreviewFilename(id)))
+            for record in catalog.sourceHistory(for: id) {
+                for side in ["before", "after"] {
+                    try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.receiptPreviewFilename(record.id, side)))
+                }
+            }
+        }
         if n > 0 { flash("Removed \(n) from library. Files on disk were not touched.") }
     }
 
@@ -7527,7 +7609,7 @@ struct LibraryHealthSheet: View {
                     if !model.catalog.sourceRefreshHistory.isEmpty {
                         HealthCard(symbol: "clock.arrow.circlepath", tint: Theme.accent,
                                    title: "Source refresh history · \(model.catalog.sourceRefreshHistory.count)",
-                                   detail: "Catalog receipts only. Old source bytes are not saved or recoverable here.",
+                                   detail: "Recent receipts may include small visual snapshots. Original bytes are not saved or recoverable here.",
                                    action: model.catalog.sourceRefreshHistory.count > 5
                                        ? (model.sourceHistoryExpanded ? "Show Recent" : "Show All", { model.sourceHistoryExpanded.toggle() }) : nil) {
                             ForEach(Array(model.catalog.sourceRefreshHistory.reversed().prefix(model.sourceHistoryExpanded ? model.catalog.sourceRefreshHistory.count : 5))) { entry in
@@ -7539,6 +7621,7 @@ struct LibraryHealthSheet: View {
                                         .font(.caption2).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
                                     Text("Palette: \(entry.beforePalette.prefix(3).joined(separator: ", ")) → \(entry.afterPalette.prefix(3).joined(separator: ", ")) · SHA-256: \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
                                         .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                                    SourceReceiptThumbnails(entry: entry, height: 64)
                                 }.padding(.leading, 42)
                             }
                         }
@@ -8013,6 +8096,35 @@ struct VersionStrip: View {
 }
 
 /// Per-asset view of accepted source metadata, linked to the live Library Health check.
+/// A receipt's approved miniatures remain separate from the live source and original files.
+struct SourceReceiptThumbnails: View {
+    @EnvironmentObject var model: StudioLibrary
+    let entry: SourceRefreshRecord
+    let height: CGFloat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            thumbnail("Before · saved snapshot", image: model.receiptPreview(entry, side: "before"))
+            thumbnail("After · saved snapshot", image: model.receiptPreview(entry, side: "after"))
+        }
+        .accessibilityLabel("Small visual reference only; source files cannot be restored from receipt previews")
+    }
+
+    private func thumbnail(_ label: String, image: CGImage?) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+            ZStack {
+                RoundedRectangle(cornerRadius: 5).fill(Color.black.opacity(0.3))
+                if let image {
+                    Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                } else {
+                    Text("No snapshot").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+            }.frame(height: height).clipShape(RoundedRectangle(cornerRadius: 5))
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 struct SourceChangesSection: View {
     @EnvironmentObject var model: StudioLibrary
     let asset: StudioAsset
@@ -8061,6 +8173,7 @@ struct SourceChangesSection: View {
                     }.accessibilityLabel("Palette changed from \(entry.beforePalette.prefix(3).joined(separator: ", ")) to \(entry.afterPalette.prefix(3).joined(separator: ", "))")
                     Text("SHA-256 \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
                         .font(.caption2.monospaced()).lineLimit(1).truncationMode(.middle)
+                    SourceReceiptThumbnails(entry: entry, height: 86)
                 }
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -8070,7 +8183,7 @@ struct SourceChangesSection: View {
                 Button(expanded ? "Show recent" : "Show all \(entries.count) receipts") { expanded.toggle() }
                     .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent)
             }
-            Text("Receipts save metadata, not old file bytes. A prior source cannot be restored here.")
+            Text("Recent receipts may include small snapshots, not original file bytes. A prior source cannot be restored here.")
                 .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(10).frame(maxWidth: .infinity, alignment: .leading)

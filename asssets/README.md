@@ -920,3 +920,9 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - New imports and watched files retain a small 240-pixel JPEG preview bound to the exact approved source digest; older catalogs can get a baseline and preview on a health scan if their source has not yet changed. The snapshot is capped at 120 KB and stored in Application Support, not in the catalog or the original file. If a source changed before its first 1.46 capture, the old visual cannot be reconstructed; review explicitly shows no approved old snapshot. Audio or unsupported files may have no visual preview.
 - Reviewing a changed source shows the saved small preview beside a transient preview rendered from current disk bytes, followed by size, file facts and palette. It rechecks the source digest before presenting and again before accepting. After refresh, the old snapshot is removed and a new miniature is captured for the accepted bytes. Neither preview is a source backup, and the review says old source bytes cannot be restored. CI captures a native side-by-side screenshot and asserts both previews are available in the demo.
+
+## 1.47.0: bounded visual references in source history
+
+- Each accepted source refresh can retain a small Before and After JPEG with its metadata receipt. These are 240-pixel, at most 120 KB each, stored beside the catalog, not original sources. The first refresh of an older source may lack a Before snapshot. Unsupported media may have no visual snapshot.
+- The most recent five receipts per asset may keep these preview pairs (at most 1.2 MB per asset); older receipt metadata remains, while older preview files are deleted. Removing an asset deletes its preview files. The previews cannot restore the source file.
+- Library Health history and the asset inspector show the previews and say when a snapshot is absent. CI verifies both sides of a native accepted-refresh demo, alongside the existing source history receipt and rights/board checks.

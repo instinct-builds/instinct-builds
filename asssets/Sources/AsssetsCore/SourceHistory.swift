@@ -41,4 +41,9 @@ extension StudioCatalog {
     public func sourceHistory(for id: UUID) -> [SourceRefreshRecord] {
         sourceRefreshHistory.filter { $0.assetID == id }.reversed()
     }
+
+    /// Receipts stay complete, but only the newest five are eligible for on-disk miniatures.
+    public func sourceHistoryPreviewIDs(for id: UUID) -> Set<UUID> {
+        Set(sourceHistory(for: id).prefix(5).map(\.id))
+    }
 }

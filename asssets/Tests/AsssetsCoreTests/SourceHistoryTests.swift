@@ -35,6 +35,25 @@ struct SourceHistoryTests {
         #expect(decoded.sourceHistory(for: id) == [record])
     }
 
+    @Test func onlyFiveNewestReceiptsEligibleForVisuals() throws {
+        var c = StudioCatalog()
+        let id = c.importFile(path: "/history.png")!
+        _ = c.seedSourceFingerprint(SourceFingerprint(size: 1, modified: 1, sha256: "0"), for: id, path: "/history.png")
+        for n in 1...7 {
+            let next = SourceFingerprint(size: Int64(n + 1), modified: Double(n + 1), sha256: String(n))
+            let accepted = c.acceptChangedSource(next, for: id, path: "/history.png", palette: [], resolution: "x", at: Date(timeIntervalSince1970: Double(n)))
+            #expect(accepted)
+        }
+        let history = c.sourceHistory(for: id)
+        let retained = c.sourceHistoryPreviewIDs(for: id)
+        #expect(history.count == 7)
+        #expect(retained.count == 5)
+        #expect(retained == Set(history.prefix(5).map(\.id)))
+        #expect(!retained.contains(history.last!.id))
+        let decoded = try #require(StudioCatalog.decode(c.encoded()))
+        #expect(decoded.sourceHistoryPreviewIDs(for: id) == retained)
+    }
+
     @Test func legacyCatalogHasEmptyHistory() throws {
         var c = StudioCatalog()
         _ = c.importFile(path: "/old.png")
