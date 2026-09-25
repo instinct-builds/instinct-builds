@@ -9,6 +9,14 @@ struct SpectralClipboard {
     bool valid = false;
     int sourceFrame = -1;
     int firstH = 1, lastH = kEditablePartials;
+    int feather = 0; // harmonic bins outside either span edge, 0-8
+    double weight(int h) const {
+        if (h < 1 || h > kEditablePartials) return 0;
+        if (includes(h)) return 1;
+        if (feather <= 0) return 0;
+        const int distance = h < firstH ? firstH - h : h - lastH;
+        return distance <= feather ? (double)(feather + 1 - distance) / (feather + 1) : 0;
+    }
     void span(int a, int b) {
         firstH = std::clamp(std::min(a, b), 1, kEditablePartials);
         lastH = std::clamp(std::max(a, b), 1, kEditablePartials);
@@ -24,7 +32,7 @@ struct SpectralClipboard {
             ratio[h] = std::abs(s[h]) >= peak * 1e-7 ? std::abs(s[h]) / peak : 0;
         valid = true; sourceFrame = frame; return true;
     }
-    void clear() { valid = false; sourceFrame = -1; firstH = 1; lastH = kEditablePartials; ratio.fill(0); }
+    void clear() { valid = false; sourceFrame = -1; firstH = 1; lastH = kEditablePartials; feather = 0; ratio.fill(0); }
 };
 inline bool applySpectralProfile(Frame& f, const SpectralClipboard& copy, double strength = 1,
                                  bool createSilent = false) {
@@ -37,16 +45,18 @@ inline bool applySpectralProfile(Frame& f, const SpectralClipboard& copy, double
     strength = std::clamp(strength, 0.0, 1.0);
     bool changed = false;
     for (int h = 1; h <= kEditablePartials; ++h) {
-        if (!copy.includes(h)) continue;
+        const double w = copy.weight(h);
+        if (w <= 0) continue;
         double old = std::abs(original[h]), target = peak * copy.ratio[h];
         if (old < peak * 1e-7 && !createSilent) continue;
         if (target < peak * 1e-7) target = 0;
         double desired = 0;
+        const double localStrength = strength * w;
         if (old >= peak * 1e-7 && target >= peak * 1e-7) {
             // dB interpolation keeps the profile's relative gain audible through the blend.
-            desired = old * std::pow(target / old, strength);
-        } else if (old >= peak * 1e-7) desired = old * (1 - strength);
-        else if (createSilent) desired = target * strength;
+            desired = old * std::pow(target / old, localStrength);
+        } else if (old >= peak * 1e-7) desired = old * (1 - localStrength);
+        else if (createSilent) desired = target * localStrength;
         if (std::abs(desired - old) < peak * 1e-6) continue;
         const std::complex<double> phase = old >= peak * 1e-7 ? original[h] / old
             : std::complex<double>(0, -1); // predictable phase only for an explicitly created bin

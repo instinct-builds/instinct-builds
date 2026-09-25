@@ -86,6 +86,9 @@ build/muew-demo-partial39: src/render_demo_partial39.cpp src/partial_edit.h src/
 build/muew-demo-partial40: src/render_demo_partial40.cpp src/partial_view.h src/synth.h | build
 	$(CXX) $(CXXFLAGS) -o $@ src/render_demo_partial40.cpp
 
+build/muew-demo-feather45: src/render_demo_feather45.cpp src/spectral_clipboard.h src/synth.h | build
+	$(CXX) $(CXXFLAGS) -o $@ src/render_demo_feather45.cpp
+
 build/muew-demo-span44: src/render_demo_span44.cpp src/spectral_clipboard.h src/synth.h | build
 	$(CXX) $(CXXFLAGS) -o $@ src/render_demo_span44.cpp
 
@@ -97,6 +100,9 @@ build/muew-demo-taper42: src/render_demo_taper42.cpp src/partial_brush.h src/syn
 
 build/muew-demo-brush41: src/render_demo_brush41.cpp src/partial_brush.h src/synth.h | build
 	$(CXX) $(CXXFLAGS) -o $@ src/render_demo_brush41.cpp
+
+build/muew-tests-feather45: tests/tests_feather45.cpp src/spectral_clipboard.h src/table_history.h src/preset.h | build
+	$(CXX) $(CXXFLAGS) -o $@ tests/tests_feather45.cpp
 
 build/muew-tests-span44: tests/tests_span44.cpp src/spectral_clipboard.h src/table_history.h src/preset.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_span44.cpp
@@ -179,7 +185,7 @@ build/muew-license: src/license_tool.cpp src/license.h | build
 build/muew-render-preset: src/render_preset.cpp src/preset.h src/preset_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28 build/muew-tests-quality29 build/muew-tests-hq30 build/muew-tests-spectral31 build/muew-tests-spectral32 build/muew-tests-morph33 build/muew-tests-lanes34 build/muew-tests-live35 build/muew-tests-live36 build/muew-tests-frame37 build/muew-tests-range38 build/muew-tests-partial39 build/muew-tests-partial40 build/muew-tests-brush41 build/muew-tests-taper42 build/muew-tests-clip43 build/muew-tests-span44
+test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-tests-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-fx27 build/muew-tests-fx28 build/muew-tests-quality29 build/muew-tests-hq30 build/muew-tests-spectral31 build/muew-tests-spectral32 build/muew-tests-morph33 build/muew-tests-lanes34 build/muew-tests-live35 build/muew-tests-live36 build/muew-tests-frame37 build/muew-tests-range38 build/muew-tests-partial39 build/muew-tests-partial40 build/muew-tests-brush41 build/muew-tests-taper42 build/muew-tests-clip43 build/muew-tests-span44 build/muew-tests-feather45
 	./build/muew-tests
 	./build/muew-tests-fx
 	./build/muew-tests-license
@@ -212,6 +218,7 @@ test: build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-t
 	./build/muew-tests-taper42
 	./build/muew-tests-clip43
 	./build/muew-tests-span44
+	./build/muew-tests-feather45
 	./build/muew-tests-filterroute
 	./build/muew-tests-voicex
 	./build/muew-tests-perf

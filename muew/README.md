@@ -343,3 +343,14 @@ harmonics transfer on PASTE; every harmonic outside the span keeps its
 relative magnitude and phase. SEED remains the explicit gate for silent bins,
 BLEND scales the transfer, EDGE tapers a selected frame range, and the paste
 is one undo step. COPY resets the span to all 127 harmonics.
+
+## 0.45.0 Spectral span feather
+
+The expanded SPEC profile controls add FEATHER (0-8 harmonics) below BLEND.
+It softens a selected span's transfer just outside each harmonic edge: a
+three-bin feather gives the nearest outside harmonic 75% transfer strength,
+the next 50%, and the last 25%, while all selected harmonics stay at full
+strength. Amber span shading and source ticks fade across the same ramp, so
+PREVIEW shows the exact region that PASTE will change. Zero is the previous
+hard boundary. Destination phases, the SEED gate, selected frame-range EDGE,
+and one-step undo behavior remain unchanged.

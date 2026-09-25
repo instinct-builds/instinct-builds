@@ -789,7 +789,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     return f[std::clamp(id, 0, 6)];
 }
 - (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 190 - i * 19, 48, 15); } // 0.22.0: 4 pt lower, clear of the MIX bars
-- (NSRect)wtPanel { return NSMakeRect(24, [self top] - 284, 440, 284); }
+- (NSRect)wtPanel { return NSMakeRect(24, [self top] - 306, 440, 306); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
 - (NSRect)wtButton:(int)i { return NSMakeRect(40 + i * 51, [self top] - 250, 48, 20); }
@@ -810,6 +810,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtTaperBar { NSRect c = [self wtCanvas]; return NSMakeRect(c.origin.x + 72, c.origin.y + 14, 74, 6); }
 - (NSRect)wtProfileButton:(int)i { return NSMakeRect(40 + i * 56, [self top] - 278, 52, 14); }
 - (NSRect)wtProfileBlendBar { return NSMakeRect(310, [self top] - 274, 100, 6); }
+- (NSRect)wtFeatherBar { return NSMakeRect(310, [self top] - 296, 100, 6); }
 - (NSRect)wtPartialBarArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 4, p.size.width - 8, 22); }
 - (NSRect)wtPartialStep:(int)i { NSRect p = [self wtSpecPreview]; return NSMakeRect(NSMaxX(p) - 51 + i * 24, p.origin.y + 30, 22, 11); }
 - (NSRect)wtFrameToolRect:(int)i { NSRect pv = [self wtSpecPreview]; return NSMakeRect(pv.origin.x + 4 + i * 47, pv.origin.y + 43, 44, 14); } // 0.37.0 selected-frame spectral tools
@@ -1137,17 +1138,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             if (h > kEditablePartials) continue;
             const double v = dbh(peak > 0 ? std::abs(specAfter[h]) / peak : 0), o = dbh(peak > 0 ? std::abs(specBefore[h]) / peak : 0);
             const CGFloat x = spectrum.origin.x + k * bw;
-            if (wtPartialLarge && wtProfile.valid && wtProfile.includes(h))
-                FillRound(NSMakeRect(x, spectrum.origin.y, bw, barTop + 1), 1, C(0xf2b65c, .10));
+            const double spanWeight = wtPartialLarge && wtProfile.valid ? wtProfile.weight(h) : 0;
+            if (spanWeight > 0)
+                FillRound(NSMakeRect(x, spectrum.origin.y, bw, barTop + 1), 1, C(0xf2b65c, .04 + .12 * spanWeight));
             if (wtPartial == h) FillRound(NSMakeRect(x, spectrum.origin.y, bw, barTop + 1), 1, C(0x5adac8, .18));
             FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), 1), 0, C(0x1b222c));
             if (v > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y, std::max<CGFloat>(1, bw - 1), std::max<CGFloat>(1.5, barTop * v)), 1, [col colorWithAlphaComponent:.35 + .55 * v]);
             if (changed && o > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * o - .5, std::max<CGFloat>(1, bw - 1), 1.2), 0, C(0x8793a3));
-            if (wtPartialLarge && wtProfile.valid && wtProfilePreview && wtProfile.includes(h)) {
+            if (wtPartialLarge && wtProfile.valid && wtProfilePreview && spanWeight > 0) {
                 // Source profile as amber ticks, destination as pale ticks, proposed blend as solid bars.
                 const double src = dbh(wtProfile.ratio[h]);
                 if (src > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * src - .5,
-                    std::max<CGFloat>(1, bw - 1), 1.4), 0, C(0xf2b65c, .95));
+                    std::max<CGFloat>(1, bw - 1), 1.4), 0, C(0xf2b65c, .45 + .5 * spanWeight));
             }
             if (showBrushBase && brushPeak > 0 && std::isfinite(wtBrush.targetDb[h])) {
                 const double original = dbh(std::abs(brushBefore[h]) / brushPeak);
@@ -1378,6 +1380,17 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                   3, C(0xe6ebf1));
         TextA([NSString stringWithFormat:@"%.0f%%", wtProfileBlend * 100], NSMakeRect(NSMaxX(blend) + 4, blend.origin.y - 2, 42, 10),
               7, col, NSFontWeightBold, NSTextAlignmentRight);
+        const NSRect featherBar = [self wtFeatherBar];
+        TextA(@"FEATHER", NSMakeRect(featherBar.origin.x - 58, featherBar.origin.y - 2, 55, 10),
+              7, wtProfile.valid ? col : C(0x697683), NSFontWeightBold, NSTextAlignmentRight);
+        FillRound(featherBar, 3, C(0x26313c));
+        const CGFloat pos = (CGFloat)wtProfile.feather / 8;
+        FillRound(NSMakeRect(featherBar.origin.x, featherBar.origin.y, std::max<CGFloat>(2, featherBar.size.width * pos), featherBar.size.height),
+                  3, [col colorWithAlphaComponent:.8]);
+        FillRound(NSMakeRect(featherBar.origin.x + featherBar.size.width * pos - 3, featherBar.origin.y - 2, 6, 10),
+                  3, wtProfile.valid ? C(0xe6ebf1) : C(0x697683));
+        TextA([NSString stringWithFormat:@"%d H", wtProfile.feather], NSMakeRect(NSMaxX(featherBar) + 4, featherBar.origin.y - 2, 42, 10),
+              7, wtProfile.valid ? col : C(0x697683), NSFontWeightBold, NSTextAlignmentRight);
     }
 }
 
@@ -3373,9 +3386,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
 - (NSString*)muewProfileText {
-    return [NSString stringWithFormat:@"valid=%d source=%d preview=%d create=%d blend=%.2f span=%d-%d",
+    return [NSString stringWithFormat:@"valid=%d source=%d preview=%d create=%d blend=%.2f span=%d-%d feather=%d",
         wtProfile.valid, wtProfile.sourceFrame + 1, wtProfilePreview, wtProfileCreate, wtProfileBlend,
-        wtProfile.firstH, wtProfile.lastH];
+        wtProfile.firstH, wtProfile.lastH, wtProfile.feather];
 }
 - (NSString*)muewBrushTaperText {
     return [NSString stringWithFormat:@"edge=%.2f", wtBrushTaper];
@@ -3478,6 +3491,11 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
                 }
                 wtProfilePreview = false; wtProfileCreate = false;
             } else if (i == 3 && wtProfile.valid) wtProfileCreate = !wtProfileCreate;
+            [self setNeedsDisplay:YES]; return;
+        }
+        if (wtProfile.valid && NSPointInRect(p, NSInsetRect([self wtFeatherBar], -4, -7))) {
+            wtProfile.feather = std::clamp((int)std::lround((p.x - [self wtFeatherBar].origin.x) /
+                [self wtFeatherBar].size.width * 8), 0, 8);
             [self setNeedsDisplay:YES]; return;
         }
         if (NSPointInRect(p, NSInsetRect([self wtProfileBlendBar], -4, -7))) {
