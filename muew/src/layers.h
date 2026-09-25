@@ -19,7 +19,7 @@ inline int subTableShape(int s) { static const int m[kSubShapes] = {0, 1, 3}; re
 // White noise through a one-pole lowpass. tone 1 = white, 0 = dark (~200 Hz).
 class NoiseSource {
 public:
-    void setSampleRate(double sr) { sr_ = sr; tone_ = -1; }
+    void setSampleRate(double sr) { sr_ = sr; tone_ = -1; cachedColor_ = -1.0; }
     void reset(uint32_t seed) { state_ = seed ? seed : 0x9e3779b9u; lp_ = 0; characterLp_ = 0; grain_ = 0; grainCounter_ = 0; dust_ = 0; }
     void setTone(double tone) {
         tone = std::clamp(tone, 0.0, 1.0);
@@ -30,7 +30,9 @@ public:
     }
     void setCharacter(int mode, double color) {
         mode_ = std::clamp(mode, 0, 3);
-        color_ = std::clamp(color, 0.0, 1.0);
+        color = std::clamp(color, 0.0, 1.0);
+        if (color == cachedColor_) return;
+        cachedColor_ = color; color_ = color;
         // Only new modes consult these coefficients. Legacy mode's operations
         // and RNG sequence remain identical for old factory presets.
         const double fc = 250.0 * std::pow(2.0, 5.0 * color_);
@@ -63,7 +65,7 @@ private:
     double sr_ = 44100.0, tone_ = -1, a_ = 1.0, lp_ = 0.0;
     uint32_t state_ = 0x9e3779b9u;
     int mode_ = 0, grainCounter_ = 0, grainPeriod_ = 27;
-    double color_ = 0.5, characterA_ = 0.1, characterLp_ = 0, grain_ = 0, dust_ = 0, dustThreshold_ = 0.02;
+    double color_ = 0.5, cachedColor_ = -1.0, characterA_ = 0.1, characterLp_ = 0, grain_ = 0, dust_ = 0, dustThreshold_ = 0.02;
 };
 
 // Filter 2 types (stored in presets, append only). Off skips the stage.

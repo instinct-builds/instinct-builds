@@ -403,3 +403,7 @@ Each ON step can play with 100, 75, 50 or 25 percent chance. Click the center st
 ## 0.51.0 Noise character
 
 The FILTER 2 + SUB page adds CLASSIC, AIR, GRAIN and DUST character with continuous COLOR. CLASSIC uses the old NOISE TONE and renders old presets byte-identically. The new modes shape airy hiss, stepped grains or soft dusty impulses; COLOR changes each mode. `noisex` is optional, leaving the old `noise` line and 40 AU parameter IDs unchanged.
+
+## 0.52.0 Noise color modulation
+
+NOISE COLOR is append-only destination 32 in the modulation matrix. Route an LFO, MSEG, velocity or macro to sweep the AIR, GRAIN or DUST COLOR control within 0-100%; CLASSIC ignores it. Routes use the existing `route` line, with no new AU parameter ID. Old factory presets keep their exact sound and state.

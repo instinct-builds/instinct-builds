@@ -1751,6 +1751,28 @@ int main() {
                   noiseState.voice.noiseTone == beforeNoise.voice.noiseTone &&
                   noiseState.serialize().find("\nnoisex 2 0.74\n") != std::string::npos,
                   "GRAIN/COLOR reached AU and left old NOISE TONE untouched");
+            // 0.52.0 matrix route proof: read an LFO 1 -> NOISE COLOR state,
+            // paint its matrix row and FILTER 2 control in the same hosted frame.
+            muew::Preset routed=noiseState;
+            muew::ModRoute colorRoute; colorRoute.source=muew::ModRoute::Source::LFO1;
+            colorRoute.dest=muew::ModRoute::Dest::NoiseColor; colorRoute.amount=.65;
+            if (routed.routes.empty()) routed.routes.push_back(colorRoute);
+            else routed.routes[0]=colorRoute; // factory matrix may already occupy all 16 slots
+            CFStringRef colorText=CFStringCreateWithCString(kCFAllocatorDefault,routed.serialize().c_str(),kCFStringEncodingUTF8);
+            bool installed=colorText && AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&colorText,sizeof(colorText))==noErr;
+            if(colorText) CFRelease(colorText);
+            muew::Preset colorState; bool recalled=State(colorState);
+            Check(installed && recalled && !colorState.routes.empty() && colorState.routes[0].dest==muew::ModRoute::Dest::NoiseColor &&
+                  colorState.serialize().find("\nroute 0 32 0.65")!=std::string::npos,
+                  "LFO 1 to NOISE COLOR route reached the AU and retained destination 32");
+            SEL colorSync=NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:colorSync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:colorSync])(view,colorSync,YES);
+            [view setValue:@0 forKey:@"matrixPage"];
+            [view setValue:@(-1) forKey:@"fxDetail"];
+            [view setValue:@(-1) forKey:@"msegEdit"];
+            SEL closeColor=NSSelectorFromString(@"muewCloseTableEditor");
+            if ([view respondsToSelector:closeColor]) ((void (*)(id, SEL))[view methodForSelector:closeColor])(view,closeColor);
+            Snapshot(view, "MUEW_NOISE52_PNG", "NOISE COLOR matrix route snapshot written");
             Snapshot(view, "MUEW_NOISE51_PNG", "noise character panel snapshot written");
             Snapshot(view, "MUEW_FILTER2_PNG", "FILTER 2 routing panel snapshot written");
             muew::Preset st;

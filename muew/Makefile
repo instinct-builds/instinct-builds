@@ -277,3 +277,9 @@ build/muew-tests-noise51: tests/tests_noise51.cpp src/layers.h src/voice.h src/p
 
 build/muew-demo-noise51: src/render_demo_noise51.cpp src/synth.h src/wav_writer.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-tests-noisemod52: tests/tests_noisemod52.cpp src/layers.h src/voice.h src/preset.h src/ui_model.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-demo-noisemod52: src/render_demo_noisemod52.cpp src/synth.h src/wav_writer.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<

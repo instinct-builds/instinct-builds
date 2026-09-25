@@ -59,6 +59,7 @@ struct PresetInfo {
 //                  0.49.0 adds optional `arpo <octave shift>x16` (-1..+1); prior lines unchanged.
 //                  0.50.0 adds optional `arpc <live> <chance>x16` (100/75/50/25).
 //                  0.51.0 adds optional `noisex <character> <color>`; noise stays unchanged.
+//                  0.52.0 appends NOISE COLOR as modulation destination 32 using the existing route line.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
@@ -564,7 +565,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Keytrack && d >= 0 && d <= (int)ModRoute::Dest::Osc2SpecMorph) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Keytrack && d >= 0 && d <= (int)ModRoute::Dest::NoiseColor) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
                     std::string k2;

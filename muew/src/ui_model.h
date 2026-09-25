@@ -82,6 +82,7 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::FxFilterCutoff: return "FX CUTOFF";  // 0.27.0
     case ModRoute::Dest::Osc1SpecMorph: return "SPEC MORPH A"; // 0.33.0
     case ModRoute::Dest::Osc2SpecMorph: return "SPEC MORPH B";
+    case ModRoute::Dest::NoiseColor: return "NOISE COLOR";
     }
     return "?";
 }
@@ -213,7 +214,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::Filter2Morph, D::FilterBalance, // 0.22.0 appended
                                   D::UnisonBlend, // 0.23.0 appended
                                   D::FxHyperDetune, D::FxFilterCutoff, // 0.27.0 appended
-                                  D::Osc1SpecMorph, D::Osc2SpecMorph}; // 0.33.0 appended
+                                  D::Osc1SpecMorph, D::Osc2SpecMorph, // 0.33.0
+                                  D::NoiseColor}; // 0.52.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.

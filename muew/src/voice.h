@@ -37,7 +37,8 @@ struct ModRoute {
                       Filter2Morph = 25, FilterBalance = 26,          // 0.22.0: filter 2 morph, parallel F1/F2 balance (0..1)
                       UnisonBlend = 27,                               // 0.23.0: unison outer-voice level (0..1)
                       FxHyperDetune = 28, FxFilterCutoff = 29,        // 0.27.0: HYPER detune, FILTER FX cutoff (1 = +4 oct)
-                      Osc1SpecMorph = 30, Osc2SpecMorph = 31 } dest;  // 0.33.0: live spectral morph toward the table's target (0..1)
+                      Osc1SpecMorph = 30, Osc2SpecMorph = 31, // 0.33.0: live spectral morph
+                      NoiseColor = 32 } dest; // 0.52.0: modulated AIR/GRAIN/DUST color, never CLASSIC
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -274,10 +275,11 @@ public:
         for (const auto& r : routes) if (r.source == ModRoute::Source::MSEG2 || r.aux == (int)ModRoute::Source::MSEG2) usesMseg2_ = true;
         applyMsegRates();
         
-        usesSub_ = p.subLevel > 0; usesNoise_ = p.noiseLevel > 0;
+        usesSub_ = p.subLevel > 0; usesNoise_ = p.noiseLevel > 0; usesNoiseColor_ = false;
         for (const auto& r : routes) {
             if (r.dest == ModRoute::Dest::SubLevel) usesSub_ = true;
             if (r.dest == ModRoute::Dest::NoiseLevel) usesNoise_ = true;
+            if (r.dest == ModRoute::Dest::NoiseColor && !sourceIsRack((int)r.source)) usesNoiseColor_ = true;
         }
         sub_.setShape(subTableShape(p.subShape));
         noise_.setTone(p.noiseTone);
@@ -520,6 +522,8 @@ public:
             l += sv; r += sv;
         }
         if (usesNoise_) {
+            if (params_.noiseCharacter != 0 && usesNoiseColor_)
+                noise_.setCharacter(params_.noiseCharacter, std::clamp(params_.noiseColor + modSum(ModRoute::Dest::NoiseColor), 0.0, 1.0));
             const float lv = (float)std::clamp(params_.noiseLevel + modSum(ModRoute::Dest::NoiseLevel), 0.0, 1.0);
             float nv = noise_.process() * lv;
             if (hq_) nv = (float)hbNoise_.down(nv, nv); // 0.31.0: same 7.5-sample alignment as the oscillators
@@ -756,6 +760,7 @@ private:
     bool dcOn_ = false;
     Filter2 f2L_, f2R_;
     int f2Type_ = 0;
+    bool usesNoiseColor_ = false;
     bool usesSub_ = false, usesNoise_ = false;
     StackGains gains1_, gains2_;
     LFO lfo3_, lfo4_;

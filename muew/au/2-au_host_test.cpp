@@ -777,6 +777,24 @@ int main() {
         printf("noise character and color recalled through AU; old noise line unchanged\n");
     }
 
+    // 0.52.0: existing route state accepts the append-only NOISE COLOR destination.
+    {
+        muew::Preset p = muew::factoryPresets()[0], got;
+        p.voice.noiseLevel=.6; p.voice.noiseCharacter=2; p.voice.noiseColor=.45;
+        muew::ModRoute r; r.source=muew::ModRoute::Source::LFO1;
+        r.dest=muew::ModRoute::Dest::NoiseColor; r.amount=.6; if (p.routes.empty()) p.routes.push_back(r);
+        else p.routes[0]=r; // preserve the 16-slot cap
+        AudioUnit t=openUnit();
+        bool ok=t && setState(t,p) && getState(t,got);
+        auto saved=got.serialize();
+        if (!ok || !(got==p) || saved.find("\nroute 0 32 0.6") == std::string::npos ||
+            saved.find("\nnoisex 2 0.45\n") == std::string::npos) {
+            printf("FAIL: AU NOISE COLOR route state\n"); return 1;
+        }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("NOISE COLOR destination 32 recalled through AU; 40 published parameter IDs unchanged\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;
