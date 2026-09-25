@@ -615,7 +615,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     FillRound(track, 2, C(0x1a212b));
     NSColor* cc = cpu > 0.8f ? C(0xf06a5f) : cpu > 0.5f ? C(0xf2ab55) : teal;
     if (cpu > 0.002f) FillRound(NSMakeRect(track.origin.x, track.origin.y, std::max<CGFloat>(3, track.size.width * cpu), 4), 2, cc);
-    TextA([NSString stringWithFormat:@"%d%%", (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100)], NSMakeRect(b.origin.x + 72, b.origin.y + 13, 26, 11), 8.5, C(0xb7c1cd), NSFontWeightSemibold, NSTextAlignmentRight);
+    TextA([NSString stringWithFormat:@"%d%%", (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100)], NSMakeRect(b.origin.x + 72, b.origin.y + 11, 26, 10), 8.5, C(0xb7c1cd), NSFontWeightSemibold, NSTextAlignmentRight);
     // Two slim lanes show MUEW's post-master stereo output. The amber
     // badge refers only to pre-tanh soft saturation, never downstream status.
     Text(@"L/R", NSMakeRect(b.origin.x + 8, b.origin.y + 1, 22, 9), 6.5, C(0x758192), NSFontWeightBold);
@@ -626,7 +626,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         if (peak > .002f) FillRound(NSMakeRect(lane.origin.x, lane.origin.y, lane.size.width * peak, lane.size.height), 1, C(0x5adac8));
     }
     if (outputDisplay.saturated()) {
-        NSRect sat = NSMakeRect(b.origin.x + 74, b.origin.y + 22, 24, 8);
+        NSRect sat = NSMakeRect(b.origin.x + 72, b.origin.y + 22, 26, 8);
         FillRound(sat, 3, C(0x604a25));
         TextA(@"SAT", sat, 6.5, C(0xf5cc78), NSFontWeightBold, NSTextAlignmentCenter);
     }
