@@ -446,6 +446,23 @@ public func starredMarkdown(_ rolls: [RollResult]) -> String {
     return lines.joined(separator: "\n") + "\n"
 }
 
+/// A filtered-subset Markdown file (3.1.0): the filter view's export,
+/// in the starred export's table shape with a header naming the query
+/// and hit count - the file says how the rolls were gathered, matching
+/// the filtered copy header (2.98.0). Oldest first; notes ride the
+/// roll cell via markdownRollCell.
+public func filteredMarkdown(_ rolls: [RollResult], query: String, ofTotal total: Int) -> String {
+    var lines = ["# Filtered: \(query) (\(rolls.count) of \(total))", ""]
+    lines.append("| Time | Roll | Total |")
+    lines.append("| --- | --- | --- |")
+    for roll in rolls.reversed() {
+        let stamp = roll.rolledAt
+            .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
+        lines.append("| \(stamp) | \(markdownRollCell(roll)) | \(roll.total) |")
+    }
+    return lines.joined(separator: "\n") + "\n"
+}
+
 /// The stats line for one session segment (2.69.0). Totals read
 /// RollResult.total (modifier included); crits count kept d20 faces.
 /// 2.75.0: the span runs from the oldest stamp to the newest.

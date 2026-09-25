@@ -271,6 +271,17 @@ public struct DiceRollerView: View {
                         .controlSize(.small)
                         .disabled(model.selected == nil)
                         .help("Add the filtered rolls to the journal as one entry titled with the filter")
+                    // 3.1.0: the file side of the filter family - same
+                    // shape as the starred export, headed by the query.
+                    Button("Export filtered") {
+                        model.exportFilteredMarkdown(
+                            visibleHistory,
+                            query: historyFilter.trimmingCharacters(in: .whitespaces),
+                            ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
+                    }
+                        .controlSize(.small)
+                        .disabled(visibleHistory.isEmpty)
+                        .help("Save the filtered rolls as a Markdown file")
                 }
                 // 2.85.0: the highlight reel - visible only while stars exist.
                 // 3.0.1: also hidden while the preset naming form is open.

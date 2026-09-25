@@ -771,6 +771,13 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/filtered-digest.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.1.0 proof: the filtered Markdown export file - header names
+    // the query, table rows in the starred export's shape, the noted
+    // roll's note dash-appended in its cell.
+    try? filteredMarkdown(model.rollHistory.matching("bridge"), query: "bridge",
+                          ofTotal: model.rollHistory.count)
+        .write(to: URL(fileURLWithPath: "\(outDir)/filtered-export.md"),
+               atomically: true, encoding: .utf8)
     // 2.97.0 proof: with a filter drafted the bar's Copy reads "Copy
     // filtered" - the button says when the filter narrows what it
     // copies; the action already rides visibleHistory.

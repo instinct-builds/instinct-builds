@@ -878,6 +878,13 @@ public final class AppModel: ObservableObject {
         savePanel(text: starredMarkdown(rollHistory), name: "starred-rolls.md")
     }
 
+    /// Filtered-subset Markdown export (3.1.0): the filter view's file
+    /// export - the starred export's shape, headed by the query.
+    public func exportFilteredMarkdown(_ rolls: [RollResult], query: String, ofTotal total: Int) {
+        savePanel(text: filteredMarkdown(rolls, query: query, ofTotal: total),
+                  name: "filtered-rolls.md")
+    }
+
     /// Session-log text export (2.42.0): the character's rolls as a
     /// day-grouped plain-text file, honoring the configured appendix range
     /// - the same rolls the compact-PDF appendix would print.

@@ -700,6 +700,18 @@ struct RollHistoryFilterTests {
         #expect(entry.isCollapsed == true)
         #expect(entry.text.contains("Fireball: 10 (8d6)\n  The bridge collapses behind them"))
     }
+
+    // 3.1.0: the filtered subset exports as a Markdown table in the
+    // starred export's shape, headed by the query and hit count; the
+    // note rides the roll cell.
+    @Test func filteredMarkdownNamesTheQuery() throws {
+        var noted = roll("8d6", label: "Fireball")
+        noted.note = "The bridge collapses behind them"
+        let rolls = [roll("d20"), noted]
+        let md = filteredMarkdown(rolls.matching("bridge"), query: "bridge", ofTotal: 2)
+        #expect(md.hasPrefix("# Filtered: bridge (1 of 2)\n\n| Time | Roll | Total |\n| --- | --- | --- |\n"))
+        #expect(md.contains("| Fireball (8d6) - The bridge collapses behind them | 10 |"))
+    }
 }
 
 @Suite("Session segments")
