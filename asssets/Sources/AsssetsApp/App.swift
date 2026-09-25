@@ -2758,6 +2758,8 @@ final class StudioLibrary: ObservableObject {
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
+                    // `find` above came from `all` before the demo's rights were assigned.
+                    let expectedRights = catalog.assets.first { $0.id == source.id }?.rights
                     mutate { $0.seedSourceFingerprint(baseline, for: source.id, path: path) }
                     let replacement = starterRoot.appendingPathComponent("risograph-4k.png")
                     try? fm.removeItem(atPath: path)
@@ -2770,7 +2772,7 @@ final class StudioLibrary: ObservableObject {
                                 self.refreshChangedSource(source.id)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                     let a = self.catalog.assets.first { $0.id == source.id }
-                                    let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == source.rights
+                                    let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == expectedRights
                                         && self.catalog.boardsUsing(source.id).count > 0
                                     try? "done changed=\(passed) rights=\(a?.rights != nil) boards=\(self.catalog.boardsUsing(source.id).count)".write(
                                         to: self.supportRoot.appendingPathComponent("demo-changed-source.txt"), atomically: true, encoding: .utf8)
