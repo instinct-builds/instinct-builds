@@ -1704,6 +1704,7 @@ final class StudioLibrary: ObservableObject {
     @Published var reviewedSourceID: UUID?
     @Published var sourceReviewPreview: SourceReviewPreview?
     @Published var sourceHistoryExpanded = false
+    @Published var receiptFocusID: UUID?
     @Published var sourceQueueSelected: UUID?
     @Published var sourceQueueOpen = false
     @Published var sourceQueueAnchor: UUID?
@@ -2861,7 +2862,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2984,7 +2985,7 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
@@ -3038,7 +3039,7 @@ final class StudioLibrary: ObservableObject {
                                 self.selection = [source.id]; self.focusID = source.id
                                 self.inspectorAnchor = "source-changes"
                             }
-                            if demo == "changed-source-apply" || demo == "source-history-inspector" {
+                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" {
                                 self.reviewChangedSource(source.id)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                     self.reviewedSourceID = nil
@@ -3048,10 +3049,16 @@ final class StudioLibrary: ObservableObject {
                                     let a = self.catalog.assets.first { $0.id == source.id }
                                     let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == expectedRights
                                         && self.catalog.boardsUsing(source.id).count > 0 && self.catalog.sourceHistory(for: source.id).count == 1
-                                    if demo == "source-history-inspector" {
+                                    if demo == "source-history-inspector" || demo == "source-receipt-focus" {
                                         self.healthOpen = false
                                         self.selection = [source.id]; self.focusID = source.id
                                         self.inspectorAnchor = "source-changes"
+                                        if demo == "source-receipt-focus",
+                                           let receipt = self.catalog.sourceHistory(for: source.id).first {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                                                self.receiptFocusID = receipt.id
+                                            }
+                                        }
                                     }
                                     try? "done changed=\(passed) rights=\(a?.rights != nil) boards=\(self.catalog.boardsUsing(source.id).count)".write(
                                         to: self.supportRoot.appendingPathComponent("demo-changed-source.txt"), atomically: true, encoding: .utf8)
@@ -8125,10 +8132,86 @@ struct SourceReceiptThumbnails: View {
     }
 }
 
+/// Receipt detail is a visual reference, not an original source archive.
+struct SourceReceiptSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @Environment(\.dismiss) private var dismiss
+    let receipt: SourceRefreshRecord
+
+    var body: some View {
+        let before = model.receiptPreview(receipt, side: "before")
+        let after = model.receiptPreview(receipt, side: "after")
+        let title = model.catalog.assets.first(where: { $0.id == receipt.assetID })?.title ?? "Removed asset"
+        VStack(alignment: .leading, spacing: 13) {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath").foregroundStyle(Theme.accent)
+                Text("Source Refresh Receipt").font(.system(size: 18, weight: .bold))
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            Text(title).font(.headline)
+            Text(receipt.refreshedAt.formatted(date: .complete, time: .shortened))
+                .font(.caption).foregroundStyle(.secondary)
+            Text((receipt.path as NSString).abbreviatingWithTildeInPath)
+                .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+            HStack(spacing: 12) {
+                snapshot("Before · saved snapshot", image: before)
+                snapshot("After · saved snapshot", image: after)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                fact("Size", "\(ByteCountFormatter.string(fromByteCount: receipt.before.size, countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: receipt.after.size, countStyle: .file))")
+                fact("File facts", "\(receipt.beforeResolution) → \(receipt.afterResolution)")
+                fact("Palette", "\(receipt.beforePalette.joined(separator: ", ")) → \(receipt.afterPalette.joined(separator: ", "))")
+                digest("SHA-256 before", receipt.before.sha256)
+                digest("SHA-256 after", receipt.after.sha256)
+            }
+            Text("These are small saved snapshots, not original files. The old source cannot be restored from this receipt.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(20).frame(width: 700).background(Theme.panel)
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("source-receipt-focus") {
+                let ok = before != nil && after != nil && receipt.before.sha256 != receipt.after.sha256
+                try? "done receipt=\(ok)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-focus.txt"), atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    private func snapshot(_ label: String, image: CGImage?) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(.caption.weight(.semibold))
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3))
+                if let image {
+                    Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit).padding(4)
+                } else {
+                    Text("No saved snapshot").font(.caption).foregroundStyle(.tertiary)
+                }
+            }.frame(height: 175).clipShape(RoundedRectangle(cornerRadius: 8))
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func fact(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Text(label).frame(width: 105, alignment: .leading).foregroundStyle(.secondary)
+            Text(value).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+        }.font(.caption)
+    }
+
+    private func digest(_ label: String, _ hash: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Text(label).frame(width: 105, alignment: .leading).foregroundStyle(.secondary)
+            Text(hash.count == 64 ? String(hash.prefix(32)) + "\n" + String(hash.suffix(32)) : hash)
+                .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+        }.font(.caption)
+    }
+}
+
 struct SourceChangesSection: View {
     @EnvironmentObject var model: StudioLibrary
     let asset: StudioAsset
     @State private var expanded = false
+    @State private var selectedReceipt: SourceRefreshRecord?
 
     var body: some View {
         let entries = model.catalog.sourceHistory(for: asset.id)
@@ -8156,8 +8239,13 @@ struct SourceChangesSection: View {
             }.buttonStyle(.bordered).controlSize(.small).tint(unreviewed ? Theme.warning : Theme.accent)
             ForEach(Array(entries.prefix(expanded ? entries.count : 3))) { entry in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.refreshedAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption.weight(.semibold))
+                    HStack {
+                        Text(entry.refreshedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption.weight(.semibold))
+                        Spacer(minLength: 2)
+                        Button("View receipt") { selectedReceipt = entry }
+                            .font(.caption2).buttonStyle(.plain).foregroundStyle(Theme.accent)
+                    }
                     SourceReceiptThumbnails(entry: entry, height: 86)
                     Text((entry.path as NSString).abbreviatingWithTildeInPath)
                         .font(.caption2.monospaced()).lineLimit(2).truncationMode(.middle).textSelection(.enabled)
@@ -8189,6 +8277,15 @@ struct SourceChangesSection: View {
         .padding(10).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent.opacity(0.25)))
+        .sheet(item: $selectedReceipt) { receipt in
+            SourceReceiptSheet(receipt: receipt).environmentObject(model)
+        }
+        .onChange(of: model.receiptFocusID) { _, id in
+            if let id, let receipt = entries.first(where: { $0.id == id }) {
+                selectedReceipt = receipt
+                model.receiptFocusID = nil
+            }
+        }
     }
 }
 

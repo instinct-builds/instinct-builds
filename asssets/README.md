@@ -926,3 +926,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Each accepted source refresh can retain a small Before and After JPEG with its metadata receipt. These are 240-pixel, at most 120 KB each, stored beside the catalog, not original sources. The first refresh of an older source may lack a Before snapshot. Unsupported media may have no visual snapshot.
 - The most recent five receipts per asset may keep these preview pairs (at most 1.2 MB per asset); older receipt metadata remains, while older preview files are deleted. Removing an asset deletes its preview files. The previews cannot restore the source file.
 - Library Health history and the asset inspector show the previews and say when a snapshot is absent. CI verifies both sides of a native accepted-refresh demo, alongside the existing source history receipt and rights/board checks.
+
+## 1.48.0: focused source receipt
+
+- Each Source Changes receipt in an asset inspector has a View receipt control. The dedicated, read-only sheet gives the acceptance date, small Before/After snapshots, source path, full size and dimensions, complete palette lists and complete SHA-256 digests together. The images are only visual references; neither is a source backup or a way to restore older bytes.
+- Missing images on older or unsupported receipts are marked as absent. CI opens the focused receipt from a native accepted-refresh demo and verifies the two images and changed digest.
