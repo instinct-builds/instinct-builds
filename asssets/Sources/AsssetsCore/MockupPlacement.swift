@@ -31,6 +31,44 @@ public enum PlacementMode: String, Codable, CaseIterable, Identifiable, Sendable
     public var id: String { rawValue }
 }
 
+/// Editable settings stored on each rendered version. References retain the original source identity;
+/// a missing file never turns the flattened render into its own artwork.
+public struct PlacementRecipe: Codable, Hashable, Sendable {
+    public var artID: UUID
+    public var mockupID: UUID
+    public var layerName: String?
+    public var mode: PlacementMode
+    public var crop: BoardRect?
+    public var background: String
+
+    public init(artID: UUID, mockupID: UUID, layerName: String? = nil, mode: PlacementMode = .fill,
+                crop: BoardRect? = nil, background: String = "White") {
+        self.artID = artID; self.mockupID = mockupID; self.layerName = layerName
+        self.mode = mode; self.crop = crop; self.background = background
+    }
+}
+
+public enum PlacementSourceStatus: Equatable, Sendable {
+    case ready(art: UUID, mockup: UUID)
+    case missingArt(UUID)
+    case missingMockup(UUID)
+}
+
+extension StudioCatalog {
+    /// Resolve by stable library identity, not title or filename. Even a missing original must not be
+    /// replaced with a lookalike automatically; the user chooses what to relink or replace.
+    public func placementStatus(_ recipe: PlacementRecipe, exists: (String) -> Bool) -> PlacementSourceStatus {
+        guard let a = assets.first(where: { $0.id == recipe.artID }),
+              a.importedPath.map(exists) ?? (a.sourceKey?.hasPrefix("generated:") == true) else {
+            return .missingArt(recipe.artID)
+        }
+        guard let m = assets.first(where: { $0.id == recipe.mockupID }), let path = m.importedPath, exists(path) else {
+            return .missingMockup(recipe.mockupID)
+        }
+        return .ready(art: a.id, mockup: m.id)
+    }
+}
+
 public enum MockupPlacement {
     /// Layers that are good design targets, best first: named Smart Object, then common design-layer names.
     public static func targetLayers(_ doc: PsdDocument) -> [Int] {
@@ -229,12 +267,13 @@ extension StudioCatalog {
     /// collection and tags plus the art's tags, and the art's rights, credit and license files, since the artwork
     /// is what a client is licensing. Returns the new asset's id.
     @discardableResult
-    public mutating func addPlacedMockup(path: String, art: UUID, mockup: UUID, resolution: String) -> UUID? {
+    public mutating func addPlacedMockup(path: String, art: UUID, mockup: UUID, resolution: String, recipe: PlacementRecipe? = nil) -> UUID? {
         guard let a = assets.first(where: { $0.id == art }), let m = assets.first(where: { $0.id == mockup }),
               let id = importFile(path: path, collection: m.collection), let i = assets.firstIndex(where: { $0.id == id }) else { return nil }
         assets[i].title = "\(a.title) on \(m.title)"
         assets[i].kind = .mockup
         assets[i].resolution = resolution
+        assets[i].placementRecipe = recipe
         var tags = m.tags.filter { !["psd", "imported", "watched"].contains($0) }
         for t in a.tags where !tags.contains(t) && !["imported", "watched"].contains(t) { tags.append(t) }
         if !tags.contains("placed") { tags.append("placed") }

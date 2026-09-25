@@ -135,3 +135,64 @@ struct MockupPlacementShapeTests {
         #expect(MockupPlacement.targetLayers(PsdDocument(width: 40, height: 40, layers: [big, small])).first == 0)
     }
 }
+
+@Suite("Editable placement recipes")
+struct PlacementRecipeTests {
+    @Test func savesAndReopensExactSettings() throws {
+        var c = StudioCatalog()
+        let art = c.importFile(path: "/lib/Poster.png")!
+        let mockup = c.importFile(path: "/lib/Frame.psd")!
+        let crop = BoardRect(x: 0.15, y: 0.25, w: 0.6, h: 0.5)
+        let recipe = PlacementRecipe(artID: art, mockupID: mockup, layerName: "Poster Design", mode: .fit, crop: crop, background: "Paper")
+        let render = c.addPlacedMockup(path: "/lib/Placed/render.png", art: art, mockup: mockup, resolution: "1200 × 800", recipe: recipe)!
+        let reopened = StudioCatalog.decode(try c.encoded())!
+        #expect(reopened.assets.first { $0.id == render }?.placementRecipe == recipe)
+        #expect(reopened.placementStatus(recipe, exists: { _ in true }) == .ready(art: art, mockup: mockup))
+        #expect(reopened.assets.first { $0.id == mockup }?.placementRecipe == nil)
+        // A catalog from 1.29 has no placementRecipe key and must keep decoding.
+        var old = try JSONSerialization.jsonObject(with: c.encoded()) as! [String: Any]
+        var assets = old["assets"] as! [[String: Any]]
+        for i in assets.indices { assets[i].removeValue(forKey: "placementRecipe") }
+        old["assets"] = assets
+        let data = try JSONSerialization.data(withJSONObject: old)
+        #expect(StudioCatalog.decode(data)?.assets.first { $0.id == render }?.placementRecipe == nil)
+    }
+
+    @Test func missingSourcesStayExplicitUntilRelinked() throws {
+        var c = StudioCatalog()
+        let art = c.importFile(path: "/old/Poster.png")!
+        let mockup = c.importFile(path: "/lib/Frame.psd")!
+        let recipe = PlacementRecipe(artID: art, mockupID: mockup)
+        #expect(c.placementStatus(recipe, exists: { $0 == "/lib/Frame.psd" }) == .missingArt(art))
+        c.assets[c.assets.firstIndex { $0.id == art }!].importedPath = "/new/Poster.png"
+        #expect(c.placementStatus(recipe, exists: { $0 != "/lib/Frame.psd" }) == .missingMockup(mockup))
+        #expect(c.placementStatus(recipe, exists: { _ in true }) == .ready(art: art, mockup: mockup))
+        c.assets.removeAll { $0.id == art }
+        #expect(c.placementStatus(recipe, exists: { _ in true }) == .missingArt(art))
+    }
+
+    @Test func revisionIsASeparateVersion() {
+        var c = StudioCatalog()
+        let art = c.importFile(path: "/lib/Poster.png")!
+        let mockup = c.importFile(path: "/lib/Frame.psd")!
+        let a = PlacementRecipe(artID: art, mockupID: mockup, mode: .fill)
+        let b = PlacementRecipe(artID: art, mockupID: mockup, mode: .fit, background: "Black")
+        let first = c.addPlacedMockup(path: "/lib/render-1.png", art: art, mockup: mockup, resolution: "100 × 100", recipe: a)!
+        let next = c.addPlacedMockup(path: "/lib/render-2.png", art: art, mockup: mockup, resolution: "100 × 100", recipe: b)!
+        #expect(first != next)
+        #expect(c.assets.first { $0.id == first }?.placementRecipe == a)
+        #expect(c.assets.first { $0.id == next }?.placementRecipe == b)
+        #expect(c.assets.first { $0.id == first }?.stackID == c.assets.first { $0.id == next }?.stackID)
+    }
+}
+
+extension PlacementRecipeTests {
+    @Test func generatedStarterArtIsAValidSource() {
+        let art = StudioAsset(title: "Generated Study", kind: .image, tags: [], collection: "Bundled",
+                              palette: [], seed: 2, resolution: "1200 × 800", sourceKey: "generated:studies:2")
+        var c = StudioCatalog(assets: [art])
+        let mockup = c.importFile(path: "/lib/Frame.psd")!
+        let recipe = PlacementRecipe(artID: art.id, mockupID: mockup)
+        #expect(c.placementStatus(recipe, exists: { $0 == "/lib/Frame.psd" }) == .ready(art: art.id, mockup: mockup))
+    }
+}

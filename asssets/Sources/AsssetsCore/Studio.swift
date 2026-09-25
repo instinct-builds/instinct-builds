@@ -70,6 +70,8 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     public var rights: UsageRights? = nil
     /// License documents attached to this asset (1.27), ids into `StudioCatalog.licenseDocs`.
     public var licenseDocs: [UUID] = []
+    /// Original sources and settings of a rendered mockup (1.30); old renders remain flat.
+    public var placementRecipe: PlacementRecipe? = nil
 
     public init(id: UUID = UUID(), title: String, kind: MediaKind, tags: [String], collection: String,
                 palette: [String], seed: Int, favorite: Bool = false, importedPath: String? = nil,
@@ -79,7 +81,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         self.resolution = resolution; self.sourceKey = sourceKey
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights, licenseDocs }
+    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights, licenseDocs, placementRecipe }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -102,6 +104,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         label = try? c.decodeIfPresent(ColorLabel.self, forKey: .label)
         rights = try? c.decodeIfPresent(UsageRights.self, forKey: .rights)
         licenseDocs = (try? c.decodeIfPresent([UUID].self, forKey: .licenseDocs)) ?? []
+        placementRecipe = try? c.decodeIfPresent(PlacementRecipe.self, forKey: .placementRecipe)
     }
 
     /// Auto tags still waiting for the user: not already a real tag, not dismissed.

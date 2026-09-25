@@ -1056,17 +1056,22 @@ final class StudioLibrary: ObservableObject {
     func watchedCount(_ folder: String) -> Int { catalog.assets.filter { $0.importedPath?.hasPrefix(folder + "/") == true }.count }
 
     /// Point a missing asset at its new location. Keeps title, tags, collection and favorite.
-    func locate(_ id: UUID) {
-        guard let a = catalog.assets.first(where: { $0.id == id }) else { return }
+    @discardableResult
+    func locate(_ id: UUID) -> Bool {
+        guard let a = catalog.assets.first(where: { $0.id == id }) else { return false }
         let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false; p.prompt = "Use This File"
         p.message = "Locate \"\(a.title)\""
         if let ext = a.importedPath.map({ URL(fileURLWithPath: $0).pathExtension }), let t = UTType(filenameExtension: ext) { p.allowedContentTypes = [t] }
-        guard p.runModal() == .OK, let url = p.url else { return }
+        guard p.runModal() == .OK, let url = p.url else { return false }
         let path = url.standardizedFileURL.path
-        if catalog.assets.contains(where: { $0.importedPath == path && $0.id != id }) { flash("That file is already in the library"); return }
+        if let old = a.importedPath, URL(fileURLWithPath: old).pathExtension.lowercased() != url.pathExtension.lowercased() {
+            flash("Choose the original file type (\(URL(fileURLWithPath: old).pathExtension))"); return false
+        }
+        if catalog.assets.contains(where: { $0.importedPath == path && $0.id != id }) { flash("That file is already in the library"); return false }
         mutate { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].importedPath = path } }
         missing.remove(id)
         flash("Relinked \(a.title)")
+        return true
     }
 
     func removeMissing() {
@@ -1124,12 +1129,13 @@ final class StudioLibrary: ObservableObject {
         }.sorted { ($0.isStarter ? 1 : 0, $0.title) < ($1.isStarter ? 1 : 0, $1.title) }
     }
     func canPlace(_ a: StudioAsset) -> Bool {
-        a.kind != .audio && a.kind != .video && a.importedPath?.lowercased().hasSuffix(".psd") != true
+        a.kind != .audio && a.kind != .video && a.placementRecipe == nil && a.importedPath?.lowercased().hasSuffix(".psd") != true
     }
     var canPlaceFocus: Bool { focusID.flatMap { id in catalog.assets.first { $0.id == id } }.map(canPlace) ?? false }
 
     func psdDocument(_ a: StudioAsset) -> PsdDocument? {
         guard let p = a.importedPath else { return nil }
+        guard FileManager.default.fileExists(atPath: p) else { psdCache.removeValue(forKey: p); return nil }
         if let d = psdCache[p] { return d }
         guard let d = (try? Data(contentsOf: URL(fileURLWithPath: p))).flatMap({ try? PsdLayers.read($0) }) else { return nil }
         psdCache[p] = d
@@ -1151,6 +1157,66 @@ final class StudioLibrary: ObservableObject {
         placing = PlaceState(art: art, preview: px, mockups: mockups.map(\.id), mockup: pick.id)
     }
 
+    /// Opens the stored placement without guessing when either source moved or left the library.
+    func editPlacement(_ render: StudioAsset) {
+        guard var recipe = render.placementRecipe else { return }
+        let status = catalog.placementStatus(recipe, exists: { FileManager.default.fileExists(atPath: $0) })
+        switch status {
+        case .missingArt(let id), .missingMockup(let id):
+            let isArt: Bool
+            if case .missingArt = status { isArt = true } else { isArt = false }
+            let name = isArt ? "source artwork" : "PSD mockup"
+            if catalog.assets.contains(where: { $0.id == id }) {
+                // Locate keeps the source ID and its metadata. Cancel leaves the recipe untouched.
+                guard locate(id) else { return }
+            } else {
+                let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false
+                p.allowedContentTypes = isArt ? [.image, .pdf] : [UTType(filenameExtension: "psd") ?? .data]
+                p.prompt = "Use as Source"
+                p.message = "The original \(name) is no longer in the library. Choose the replacement for \(render.title)."
+                guard p.runModal() == .OK, let url = p.url else { return }
+                let path = url.standardizedFileURL.path
+                guard (isArt ? MediaKind.classify(extension: url.pathExtension).map { $0 != .audio && $0 != .video && $0 != .mockup } ?? false : url.pathExtension.lowercased() == "psd") else {
+                    flash("Choose a \(isArt ? "still artwork" : "PSD mockup") source"); return
+                }
+                if let existing = catalog.assets.first(where: { $0.importedPath == path }) {
+                    guard isArt ? canPlace(existing) && existing.kind != .mockup : existing.importedPath?.lowercased().hasSuffix(".psd") == true else {
+                        flash("That library file is not a \(isArt ? "still artwork" : "PSD mockup") source"); return
+                    }
+                    if isArt { recipe.artID = existing.id } else { recipe.mockupID = existing.id }
+                } else {
+                    var replacement: UUID?
+                    mutate("Relink Placement Source") { replacement = $0.importFile(path: path, collection: render.collection) }
+                    guard let replacement else { flash("Could not add source file"); return }
+                    if isArt { recipe.artID = replacement } else { recipe.mockupID = replacement }
+                }
+                mutate("Relink Placement Source") { c in
+                    if let i = c.assets.firstIndex(where: { $0.id == render.id }) { c.assets[i].placementRecipe = recipe }
+                }
+            }
+            // Another source may also be missing; run the same validation again, never guess.
+            editPlacement(catalog.assets.first(where: { $0.id == render.id }) ?? render)
+            return
+        case .ready: break
+        }
+        guard let art = catalog.assets.first(where: { $0.id == recipe.artID }),
+              let mockup = catalog.assets.first(where: { $0.id == recipe.mockupID }),
+              let doc = psdDocument(mockup),
+              let px = artPixels(art, maxPixel: 900),
+              canPlace(art) else { flash("Source cannot be opened. Relink the source before editing."); return }
+        var mockups = mockupAssets.filter { psdDocument($0).map { !MockupPlacement.targetLayers($0).isEmpty } ?? false }
+        if !mockups.contains(where: { $0.id == mockup.id }) { mockups.insert(mockup, at: 0) }
+        var st = PlaceState(art: art, preview: px, mockups: mockups.map(\.id), mockup: mockup.id)
+        st.editing = render.id
+        st.mode = recipe.mode; st.crop = recipe.crop
+        st.background = PlaceBackground(rawValue: recipe.background) ?? .white
+        if let name = recipe.layerName {
+            st.layer = MockupPlacement.targetLayers(doc).first { doc.layers[$0].name == name }
+            if st.layer == nil { st.layerMissing = name }
+        }
+        placing = st
+    }
+
     /// Renders one mockup with the art at full mockup size; the placed composite and the layer used.
     nonisolated static func renderPlaced(art: PixelBuffer, doc: PsdDocument, layer: Int?, mode: PlacementMode, crop: BoardRect?, background: (UInt8, UInt8, UInt8)) -> PixelBuffer? {
         MockupPlacement.place(art, into: doc, layer: layer, mode: mode, crop: crop, background: background)?.composite()
@@ -1158,7 +1224,7 @@ final class StudioLibrary: ObservableObject {
 
     /// Writes the render next to the library and files it on the mockup's version stack. Returns the new asset id.
     @discardableResult
-    func savePlaced(_ buf: PixelBuffer, art: StudioAsset, mockup: StudioAsset, undo: String? = "Place into Mockup") -> UUID? {
+    func savePlaced(_ buf: PixelBuffer, art: StudioAsset, mockup: StudioAsset, recipe: PlacementRecipe, undo: String? = "Place into Mockup") -> UUID? {
         let dir = supportRoot.appendingPathComponent("Placed", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(DragOut.safeName("\(art.title) on \(mockup.title)") + "-" + String(UUID().uuidString.prefix(6)) + ".png")
@@ -1168,7 +1234,7 @@ final class StudioLibrary: ObservableObject {
         let small = MediaRenderer.pixelBuffer(from: cg, maxPixel: 160)
         var id: UUID?
         mutate(undo) { c in
-            id = c.addPlacedMockup(path: url.path, art: art.id, mockup: mockup.id, resolution: "\(buf.width) × \(buf.height)")
+            id = c.addPlacedMockup(path: url.path, art: art.id, mockup: mockup.id, resolution: "\(buf.width) × \(buf.height)", recipe: recipe)
             if let id, let i = c.assets.firstIndex(where: { $0.id == id }), let small {
                 let colors = PaletteExtractor.colors(from: small, count: 5).map(\.hex)
                 if colors.count >= 3 { c.assets[i].palette = colors }
@@ -1178,10 +1244,13 @@ final class StudioLibrary: ObservableObject {
     }
 
     func commitPlace(_ st: PlaceState) {
-        guard let mockup = catalog.assets.first(where: { $0.id == st.mockup }), let doc = psdDocument(mockup),
-              let art = artPixels(st.art, maxPixel: 2400),
+        guard st.layerMissing == nil,
+              let currentArt = catalog.assets.first(where: { $0.id == st.art.id }),
+              currentArt.importedPath.map { FileManager.default.fileExists(atPath: $0) } ?? (currentArt.sourceKey?.hasPrefix("generated:") == true),
+              let mockup = catalog.assets.first(where: { $0.id == st.mockup }), let doc = psdDocument(mockup),
+              let art = artPixels(currentArt, maxPixel: 2400),
               let buf = Self.renderPlaced(art: art, doc: doc, layer: st.layer, mode: st.mode, crop: st.crop, background: st.background.rgb),
-              let id = savePlaced(buf, art: st.art, mockup: mockup) else { flash("Could not place \(st.art.title)"); return }
+              let id = savePlaced(buf, art: currentArt, mockup: mockup, recipe: PlacementRecipe(artID: st.art.id, mockupID: mockup.id, layerName: st.layer.flatMap { doc.layers.indices.contains($0) ? doc.layers[$0].name : nil } ?? MockupPlacement.targetLayers(doc).first.map { doc.layers[$0].name }, mode: st.mode, crop: st.crop, background: st.background.rawValue)) else { flash("Could not place \(st.art.title)"); return }
         placing = nil
         refreshAutoTags()
         selection = [id]; focusID = id
@@ -1193,7 +1262,9 @@ final class StudioLibrary: ObservableObject {
     func placeIntoAll(_ st: PlaceState, checked: Bool = false, then done: ((Int) -> Void)? = nil) {
         placing = nil
         let mockups = st.mockups.compactMap { m in catalog.assets.first { $0.id == m } }
-        guard let art = artPixels(st.art, maxPixel: 2400) else { flash("Could not read \(st.art.title)"); return }
+        guard let currentArt = catalog.assets.first(where: { $0.id == st.art.id }),
+              currentArt.importedPath.map { FileManager.default.fileExists(atPath: $0) } ?? (currentArt.sourceKey?.hasPrefix("generated:") == true),
+              let art = artPixels(currentArt, maxPixel: 2400) else { flash("Could not read \(st.art.title)"); return }
         flash("Placing \(st.art.title) into \(mockups.count) mockups…")
         let jobs = mockups.compactMap { m in psdDocument(m).map { (m, $0) } }
         let mode = st.mode, crop = st.crop, bg = st.background.rgb
@@ -1202,7 +1273,7 @@ final class StudioLibrary: ObservableObject {
             var ids: [UUID] = []
             for (m, doc) in jobs {
                 let buf = await Task.detached(priority: .userInitiated) { Self.renderPlaced(art: art, doc: doc, layer: nil, mode: mode, crop: crop, background: bg) }.value
-                if let buf, let id = savePlaced(buf, art: st.art, mockup: m, undo: nil) { ids.append(id) }
+                if let buf, let id = savePlaced(buf, art: currentArt, mockup: m, recipe: PlacementRecipe(artID: st.art.id, mockupID: m.id, layerName: MockupPlacement.targetLayers(doc).first.map { doc.layers[$0].name }, mode: mode, crop: crop, background: st.background.rawValue), undo: nil) { ids.append(id) }
             }
             if !ids.isEmpty { _ = history.record("Place into All Mockups", before: before, after: catalog) }
             refreshAutoTags()
@@ -1797,7 +1868,7 @@ final class StudioLibrary: ObservableObject {
                     psdToggled[a.id] = Set(flips)
                 }
             }
-        case "place-mockup", "place-all":
+        case "place-mockup", "place-all", "place-edit", "place-relink":
             // The risograph print into every bundled mockup: the sheet on the poster frame with a dragged crop, or all ten at once.
             let starters = catalog.assets.filter(\.isStarter)
             if let art = starters.first(where: { $0.importedPath?.hasSuffix("risograph-4k.png") == true }) {
@@ -1811,6 +1882,14 @@ final class StudioLibrary: ObservableObject {
                     if demo == "place-all" {
                         self.placeIntoAll(st, checked: true) { n in
                             try? "done placed=\(n)".write(to: self.supportRoot.appendingPathComponent("demo-place-all.txt"), atomically: true, encoding: .utf8)
+                        }
+                    } else if demo == "place-edit" || demo == "place-relink" {
+                        self.commitPlace(st)
+                        guard let id = self.focusID, let render = self.catalog.assets.first(where: { $0.id == id && $0.placementRecipe != nil }) else { return }
+                        if demo == "place-relink" {
+                            self.mutate { c in if let i = c.assets.firstIndex(where: { $0.id == art.id }) { c.assets[i].importedPath = "/missing/risograph-4k.png" } }
+                        } else {
+                            self.editPlacement(render)
                         }
                     } else {
                         self.placing = st
@@ -4160,6 +4239,8 @@ struct PlaceState: Identifiable {
     /// Part of the art (fractions) the user dragged to; Fill only.
     var crop: BoardRect?
     var background: PlaceBackground = .white
+    var editing: UUID?
+    var layerMissing: String?
     var artAspect: Double { Double(preview.width) / Double(max(1, preview.height)) }
 }
 
@@ -4192,7 +4273,7 @@ struct PlaceMockupSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "rectangle.on.rectangle.angled").foregroundStyle(Theme.accent)
-                Text("Place into Mockup").font(.system(size: 15, weight: .bold))
+                Text(state.editing == nil ? "Place into Mockup" : "Edit Placement").font(.system(size: 15, weight: .bold))
                 Text(state.art.title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
                 Label("Renders on this Mac", systemImage: "cpu").font(.caption).foregroundStyle(.tertiary)
@@ -4213,12 +4294,13 @@ struct PlaceMockupSheet: View {
                     HStack(spacing: 8) {
                         Text("Design layer").font(.caption).foregroundStyle(.secondary)
                         Menu {
-                            ForEach(layers, id: \.self) { i in Button(layerName(i)) { state.layer = i } }
+                            ForEach(layers, id: \.self) { i in Button(layerName(i)) { state.layer = i; state.layerMissing = nil } }
                         } label: {
                             Text(layerIndex.map(layerName) ?? "None").font(.system(size: 12, weight: .semibold)).lineLimit(1)
                         }
                         .menuStyle(.borderlessButton).fixedSize()
-                        .disabled(layers.count < 2)
+                        .disabled(layers.count < 2 && state.layerMissing == nil)
+                        if state.layerMissing != nil { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning).help("Design layer changed. Choose a layer before saving.") }
                         Spacer()
                         Text(doc.map { "\($0.width) × \($0.height) PNG" } ?? "").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
                     }
@@ -4228,10 +4310,12 @@ struct PlaceMockupSheet: View {
             HStack {
                 Button("Cancel") { model.placing = nil }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Place into All \(state.mockups.count) Mockups") { model.placeIntoAll(state) }
-                    .help("Render every mockup with this art and open them as a contact sheet")
-                Button("Save as New Version") { model.commitPlace(state) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
-                    .disabled(layerIndex == nil)
+                if state.editing == nil {
+                    Button("Place into All \(state.mockups.count) Mockups") { model.placeIntoAll(state) }
+                        .help("Render every mockup with this art and open them as a contact sheet")
+                }
+                Button(state.editing == nil ? "Save as New Version" : "Save Revised Version") { model.commitPlace(state) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                    .disabled(layerIndex == nil || state.layerMissing != nil)
             }
         }
         .padding(20)
@@ -4247,7 +4331,7 @@ struct PlaceMockupSheet: View {
                 ForEach(state.mockups, id: \.self) { id in
                     if let m = model.catalog.assets.first(where: { $0.id == id }) {
                         Button {
-                            state.mockup = id; state.layer = nil
+                            state.mockup = id; state.layer = nil; state.layerMissing = nil
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Thumbnail(asset: m, pixels: 240).frame(width: 128, height: 80).clipShape(RoundedRectangle(cornerRadius: 7))
@@ -4282,6 +4366,10 @@ struct PlaceMockupSheet: View {
             }
             Text(state.mode == .fill ? "Drag the frame to choose what shows. Drag the corner to zoom." : "The whole artwork shows; the margins take the background.")
                 .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+            if let missing = state.layerMissing {
+                Text("Layer \"\(missing)\" changed. Choose a design layer before saving.")
+                    .font(.caption2).foregroundStyle(Theme.warning).fixedSize(horizontal: false, vertical: true)
+            }
             InspectorLabel(text: "BACKGROUND").padding(.top, 4)
             HStack(spacing: 8) {
                 ForEach(PlaceBackground.allCases) { b in
@@ -4408,6 +4496,33 @@ struct PlaceStrip: View {
                         .buttonStyle(.plain).help(m.title)
                     }
                     Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+}
+
+struct PlacementRecipeStrip: View {
+    @EnvironmentObject var model: StudioLibrary
+    let asset: StudioAsset
+    var body: some View {
+        if let recipe = asset.placementRecipe {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    InspectorLabel(text: "EDITABLE PLACEMENT")
+                    Spacer()
+                    Button("Edit…") { model.editPlacement(asset) }.buttonStyle(.plain)
+                        .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                }
+                Text("\(recipe.mode.rawValue) · \(recipe.layerName ?? "Auto layer") · \(recipe.background) background")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                let status = model.catalog.placementStatus(recipe, exists: { FileManager.default.fileExists(atPath: $0) })
+                switch status {
+                case .ready: EmptyView()
+                case .missingArt: Label("Source art missing · Edit to relink", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.warning).font(.caption)
+                case .missingMockup: Label("Mockup missing · Edit to relink", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.warning).font(.caption)
                 }
             }
         }
@@ -5569,6 +5684,7 @@ struct AssetMenu: View {
         }
         if !many && primary.kind != .audio { Button("Find Similar") { model.findSimilar(primary.id) } }
         if !many && model.canPlace(primary) { Button("Place into Mockup…") { model.openPlaceIntoMockup(primary.id) } }
+        if !many && primary.placementRecipe != nil { Button("Edit Placement…") { model.editPlacement(primary) } }
         Button("Share…") { model.share(ids) }
         Button("Copy Keywords") { model.copyKeywords(ids) }
         Menu(many ? "Export \(ids.count) Assets" : "Export") {
@@ -6645,6 +6761,7 @@ struct Inspector: View {
                         OnBoardsSection(asset: asset)
                         if asset.stackID != nil { VersionStrip(asset: asset) }
                         if asset.kind != .audio { SimilarStrip(asset: asset) }
+                        if asset.placementRecipe != nil { PlacementRecipeStrip(asset: asset) }
                         if model.canPlace(asset) { PlaceStrip(asset: asset) }
                         if asset.importedPath?.lowercased().hasSuffix(".psd") == true { PsdLayersPanel(asset: asset) }
                         InspectorLabel(text: "COLOR PALETTE")

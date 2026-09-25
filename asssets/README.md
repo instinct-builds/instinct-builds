@@ -832,3 +832,10 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - At launch, a banner lists licenses that ended since ASSSETS was last
   opened. Review selects them in Rights Expired.
 - Logic and tests: `BulkRights.swift`, `BulkRightsTests.swift`.
+
+## 1.30.0: editable placement recipes
+
+- Each new placed render stores a recipe in the library catalog: the original art and PSD mockup IDs, design-layer name, Fill/Fit mode, crop and background. Earlier flat versions still open normally.
+- A rendered version has Edit Placement in the inspector and context menu. The sheet reopens with its choices, previews the current sources and saves a **new** version, keeping the old render and its rights intact. Place into All saves one recipe per result.
+- Missing artwork or PSDs show a warning on the rendered asset; Edit asks to locate a moved source (keeping its identity), or explicitly choose a replacement when the original library record is gone. Never auto-substitute a similarly named file. If a PSD's design layer changed, the sheet asks the user to choose a layer before saving.
+- Logic and tests: `PlacementRecipe` and `PlacementSourceStatus` in `MockupPlacement.swift`, with persistence and source-resolution tests.

@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Moodboards (1.16): free canvases of assets, notes and palette cards
 
-public struct BoardRect: Codable, Equatable, Sendable {
+public struct BoardRect: Codable, Hashable, Sendable {
     public var x: Double, y: Double, w: Double, h: Double
     public init(x: Double, y: Double, w: Double, h: Double) { self.x = x; self.y = y; self.w = w; self.h = h }
     public var maxX: Double { x + w }

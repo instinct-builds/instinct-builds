@@ -248,6 +248,8 @@ jobs:
           shoot contact-sheet 1920x1200 contact-sheet demo-contact-sheet-all.pdf
           shoot place-mockup 1920x1200 place-mockup
           DELAY=14 shoot place-all 1920x1200 place-all demo-place-all.txt
+          DELAY=12 shoot place-edit 1920x1200 place-edit
+          DELAY=12 shoot place-relink 1920x1200 place-relink
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
           cp "$SUP/demo-contact-sheet-all.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"
