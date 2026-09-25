@@ -411,3 +411,17 @@ NOISE COLOR is append-only destination 32 in the modulation matrix. Route an LFO
 ## 0.53.0 Stereo noise WIDTH
 
 FILTER 2 + SUB adds a compact noise WIDTH control. At zero, the original single noise source and its mono rendering remain untouched. Above zero, an independent right-hand noise stream opens the stereo field, including in HQ mode; `noisew` is optional so old preset lines and the 40 AU parameter IDs stay unchanged.
+
+## 0.54.0 Live matrix metering
+
+Every occupied matrix row now has a thin white live marker on its depth bar.
+The marker is signed and normalized to that destination's full depth: left
+of center means negative contribution and right means positive. The fixed
+colored bar and white handle remain the editable route amount. Voice-route
+meters show the largest absolute contribution from active voices during the
+last render block, including response curve and AUX scaling; they clear after
+release. FX macro routes show their static contribution even without notes,
+while FX LFO routes follow the rack's block-rate activity. Unsupported
+source/destination pairs show no activity. The AU publishes all 16 values to
+its hosted editor and the standalone uses the same engine readings. Meter
+work does not add modulation or change rendered audio.

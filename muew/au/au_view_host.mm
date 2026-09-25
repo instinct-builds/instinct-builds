@@ -1780,6 +1780,44 @@ int main() {
                   wideState.serialize().find("\nnoisew 0.8\n")!=std::string::npos,
                   "noise WIDTH 80 reached the AU without changing the color route");
             Snapshot(view,"MUEW_NOISE53_PNG","stereo noise WIDTH panel snapshot written");
+            // 0.54.0: the matrix meter follows signed, curved/AUX-scaled
+            // engine contributions. Snapshot while the routed note sounds.
+            muew::Preset metered=wideState;
+            metered.voice.noiseCharacter=1; metered.voice.noiseLevel=.3; metered.voice.ampR=.001;
+            metered.voice.lfo1Rate=2.0;
+            metered.voice.macros[0]=.75;
+            metered.routes={{muew::ModRoute::Source::Macro1,muew::ModRoute::Dest::FilterCutoff,2.5},
+                            {muew::ModRoute::Source::LFO1,muew::ModRoute::Dest::NoiseColor,.85}};
+            CFStringRef meterText=CFStringCreateWithCString(kCFAllocatorDefault,metered.serialize().c_str(),kCFStringEncodingUTF8);
+            bool meterInstalled=meterText && AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&meterText,sizeof(meterText))==noErr;
+            if (meterText) CFRelease(meterText);
+            if ([view respondsToSelector:colorSync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:colorSync])(view,colorSync,YES);
+            MusicDeviceMIDIEvent(gUnit,0x90,60,110,0);
+            bool meterRendered=RenderBlock(512);
+            MUEWPerformance meter{}; UInt32 meterSize=sizeof(meter);
+            bool meterRead=AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&meter,&meterSize)==noErr;
+            Check(meterInstalled && meterRendered && meterRead && meterSize==sizeof(meter) &&
+                  meter.routeMeter[0]>.36f && meter.routeMeter[0]<.39f &&
+                  std::fabs(meter.routeMeter[1])>.005f && std::fabs(meter.routeMeter[1])<=.85f,
+                  "matrix activity exposes per-route signed normalized modulation from the real AU render");
+            SEL meterFollow=NSSelectorFromString(@"muewFollowPerformance");
+            if ([view respondsToSelector:meterFollow]) ((void (*)(id,SEL))[view methodForSelector:meterFollow])(view,meterFollow);
+            NSString* meterShown=[view respondsToSelector:NSSelectorFromString(@"muewRouteMetersText")] ? [view valueForKey:@"muewRouteMetersText"] : @"";
+            Check(meterShown.length>20 && [meterShown containsString:@"routes=0.375"],
+                  "hosted editor follows live route meter values, not static amounts");
+            Snapshot(view,"MUEW_MATRIX54_PNG","live matrix row meter snapshot written");
+            MusicDeviceMIDIEvent(gUnit,0xB0,123,0,0); for(int k=0;k<80;++k) RenderBlock();
+            MUEWPerformance meterOff{}; UInt32 meterOffSize=sizeof(meterOff);
+            bool meterCleared=AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&meterOff,&meterOffSize)==noErr;
+            Check(meterCleared && meterOff.activeVoices==0 && meterOff.routeMeter[0]==0 && meterOff.routeMeter[1]==0,
+                  "matrix voice rows clear after all notes release");
+            // Keep the older proof and subsequent routing assertions on the
+            // original color/WIDTH state, not the metering demonstration.
+            CFStringRef restored=CFStringCreateWithCString(kCFAllocatorDefault,wideState.serialize().c_str(),kCFStringEncodingUTF8);
+            if(restored) { AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&restored,sizeof(restored)); CFRelease(restored); }
+            if ([view respondsToSelector:colorSync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:colorSync])(view,colorSync,YES);
+            [view setValue:@0 forKey:@"matrixPage"];
+
             Snapshot(view, "MUEW_NOISE52_PNG", "NOISE COLOR matrix route snapshot written");
             Snapshot(view, "MUEW_NOISE51_PNG", "noise character panel snapshot written");
             Snapshot(view, "MUEW_FILTER2_PNG", "FILTER 2 routing panel snapshot written");

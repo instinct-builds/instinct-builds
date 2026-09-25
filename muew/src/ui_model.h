@@ -101,14 +101,7 @@ inline const char* filterModeName(int m) {
 
 // Full-scale route amount per destination (units differ by dest): the
 // matrix shows and edits amount / scale in -1..1.
-inline double routeScale(ModRoute::Dest d) {
-    switch (d) {
-    case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: return 24.0; // semitones
-    case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: return 5.0; // octaves
-    case ModRoute::Dest::FilterResonance: return 8.0;                           // Q
-    default: return 1.0;
-    }
-}
+inline double routeScale(ModRoute::Dest d) { return routeMeterScale(d); }
 inline double routeDisplayAmount(const ModRoute& r) { return std::clamp(r.amount / routeScale(r.dest), -1.0, 1.0); }
 inline void setRouteDisplayAmount(ModRoute& r, double n) { r.amount = std::clamp(n, -1.0, 1.0) * routeScale(r.dest); }
 // The FX rack is shared by every voice, so FX destinations follow only the

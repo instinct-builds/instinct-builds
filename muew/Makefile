@@ -1,7 +1,7 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
 
-all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-filterroute build/muew-tests-voicex build/muew-tests-perf build/muew-tests-arp
+all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-matrix-meter54 build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-filterroute build/muew-tests-voicex build/muew-tests-perf build/muew-tests-arp
 
 build:
 	mkdir -p build out
@@ -48,6 +48,9 @@ build/muew-tests-unison: tests/tests_unison_fx.cpp src/voice.h src/fx.h src/pres
 
 build/muew-tests-matrix: tests/tests_matrix.cpp src/voice.h src/lfo.h src/preset.h src/ui_model.h src/factory_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_matrix.cpp
+
+build/muew-tests-matrix-meter54: tests/tests_matrix_meter54.cpp src/synth.h src/voice.h src/fx.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
 build/muew-tests-layers: tests/tests_layers.cpp src/layers.h src/voice.h src/preset.h src/au_params.h src/ui_model.h src/factory_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ tests/tests_layers.cpp

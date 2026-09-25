@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <array>
 #include "tempo_sync.h"
 #include "mod_curve.h"
 #include "filter.h"
@@ -906,6 +907,7 @@ struct FXParams {
 // passes through untouched when off.
 class FXChain {
 public:
+    static constexpr int kRouteMeters = 16;
     // init is also the host Reset (0.29.0): every unit starts from power-on state - buffers, filter
     // memories, LFO phases, detectors - then the current sound and tempo are put back.
     void init(double sr) {
@@ -947,8 +949,13 @@ public:
     // 0.16.0: lfo -1 is a static (macro) value `value` whose route has a rack
     // LFO aux; curve shapes the LFO; auxLfo (-1 none) scales by its 0..1 level;
     // auxScale is a static aux factor (a macro aux), 1 = none.
-    struct LfoRoute { int lfo; int dest; double amount; double curve = 0.0; int auxLfo = -1; double auxScale = 1.0; double value = 0.0; };
+    struct LfoRoute { int lfo; int dest; double amount; double curve = 0.0; int auxLfo = -1; double auxScale = 1.0; double value = 0.0; int slot = -1; };
     enum { kDrive, kDelayFb, kRevDecay, kPhDepth, kFlDepth, kChDepth, kHyDetune, kFiCutoff };
+    void setRouteBaseMeter(int slot, float level) {
+        if (slot >= 0 && slot < kRouteMeters) routeLevel_[slot] = level;
+    }
+    void clearRouteMeters() { routeLevel_.fill(0.0f); }
+    float routeLevel(int slot) const { return slot >= 0 && slot < kRouteMeters ? routeLevel_[slot] : 0.0f; }
     void setLfoRoutes(const Mod& base, const std::vector<LfoRoute>& routes) {
         base_ = base; lfoRoutes_ = routes;
         if (routes.empty()) setMod(base); else lfoTick_ = 0;
@@ -1006,6 +1013,7 @@ private:
     int lfoTick_ = 0;
     Mod base_;
     std::vector<LfoRoute> lfoRoutes_;
+    std::array<float, kRouteMeters> routeLevel_{}; // latest rack tick, audio-thread owned
     void updateLfoMod() {
         lfoTick_ = kLfoBlock - 1;
         double v[2];
@@ -1021,6 +1029,8 @@ private:
             if (r.auxScale != 1.0) src *= r.auxScale;
             if (r.auxLfo >= 0) src *= std::clamp(0.5 * (v[r.auxLfo & 1] + 1.0), 0.0, 1.0);
             const double x = src * r.amount;
+            if (r.slot >= 0 && r.slot < kRouteMeters)
+                routeLevel_[r.slot] = (float)std::clamp(x, -1.0, 1.0);
             switch (r.dest) {
             case kDrive: m.drive += x; break;
             case kDelayFb: m.delayFeedback += x; break;

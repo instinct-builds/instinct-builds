@@ -12,6 +12,7 @@ namespace muew {
 // Polyphonic synth: fixed voice pool, oldest-voice stealing, soft-clipped mix.
 class Synth {
 public:
+    static_assert(FXChain::kRouteMeters == kMaxRoutes, "FX and voice matrix meter slot counts must agree");
     explicit Synth(int maxVoices = 16) {
         voices_.resize(maxVoices); polyVoices_ = maxVoices;
         for (int i = 0; i < maxVoices; ++i) voices_[i].seedPhases(0x9e3779b9u * (uint32_t)(i + 1)); // 0.23.0 RANDOM phase streams
@@ -65,7 +66,9 @@ public:
         // rack LFOs) can modulate it.
         FXChain::Mod m;
         std::vector<FXChain::LfoRoute> lr;
-        for (const auto& r : routes) {
+        fx_.clearRouteMeters();
+        for (size_t slot = 0; slot < routes.size(); ++slot) {
+            const auto& r = routes[slot];
             int d = -1;
             switch (r.dest) {
             case ModRoute::Dest::DistDrive: d = FXChain::kDrive; break;
@@ -88,7 +91,7 @@ public:
             const int auxLfo = auxRack ? ax - (int)ModRoute::Source::FxLfo1 : -1;
             if (r.source == ModRoute::Source::FxLfo1 || r.source == ModRoute::Source::FxLfo2) {
                 FXChain::LfoRoute x{r.source == ModRoute::Source::FxLfo2 ? 1 : 0, d, r.amount};
-                x.curve = r.curve; x.auxLfo = auxLfo; x.auxScale = auxScale;
+                x.curve = r.curve; x.auxLfo = auxLfo; x.auxScale = auxScale; x.slot = (int)slot;
                 lr.push_back(x);
                 continue;
             }
@@ -97,8 +100,9 @@ public:
             double src = p.macros[s];
             if (r.curve != 0.0) src = routeCurve(src, r.curve);
             if (auxMacro) src *= auxScale;
-            if (auxRack) { FXChain::LfoRoute x{-1, d, r.amount}; x.auxLfo = auxLfo; x.value = src; lr.push_back(x); continue; }
+            if (auxRack) { FXChain::LfoRoute x{-1, d, r.amount}; x.auxLfo = auxLfo; x.value = src; x.slot = (int)slot; lr.push_back(x); continue; }
             const double v = src * r.amount;
+            fx_.setRouteBaseMeter((int)slot, (float)std::clamp(v, -1.0, 1.0));
             switch (d) {
             case FXChain::kDrive: m.drive += v; break;
             case FXChain::kDelayFb: m.delayFeedback += v; break;
@@ -245,6 +249,15 @@ public:
     int heldCount() const { return held_; }
     const Voice& voice(int i) const { return voices_[std::clamp(i, 0, (int)voices_.size() - 1)]; }
 
+    // Largest absolute per-voice contribution, sign preserved; FX routes follow
+    // the rack's latest block-rate LFO tick. No voice means no voice activity.
+    void resetRouteMeters() { for (auto& v : voices_) v.resetRouteMeters(); }
+    float routeMeter(int slot) const {
+        if (slot < 0 || slot >= kMaxRoutes) return 0.0f;
+        float peak = fx_.routeLevel(slot);
+        for (const auto& v : voices_) if (v.isActive() && std::fabs(v.routePeak(slot)) > std::fabs(peak)) peak = v.routePeak(slot);
+        return peak;
+    }
     int activeVoiceCount() const {
         int n = 0;
         for (const auto& v : voices_) if (v.isActive()) ++n;
@@ -278,6 +291,7 @@ public:
     double latencySamples() const { return (oscHQ() ? Voice::kHQLatency : 0.0) + fx_.latencySamples(); }
 
     void render(float* out, int frames) {
+        resetRouteMeters();
         for (int i = 0; i < frames; ++i) {
             if (arpOn_) arpTick();
             float mix = mixVoices();
@@ -288,6 +302,7 @@ public:
 
     // Interleaved stereo: voice sum goes through the FX chain.
     void renderStereo(float* interleaved, int frames) {
+        resetRouteMeters();
         for (int i = 0; i < frames; ++i) {
             float l, r;
             if (arpOn_) arpTick();
@@ -302,6 +317,7 @@ public:
 
     // Non-interleaved stereo (Audio Unit buffer layout): same path as renderStereo.
     void renderPlanar(float* left, float* right, int frames) {
+        resetRouteMeters();
         for (int i = 0; i < frames; ++i) {
             float l, r;
             if (arpOn_) arpTick();

@@ -9,6 +9,7 @@
 #include "mod_curve.h"
 #include "spectral_process.h"
 #include <cmath>
+#include <array>
 
 namespace muew {
 
@@ -188,6 +189,15 @@ struct VoiceParams {
 
 constexpr int kMaxUnison = 8;
 constexpr int kMaxRoutes = 16; // mod matrix slots
+// Display full scale for route activity, shared with the matrix depth control.
+inline double routeMeterScale(ModRoute::Dest d) {
+    switch (d) {
+    case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: return 24.0;
+    case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: return 5.0;
+    case ModRoute::Dest::FilterResonance: return 8.0;
+    default: return 1.0;
+    }
+}
 
 // Tempo-sync divisions (kSyncCount, syncBeats) live in tempo_sync.h.
 // LFO rate in Hz for a free rate or a synced division at `bpm`.
@@ -377,6 +387,7 @@ public:
         dcL_.reset(); dcR_.reset();
         glideLeft_ = 0; glideSemi_ = 0.0;
         hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset(); hbNoiseR_.reset(); // 0.30.0 / 0.31.0 / 0.53.0
+        resetRouteMeters();
     }
     // 0.30.0: oscillator oversampling on/off (the synth passes the effective QUALITY).
     void setHQ(bool on) {
@@ -390,6 +401,9 @@ public:
     bool hq() const { return hq_; }
     static constexpr double kHQLatency = Halfband2x::kLatency * 0.5; // 7.5 samples at 1x
     bool isActive() const { return ampEnv_.isActive(); }
+    // Peak signed contribution this voice actually applied since its last meter reset.
+    void resetRouteMeters() { routePeak_.fill(0.0f); }
+    float routePeak(int slot) const { return slot >= 0 && slot < kMaxRoutes ? routePeak_[slot] : 0.0f; }
     double liveSpecMorph(int o) const { return liveMorph_[o ? 1 : 0]; } // 0.35.0 meter: the morph this voice last played
     bool dcBlockerOn() const { return dcOn_; } // 0.12.0 (tests)
     int note() const { return note_; }
@@ -422,13 +436,19 @@ public:
                                         note_ >= 0 ? std::clamp((note_ - 60) / 60.0, -1.0, 1.0) : 0.0};
         auto modSum = [&](ModRoute::Dest d) {
             double sum = 0.0;
-            for (const auto& r : routes_) {
+            for (size_t slot = 0; slot < routes_.size(); ++slot) {
+                const auto& r = routes_[slot];
                 if (r.dest != d) continue;
                 const int si = (int)r.source;
                 double src = (si >= 0 && si < kModSources) ? sv[si] : 0.0;
                 if (r.curve != 0.0) src = routeCurve(src, r.curve);
                 if (r.aux >= 0 && r.aux < kModSources && !sourceIsRack(r.aux)) src *= auxLevel(r.aux, sv[r.aux]); // 0.16.0
-                sum += src * r.amount;
+                const double contribution = src * r.amount;
+                if (slot < kMaxRoutes) {
+                    const float level = (float)std::clamp(contribution / routeMeterScale(d), -1.0, 1.0);
+                    if (std::fabs(level) > std::fabs(routePeak_[slot])) routePeak_[slot] = level;
+                }
+                sum += contribution;
             }
             return sum;
         };
@@ -797,6 +817,7 @@ private:
         mseg2_.setRate(msegSeconds(params_.mseg2Seconds, params_.mseg2Sync, bpm_));
     }
     VoiceParams params_;
+    std::array<float, kMaxRoutes> routePeak_{}; // render-block peaks; audio-thread owned
     std::vector<ModRoute> routes_;
 };
 

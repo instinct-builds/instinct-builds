@@ -110,6 +110,7 @@ struct MUEWInstance {
     std::atomic<float> liveMorph[2]{{-1.0f}, {-1.0f}}; // 0.35.0 editor morph meter
     std::atomic<float> voiceMorph[2][8]{};              // 0.36.0 per-voice ghosts
     std::atomic<UInt32> voiceMorphN[2]{{0u}, {0u}};
+    std::atomic<float> routeMeter[muew::kMaxRoutes]{}; // 0.54.0 block peaks
     double cpuSmooth = 0.0;
     double notifiedLatency = 0.0; // samples, as last announced to the host
     // Samples the current sound runs late (oscillator HQ 7.5, HQ distortion 22.5).
@@ -564,6 +565,7 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                     pf.voiceMorphCount[o] = u->voiceMorphN[o].load();
                     for (int i = 0; i < 8; ++i) pf.voiceMorph[o][i] = u->voiceMorph[o][i].load();
                 }
+                for (int i = 0; i < muew::kMaxRoutes; ++i) pf.routeMeter[i] = u->routeMeter[i].load();
                 *static_cast<MUEWPerformance*>(outData) = pf;
                 *ioDataSize = sizeof(MUEWPerformance);
                 return noErr;
@@ -790,6 +792,7 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
             for (int i = 0; i < 8; ++i) u->voiceMorph[o][i] = i < n ? vm[i] : -1.0f;
             u->voiceMorphN[o] = (UInt32)n;
         }
+        for (int i = 0; i < muew::kMaxRoutes; ++i) u->routeMeter[i] = u->synth.routeMeter(i);
         u->oscHQ = u->synth.oscHQ() ? 1u : 0u;
     }
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));

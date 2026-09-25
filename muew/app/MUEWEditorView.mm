@@ -79,6 +79,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
+        std::fill_n(routeMeters, kMaxRoutes, 0.0f);
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
@@ -531,6 +532,22 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         morphCacheOut[o] = ms.isIdentity() ? current.tables[o] : processTable(current.tables[o], ms);
     }
     return morphCacheOut[o];
+}
+// Matrix activity overlays the static depth bar, with the same center and scale.
+// Only visible rows need repainting; values come from actual render contributions.
+- (void)showRouteMeters:(const float*)values count:(int)n {
+    for (int slot = 0; slot < kMaxRoutes; ++slot) {
+        float v = slot < n && values ? values[slot] : 0.0f;
+        v = std::isfinite(v) ? std::clamp(v, -1.0f, 1.0f) : 0.0f;
+        if (std::fabs(v - routeMeters[slot]) < 0.008f) continue;
+        routeMeters[slot] = v;
+        if (slot / 4 == matrixPage) [self setNeedsDisplayInRect:NSInsetRect([self routeBar:slot % 4], -2, -2)];
+    }
+}
+- (NSString*)muewRouteMetersText {
+    NSMutableString* text = [NSMutableString stringWithString:@"routes="];
+    for (int i = 0; i < kMaxRoutes; ++i) [text appendFormat:@"%@%.3f", i ? @"," : @"", routeMeters[i]];
+    return text;
 }
 - (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render {
     const int pc = (int)std::lround(std::clamp(cpu, 0.0f, 9.99f) * 100), was = (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100);
@@ -2122,6 +2139,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         double amt = ui::routeDisplayAmount(rt);
         CGFloat mid = NSMidX(track), w = amt * track.size.width / 2;
         FillRound(NSMakeRect(w >= 0 ? mid : mid + w, track.origin.y, std::fabs(w), 5), 2.5, col);
+        // Thin live line sits inside the depth control without replacing its
+        // editable amount. A signed position shows polarity as well as energy.
+        if (ui::routeActive(rt) && std::fabs(routeMeters[slot]) > 0.006f) {
+            const CGFloat px = mid + routeMeters[slot] * track.size.width / 2;
+            FillRound(NSMakeRect(px - 1, track.origin.y - 3, 2, 11), 1, C(0xffffff, .94));
+            FillRound(NSMakeRect(px - 2.5, track.origin.y + 7.5, 5, 2), 1, [col colorWithAlphaComponent:.95]);
+        }
         FillRound(NSMakeRect(mid + w - 3, track.origin.y - 2, 6, 9), 2, C(0xeaf1f8));
         // Curve glyph: the route's response, 0..1 in and out.
         NSRect cg = [self routeCurve:i];

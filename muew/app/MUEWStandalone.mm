@@ -15,6 +15,7 @@ using namespace muew;
 static std::atomic<float> gCpu{0}; // 0.30.0 header meter: smoothed real-time load
 static std::atomic<int> gVoices{0};
 static std::atomic<float> gMorphA{-1.0f}, gMorphB{-1.0f}; // 0.35.0 live morph meter
+static std::atomic<float> gRouteMeter[kMaxRoutes]{}; // 0.54.0
 static std::atomic<float> gVoiceMorph[2][8]{}; static std::atomic<int> gVoiceMorphN[2]{{0}, {0}}; // 0.36.0
 
 static NSColor* C(uint32_t rgb, CGFloat a = 1) {
@@ -69,6 +70,7 @@ struct StandaloneHost : MUEWEditorHost {
         const double used = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), budget = count / 44100.0;
         if (budget > 0) { const float c = gCpu.load(); gCpu = c + 0.1f * ((float)std::min(used / budget, 4.0) - c); }
         gVoices = s->activeVoiceCount();
+        for (int i = 0; i < kMaxRoutes; ++i) gRouteMeter[i] = s->routeMeter(i);
         gMorphA = s->specMorphMeter(0); gMorphB = s->specMorphMeter(1); // 0.35.0
         for (int o = 0; o < 2; ++o) { float vm[8]; const int n = s->specMorphVoices(o, vm, 8); for (int i = 0; i < 8; ++i) gVoiceMorph[o][i] = i < n ? vm[i] : -1.0f; gVoiceMorphN[o] = n; }
         return noErr;
@@ -81,6 +83,8 @@ struct StandaloneHost : MUEWEditorHost {
     meter = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15 repeats:YES block:^(NSTimer*) {
         const auto& vp = view->current.voice;
         [view showEngineVoices:gVoices.load() limit:vp.voiceMode != 0 ? 1 : vp.polyVoices cpu:gCpu.load() render:false];
+        float route[kMaxRoutes]; for (int i = 0; i < kMaxRoutes; ++i) route[i] = gRouteMeter[i].load();
+        [view showRouteMeters:route count:kMaxRoutes]; // 0.54.0
         [view showLiveMorphA:gMorphA.load() b:gMorphB.load()]; // 0.35.0
         float va[8], vb[8]; for (int i = 0; i < 8; ++i) { va[i] = gVoiceMorph[0][i].load(); vb[i] = gVoiceMorph[1][i].load(); }
         [view showVoiceMorph:va count:gVoiceMorphN[0].load() b:vb count:gVoiceMorphN[1].load()]; // 0.36.0
