@@ -34,6 +34,7 @@ struct ASSSETSApp: App {
                 Button("Find Similar") { if let id = library.focusID { library.findSimilar(id) } }.keyboardShortcut("f", modifiers: [.command, .option]).disabled(library.focusID == nil)
                 Button("New Collection") { library.newCollection(with: []) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("Place into Mockup…") { library.openPlaceIntoMockup() }.keyboardShortcut("p", modifiers: [.command, .option]).disabled(!library.canPlaceFocus)
+                Button("Batch Place into Mockup…") { library.openBatchPlacement() }.disabled(!library.canBatchPlace)
                 Button("Batch Rename…") { library.openBatchRename() }.keyboardShortcut("r", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
                 Divider()
                 Button("Stack as Versions") { library.stackSelection() }.keyboardShortcut("g", modifiers: [.command]).disabled(!library.canStack)
@@ -1119,6 +1120,7 @@ final class StudioLibrary: ObservableObject {
     // MARK: Place into Mockup (1.29)
 
     @Published var placing: PlaceState?
+    @Published var batchPlacement: BatchPlaceState?
     private var psdCache: [String: PsdDocument] = [:]
 
     /// Layered PSD mockups in the library whose file is still there (bundled and the user's own).
@@ -1155,6 +1157,61 @@ final class StudioLibrary: ObservableObject {
         guard let px = artPixels(art, maxPixel: 900) else { flash("Could not read \(art.title)"); return }
         let pick = mockup.flatMap { m in mockups.first { $0.id == m } } ?? mockups[0]
         placing = PlaceState(art: art, preview: px, mockups: mockups.map(\.id), mockup: pick.id)
+    }
+
+    var batchPlaceArts: [StudioAsset] {
+        catalog.assets.filter { selection.contains($0.id) && canPlace($0) && $0.kind != .mockup &&
+            ($0.importedPath.map { FileManager.default.fileExists(atPath: $0) } ?? ($0.sourceKey?.hasPrefix("generated:") == true)) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+    var canBatchPlace: Bool { batchPlaceArts.count >= 2 }
+
+    func openBatchPlacement() {
+        let arts = batchPlaceArts
+        guard arts.count >= 2 else { flash("Select two or more still artworks"); return }
+        let mockups = mockupAssets.filter { psdDocument($0).map { !MockupPlacement.targetLayers($0).isEmpty } ?? false }
+        guard let first = mockups.first else { flash("No layered PSD mockups in the library"); return }
+        batchPlacement = BatchPlaceState(arts: arts.map(\.id), mockups: mockups.map(\.id), mockup: first.id)
+    }
+
+    /// Renders each artwork separately and records one undo step for the batch. The selected asset IDs
+    /// are resolved again at save time so removed or moved files cannot turn into a different artwork.
+    func commitBatchPlacement(_ state: BatchPlaceState) {
+        guard let mockup = catalog.assets.first(where: { $0.id == state.mockup }), let doc = psdDocument(mockup),
+              let layer = state.layer ?? MockupPlacement.targetLayers(doc).first,
+              doc.layers.indices.contains(layer), MockupPlacement.targetLayers(doc).contains(layer) else {
+            flash("Choose a mockup design layer"); return
+        }
+        batchPlacement = nil
+        let before = catalog, mode = state.mode, bg = state.background.rgb, name = doc.layers[layer].name
+        let arts = state.arts.compactMap { id in catalog.assets.first { $0.id == id } }
+        flash("Placing \(arts.count) artworks into \(mockup.title)…")
+        Task { @MainActor in
+            var ids: [UUID] = []
+            for a in arts {
+                guard let current = catalog.assets.first(where: { $0.id == a.id }),
+                      current.importedPath.map({ FileManager.default.fileExists(atPath: $0) }) ?? (current.sourceKey?.hasPrefix("generated:") == true),
+                      let art = artPixels(current, maxPixel: 2400) else { continue }
+                let image = await Task.detached(priority: .userInitiated) {
+                    Self.renderPlaced(art: art, doc: doc, layer: layer, mode: mode, crop: nil, background: bg)
+                }.value
+                let recipe = PlacementRecipe(artID: current.id, mockupID: mockup.id, layerName: name, mode: mode,
+                                             background: state.background.rawValue)
+                if let image, let id = savePlaced(image, art: current, mockup: mockup, recipe: recipe, stackOnArt: true, undo: nil) { ids.append(id) }
+            }
+            if !ids.isEmpty { _ = history.record("Batch Place into Mockup", before: before, after: catalog) }
+            refreshAutoTags()
+            guard !ids.isEmpty else { flash("No artworks could be placed"); return }
+            selection = Set(ids); focusID = ids.first
+            flash(ids.count == arts.count ? "Placed \(ids.count) artworks into \(mockup.title)" :
+                "Placed \(ids.count) of \(arts.count); check missing source files")
+            if isDemo {
+                let recipes = ids.compactMap { id in catalog.assets.first { $0.id == id }?.placementRecipe }
+                let rights = ids.compactMap { id in catalog.assets.first { $0.id == id }?.rights }.count
+                try? "done placed=\(ids.count) recipes=\(recipes.count) rights=\(rights) unique-art=\(Set(recipes.map(\.artID)).count)".write(
+                    to: supportRoot.appendingPathComponent("demo-batch-place.txt"), atomically: true, encoding: .utf8)
+            }
+        }
     }
 
     /// Opens the stored placement without guessing when either source moved or left the library.
@@ -1224,7 +1281,7 @@ final class StudioLibrary: ObservableObject {
 
     /// Writes the render next to the library and files it on the mockup's version stack. Returns the new asset id.
     @discardableResult
-    func savePlaced(_ buf: PixelBuffer, art: StudioAsset, mockup: StudioAsset, recipe: PlacementRecipe, undo: String? = "Place into Mockup") -> UUID? {
+    func savePlaced(_ buf: PixelBuffer, art: StudioAsset, mockup: StudioAsset, recipe: PlacementRecipe, stackOnArt: Bool = false, undo: String? = "Place into Mockup") -> UUID? {
         let dir = supportRoot.appendingPathComponent("Placed", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(DragOut.safeName("\(art.title) on \(mockup.title)") + "-" + String(UUID().uuidString.prefix(6)) + ".png")
@@ -1234,7 +1291,7 @@ final class StudioLibrary: ObservableObject {
         let small = MediaRenderer.pixelBuffer(from: cg, maxPixel: 160)
         var id: UUID?
         mutate(undo) { c in
-            id = c.addPlacedMockup(path: url.path, art: art.id, mockup: mockup.id, resolution: "\(buf.width) × \(buf.height)", recipe: recipe)
+            id = c.addPlacedMockup(path: url.path, art: art.id, mockup: mockup.id, resolution: "\(buf.width) × \(buf.height)", recipe: recipe, stackOnArt: stackOnArt)
             if let id, let i = c.assets.firstIndex(where: { $0.id == id }), let small {
                 let colors = PaletteExtractor.colors(from: small, count: 5).map(\.hex)
                 if colors.count >= 3 { c.assets[i].palette = colors }
@@ -1866,6 +1923,20 @@ final class StudioLibrary: ObservableObject {
                     // Swap to the alternate backdrop and switch the glare off, like a user would.
                     let flips = doc.layers.indices.filter { doc.layers[$0].hidden || doc.layers[$0].name == "Screen Glare" }
                     psdToggled[a.id] = Set(flips)
+                }
+            }
+        case "batch-place", "batch-place-results":
+            let starters = catalog.assets.filter(\.isStarter)
+            let names = ["risograph-4k.png", "blueprint-4k.png", "ink-fiber-4k.png"]
+            let art = names.compactMap { name in starters.first { $0.importedPath?.hasSuffix(name) == true } }
+            if art.count >= 2 {
+                show(collection: art[0].collection); selection = Set(art.map(\.id)); focusID = art[0].id
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.openBatchPlacement()
+                    if let poster = self.mockupAssets.first(where: { $0.importedPath?.hasSuffix("poster-frame-mockup.psd") == true }) {
+                        self.batchPlacement?.mockup = poster.id
+                    }
+                    if demo == "batch-place-results", let state = self.batchPlacement { self.commitBatchPlacement(state) }
                 }
             }
         case "place-mockup", "place-all", "place-edit", "place-relink":
@@ -4210,6 +4281,137 @@ struct ArrowLabel: View {
     }
 }
 
+// MARK: - Batch place artworks into one mockup (1.31)
+
+struct BatchPlaceState: Identifiable {
+    let id = UUID()
+    let arts: [UUID]
+    let mockups: [UUID]
+    var mockup: UUID
+    var layer: Int?
+    var mode: PlacementMode = .fill
+    var background: PlaceBackground = .white
+}
+
+struct BatchPlaceSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    @State var state: BatchPlaceState
+    @State private var previews: [UUID: CGImage] = [:]
+    private var mockup: StudioAsset? { model.catalog.assets.first { $0.id == state.mockup } }
+    private var doc: PsdDocument? { mockup.flatMap { model.psdDocument($0) } }
+    private var layers: [Int] { doc.map { MockupPlacement.targetLayers($0) } ?? [] }
+    private var layerIndex: Int? { state.layer ?? layers.first }
+    private var renderKey: String { "\(state.mockup)|\(layerIndex ?? -1)|\(state.mode.rawValue)|\(state.background.rawValue)" }
+    private var arts: [StudioAsset] { state.arts.compactMap { id in model.catalog.assets.first { $0.id == id } } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "square.stack.3d.up").foregroundStyle(Theme.accent)
+                Text("Batch Place into Mockup").font(.system(size: 17, weight: .bold))
+                Spacer()
+                Text("\(state.arts.count) artworks · renders on this Mac")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(state.mockups, id: \.self) { id in
+                        if let a = model.catalog.assets.first(where: { $0.id == id }) {
+                            Button(a.title) { state.mockup = id; state.layer = nil }
+                        }
+                    }
+                } label: {
+                    Label(mockup?.title ?? "Choose Mockup", systemImage: "square.3.layers.3d")
+                        .lineLimit(1).font(.caption.weight(.semibold))
+                }.frame(width: 195)
+                Menu {
+                    ForEach(layers, id: \.self) { i in
+                        Button(doc?.layers[i].name ?? "Layer") { state.layer = i }
+                    }
+                } label: {
+                    Text(layerIndex.flatMap { doc?.layers[$0].name } ?? "Design layer")
+                        .font(.caption.weight(.semibold)).lineLimit(1)
+                }.frame(width: 100).disabled(layers.count < 2)
+                Spacer(minLength: 0)
+                Picker("Mode", selection: $state.mode) {
+                    ForEach(PlacementMode.allCases) { m in Text(m.rawValue).tag(m) }
+                }.frame(width: 110)
+                Picker("Background", selection: $state.background) {
+                    ForEach(PlaceBackground.allCases) { b in Text(b.rawValue).tag(b) }
+                }.frame(width: 150)
+            }
+            HStack {
+                InspectorLabel(text: "ONE RENDER PER ARTWORK")
+                Spacer()
+                Text("Each render keeps its artwork's rights and editable settings")
+                    .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            }
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                    ForEach(arts) { art in
+                        VStack(alignment: .leading, spacing: 7) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8).fill(Theme.panel)
+                                if let image = previews[art.id] {
+                                    Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                                } else { ProgressView().controlSize(.small) }
+                            }.frame(height: 135).clipShape(RoundedRectangle(cornerRadius: 8))
+                            Text(art.title).font(.caption.weight(.semibold)).lineLimit(1)
+                            Label(rightsLine(art), systemImage: art.rightsStatus().isProblem || art.rightsStatus() == .missing ? "exclamationmark.circle" : "checkmark.seal")
+                                .font(.caption2).foregroundStyle(art.rightsStatus().isProblem || art.rightsStatus() == .missing ? Theme.warning : .secondary)
+                                .lineLimit(1)
+                        }
+                        .padding(10).background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))
+                        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Theme.hairline))
+                    }
+                }
+                .padding(2)
+            }.frame(height: 408)
+            HStack {
+                Button("Cancel") { model.batchPlacement = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Text("\(state.arts.count) new versions · one undo step").font(.caption).foregroundStyle(.secondary)
+                Button("Place \(state.arts.count) Artworks") { model.commitBatchPlacement(state) }
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(layerIndex == nil)
+            }
+        }
+        .padding(20).frame(width: 900).background(Theme.backdrop)
+        .environment(\.colorScheme, .dark)
+        .task(id: renderKey) { await makePreviews() }
+    }
+
+    private func rightsLine(_ art: StudioAsset) -> String {
+        if let rights = art.rights, !rights.isEmpty {
+            let status = art.rightsStatus()
+            let flag: String
+            switch status {
+            case .expired: flag = "Expired · "
+            case .expiring: flag = "Expiring · "
+            case .editorial: flag = "Editorial · "
+            default: flag = ""
+            }
+            return flag + [rights.license.rawValue, rights.credit.isEmpty ? rights.source : rights.credit]
+                .filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        return art.isStarter || art.sourceKey?.hasPrefix("generated:") == true ? "ASSSETS bundled library" : "No rights info"
+    }
+
+    private func makePreviews() async {
+        previews = [:]
+        guard let doc else { return }
+        let layer = layerIndex, mode = state.mode, bg = state.background.rgb
+        for art in arts {
+            guard !Task.isCancelled else { return }
+            guard let pixels = model.artPixels(art, maxPixel: 340) else { continue }
+            let result = await Task.detached(priority: .userInitiated) {
+                StudioLibrary.renderPlaced(art: pixels, doc: doc, layer: layer, mode: mode, crop: nil, background: bg)
+            }.value
+            guard !Task.isCancelled else { return }
+            if let result, let image = MediaRenderer.cgImage(result, maxPixel: 360) { previews[art.id] = image }
+        }
+    }
+}
+
 // MARK: - Place into Mockup (1.29)
 
 enum PlaceBackground: String, CaseIterable, Identifiable {
@@ -4831,6 +5033,7 @@ struct StudioView: View {
         .sheet(item: $model.smartEditor) { state in SmartEditor(state: state).environmentObject(model) }
         .sheet(item: $model.cropping) { st in CropSheet(state: st).environmentObject(model) }
         .sheet(item: $model.placing) { st in PlaceMockupSheet(state: st).environmentObject(model) }
+        .sheet(item: $model.batchPlacement) { st in BatchPlaceSheet(state: st).environmentObject(model) }
         .sheet(item: $model.sheetPreview) { p in ContactSheetPreview(preview: p).environmentObject(model) }
         .sheet(item: $model.rightsWarning) { w in RightsWarningSheet(warning: w).environmentObject(model) }
         .sheet(item: $model.presetDraft) { d in PresetSaveSheet(draft: d).environmentObject(model) }
@@ -5684,6 +5887,7 @@ struct AssetMenu: View {
         }
         if !many && primary.kind != .audio { Button("Find Similar") { model.findSimilar(primary.id) } }
         if !many && model.canPlace(primary) { Button("Place into Mockup…") { model.openPlaceIntoMockup(primary.id) } }
+        if many && model.canBatchPlace { Button("Batch Place into Mockup…") { model.openBatchPlacement() } }
         if !many && primary.placementRecipe != nil { Button("Edit Placement…") { model.editPlacement(primary) } }
         Button("Share…") { model.share(ids) }
         Button("Copy Keywords") { model.copyKeywords(ids) }

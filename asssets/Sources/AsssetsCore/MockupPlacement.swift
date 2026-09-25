@@ -263,11 +263,11 @@ public enum MockupPlacement {
 }
 
 extension StudioCatalog {
-    /// Files a placed mockup render as a new version on the mockup's stack (1.29). The render takes the mockup's
-    /// collection and tags plus the art's tags, and the art's rights, credit and license files, since the artwork
-    /// is what a client is licensing. Returns the new asset's id.
+    /// Files a placed render on the mockup's stack (one art, 1.29) or on its own artwork's stack
+    /// (many arts into one mockup, 1.31). The render takes the mockup's collection and combined tags,
+    /// but the artwork's own rights, credit and license files. Returns the new asset's id.
     @discardableResult
-    public mutating func addPlacedMockup(path: String, art: UUID, mockup: UUID, resolution: String, recipe: PlacementRecipe? = nil) -> UUID? {
+    public mutating func addPlacedMockup(path: String, art: UUID, mockup: UUID, resolution: String, recipe: PlacementRecipe? = nil, stackOnArt: Bool = false) -> UUID? {
         guard let a = assets.first(where: { $0.id == art }), let m = assets.first(where: { $0.id == mockup }),
               let id = importFile(path: path, collection: m.collection), let i = assets.firstIndex(where: { $0.id == id }) else { return nil }
         assets[i].title = "\(a.title) on \(m.title)"
@@ -282,7 +282,7 @@ extension StudioCatalog {
         assets[i].rights = a.rights ?? ((a.isStarter || a.sourceKey?.hasPrefix("generated:") == true)
             ? UsageRights(license: .own, source: "ASSSETS bundled library", uses: "Any use") : nil)
         assets[i].licenseDocs = a.licenseDocs
-        _ = stack([mockup, id])
+        _ = stack([stackOnArt ? art : mockup, id])
         return id
     }
 }

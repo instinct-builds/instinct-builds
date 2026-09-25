@@ -839,3 +839,9 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - A rendered version has Edit Placement in the inspector and context menu. The sheet reopens with its choices, previews the current sources and saves a **new** version, keeping the old render and its rights intact. Place into All saves one recipe per result.
 - Missing artwork or PSDs show a warning on the rendered asset; Edit asks to locate a moved source (keeping its identity), or explicitly choose a replacement when the original library record is gone. Never auto-substitute a similarly named file. If a PSD's design layer changed, the sheet asks the user to choose a layer before saving.
 - Logic and tests: `PlacementRecipe` and `PlacementSourceStatus` in `MockupPlacement.swift`, with persistence and source-resolution tests.
+
+## 1.31.0: batch place several artworks into one mockup
+
+- Select at least two still artworks, then choose Batch Place into Mockup from the Asset menu or context menu. Pick one layered PSD, its design layer, Fill/Fit and background. A grid previews every artwork in that mockup, with each artwork's own rights and credit underneath. No remote rendering or paid API.
+- Place N Artworks renders one image per artwork, saves separate editable recipes and art-specific rights/license files, and stacks each with its own source artwork (not all on one shared mockup stack). One Undo reverts the library operation. The batch reports partial results when a source file is missing.
+- The 1.29 one-art-into-all-mockups path is unchanged. The 1.30 Edit Placement action can reopen each new batch render separately.

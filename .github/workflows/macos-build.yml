@@ -250,6 +250,9 @@ jobs:
           DELAY=14 shoot place-all 1920x1200 place-all demo-place-all.txt
           DELAY=12 shoot place-edit 1920x1200 place-edit
           DELAY=12 shoot place-relink 1920x1200 place-relink
+          DELAY=16 shoot batch-place 1920x1200 batch-place
+          DELAY=16 shoot batch-place-results 1920x1200 batch-place-results demo-batch-place.txt
+          grep -q '^done placed=3 recipes=3 rights=3 unique-art=3$' "$SUP/demo-batch-place.txt"
           cp "$SUP/demo-contact-sheet.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf"
           ls -l "$SUP" | tee "ASSSETS-$ASSSETS_VERSION-pdf-sizes.txt"
           cp "$SUP/demo-contact-sheet-all.pdf" "ASSSETS-$ASSSETS_VERSION-contact-sheet-all.pdf"

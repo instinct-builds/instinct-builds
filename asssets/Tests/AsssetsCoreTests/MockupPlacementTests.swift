@@ -196,3 +196,25 @@ extension PlacementRecipeTests {
         #expect(c.placementStatus(recipe, exists: { $0 == "/lib/Frame.psd" }) == .ready(art: art.id, mockup: mockup))
     }
 }
+
+extension PlacementRecipeTests {
+    @Test func batchRendersHaveIndependentArtworkStacksAndRights() {
+        var c = StudioCatalog()
+        let mockup = c.importFile(path: "/lib/Frame.psd")!
+        let artA = c.importFile(path: "/lib/A.png")!
+        let artB = c.importFile(path: "/lib/B.png")!
+        c.assets[c.assets.firstIndex { $0.id == artA }!].rights = UsageRights(license: .client, source: "Client A")
+        c.assets[c.assets.firstIndex { $0.id == artB }!].rights = UsageRights(license: .licensed, source: "Vendor B")
+        let a = c.addPlacedMockup(path: "/lib/render-A.png", art: artA, mockup: mockup, resolution: "100 × 100",
+                                  recipe: PlacementRecipe(artID: artA, mockupID: mockup), stackOnArt: true)!
+        let b = c.addPlacedMockup(path: "/lib/render-B.png", art: artB, mockup: mockup, resolution: "100 × 100",
+                                  recipe: PlacementRecipe(artID: artB, mockupID: mockup), stackOnArt: true)!
+        let renderA = c.assets.first { $0.id == a }!, renderB = c.assets.first { $0.id == b }!
+        #expect(renderA.stackID == c.assets.first { $0.id == artA }?.stackID)
+        #expect(renderB.stackID == c.assets.first { $0.id == artB }?.stackID)
+        #expect(renderA.stackID != renderB.stackID)
+        #expect(c.assets.first { $0.id == mockup }?.stackID == nil)
+        #expect(renderA.rights?.source == "Client A" && renderB.rights?.source == "Vendor B")
+        #expect(renderA.placementRecipe?.artID == artA && renderB.placementRecipe?.artID == artB)
+    }
+}
