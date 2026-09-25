@@ -1873,7 +1873,7 @@ int main() {
                 auto cellX = [](int i) { return 492 + (i + 0.5) * (276.0 / 16); };
                 Click(view, w, NSMakePoint(492 + 31, t - 205 + 9));                        // PATTERN
                 for (int i = 0; i < 8; ++i) Click(view, w, NSMakePoint(560 + 10, t - 205 + 9)); // LEN <
-                Click(view, w, NSMakePoint(cellX(1), t - 246 + 21));                    // step 2 velocity 55 (below chance badge)
+                Click(view, w, NSMakePoint(492 + (276.0 / 16) + 3, t - 246 + 11 + 0.5 * (37 - 14)));     // step 2 velocity 50%, left of chance hit zone
                 Click(view, w, NSMakePoint(cellX(2), t - 246 + 4));                         // step 3 -> REST
                 Click(view, w, NSMakePoint(cellX(4), t - 246 + 4));                         // step 5 -> REST
                 Click(view, w, NSMakePoint(cellX(4), t - 246 + 4));                         //        -> TIE
@@ -1894,10 +1894,10 @@ int main() {
                 const auto& pv = ps.voice;
                 printf("arp pattern: sync %d on %d len %d vel2 %d kinds %d%d%d%d%d; editor %s\n", pv.clockSync ? 1 : 0, pv.arpPatOn ? 1 : 0, pv.arpPatLen, pv.arpPatVel[1],
                        pv.arpPatKind[0], pv.arpPatKind[1], pv.arpPatKind[2], pv.arpPatKind[3], pv.arpPatKind[4], arpText().c_str());
-                Check(okp && pv.clockSync && pv.arpPatOn && pv.arpPatLen == 8 && pv.arpPatVel[1] == 55 && pv.arpPatKind[1] == 0 && pv.arpPatKind[2] == 1
-                      && pv.arpPatKind[4] == 2 && pv.arpPatKind[3] == 0 && ps.serialize().find("\narpx 1 1 8 127 0 55 0 127 1 127 0 127 2 ") != std::string::npos,
+                Check(okp && pv.clockSync && pv.arpPatOn && pv.arpPatLen == 8 && pv.arpPatVel[1] == 64 && pv.arpPatKind[1] == 0 && pv.arpPatKind[2] == 1
+                      && pv.arpPatKind[4] == 2 && pv.arpPatKind[3] == 0 && ps.serialize().find("\narpx 1 1 8 127 0 64 0 127 1 127 0 127 2 ") != std::string::npos,
                       "PATTERN, LEN, step velocity, REST, TIE and HOST SYNC reached the AU's sound");
-                Check(arpText().find(" sync=1 locked=0 pat=1 len=8 ") != std::string::npos && arpText().find("steps=O127/x3/o+1,O55/x4/o-1,R127/x1/o+0,O127/x1/o+0,T127/x1/o+0,") != std::string::npos,
+                Check(arpText().find(" sync=1 locked=0 pat=1 len=8 ") != std::string::npos && arpText().find("steps=O127/x3/o+1,O64/x4/o-1,R127/x1/o+0,O127/x1/o+0,T127/x1/o+0,") != std::string::npos,
                       "the ARP page reports the pattern and ratchets; no transport = free clock");
                 Check(okp && pv.arpPatRatchet[0] == 3 && pv.arpPatRatchet[1] == 4 && pv.arpPatRatchet[2] == 1 &&
                       ps.serialize().find("\narpr 3 4 1 1 1 ") != std::string::npos,

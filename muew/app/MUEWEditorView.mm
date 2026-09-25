@@ -349,8 +349,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
             }
         }
         if (used && kind == arp::StepOn && v.arpPatChance[i] < 100) {
-            FillRound(NSMakeRect(c.origin.x + 1, c.origin.y + 19, c.size.width - 2, 8), 2, C(0x3b3424));
-            TextA([NSString stringWithFormat:@"%d", v.arpPatChance[i]], NSMakeRect(c.origin.x, c.origin.y + 19, c.size.width, 8),
+            FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 19, c.size.width - 4, 8), 2, C(0x3b3424));
+            TextA([NSString stringWithFormat:@"%d", v.arpPatChance[i]], NSMakeRect(c.origin.x + 2, c.origin.y + 19, c.size.width - 4, 8),
                   5.5, C(0xf5cc78), NSFontWeightBold, NSTextAlignmentCenter);
         }
         NSString* tag = kind == arp::StepOn ? @"" : kind == arp::StepRest ? @"R" : @"T";
@@ -446,7 +446,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         else if (p.y < c.origin.y + 9) v.arpPatKind[i] = (v.arpPatKind[i] + 1) % arp::kStepKinds; // kind strip: ON -> REST -> TIE
         else if (v.arpPatKind[i] == arp::StepOn && p.y < c.origin.y + 19) // lower badge: 0 -> +1 -> -1
             v.arpPatOctave[i] = v.arpPatOctave[i] == 0 ? 1 : v.arpPatOctave[i] == 1 ? -1 : 0;
-        else if (v.arpPatKind[i] == arp::StepOn && p.y < c.origin.y + 28) // center badge: 100 -> 75 -> 50 -> 25
+        else if (v.arpPatKind[i] == arp::StepOn && p.y < c.origin.y + 27 && p.x >= c.origin.x + 5 && p.x <= c.origin.x + c.size.width - 4) // center badge: 100 -> 75 -> 50 -> 25
             v.arpPatChance[i] = v.arpPatChance[i] == 100 ? 75 : v.arpPatChance[i] == 75 ? 50 : v.arpPatChance[i] == 50 ? 25 : 100;
         else { v.arpPatKind[i] = arp::StepOn; [self setPatVelocity:i at:p]; patDrag = i; }
         [self voiceParamEdited:-1];
