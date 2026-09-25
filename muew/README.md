@@ -272,3 +272,13 @@ a colored rail, and the SPEC preview shows both endpoint frame numbers.
 FOCUS, BLUR, ALIGN and FLIP then transform the range as one labelled undo
 step. Frames outside it stay untouched; a click without a range still edits
 one frame. The selection is UI-only, not serialized into the sound.
+
+## 0.39.0 Spectral partial edit
+
+The SPEC preview's 32 partial bars are selectable. Click one to see its
+harmonic number and level relative to the strongest partial in dB; -3/+3
+chips change only that harmonic, retaining phase and the other partials.
+A selected frame gets one undo step; with a selected frame range, the same
+click is one labelled batch undo across that range. Silence stays silence,
+and a silent harmonic is not invented by gain. The saved table contains the
+edit; the selected bar is UI-only.

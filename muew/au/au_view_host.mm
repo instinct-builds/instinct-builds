@@ -1040,6 +1040,46 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
             fflush(stdout);
         });
+        After(6.99948, ^{ // 0.39.0: click a spectral partial and its gain, then undo/redo in the AU
+            CGFloat top = view.bounds.size.height - 100;
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() == 64, "partial editor begins with the 64-frame sound");
+            if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
+            // Select frame 33, then partial 4 in the spectrum (32 equal bars).
+            SEL frameSel = NSSelectorFromString(@"selectTableFrame:");
+            if ([view respondsToSelector:frameSel]) ((void (*)(id, SEL, int))[view methodForSelector:frameSel])(view, frameSel, 32);
+            muew::Preset selected; bool ok1 = State(selected);
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 3.5 * (188.0/32), top - 184 + 8 + 4 + 12));
+            NSString* pt = [view respondsToSelector:NSSelectorFromString(@"muewPartialText")] ? [view valueForKey:@"muewPartialText"] : @"";
+            printf("partial39: %s\n", pt.UTF8String ?: "");
+            Check(std::string(pt.UTF8String ?: "").find("h=4") != std::string::npos, "clicking the spectrum selects harmonic four");
+            Snapshot(view, "MUEW_PARTIAL39_PNG", "partial selection snapshot written");
+            Click(view, w, NSMakePoint(40 + 8 + 196 - 51 + 24 + 11, top - 184 + 8 + 30 + 5.5)); // +3 dB
+            muew::Preset changed; bool ok2 = State(changed);
+            NSString* hist = [view respondsToSelector:NSSelectorFromString(@"muewHistoryText")] ? [view valueForKey:@"muewHistoryText"] : @"";
+            bool exact = ok1 && ok2 && changed.tables[0].size() == selected.tables[0].size();
+            if (exact) for (int i = 0; i < 64; ++i) {
+                auto want = selected.tables[0][i];
+                if (i == 32) muew::gainPartial(want, 4, 3);
+                exact &= changed.tables[0][i] == want;
+            }
+            Check(exact && changed.tables[0][32] != selected.tables[0][32], "AU +3 dB changes only harmonic four of frame 33");
+            Check(std::string(hist.UTF8String ?: "").find("last=PARTIAL") != std::string::npos, "one partial click makes a labelled undo step");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5));
+            muew::Preset undone; bool ok3 = State(undone);
+            Check(ok3 && undone.tables[0] == selected.tables[0], "UNDO restores the entire pre-edit table");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == changed.tables[0], "REDO reapplies the partial edit");
+            NSString* text = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf = (__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &cf, sizeof(cf));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D for older harness steps
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab
