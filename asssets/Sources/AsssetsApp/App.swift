@@ -7975,6 +7975,14 @@ struct Inspector: View {
                     }
                     .padding(16)
                 }
+                .onChange(of: model.inspectorAnchor) { _, anchor in
+                    // CI sets its target after selecting the asset. Scroll then as well as at first appearance.
+                    if let anchor {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            withAnimation { proxy.scrollTo(anchor, anchor: .top) }
+                        }
+                    }
+                }
                 .onAppear {
                     // Demo only: bring the tag rows into view for the suggested-tags screenshot.
                     if let anchor = model.inspectorAnchor {
