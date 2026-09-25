@@ -901,6 +901,35 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-preset-active", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.9.0 proof: the save form's name draft pre-fills from the
+    // active preset - the txt records the prefill rule for a matching
+    // and a free filter; the render stages the resulting form (the
+    // button wiring is the one-line fallback the txt states).
+    do {
+        func prefillLine(_ filter: String) -> String {
+            let draft = model.filterPresets.preset(matchingQuery: filter)?.name
+                ?? filter.trimmingCharacters(in: .whitespaces)
+            let active = model.filterPresets.preset(matchingQuery: filter)?.name
+            if let active {
+                return "filter \"\(filter)\" (active preset \"\(active)\") -> name draft pre-fills \"\(draft)\""
+            }
+            return "filter \"\(filter)\" (no active preset) -> name draft pre-fills the query text \"\(draft)\""
+        }
+        try? (["Save-form prefill (3.9.0)",
+               prefillLine("fire damage"),
+               prefillLine("fire")])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-preset-prefill.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire damage",
+                       initialSavingFilterPreset: true,
+                       initialFilterPresetNameDraft: "Fire damage")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-preset-prefill", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(

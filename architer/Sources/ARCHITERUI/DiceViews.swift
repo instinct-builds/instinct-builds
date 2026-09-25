@@ -215,7 +215,13 @@ public struct DiceRollerView: View {
                     }
                     if !model.filterPresets.isEmpty { Divider() }
                     Button("Save current filter…") {
-                        filterPresetNameDraft = historyFilter.trimmingCharacters(in: .whitespaces)
+                        // 3.9.0: while a preset is active the draft
+                        // pre-fills with its name - re-saving under
+                        // the same name takes no retype, and the
+                        // 3.7.0 note shows the replace.
+                        filterPresetNameDraft = model.filterPresets
+                            .preset(matchingQuery: historyFilter)?.name
+                            ?? historyFilter.trimmingCharacters(in: .whitespaces)
                         renamingPresetOriginal = nil
                         savingFilterPreset = true
                     }
