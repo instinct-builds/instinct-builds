@@ -318,6 +318,15 @@ public final class AppModel: ObservableObject {
         pb.setString(sessionShareText(session), forType: .string)
     }
 
+    /// Copy one day of history (2.77.0): the named, summarized day
+    /// header, then the day's rolls oldest first - the day-level
+    /// counterpart of copy-session.
+    public func copyDayToPasteboard(_ group: RollDayGroup) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(dayShareText(group), forType: .string)
+    }
+
     /// One-tap session recap (2.46.0): the character's journal entries
     /// and rolls from today as one shareable text block.
     public func copySessionRecapToPasteboard(_ character: Character) {

@@ -353,6 +353,15 @@ public func sessionShareText(_ session: RollSession) -> String {
         + session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n") + "\n"
 }
 
+/// Copy text for one day of history (2.77.0): the day's header -
+/// custom session names (2.67.0) and the 2.76.0 summary included - a
+/// blank line, then its rolls in the group's own order (export-style
+/// groups are built oldest first), one history line each.
+public func dayShareText(_ group: RollDayGroup) -> String {
+    group.title + "\n\n"
+        + group.rolls.map { $0.historyLine }.joined(separator: "\n") + "\n"
+}
+
 /// A per-session Markdown file (2.72.0): the session's title (custom
 /// name included) as the heading, its stats line (2.69.0) and note
 /// (2.71.0), then its rolls oldest first as one table - the

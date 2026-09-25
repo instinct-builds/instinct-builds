@@ -227,6 +227,19 @@ public struct HistoryListView: View {
         renamingSession = nil
     }
 
+    /// The export-form day group a divider's day copies (2.77.0):
+    /// named and summarized header with the day's rolls oldest first -
+    /// exactly what the session-log exports print for the same day. A
+    /// rendered session always has its group, so nil never reaches the
+    /// button; the type's memberwise init stays inside ArchiterCore.
+    private func dayGroup(for session: RollSession) -> RollDayGroup? {
+        let dayTitle = rollDayTitle(session.rolls.last?.rolledAt)
+        let groups = summarizedDayGroups(namedDayGroups(Array(rolls.reversed()),
+                                                        names: model.sessionNames,
+                                                        notes: model.sessionNotes))
+        return groups.first { $0.title == dayTitle || $0.title.hasPrefix(dayTitle + " - ") }
+    }
+
     /// Row identity namespaced by group: bare per-section offsets collide
     /// across sibling ForEaches inside a lazy stack, and SwiftUI drops the
     /// "duplicate" rows - which is exactly what the 2.38.0 renders showed
@@ -237,9 +250,10 @@ public struct HistoryListView: View {
     }
 
     public var body: some View {
-        ScrollView {
+        let sessions = model.namedSessions(rolls)
+        return ScrollView {
             LazyVStack(spacing: Theme.Gap.sm, pinnedViews: [.sectionHeaders]) {
-                ForEach(Array(model.namedSessions(rolls).enumerated()), id: \.offset) { _, session in
+                ForEach(Array(sessions.enumerated()), id: \.offset) { index, session in
                     Section {
                         ForEach(session.rolls.enumerated().map {
                             IndexedRoll(id: "\(session.title)|\($0.offset)", roll: $0.element)
@@ -331,6 +345,21 @@ public struct HistoryListView: View {
                                     .foregroundStyle(Theme.inkFaint)
                                     .help("Cancel")
                             } else {
+                                // 2.77.0: copy the whole day on the
+                                // divider that opens it - the day's
+                                // named, summarized header and rolls.
+                                if index == 0 || rollDayTitle(sessions[index - 1].rolls.last?.rolledAt)
+                                    != rollDayTitle(session.rolls.last?.rolledAt) {
+                                    Button {
+                                        if let group = dayGroup(for: session) {
+                                            model.copyDayToPasteboard(group)
+                                        }
+                                    }
+                                        label: { Image(systemName: "calendar") }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(Theme.inkFaint)
+                                        .help("Copy this day's rolls as text")
+                                }
                                 // 2.70.0: copy the session as plain
                                 // text - title, stats line, rolls.
                                 Button { model.copySessionToPasteboard(session) }

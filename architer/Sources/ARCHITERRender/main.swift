@@ -268,6 +268,16 @@ func run(model: AppModel, character: Character, outDir: String) {
                                    groups: namedDayGroups(Array(logRolls.reversed()), names: model.sessionNames, notes: model.sessionNotes))
     try? logMd.write(to: URL(fileURLWithPath: "\(outDir)/session-log.md"),
                      atomically: true, encoding: .utf8)
+    // 2.77.0 proof: the copy-day text for the newest day - the named,
+    // summarized header, then the day's rolls oldest first.
+    let fullHistory = model.rollHistory.forCharacter(character.name)
+    let copyDays = summarizedDayGroups(namedDayGroups(Array(fullHistory.reversed()),
+                                                      names: model.sessionNames,
+                                                      notes: model.sessionNotes))
+    if let newestDay = copyDays.last {
+        try? dayShareText(newestDay).write(to: URL(fileURLWithPath: "\(outDir)/day-copy.txt"),
+                                           atomically: true, encoding: .utf8)
+    }
     // 2.49.0 proof: digest the newest session into the journal as one
     // entry - the recap below then carries it, titled by the session.
     if let session = sessionSegments(model.rollHistory).first {

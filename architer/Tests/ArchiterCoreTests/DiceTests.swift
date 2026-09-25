@@ -846,6 +846,25 @@ struct SessionSegmentTests {
         #expect(lines[4].contains("d20: 10"))
     }
 
+    // 2.77.0: copy-day text = the named, summarized day header, a blank
+    // line, then the day's rolls oldest first, one history line each.
+    @Test func dayShareTextCarriesHeaderAndChronologicalRolls() throws {
+        let cal = utc
+        let now = at(cal, 24, 21)
+        let rolls = [stamped("d20", at: at(cal, 24, 15)),
+                     stamped("2d6", at: at(cal, 24, 10))]
+        let groups = summarizedDayGroups(namedDayGroups(Array(rolls.reversed()),
+                                                        now: now, calendar: cal),
+                                         now: now, calendar: cal)
+        let group = try #require(groups.first)
+        #expect(group.title == "Today - 1 session \u{00B7} 2 rolls")
+        let text = dayShareText(group)
+        #expect(text.hasPrefix("Today - 1 session \u{00B7} 2 rolls\n\n"))
+        let lines = text.components(separatedBy: "\n")
+        #expect(lines[2].contains("2d6: 10"))
+        #expect(lines[3].contains("d20: 10"))
+    }
+
     // 2.71.0: noted() carries the session note; blank clears it. The
     // note rides the copy text under the stats line and follows its
     // session's name into export headers in parentheses.
