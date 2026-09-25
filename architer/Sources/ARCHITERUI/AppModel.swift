@@ -794,6 +794,13 @@ public final class AppModel: ObservableObject {
         savePanel(text: sessionMarkdown(session), name: "\(safe).md")
     }
 
+    /// Starred-rolls Markdown export (2.88.0): the highlight reel as a
+    /// file - the star arc's output side, matching the session export's
+    /// save-panel gesture.
+    public func exportStarredMarkdown() {
+        savePanel(text: starredMarkdown(rollHistory), name: "starred-rolls.md")
+    }
+
     /// Session-log text export (2.42.0): the character's rolls as a
     /// day-grouped plain-text file, honoring the configured appendix range
     /// - the same rolls the compact-PDF appendix would print.

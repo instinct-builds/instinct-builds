@@ -1011,6 +1011,34 @@ struct SessionSegmentTests {
         #expect(log.togglingStars(on: []) == log)
     }
 
+    // 2.88.0: the starred Markdown heads with the count and tables the
+    /// starred rolls oldest first; unstarred rolls never reach the file.
+    @Test func starredMarkdownCountsAndTables() throws {
+        let t1 = try #require(ISO8601DateFormatter().date(from: "2026-09-24T20:00:00Z"))
+        let t2 = try #require(ISO8601DateFormatter().date(from: "2026-09-24T21:00:00Z"))
+        var a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 20, kept: true)],
+                           modifier: 0, total: 20, alternateTotal: nil)
+        a.label = "Death save"
+        a.rolledAt = t1
+        a.starred = true
+        var b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        b.rolledAt = t2
+        let md = starredMarkdown([b, a])
+        #expect(md.hasPrefix("# Starred rolls (1)\n"))
+        #expect(md.contains("| Death save (d20) | 20 |"))
+        #expect(!md.contains("2d6"))
+        var d = b
+        d.starred = true
+        let md2 = starredMarkdown([d, a])
+        let aPos = try #require(md2.range(of: "Death save"))
+        let dPos = try #require(md2.range(of: "2d6"))
+        #expect(aPos.lowerBound < dPos.lowerBound)
+        #expect(starredMarkdown([b]).hasPrefix("# Starred rolls (0)\n"))
+    }
+
     // 2.85.0: the starred share text heads with the count and lists the
     /// starred rolls oldest first; an unstarred log still heads honestly.
     @Test func starredShareTextCountsAndLists() throws {

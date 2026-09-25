@@ -199,6 +199,11 @@ public struct DiceRollerView: View {
                     Button("Unstar all") { model.unstarAll() }
                         .controlSize(.small)
                         .help("Clear every star - reset the highlight reel for the next scene")
+                    // 2.88.0: the reel as a file - the star arc's output
+                    // side beyond the pasteboard.
+                    Button("Export starred") { model.exportStarredMarkdown() }
+                        .controlSize(.small)
+                        .help("Save the starred rolls as a Markdown file")
                 }
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }

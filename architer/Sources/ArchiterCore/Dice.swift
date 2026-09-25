@@ -412,6 +412,25 @@ public func sessionMarkdown(_ session: RollSession) -> String {
     return lines.joined(separator: "\n") + "\n"
 }
 
+/// A starred-rolls Markdown file (2.88.0): the highlight reel as a
+/// document - the count as the heading, then the starred rolls oldest
+/// first as one table, matching the session export's shape and
+/// pipe-escaping. The output side of the star arc, past the pasteboard.
+public func starredMarkdown(_ rolls: [RollResult]) -> String {
+    let starred = rolls.starredRolls
+    var lines = ["# Starred rolls (\(starred.count))", ""]
+    lines.append("| Time | Roll | Total |")
+    lines.append("| --- | --- | --- |")
+    for roll in starred.reversed() {
+        let stamp = roll.rolledAt
+            .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
+        let what = (roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
+            .replacingOccurrences(of: "|", with: "\\|")
+        lines.append("| \(stamp) | \(what) | \(roll.total) |")
+    }
+    return lines.joined(separator: "\n") + "\n"
+}
+
 /// The stats line for one session segment (2.69.0). Totals read
 /// RollResult.total (modifier included); crits count kept d20 faces.
 /// 2.75.0: the span runs from the oldest stamp to the newest.

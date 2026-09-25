@@ -635,6 +635,17 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-session-star", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.88.0 proof: starred export - the exact Markdown file the Export
+    // starred button saves, for the nine session-starred rolls.
+    try? starredMarkdown(model.rollHistory)
+        .write(to: URL(fileURLWithPath: "\(outDir)/starred-export.md"),
+               atomically: true, encoding: .utf8)
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-starred-export", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
