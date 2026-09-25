@@ -3341,18 +3341,6 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     const double c = n ? frameCentroid(current.tables[wtEdit][std::clamp(wtFrame, 0, n - 1)]) : 0;
     return [NSString stringWithFormat:@"mode=%d formant=%.1f stretch=%.2f tilt=%.1f oddeven=%.2f frames=%d centroid=%.3f", wtMode, wtSpec.formantSt, wtSpec.stretch, wtSpec.tiltDb, wtSpec.oddEven, n, c];
 }
-- (void)scrollWheel:(NSEvent*)event {
-    if (wtEdit >= 0 && wtMode == 3 && wtPartialLarge) {
-        NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
-        if (NSPointInRect(p, [self wtCanvas])) {
-            const int direction = event.scrollingDeltaY > 0 ? -1 : event.scrollingDeltaY < 0 ? 1 : 0;
-            wtPartialPage = std::clamp(wtPartialPage + direction, 0, 3);
-            wtPartial = partialPageStart(wtPartialPage);
-            [self setNeedsDisplay:YES]; return;
-        }
-    }
-    [super scrollWheel:event];
-}
 - (void)tableMouseDown:(NSPoint)p event:(NSEvent*)event {
     TableFrames& t = current.tables[wtEdit];
     for (int i = 0; i < 2; ++i) // 0.33.0 A / B
@@ -4085,6 +4073,12 @@ static int SortForColumn(int c) {
 
 - (void)scrollWheel:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    if (wtEdit >= 0 && wtMode == 3 && wtPartialLarge && NSPointInRect(p, [self wtCanvas])) {
+        const int direction = e.scrollingDeltaY > 0 ? -1 : e.scrollingDeltaY < 0 ? 1 : 0;
+        wtPartialPage = std::clamp(wtPartialPage + direction, 0, 3);
+        wtPartial = partialPageStart(wtPartialPage);
+        [self setNeedsDisplay:YES]; return;
+    }
     if (browserOpen) {
         static double bacc = 0;
         bacc -= e.scrollingDeltaY / (e.hasPreciseScrollingDeltas ? 20.0 : 1.0);
