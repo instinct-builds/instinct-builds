@@ -7047,17 +7047,6 @@ struct DuplicatesSheet: View {
                     .help("Also group images that look the same but are not byte-identical: resized, re-exported or lightly edited copies")
             }
             .padding(20)
-            .alert("Refresh changed source?", isPresented: Binding(get: { model.reviewedSourceID != nil },
-                set: { if !$0 { model.reviewedSourceID = nil } })) {
-                Button("Cancel", role: .cancel) { model.reviewedSourceID = nil }
-                Button("Refresh Source") {
-                    if let id = model.reviewedSourceID { model.refreshChangedSource(id) }
-                    model.reviewedSourceID = nil
-                }
-            } message: {
-                let asset = model.catalog.assets.first { $0.id == model.reviewedSourceID }
-                Text("\(asset?.title ?? "This asset") at \(asset?.importedPath ?? "unknown path") changed on disk. Use these bytes for the preview, palette and file facts? The asset ID, rights, boards and placed versions stay in the catalog. This can't restore the old source bytes.")
-            }
             Divider().overlay(Theme.hairline)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -7262,6 +7251,17 @@ struct LibraryHealthSheet: View {
                 Button { model.refreshHealth(full: true) } label: { Label("Check Again", systemImage: "arrow.clockwise") }.controlSize(.small).disabled(model.healthScanning)
             }
             .padding(20)
+            .alert("Refresh changed source?", isPresented: Binding(get: { model.reviewedSourceID != nil },
+                set: { if !$0 { model.reviewedSourceID = nil } })) {
+                Button("Cancel", role: .cancel) { model.reviewedSourceID = nil }
+                Button("Refresh Source") {
+                    if let id = model.reviewedSourceID { model.refreshChangedSource(id) }
+                    model.reviewedSourceID = nil
+                }
+            } message: {
+                let asset = model.catalog.assets.first { $0.id == model.reviewedSourceID }
+                Text("\(asset?.title ?? "This asset") at \(asset?.importedPath ?? "unknown path") changed on disk. Use these bytes for the preview, palette and file facts? The asset ID, rights, boards and placed versions stay in the catalog. This can't restore the old source bytes.")
+            }
             Divider().overlay(Theme.hairline)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
