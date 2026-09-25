@@ -761,6 +761,15 @@ public extension Array where Element == FilterPreset {
         first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
+    /// The preset whose query exactly matches `query` after trimming
+    /// (3.8.0) - the bar marks it as the active one. An empty query
+    /// matches nothing.
+    func preset(matchingQuery query: String) -> FilterPreset? {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return nil }
+        return first { $0.query == q }
+    }
+
     /// The issue with saving a preset under `name` (3.7.0), ignoring
     /// the preset named `replacing` (any case) so a rename onto its
     /// own name passes. Nil means the name is usable.

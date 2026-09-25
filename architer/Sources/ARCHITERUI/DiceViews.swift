@@ -201,8 +201,17 @@ public struct DiceRollerView: View {
                 // 3.0.0: named filter presets - save the current filter
                 // under a name and re-apply it from the menu.
                 Menu {
+                    // 3.8.0: the preset whose query the filter text
+                    // exactly matches is the active one - checkmarked
+                    // here, and the bookmark fills.
+                    let activePreset = model.filterPresets.preset(matchingQuery: historyFilter)
                     ForEach(model.filterPresets, id: \.name) { preset in
-                        Button(preset.name) { historyFilter = preset.query }
+                        if preset.name == activePreset?.name {
+                            Button { historyFilter = preset.query }
+                        label: { Label(preset.name, systemImage: "checkmark") }
+                        } else {
+                            Button(preset.name) { historyFilter = preset.query }
+                        }
                     }
                     if !model.filterPresets.isEmpty { Divider() }
                     Button("Save current filter…") {
@@ -231,10 +240,13 @@ public struct DiceRollerView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: "bookmark")
+                    Image(systemName: model.filterPresets.preset(matchingQuery: historyFilter) != nil
+                          ? "bookmark.fill" : "bookmark")
                 }
                 .controlSize(.small)
-                .help("Saved filter presets - apply one, save the current filter, rename one, or remove one")
+                .help(model.filterPresets.preset(matchingQuery: historyFilter)
+                      .map { "Saved filter presets - active preset: \($0.name)" }
+                      ?? "Saved filter presets - apply one, save the current filter, rename one, or remove one")
                 if savingFilterPreset {
                     TextField("Preset name", text: $filterPresetNameDraft)
                         .textFieldStyle(InsetFieldStyle())

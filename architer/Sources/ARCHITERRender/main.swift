@@ -875,6 +875,32 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-preset-hint", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.8.0 proof: the active preset - the filter text exactly
+    // matching a saved preset's query fills the bookmark and
+    // checkmarks the menu entry; the txt records the matches.
+    do {
+        func activeLine(_ filter: String) -> String {
+            let shown = filter.isEmpty ? "(empty)" : "\"\(filter)\""
+            if let active = model.filterPresets.preset(matchingQuery: filter) {
+                return "filter \(shown) -> active preset: \"\(active.name)\" (bookmark filled)"
+            }
+            return "filter \(shown) -> no active preset"
+        }
+        try? (["Active preset marker (3.8.0)",
+               activeLine("fire damage"),
+               activeLine("  fire damage  "),
+               activeLine("fire"),
+               activeLine("")])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-preset-active.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire damage")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-preset-active", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(

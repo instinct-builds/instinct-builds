@@ -1468,6 +1468,17 @@ struct FilterPresetTests {
         #expect(list.nameIssue("New", replacing: "Fire") == nil)
     }
 
+    @Test func matchingQueryFindsOnlyAnExactTrimmedMatch() throws {
+        let fire = try #require(FilterPreset(name: "Fire", query: "fire"))
+        let bridge = try #require(FilterPreset(name: "Bridge", query: "bridge checks"))
+        let list = [fire, bridge]
+        #expect(list.preset(matchingQuery: "fire") == fire)
+        #expect(list.preset(matchingQuery: "  bridge checks  ") == bridge)
+        #expect(list.preset(matchingQuery: "bridge") == nil)
+        #expect(list.preset(matchingQuery: "") == nil)
+        #expect(list.preset(matchingQuery: "FIRE") == nil)
+    }
+
     @Test func renamedRejectsBlankMissingAndClashingNames() throws {
         let fire = try #require(FilterPreset(name: "Fire", query: "fire"))
         let bridge = try #require(FilterPreset(name: "Bridge", query: "bridge"))
