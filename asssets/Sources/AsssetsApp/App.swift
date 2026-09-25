@@ -8418,14 +8418,16 @@ struct LicenseFilesBlock: View {
                 .frame(width: 28, height: 28).background(Theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 1) {
                 Text(d.name).font(.caption.weight(.semibold)).lineLimit(1).truncationMode(.middle)
-                Text(ids.count > 1 ? "\(d.kind.rawValue) · on \(count) of \(ids.count)" : "\(d.kind.rawValue) · \(d.sizeLabel) · added \(d.added)")
-                    .font(.system(size: 10)).foregroundStyle(partial ? Theme.warning : .secondary).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(ids.count > 1 ? "\(d.kind.rawValue) · on \(count) of \(ids.count)" : "\(d.kind.rawValue) · \(d.sizeLabel) · added \(d.added)")
+                        .font(.system(size: 10)).foregroundStyle(partial ? Theme.warning : .secondary).lineLimit(1)
+                    if partial {
+                        Button { model.attachExistingLicenseDoc(d.id, to: ids) } label: { Text("Add to all").font(.system(size: 10, weight: .bold)) }
+                            .buttonStyle(.plain).foregroundStyle(Theme.accent).fixedSize()
+                    }
+                }
             }
             Spacer(minLength: 4)
-            if partial {
-                Button { model.attachExistingLicenseDoc(d.id, to: ids) } label: { Text("Add to all").font(.system(size: 10, weight: .bold)) }
-                    .buttonStyle(.plain).foregroundStyle(Theme.accent).fixedSize()
-            }
             Image(systemName: "eye").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
@@ -8450,8 +8452,7 @@ struct RightsPresetBar: View {
 
     var body: some View {
         let presets = model.catalog.rightsPresets
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+        WrapLayout(spacing: 6, lineSpacing: 6) {
                 ForEach(presets) { p in
                     Button { model.applyPreset(p.id, to: ids) } label: {
                         HStack(spacing: 5) {
@@ -8480,8 +8481,49 @@ struct RightsPresetBar: View {
                 }
                 .buttonStyle(.plain).foregroundStyle(.secondary)
                 .help("Save these rights\(ids.count > 1 ? " (fields they share)" : "") and license files as a preset")
-            }
         }
+    }
+}
+
+/// Lays children out left to right and wraps to a new line when the width runs out (1.27).
+struct WrapLayout: Layout {
+    var spacing: CGFloat = 6
+    var lineSpacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        let w = rows.map { $0.width }.max() ?? 0
+        let h = rows.reduce(0) { $0 + $1.height } + lineSpacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: proposal.width ?? w, height: h)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(width: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+            for i in row.items {
+                let size = subviews[i].sizeThatFits(.unspecified)
+                subviews[i].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: ProposedViewSize(width: min(size.width, bounds.width), height: size.height))
+                x += min(size.width, bounds.width) + spacing
+            }
+            y += row.height + lineSpacing
+        }
+    }
+
+    private struct Row { var items: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = [], cur = Row()
+        for i in subviews.indices {
+            let size = subviews[i].sizeThatFits(.unspecified)
+            let w = min(size.width, width)
+            if !cur.items.isEmpty && cur.width + spacing + w > width { rows.append(cur); cur = Row() }
+            cur.width += (cur.items.isEmpty ? 0 : spacing) + w
+            cur.height = max(cur.height, size.height)
+            cur.items.append(i)
+        }
+        if !cur.items.isEmpty { rows.append(cur) }
+        return rows
     }
 }
 
