@@ -101,6 +101,17 @@ int main() {
     printf("timing energy before=%g after=%g offset=%u\n",before,after,offset);
     if(before>1e-14 || after<1e-8){printf("FAIL: note offset timing\n");return 1;}
 
+    // 0.58.0: inspect actual rendered post-master peaks, not an invented clip flag.
+    MUEWPerformance output{}; UInt32 outputSize=sizeof(output);
+    bool metered=AudioUnitGetProperty(unit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&output,&outputSize)==noErr;
+    float peakL=0,peakR=0;
+    for(UInt32 i=0;i<frames;++i){peakL=std::max(peakL,std::fabs(l[i]));peakR=std::max(peakR,std::fabs(r[i]));}
+    if(!metered || outputSize!=sizeof(output) || std::fabs(output.outputPeak[0]-peakL)>1e-6f ||
+       std::fabs(output.outputPeak[1]-peakR)>1e-6f || !(output.masterDrive>=0)){
+        printf("FAIL: MUEW stereo output meter does not match host render\n");return 1;
+    }
+    printf("MUEW output L %.4f R %.4f, pre-master drive %.4f: meter matches host render\n",peakL,peakR,output.masterDrive);
+
     MusicDeviceMIDIEvent(unit,0x80,69,0,111);
     std::fill(l.begin(),l.end(),0); std::fill(r.begin(),r.end(),0);
     if(!render(unit,l,r)){printf("FAIL: note-off render\n");return 1;}

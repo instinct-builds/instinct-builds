@@ -455,3 +455,13 @@ With BURST OFF, noise remains sustained and ignores both shape settings.
 Older bursts retain their byte-exact linear behavior; old presets and the 40
 AU parameter IDs stay unchanged. The optional `noiseenv <attack> <curve>`
 line saves non-default shaping.
+
+## 0.58.0 Stereo output and saturation
+
+The Engine header now shows the left and right output levels after MUEW's
+soft master. A brief amber SAT badge means that the signal entering that
+master reaches the soft-saturation region. This is a tone/headroom hint,
+not a clip warning: MUEW's `tanh` master bounds its finite output below
+full scale, and a plugin cannot see clipping later in the DAW or interface.
+No new preset state or AU parameter IDs. The standalone and AU show the
+same actual rendered output, including FX and preset trim.

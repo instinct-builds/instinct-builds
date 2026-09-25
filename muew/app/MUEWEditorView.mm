@@ -79,7 +79,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeMeterClock = 0;
+        std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeMeterClock = 0; outputDisplay.clear(); outputMeterClock = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
@@ -477,8 +477,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     if (filterPage == 2) [self setNeedsDisplayInRect:NSMakeRect(480, [self top] - 260, 300, 250)];
 }
 // 0.30.0 Engine HQ: header block with the QUALITY pill, voice count and CPU load.
-- (NSRect)engineBox { return NSMakeRect(268, self.bounds.size.height - 66, 104, 40); }
-- (NSRect)engineHQPill { NSRect b = [self engineBox]; return NSMakeRect(b.origin.x + 7, b.origin.y + 21, 28, 13); }
+- (NSRect)engineBox { return NSMakeRect(268, self.bounds.size.height - 74, 104, 48); }
+- (NSRect)engineHQPill { NSRect b = [self engineBox]; return NSMakeRect(b.origin.x + 7, b.origin.y + 29, 28, 13); }
 // 0.35.0 live morph meter: redraws only when an oscillator with a morph target moves.
 - (void)showLiveMorphA:(float)a b:(float)b {
     const float in[2] = {a, b};
@@ -574,6 +574,19 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     engVoices = active; engLimit = limit; engCpu = cpu; engRender = render;
     if (!same) [self setNeedsDisplayInRect:NSInsetRect([self engineBox], -2, -2)];
 }
+- (void)showOutputLeft:(float)left right:(float)right drive:(float)drive {
+    const double now = [NSDate timeIntervalSinceReferenceDate];
+    const double dt = outputMeterClock > 0 ? now - outputMeterClock : 0;
+    outputMeterClock = now;
+    const float oldL = outputDisplay.left, oldR = outputDisplay.right;
+    const bool oldSat = outputDisplay.saturated();
+    outputDisplay.update(left, right, drive, dt);
+    if (std::fabs(oldL - outputDisplay.left) > .006f || std::fabs(oldR - outputDisplay.right) > .006f || oldSat != outputDisplay.saturated())
+        [self setNeedsDisplayInRect:NSInsetRect([self engineBox], -2, -2)];
+}
+- (NSString*)muewOutputText {
+    return [NSString stringWithFormat:@"left=%.3f right=%.3f drive=%.3f sat=%d", outputDisplay.left, outputDisplay.right, outputDisplay.drive, outputDisplay.saturated() ? 1 : 0];
+}
 - (NSString*)muewEngineText {
     return [NSString stringWithFormat:@"hq=%d voices=%d/%d cpu=%.4f render=%d", current.voice.oscQuality, engVoices, engLimit, engCpu, engRender ? 1 : 0];
 }
@@ -593,16 +606,30 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     }
     TextA(@"HQ", NSMakeRect(pill.origin.x, pill.origin.y + 1.5, pill.size.width, 10), 8, hq ? C(0x06201c) : C(0x8391a3), NSFontWeightBold, NSTextAlignmentCenter);
     NSString* vs = [NSString stringWithFormat:@"%d/%d", engVoices, engLimit > 0 ? engLimit : current.voice.polyVoices];
-    TextA(engRender ? @"RENDER" : @"VOICES", NSMakeRect(b.origin.x + 40, b.origin.y + 23, 36, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentLeft);
-    TextA(vs, NSMakeRect(b.origin.x + 72, b.origin.y + 22, 26, 11), 8.5, engVoices > 0 ? C(0xe6ebf1) : C(0x758192), NSFontWeightSemibold, NSTextAlignmentRight);
+    TextA(engRender ? @"RENDER" : @"VOICES", NSMakeRect(b.origin.x + 40, b.origin.y + 31, 36, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentLeft);
+    TextA(vs, NSMakeRect(b.origin.x + 72, b.origin.y + 30, 26, 11), 8.5, engVoices > 0 ? C(0xe6ebf1) : C(0x758192), NSFontWeightSemibold, NSTextAlignmentRight);
     // CPU: share of the real-time budget, amber past 50 %, red past 80 %.
-    TextA(@"CPU", NSMakeRect(b.origin.x + 8, b.origin.y + 6, 22, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentLeft);
+    TextA(@"CPU", NSMakeRect(b.origin.x + 8, b.origin.y + 14, 22, 10), 7, C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentLeft);
     const float cpu = std::clamp(engCpu, 0.0f, 1.0f);
-    const NSRect track = NSMakeRect(b.origin.x + 30, b.origin.y + 9, 40, 4);
+    const NSRect track = NSMakeRect(b.origin.x + 30, b.origin.y + 17, 40, 4);
     FillRound(track, 2, C(0x1a212b));
     NSColor* cc = cpu > 0.8f ? C(0xf06a5f) : cpu > 0.5f ? C(0xf2ab55) : teal;
     if (cpu > 0.002f) FillRound(NSMakeRect(track.origin.x, track.origin.y, std::max<CGFloat>(3, track.size.width * cpu), 4), 2, cc);
-    TextA([NSString stringWithFormat:@"%d%%", (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100)], NSMakeRect(b.origin.x + 72, b.origin.y + 5, 26, 11), 8.5, C(0xb7c1cd), NSFontWeightSemibold, NSTextAlignmentRight);
+    TextA([NSString stringWithFormat:@"%d%%", (int)std::lround(std::clamp(engCpu, 0.0f, 9.99f) * 100)], NSMakeRect(b.origin.x + 72, b.origin.y + 13, 26, 11), 8.5, C(0xb7c1cd), NSFontWeightSemibold, NSTextAlignmentRight);
+    // Two slim lanes show MUEW's post-master stereo output. The amber
+    // badge refers only to pre-tanh soft saturation, never downstream status.
+    Text(@"L/R", NSMakeRect(b.origin.x + 8, b.origin.y + 1, 22, 9), 6.5, C(0x758192), NSFontWeightBold);
+    for (int i = 0; i < 2; ++i) {
+        const NSRect lane = NSMakeRect(b.origin.x + 32, b.origin.y + 2 + i * 2.7, 38, 2);
+        FillRound(lane, 1, C(0x26303c));
+        const float peak = i ? outputDisplay.right : outputDisplay.left;
+        if (peak > .002f) FillRound(NSMakeRect(lane.origin.x, lane.origin.y, lane.size.width * peak, lane.size.height), 1, C(0x5adac8));
+    }
+    if (outputDisplay.saturated()) {
+        NSRect sat = NSMakeRect(b.origin.x + 74, b.origin.y + 22, 24, 8);
+        FillRound(sat, 3, C(0x604a25));
+        TextA(@"SAT", sat, 6.5, C(0xf5cc78), NSFontWeightBold, NSTextAlignmentCenter);
+    }
 }
 - (void)showArpPatCell:(int)cell locked:(bool)locked { // 0.26.0
     if (cell == arpLivePatCell && locked == arpLiveLocked) return;

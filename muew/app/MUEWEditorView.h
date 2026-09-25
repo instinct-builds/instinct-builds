@@ -6,6 +6,7 @@
 #import <AppKit/AppKit.h>
 #include "ui_model.h"
 #include "route_meter_hold.h"
+#include "output_meter_display.h"
 #include "spectral_process.h"
 #include "table_history.h"
 #include "frame_range.h"
@@ -93,6 +94,8 @@ struct MUEWEditorHost {
     int engVoices, engLimit;
     float engCpu;
     bool engRender;
+    muew::OutputMeterDisplay outputDisplay;
+    double outputMeterClock;
     int voiceDrag;   // 0.23.0 voice strip: GLIDE (0) or BLEND (1) bar being dragged, -1 none
     int lfoXDrag;    // 0.18.0 LFO editor: PHASE/DELAY/RISE pill being dragged (0-2), -1 none
     float routeMeters[muew::kMaxRoutes]; // 0.54.0 signed current route activity
@@ -184,6 +187,7 @@ struct MUEWEditorHost {
 - (void)showArpOn:(bool)on pool:(const int*)pool count:(int)n index:(int)index note:(int)note step:(int)step;
 - (void)showArpPatCell:(int)cell locked:(bool)locked; // 0.26.0
 - (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render; // 0.30.0
+- (void)showOutputLeft:(float)left right:(float)right drive:(float)drive; // 0.58.0
 - (void)showRouteMeters:(const float*)values count:(int)n; // 0.54.0
 - (void)showLiveMorphA:(float)a b:(float)b; // 0.35.0
 - (void)showVoiceMorph:(const float*)a count:(int)na b:(const float*)b count:(int)nb; // 0.36.0

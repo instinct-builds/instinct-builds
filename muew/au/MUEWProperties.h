@@ -43,9 +43,11 @@ struct MUEWPerformance {
     Float32 voiceMorph[2][8];
     UInt32 voiceMorphCount[2];
     Float32 routeMeter[16]; // 0.54.0 signed, normalized per-route activity; zero when idle
+    Float32 outputPeak[2]; // 0.58.0 post-master left/right block peaks
+    Float32 masterDrive;   // 0.58.0 max abs pre-tanh input * 1.6, not a clip flag
 };
 
 // Objective-C class the AU names in kAudioUnitProperty_CocoaUI. Versioned so
 // two MUEW builds loaded in one host never collide.
-#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_57"
+#define MUEW_VIEW_FACTORY_CLASS "MUEWViewFactory_0_58"
 #define MUEW_AU_BUNDLE_ID "co.instinct.muew.au"

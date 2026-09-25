@@ -1,5 +1,6 @@
 #pragma once
 #include "voice.h"
+#include "output_meter.h"
 #include "fx.h"
 #include "arp.h"
 #include <vector>
@@ -290,18 +291,22 @@ public:
     // Samples the engine output runs late (fractional: the halfbands are half-sample aligned).
     double latencySamples() const { return (oscHQ() ? Voice::kHQLatency : 0.0) + fx_.latencySamples(); }
 
+    const OutputMeter& outputMeter() const { return outputMeter_; }
     void render(float* out, int frames) {
+        outputMeter_.clear();
         resetRouteMeters();
         for (int i = 0; i < frames; ++i) {
             if (arpOn_) arpTick();
             float mix = mixVoices();
             if (locked_) beat_ += beatInc_;
             out[i] = std::tanh(mix * 1.6f);  // soft clip / master
+            outputMeter_.sample(mix, mix, out[i], out[i]);
         }
     }
 
     // Interleaved stereo: voice sum goes through the FX chain.
     void renderStereo(float* interleaved, int frames) {
+        outputMeter_.clear();
         resetRouteMeters();
         for (int i = 0; i < frames; ++i) {
             float l, r;
@@ -312,11 +317,13 @@ public:
             fx_.process(l, r);
             interleaved[i * 2]     = std::tanh(l * 1.6f);
             interleaved[i * 2 + 1] = std::tanh(r * 1.6f);
+            outputMeter_.sample(l, r, interleaved[i * 2], interleaved[i * 2 + 1]);
         }
     }
 
     // Non-interleaved stereo (Audio Unit buffer layout): same path as renderStereo.
     void renderPlanar(float* left, float* right, int frames) {
+        outputMeter_.clear();
         resetRouteMeters();
         for (int i = 0; i < frames; ++i) {
             float l, r;
@@ -327,6 +334,7 @@ public:
             fx_.process(l, r);
             left[i]  = std::tanh(l * 1.6f);
             right[i] = std::tanh(r * 1.6f);
+            outputMeter_.sample(l, r, left[i], right[i]);
         }
     }
 
@@ -632,6 +640,7 @@ private:
     TableFrames tableFrames_[2];
     std::shared_ptr<const CustomTable> tables_[2];
     SpectralProcess morphSpec_[2]; // 0.33.0
+    OutputMeter outputMeter_; // 0.58.0 block peaks, excluded from sound/preset state
     float trim_ = 1.0f;            // 0.33.0
 };
 

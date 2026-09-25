@@ -2239,18 +2239,36 @@ int main() {
             Snapshot(view, "MUEW_VIEW_PNG", "editor snapshot written after the scripted edits");
         });
         After(7.12, ^{ // 0.30.0 Engine HQ: header QUALITY pill on, a chord for the voice meter
-            const NSPoint hqPill = NSMakePoint(268 + 7 + 14, view.bounds.size.height - 66 + 21 + 6.5);
+            const NSPoint hqPill = NSMakePoint(268 + 7 + 14, view.bounds.size.height - 74 + 29 + 6.5);
             Click(view, w, hqPill);
             MusicDeviceMIDIEvent(gUnit, 0x90, 60, 100, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 64, 100, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 67, 100, 0);
             for (int i = 0; i < 8; ++i) RenderBlock();
         });
         After(7.17, ^{
-            const NSPoint hqPill = NSMakePoint(268 + 7 + 14, view.bounds.size.height - 66 + 21 + 6.5);
+            const NSPoint hqPill = NSMakePoint(268 + 7 + 14, view.bounds.size.height - 74 + 29 + 6.5);
             RenderBlock();
             SEL follow = NSSelectorFromString(@"muewFollowPerformance");
             if ([view respondsToSelector:follow]) ((void (*)(id, SEL))[view methodForSelector:follow])(view, follow);
             [view display];
             Snapshot(view, "MUEW_ENGINE_PNG", "Engine HQ header snapshot written");
+            // 0.58.0: the displayed L/R level is after the soft master.
+            // SAT is driven by pre-master input, never called a clip event.
+            MUEWPerformance output{}; UInt32 outputSize = sizeof(output);
+            bool outputRead = AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&output,&outputSize)==noErr;
+            NSString* levelText = [view respondsToSelector:NSSelectorFromString(@"muewOutputText")] ? [view valueForKey:@"muewOutputText"] : @"";
+            Check(outputRead && output.outputPeak[0] > 0 && output.outputPeak[0] < 1 && output.outputPeak[1] > 0 && output.outputPeak[1] < 1 &&
+                  [levelText hasPrefix:@"left="] && [levelText containsString:@"right="],
+                  "post-master stereo output levels reach the hosted Engine header");
+            // Inject only the UI readout for a deterministic hot-saturation
+            // screenshot; the audio/host value above is checked independently.
+            SEL showLevel = NSSelectorFromString(@"showOutputLeft:right:drive:");
+            if ([view respondsToSelector:showLevel]) ((void (*)(id,SEL,float,float,float))[view methodForSelector:showLevel])(view,showLevel,.78f,.44f,1.2f);
+            NSString* hotText = [view respondsToSelector:NSSelectorFromString(@"muewOutputText")] ? [view valueForKey:@"muewOutputText"] : @"";
+            Check([hotText containsString:@"sat=1"] && [hotText containsString:@"left=0.780"] && [hotText containsString:@"right=0.440"],
+                  "amber SAT indicates soft saturation while distinct L/R output peaks remain below full scale");
+            [view display];
+            Snapshot(view, "MUEW_OUTPUT58_PNG", "Engine stereo output and soft saturation snapshot written");
+
             NSString* et = [view respondsToSelector:NSSelectorFromString(@"muewEngineText")] ? [view valueForKey:@"muewEngineText"] : @"";
             Float64 lat = -1; UInt32 sz = sizeof(lat);
             AudioUnitGetProperty(gUnit, kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0, &lat, &sz);

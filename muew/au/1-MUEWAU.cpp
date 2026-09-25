@@ -111,6 +111,7 @@ struct MUEWInstance {
     std::atomic<float> voiceMorph[2][8]{};              // 0.36.0 per-voice ghosts
     std::atomic<UInt32> voiceMorphN[2]{{0u}, {0u}};
     std::atomic<float> routeMeter[muew::kMaxRoutes]{}; // 0.54.0 block peaks
+    std::atomic<float> outputPeak[2]{}; std::atomic<float> masterDrive{0}; // 0.58.0 MUEW output/soft saturation
     double cpuSmooth = 0.0;
     double notifiedLatency = 0.0; // samples, as last announced to the host
     // Samples the current sound runs late (oscillator HQ 7.5, HQ distortion 22.5).
@@ -566,6 +567,8 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                     for (int i = 0; i < 8; ++i) pf.voiceMorph[o][i] = u->voiceMorph[o][i].load();
                 }
                 for (int i = 0; i < muew::kMaxRoutes; ++i) pf.routeMeter[i] = u->routeMeter[i].load();
+                pf.outputPeak[0] = u->outputPeak[0].load(); pf.outputPeak[1] = u->outputPeak[1].load();
+                pf.masterDrive = u->masterDrive.load();
                 *static_cast<MUEWPerformance*>(outData) = pf;
                 *ioDataSize = sizeof(MUEWPerformance);
                 return noErr;
@@ -745,11 +748,12 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
     std::stable_sort(u->events.begin(), u->events.end(), [](const ScheduledEvent& a, const ScheduledEvent& b) {
         return a.offset < b.offset;
     });
+    muew::OutputMeter output; // merge segments split by sample-offset MIDI events
     UInt32 cursor = 0;
     size_t consumed = 0;
     while (consumed < u->events.size() && u->events[consumed].offset < inNumberFrames) {
         UInt32 at = u->events[consumed].offset;
-        if (at > cursor) u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(at - cursor));
+        if (at > cursor) { u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(at - cursor)); output.merge(u->synth.outputMeter()); }
         do {
             const auto& e = u->events[consumed];
             switch (e.kind) {
@@ -766,8 +770,11 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         } while (consumed < u->events.size() && u->events[consumed].offset == at);
         cursor = at;
     }
-    if (cursor < inNumberFrames)
+    if (cursor < inNumberFrames) {
         u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(inNumberFrames - cursor));
+        output.merge(u->synth.outputMeter());
+    }
+    u->outputPeak[0] = output.left; u->outputPeak[1] = output.right; u->masterDrive = output.drive;
     if (consumed > 0) { // 0.24.0 meters
         const auto& pf = u->synth.performance();
         u->perfWheel = (float)pf.wheel; u->perfAT = (float)pf.aftertouch; u->perfBend = (float)pf.bend;

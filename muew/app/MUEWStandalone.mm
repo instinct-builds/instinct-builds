@@ -15,6 +15,7 @@ using namespace muew;
 static std::atomic<float> gCpu{0}; // 0.30.0 header meter: smoothed real-time load
 static std::atomic<int> gVoices{0};
 static std::atomic<float> gMorphA{-1.0f}, gMorphB{-1.0f}; // 0.35.0 live morph meter
+static std::atomic<float> gOutputPeak[2]{}; static std::atomic<float> gMasterDrive{0}; // 0.58.0
 static std::atomic<float> gRouteMeter[kMaxRoutes]{}; // 0.54.0
 static std::atomic<float> gVoiceMorph[2][8]{}; static std::atomic<int> gVoiceMorphN[2]{{0}, {0}}; // 0.36.0
 
@@ -67,6 +68,8 @@ struct StandaloneHost : MUEWEditorHost {
         std::lock_guard<std::mutex> g(*l);
         const auto t0 = std::chrono::steady_clock::now(); // 0.30.0 header meter
         s->renderPlanar(left, right, (int)count);
+        gOutputPeak[0] = s->outputMeter().left; gOutputPeak[1] = s->outputMeter().right;
+        gMasterDrive = s->outputMeter().drive;
         const double used = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), budget = count / 44100.0;
         if (budget > 0) { const float c = gCpu.load(); gCpu = c + 0.1f * ((float)std::min(used / budget, 4.0) - c); }
         gVoices = s->activeVoiceCount();
@@ -83,6 +86,7 @@ struct StandaloneHost : MUEWEditorHost {
     meter = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15 repeats:YES block:^(NSTimer*) {
         const auto& vp = view->current.voice;
         [view showEngineVoices:gVoices.load() limit:vp.voiceMode != 0 ? 1 : vp.polyVoices cpu:gCpu.load() render:false];
+        [view showOutputLeft:gOutputPeak[0].load() right:gOutputPeak[1].load() drive:gMasterDrive.load()];
         float route[kMaxRoutes]; for (int i = 0; i < kMaxRoutes; ++i) route[i] = gRouteMeter[i].load();
         [view showRouteMeters:route count:kMaxRoutes]; // 0.54.0
         [view showLiveMorphA:gMorphA.load() b:gMorphB.load()]; // 0.35.0
