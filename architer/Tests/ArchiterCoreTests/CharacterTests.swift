@@ -1142,6 +1142,31 @@ struct JournalTests {
         #expect(JournalEntry(sessionDigest: session, format: .byActor).text == grouped)
     }
 
+    // 2.93.0: a noted roll's note rides the digest body under its line,
+    /// in both layouts; unnoted rolls stay one line each.
+    @Test func digestBodyCarriesRollNotes() throws {
+        var r1 = RollResult(expression: "8d6", dice: [DieResult(sides: 6, value: 5, kept: true)],
+                            modifier: 0, total: 27, alternateTotal: nil)
+        r1.label = "Fireball"
+        r1.characterName = "Wren"
+        r1.note = "The bridge collapses behind them"
+        let r2 = RollResult(expression: "d20", dice: [DieResult(sides: 20, value: 11, kept: true)],
+                            modifier: 0, total: 11, alternateTotal: nil)
+        let session = RollSession(number: 1, title: "Session 1 - Today", key: nil, rolls: [r2, r1])
+        let condensed = JournalEntry.digestBody(session: session, format: .condensed)
+        let condensedLines = condensed.components(separatedBy: "\n")
+        let fireballIdx = try #require(condensedLines.firstIndex(where: { $0.contains("Fireball: 27 (8d6)") }))
+        #expect(condensedLines[fireballIdx + 1] == "  The bridge collapses behind them")
+        let grouped = JournalEntry.digestBody(session: session, format: .byActor)
+        let groups = grouped.components(separatedBy: "\n\n")
+        let wren = try #require(groups.first(where: { $0.hasPrefix("Wren:") }))
+        let wrenLines = wren.components(separatedBy: "\n")
+        let wrenFireballIdx = try #require(wrenLines.firstIndex(where: { $0.contains("Fireball: 27 (8d6)") }))
+        #expect(wrenLines[wrenFireballIdx + 1] == "  The bridge collapses behind them")
+        let table = try #require(groups.first(where: { $0.hasPrefix("Table:") }))
+        #expect(table.components(separatedBy: "\n").count == 2)
+    }
+
     @Test func journalFilteredShareText() throws {
         let a = JournalEntry(date: "Session 1", title: "Start", text: "It began.")
         let b = JournalEntry(date: "Session 2", title: "Fire fight", text: "Burning.")

@@ -728,6 +728,22 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-roll-note", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.93.0 proof: the note rides every share block and the digest -
+    // the same indented line under the Fireball, wherever it is pasted.
+    func shareExcerpt(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        guard let i = lines.firstIndex(where: { $0.contains("Fireball") }) else { return "<missing>" }
+        return lines[i...min(i + 1, lines.count - 1)].joined(separator: "\n")
+    }
+    if let newest = model.namedSessions(model.rollHistory).first {
+        let noteShareLines = ["Notes in share text (2.93.0)", "",
+                              "copy starred:", shareExcerpt(model.rollHistory.starredShareText), "",
+                              "session digest (condensed):", shareExcerpt(JournalEntry.digestBody(session: newest, format: .condensed)), "",
+                              "session share:", shareExcerpt(sessionShareText(newest))]
+        try? noteShareLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/notes-share.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

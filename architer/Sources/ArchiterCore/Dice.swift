@@ -384,7 +384,7 @@ public func sessionShareText(_ session: RollSession) -> String {
     var head = session.title + "\n" + sessionStats(session).line
     if let note = session.note { head += "\n" + note }
     return head + "\n\n"
-        + session.rolls.reversed().map { $0.historyLine }.joined(separator: "\n") + "\n"
+        + session.rolls.reversed().flatMap { $0.shareLines }.joined(separator: "\n") + "\n"
 }
 
 /// Copy text for one day of history (2.77.0): the day's header -
@@ -393,7 +393,7 @@ public func sessionShareText(_ session: RollSession) -> String {
 /// groups are built oldest first), one history line each.
 public func dayShareText(_ group: RollDayGroup) -> String {
     group.title + "\n\n"
-        + group.rolls.map { $0.historyLine }.joined(separator: "\n") + "\n"
+        + group.rolls.flatMap { $0.shareLines }.joined(separator: "\n") + "\n"
 }
 
 /// A per-session Markdown file (2.72.0): the session's title (custom
@@ -683,6 +683,17 @@ public extension RollResult {
         }
         return "\(stamp)\(expression): \(total)"
     }
+
+    /// The roll's share lines (2.93.0): its history line, then its note
+    /// indented two spaces when it carries one - the story rides every
+    /// paste. Shared by the copy/share blocks and the digest bodies;
+    /// single-line callers (session-log rows, copy-one-roll) keep using
+    /// historyLine alone.
+    var shareLines: [String] {
+        var lines = [historyLine]
+        if let note { lines.append("  " + note) }
+        return lines
+    }
 }
 
 public extension Array where Element == RollResult {
@@ -827,8 +838,9 @@ public extension Array where Element == RollResult {
     /// One line per roll, oldest first, for sharing a session log:
     /// "Stealth check: 25 (1d20+7)" when labeled, "2d6+3: 13" when not.
     /// Pairs with forCharacter/matching - export exactly what you see.
+    /// 2.93.0: a noted roll's note follows its line, indented.
     var historyText: String {
-        reversed().map { $0.historyLine }.joined(separator: "\n")
+        reversed().flatMap { $0.shareLines }.joined(separator: "\n")
     }
 
     /// Rolls whose label or expression contains the query, case- and

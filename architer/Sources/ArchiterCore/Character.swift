@@ -389,20 +389,22 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     /// made under no character filed under "Table". 2.73.0: the body
     /// opens with the session's stats line (2.69.0) and its note
     /// (2.71.0) when set, so a filed digest reads standalone.
+    /// 2.93.0: a noted roll's note follows its line, indented.
     public static func digestBody(session: RollSession, format: DigestFormat) -> String {
         let rolls = session.rolls.reversed()
         var head = sessionStats(session).line
         if let note = session.note { head += "\n" + note }
         switch format {
         case .condensed:
-            return head + "\n\n" + rolls.map { $0.historyLine }.joined(separator: "\n")
+            // 2.93.0: a noted roll's note follows its line, indented.
+            return head + "\n\n" + rolls.flatMap { $0.shareLines }.joined(separator: "\n")
         case .byActor:
             var order: [String] = []
             var grouped: [String: [String]] = [:]
             for roll in rolls {
                 let actor = roll.characterName.flatMap { $0.isEmpty ? nil : $0 } ?? "Table"
                 if grouped[actor] == nil { order.append(actor) }
-                grouped[actor, default: []].append(roll.historyLine)
+                grouped[actor, default: []].append(contentsOf: roll.shareLines)
             }
             return head + "\n\n" + order.map { actor in
                 ([actor + ":"] + (grouped[actor] ?? [])).joined(separator: "\n")

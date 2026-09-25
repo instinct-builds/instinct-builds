@@ -595,6 +595,19 @@ struct RollHistoryFilterTests {
         #expect(plain == "2d6+3: 10")
     }
 
+    // 2.93.0: a noted roll's note rides the share text as an indented
+    /// line under it; unnoted rolls stay one line each.
+    @Test func historyTextCarriesNotes() {
+        var noted = roll("8d6", label: "Fireball")
+        noted.note = "The bridge collapses behind them"
+        let rolls = [roll("d20"), noted]
+        #expect(rolls.historyText == """
+            Fireball: 10 (8d6)
+              The bridge collapses behind them
+            d20: 10
+            """)
+    }
+
     @Test func oldRollsWithoutTimestampsDecode() throws {
         // Pre-2.35.0 journal/history entries have no rolledAt key.
         let json = Data(#"[{"expression":"1d20","dice":[],"modifier":0,"total":7,"characterName":"Wren"}]"#.utf8)
@@ -902,6 +915,21 @@ struct SessionSegmentTests {
         #expect(lines[4].contains("d20: 10"))
     }
 
+    // 2.93.0: the session share text carries a noted roll's note under
+    /// its line, indented.
+    @Test func sessionShareTextCarriesRollNotes() throws {
+        let cal = utc
+        let now = at(cal, 24, 20)
+        var noted = stamped("8d6", at: at(cal, 24, 18))
+        noted.label = "Fireball"
+        noted.note = "The bridge collapses behind them"
+        let rolls = [noted, stamped("2d6", at: at(cal, 24, 17))]
+        let session = sessionSegments(rolls, now: now, calendar: cal)[0]
+        let lines = sessionShareText(session).components(separatedBy: "\n")
+        let fireballIdx = try #require(lines.firstIndex(where: { $0.contains("Fireball: 10 (8d6)") }))
+        #expect(lines[fireballIdx + 1] == "  The bridge collapses behind them")
+    }
+
     // 2.77.0: copy-day text = the named, summarized day header, a blank
     // line, then the day's rolls oldest first, one history line each.
     @Test func dayShareTextCarriesHeaderAndChronologicalRolls() throws {
@@ -920,6 +948,24 @@ struct SessionSegmentTests {
         let lines = text.components(separatedBy: "\n")
         #expect(lines[2].contains("2d6: 10"))
         #expect(lines[3].contains("d20: 10"))
+    }
+
+    // 2.93.0: the day copy carries a noted roll's note under its line.
+    @Test func dayShareTextCarriesRollNotes() throws {
+        let cal = utc
+        let now = at(cal, 24, 21)
+        var noted = stamped("8d6", at: at(cal, 24, 15))
+        noted.label = "Fireball"
+        noted.note = "The bridge collapses behind them"
+        let rolls = [noted, stamped("2d6", at: at(cal, 24, 10))]
+        let groups = summarizedDayGroups(namedDayGroups(Array(rolls.reversed()),
+                                                        names: [:],
+                                                        now: now, calendar: cal),
+                                         now: now, calendar: cal)
+        let group = try #require(groups.first)
+        let lines = dayShareText(group).components(separatedBy: "\n")
+        let fireballIdx = try #require(lines.firstIndex(where: { $0.contains("Fireball: 10 (8d6)") }))
+        #expect(lines[fireballIdx + 1] == "  The bridge collapses behind them")
     }
 
     // 2.78.0: the crits-only filter keeps rolls with a kept natural 20
