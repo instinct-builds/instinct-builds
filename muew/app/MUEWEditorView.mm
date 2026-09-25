@@ -929,8 +929,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [[col colorWithAlphaComponent:.55] setStroke]; bg.lineWidth = 1; [bg stroke];
     Text([NSString stringWithFormat:@"WAVETABLE  \u2022  OSC %@", wtEdit ? @"B" : @"A"],
          NSMakeRect(40, NSMaxY(P) - 30, 150, 20), 11, col, NSFontWeightSemibold);
-    Text([NSString stringWithFormat:@"FRAME %d / %d", wtFrame + 1, (int)t.size()],
-         NSMakeRect(146, NSMaxY(P) - 29, 78, 20), 10, C(0x8793a3), NSFontWeightMedium);
+    // 0.32.0 fix1: the UNDO / REDO arrows took the old FRAME n / N space, so the readout is the bare
+    // frame count, right-aligned against the arrows and clear of the OSC title.
+    TextA([NSString stringWithFormat:@"%d / %d", wtFrame + 1, (int)t.size()],
+          NSMakeRect(166, NSMaxY(P) - 26.5, 52, 14), 10, C(0x8793a3), NSFontWeightMedium, NSTextAlignmentRight);
     for (int i = 0; i < 2; ++i) { // 0.32.0 UNDO / REDO: curved arrows, lit when there is a step to take
         const NSRect r = [self wtUndoRect:i];
         const bool live = i == 0 ? wtHistory[wtEdit].canUndo() : wtHistory[wtEdit].canRedo();
