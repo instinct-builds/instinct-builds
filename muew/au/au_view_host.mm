@@ -1816,6 +1816,26 @@ int main() {
             Check(meterShown.length>20 && [meterShown containsString:@"routes=0.375"],
                   "hosted editor follows live route meter values, not static amounts");
             Snapshot(view,"MUEW_MATRIX54_PNG","live matrix row meter snapshot written");
+            // The engine can go quiet while the editor still holds the last
+            // route hit. Feed zero deliberately, then let the visual timer
+            // pass its hold interval before taking the proof shot.
+            float quiet[muew::kMaxRoutes]{};
+            SEL holdShow=NSSelectorFromString(@"showRouteMeters:count:");
+            SEL holdTextSel=NSSelectorFromString(@"muewRouteHoldText");
+            if ([view respondsToSelector:holdShow]) ((void (*)(id,SEL,const float*,int))[view methodForSelector:holdShow])(view,holdShow,quiet,muew::kMaxRoutes);
+            NSString* holdNow=[view respondsToSelector:holdTextSel] ? [view valueForKey:@"muewRouteHoldText"] : @"";
+            Check([holdNow hasPrefix:@"hold="] && [holdNow containsString:@"0.375"], "route peak survives a quiet render/UI poll");
+            // Awake at sub-100ms intervals: the editor caps a single timer
+            // jump so a suspended host cannot erase a visible peak abruptly.
+            for (int k=0;k<5;++k) {
+                [NSThread sleepForTimeInterval:.06];
+                if ([view respondsToSelector:holdShow]) ((void (*)(id,SEL,const float*,int))[view methodForSelector:holdShow])(view,holdShow,quiet,muew::kMaxRoutes);
+            }
+            NSString* holdLate=[view respondsToSelector:holdTextSel] ? [view valueForKey:@"muewRouteHoldText"] : @"";
+            Check([holdLate hasPrefix:@"hold="] && ![holdLate containsString:@"0.375"],
+                  "route peak begins to decay after its short hold");
+            Snapshot(view,"MUEW_HOLD56_PNG","matrix peak hold/decay snapshot written");
+
             MusicDeviceMIDIEvent(gUnit,0xB0,123,0,0); for(int k=0;k<80;++k) RenderBlock();
             MUEWPerformance meterOff{}; UInt32 meterOffSize=sizeof(meterOff);
             bool meterCleared=AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&meterOff,&meterOffSize)==noErr;

@@ -435,3 +435,12 @@ affects both noise channels equally, including HQ output, without changing
 oscillators, sub, filter or the main amp envelope. It also follows a routed
 NOISE level when the base level is zero. The optional `noiseb <seconds>` preset
 line stores the setting; no AU parameter IDs were added.
+
+## 0.56.0 Matrix peak hold
+
+A small colored pip above each matrix activity bar catches short route peaks
+for 180 ms, then fades over roughly 420 ms while the live white indicator
+continues to follow the latest signed render value. Opposite-polarity peaks
+can replace a weaker hold immediately. Holds reset on route or preset edits,
+and vacant or unsupported routes do not show them. This is only display
+ballistics in the standalone and AU editors: no new sound or preset state.

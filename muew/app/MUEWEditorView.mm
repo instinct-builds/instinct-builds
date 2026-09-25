@@ -79,7 +79,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        std::fill_n(routeMeters, kMaxRoutes, 0.0f);
+        std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeMeterClock = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
@@ -139,6 +139,12 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
     if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; } // a different sound starts on page 1, with no table history
+    bool routeChanged = current.routes.size() != p.routes.size();
+    for (size_t i = 0; !routeChanged && i < p.routes.size(); ++i) {
+        const auto& a = current.routes[i]; const auto& b = p.routes[i];
+        routeChanged = a.source != b.source || a.dest != b.dest || a.amount != b.amount || a.curve != b.curve || a.aux != b.aux;
+    }
+    if (routeChanged) { routeHold.clear(); routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f); }
     current = p;
     currentIndex = index;
     edited = wasEdited;
@@ -160,6 +166,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if (i < 0 || i >= lib.count()) return;
     currentIndex = i;
     current = lib.at(i);
+    routeHold.clear(); routeMeterClock = 0;
     matrixPage = 0;
     wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; // 0.32.0: undo never crosses into another preset
     wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
@@ -536,13 +543,25 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 // Matrix activity overlays the static depth bar, with the same center and scale.
 // Only visible rows need repainting; values come from actual render contributions.
 - (void)showRouteMeters:(const float*)values count:(int)n {
+    const double now = [NSDate timeIntervalSinceReferenceDate];
+    const double dt = routeMeterClock > 0 ? now - routeMeterClock : 0;
+    routeMeterClock = now;
+    float prior[kMaxRoutes];
+    for (int i = 0; i < kMaxRoutes; ++i) prior[i] = routeHold.value[i];
+    routeHold.update(values, n, dt);
     for (int slot = 0; slot < kMaxRoutes; ++slot) {
-        float v = slot < n && values ? values[slot] : 0.0f;
-        v = std::isfinite(v) ? std::clamp(v, -1.0f, 1.0f) : 0.0f;
-        if (std::fabs(v - routeMeters[slot]) < 0.008f) continue;
-        routeMeters[slot] = v;
-        if (slot / 4 == matrixPage) [self setNeedsDisplayInRect:NSInsetRect([self routeBar:slot % 4], -2, -2)];
+        const bool valid = slot < (int)current.routes.size() && ui::routeActive(current.routes[slot]);
+        const float x = valid && slot < n && values && std::isfinite(values[slot]) ? std::clamp(values[slot], -1.0f, 1.0f) : 0.0f;
+        if (!valid) { routeHold.value[slot] = 0; routeHold.age[slot] = 0; }
+        const bool changed = std::fabs(x - routeMeters[slot]) >= .008f || std::fabs(routeHold.value[slot] - prior[slot]) >= .008f;
+        routeMeters[slot] = x;
+        if (changed && slot / 4 == matrixPage) [self setNeedsDisplayInRect:NSInsetRect([self routeBar:slot % 4], -2, -2)];
     }
+}
+- (NSString*)muewRouteHoldText {
+    NSMutableString* text = [NSMutableString stringWithString:@"hold="];
+    for (int i = 0; i < kMaxRoutes; ++i) [text appendFormat:@"%@%.3f", i ? @"," : @"", routeHold.value[i]];
+    return text;
 }
 - (NSString*)muewRouteMetersText {
     NSMutableString* text = [NSMutableString stringWithString:@"routes="];
@@ -2151,7 +2170,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         if (ui::routeActive(rt) && std::fabs(routeMeters[slot]) > 0.006f) {
             const CGFloat px = mid + routeMeters[slot] * track.size.width / 2;
             FillRound(NSMakeRect(px - 1, track.origin.y - 3, 2, 11), 1, C(0xffffff, .94));
-            FillRound(NSMakeRect(px - 2.5, track.origin.y + 7.5, 5, 2), 1, [col colorWithAlphaComponent:.95]);
+        }
+        // Small colored peak pip lingers above the moving white activity line.
+        // It cannot obscure the editable depth handle or change sound state.
+        if (ui::routeActive(rt) && std::fabs(routeHold.value[slot]) > .008f) {
+            const CGFloat hx = mid + routeHold.value[slot] * track.size.width / 2;
+            FillRound(NSMakeRect(hx - 1.5, track.origin.y + 7.5, 3, 2), 1, [col colorWithAlphaComponent:.95]);
         }
         FillRound(NSMakeRect(mid + w - 3, track.origin.y - 2, 6, 9), 2, C(0xeaf1f8));
         // Curve glyph: the route's response, 0..1 in and out.

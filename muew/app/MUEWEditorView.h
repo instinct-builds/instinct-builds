@@ -5,6 +5,7 @@
 #pragma once
 #import <AppKit/AppKit.h>
 #include "ui_model.h"
+#include "route_meter_hold.h"
 #include "spectral_process.h"
 #include "table_history.h"
 #include "frame_range.h"
@@ -94,7 +95,9 @@ struct MUEWEditorHost {
     bool engRender;
     int voiceDrag;   // 0.23.0 voice strip: GLIDE (0) or BLEND (1) bar being dragged, -1 none
     int lfoXDrag;    // 0.18.0 LFO editor: PHASE/DELAY/RISE pill being dragged (0-2), -1 none
-    float routeMeters[muew::kMaxRoutes]; // 0.54.0 signed route activity
+    float routeMeters[muew::kMaxRoutes]; // 0.54.0 signed current route activity
+    muew::RouteMeterHold routeHold; // 0.56.0 display-only peak ballistics
+    double routeMeterClock; // last UI poll, in seconds
     int routeDrag;
     int modFieldDrag;
     // 0.13.0 FX chain: card slot being dragged to a new place (-1 = none)
