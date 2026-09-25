@@ -854,8 +854,10 @@ public extension Array where Element == RollResult {
     func matching(_ query: String) -> [RollResult] {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return self }
+        // 2.96.0: note text matches too - the story is as searchable
+        // as the label.
         return filter { roll in
-            [roll.label, roll.expression].compactMap { $0 }.contains {
+            [roll.label, roll.expression, roll.note].compactMap { $0 }.contains {
                 $0.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil
             }
         }

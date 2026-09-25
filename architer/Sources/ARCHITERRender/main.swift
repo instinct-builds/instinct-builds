@@ -745,6 +745,16 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/notes-share.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 2.96.0 proof: the history filter searches note text - "bridge"
+    // finds the noted Fireball though neither its label nor its
+    // expression says bridge; "dragon" still finds nothing.
+    let filterProof = ["History filter matches note text (2.96.0)", "",
+                       "query \"bridge\" (\(model.rollHistory.matching("bridge").count) hit):",
+                       model.rollHistory.matching("bridge").historyText,
+                       "query \"dragon\": \(model.rollHistory.matching("dragon").count) hits"]
+    try? filterProof.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/history-filter-note.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

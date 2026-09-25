@@ -649,6 +649,22 @@ struct RollHistoryFilterTests {
         #expect(rolls.forCharacter("Wren").matching("damage").count == 1)
         #expect(rolls.forCharacter("Wren").matching("2d6").isEmpty)
     }
+
+    // 2.96.0: the filter searches note text too - a DM filtering for
+    /// the story finds the roll that carries it.
+    @Test func matchingSearchesNoteText() {
+        var noted = roll("8d6", label: "Fireball")
+        noted.note = "The bridge collapses behind them"
+        let rolls = [roll("d20"), noted]
+        // Note text matches, case-insensitive.
+        #expect(rolls.matching("bridge").count == 1)
+        #expect(rolls.matching("COLLAPSES").count == 1)
+        #expect(rolls.matching("bridge").first?.label == "Fireball")
+        // Unnoted rolls still only match label/expression.
+        #expect(rolls.matching("d20").count == 1)
+        // A query hitting nothing anywhere stays empty.
+        #expect(rolls.matching("dragon").isEmpty)
+    }
 }
 
 @Suite("Session segments")
