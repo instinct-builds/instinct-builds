@@ -888,6 +888,25 @@ struct SessionSegmentTests {
         #expect(crits.contains { $0.total == 1 })
     }
 
+    // 2.79.0: per-roll delete removes only the first matching entry; an
+    // absent roll leaves the log unchanged.
+    @Test func removingFirstDeletesOnlyTheFirstMatch() {
+        let a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 12, kept: true)],
+                           modifier: 0, total: 12, alternateTotal: nil)
+        let b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        let absent = RollResult(expression: "d8",
+                                dice: [DieResult(sides: 8, value: 3, kept: true)],
+                                modifier: 0, total: 3, alternateTotal: nil)
+        let log = [a, b, a]
+        let once = log.removingFirst(a)
+        #expect(once == [b, a])
+        #expect(once.removingFirst(a) == [b])
+        #expect(once.removingFirst(absent) == once)
+    }
+
     // 2.71.0: noted() carries the session note; blank clears it. The
     // note rides the copy text under the stats line and follows its
     // session's name into export headers in parentheses.

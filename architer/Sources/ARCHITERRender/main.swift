@@ -461,6 +461,24 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-crits", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.79.0 proof: per-roll delete - the crafted crit (the newest roll)
+    // leaves the history; the txt records the log before and after.
+    let beforeDelete = model.rollHistory
+    if let victim = beforeDelete.first { model.deleteRoll(victim) }
+    let deleteLines = ["Per-roll delete (2.79.0)", "",
+                       "before (\(beforeDelete.count) rolls):"]
+        + beforeDelete.prefix(4).map { "  " + ($0.label ?? $0.expression) + " = \($0.total)" }
+        + ["", "after (\(model.rollHistory.count) rolls):"]
+        + model.rollHistory.prefix(4).map { "  " + ($0.label ?? $0.expression) + " = \($0.total)" }
+    try? deleteLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/history-delete.txt"),
+               atomically: true, encoding: .utf8)
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-delete", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

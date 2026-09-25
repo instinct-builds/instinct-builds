@@ -340,6 +340,14 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 2.79.0: per-roll delete - a mis-rolled entry leaves the log
+    /// without clearing everything. Identical rolls are
+    /// indistinguishable, so the first match goes.
+    public func deleteRoll(_ roll: RollResult) {
+        rollHistory = rollHistory.removingFirst(roll)
+        rollHistoryStore.save(rollHistory)
+    }
+
     private func record(_ r: RollResult) {
         var r = r
         r.characterName = selected?.wrappedValue.name

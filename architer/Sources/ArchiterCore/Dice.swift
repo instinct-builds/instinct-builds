@@ -655,6 +655,15 @@ public extension Array where Element == RollResult {
         }
     }
 
+    /// History minus the first entry equal to `roll` (2.79.0): the
+    /// per-roll delete. Identical rolls are indistinguishable, so the
+    /// first match goes; an absent roll leaves the log unchanged.
+    func removingFirst(_ roll: RollResult) -> [RollResult] {
+        var copy = self
+        if let i = copy.firstIndex(of: roll) { copy.remove(at: i) }
+        return copy
+    }
+
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }

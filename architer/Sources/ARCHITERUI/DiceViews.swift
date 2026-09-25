@@ -573,6 +573,14 @@ struct RollCard: View {
                     .help("Add this roll to the journal")
                     .disabled(model.selected == nil)
             }
+            // 2.79.0: remove a mis-rolled entry without clearing the
+            // whole history (Clear stays all-or-nothing).
+            Button {
+                model.deleteRoll(roll)
+            } label: { Image(systemName: "trash") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help("Remove this roll from history")
             if let alt = roll.alternateTotal {
                 Text("\(alt)")
                     .font(Theme.Typeface.caption.monospacedDigit())
