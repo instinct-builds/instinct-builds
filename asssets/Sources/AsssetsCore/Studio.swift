@@ -74,6 +74,8 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     public var placementRecipe: PlacementRecipe? = nil
     /// Last reviewed on-disk source contents (1.42); absent in older catalogs.
     public var sourceFingerprint: SourceFingerprint? = nil
+    /// Fingerprint bound to a small approved preview snapshot stored beside the catalog (1.46).
+    public var sourcePreviewHash: String? = nil
 
     public init(id: UUID = UUID(), title: String, kind: MediaKind, tags: [String], collection: String,
                 palette: [String], seed: Int, favorite: Bool = false, importedPath: String? = nil,
@@ -83,7 +85,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         self.resolution = resolution; self.sourceKey = sourceKey
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights, licenseDocs, placementRecipe, sourceFingerprint }
+    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights, licenseDocs, placementRecipe, sourceFingerprint, sourcePreviewHash }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -108,6 +110,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         licenseDocs = (try? c.decodeIfPresent([UUID].self, forKey: .licenseDocs)) ?? []
         placementRecipe = try? c.decodeIfPresent(PlacementRecipe.self, forKey: .placementRecipe)
         sourceFingerprint = try? c.decodeIfPresent(SourceFingerprint.self, forKey: .sourceFingerprint)
+        sourcePreviewHash = try? c.decodeIfPresent(String.self, forKey: .sourcePreviewHash)
     }
 
     /// Auto tags still waiting for the user: not already a real tag, not dismissed.

@@ -246,6 +246,8 @@ jobs:
           grep -q '^done queue-next=true pending=1$' "$SUP/demo-source-queue.txt"
           DELAY=13 shoot changed-source 1920x1200 changed-source
           DELAY=13 shoot changed-source-review 1920x1200 changed-source-review
+          DELAY=16 shoot source-preview-review 1920x1200 source-preview-review demo-source-preview.txt
+          grep -q '^done before=true current=true small=true$' "$SUP/demo-source-preview.txt"
           DELAY=14 shoot changed-source-inspector 1920x1200 changed-source-inspector
           DELAY=13 shoot changed-source-apply 1920x1200 changed-source-apply demo-changed-source.txt
           grep -q '^done changed=true rights=true boards=[1-9]' "$SUP/demo-changed-source.txt"

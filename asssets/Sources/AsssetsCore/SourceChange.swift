@@ -27,6 +27,15 @@ extension StudioCatalog {
         return true
     }
 
+    /// Binds an on-disk small preview only to its exact source digest.
+    @discardableResult
+    public mutating func bindSourcePreview(hash: String, for id: UUID, path: String) -> Bool {
+        guard let i = assets.firstIndex(where: { $0.id == id && $0.importedPath == path && !$0.isStarter && $0.placementRecipe == nil }),
+              assets[i].sourceFingerprint?.sha256 == hash, assets[i].sourcePreviewHash != hash else { return false }
+        assets[i].sourcePreviewHash = hash
+        return true
+    }
+
     /// A timestamp-only touch is not a content change; advance the cheap baseline silently.
     @discardableResult
     public mutating func acceptTimestampOnly(_ fingerprint: SourceFingerprint, for id: UUID, path: String) -> Bool {
@@ -43,6 +52,7 @@ extension StudioCatalog {
         guard let i = assets.firstIndex(where: { $0.id == id && $0.importedPath == path && !$0.isStarter }),
               let old = assets[i].sourceFingerprint, old.sha256 != fingerprint.sha256 else { return false }
         assets[i].sourceFingerprint = fingerprint
+        assets[i].sourcePreviewHash = nil // The old miniature must never stand for the accepted new bytes.
         if let palette { assets[i].palette = palette }
         if let resolution { assets[i].resolution = resolution }
         assets[i].autoTags = []

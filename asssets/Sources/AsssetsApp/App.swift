@@ -595,6 +595,62 @@ final class StudioLibrary: ObservableObject {
     var catalogURL: URL { supportRoot.appendingPathComponent("studio-catalog.json") }
     var legacyURL: URL { supportRoot.appendingPathComponent("studio-library.json") }
     var starterRoot: URL { supportRoot.appendingPathComponent("StarterLibrary", isDirectory: true) }
+    var sourcePreviewRoot: URL { supportRoot.appendingPathComponent("SourcePreviews", isDirectory: true) }
+
+    /// A small visual reference, not an original-file backup. Filenames are asset IDs, never source names.
+    nonisolated static func previewFilename(_ id: UUID) -> String { id.uuidString + ".jpg" }
+
+    static func previewBytes(for a: StudioAsset) async -> Data? {
+        guard let cg = await MediaRenderer.thumbnail(for: a, maxPixel: 240) else { return nil }
+        let w = cg.width, h = cg.height
+        guard let context = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                     space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                     bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        context.setFillColor(CGColor(red: 0.10, green: 0.10, blue: 0.13, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let flat = context.makeImage(),
+              let data = NSBitmapImageRep(cgImage: flat).representation(using: .jpeg, properties: [.compressionFactor: 0.65]),
+              data.count <= 120_000 else { return nil }
+        return data
+    }
+
+    /// Render while the source is known intact; verify it did not change during capture.
+    func saveSourcePreview(for a: StudioAsset, fingerprint: SourceFingerprint) async {
+        guard !a.isStarter, a.placementRecipe == nil, let path = a.importedPath,
+              a.sourcePreviewHash != fingerprint.sha256,
+              Self.sourceFingerprint(path) == fingerprint,
+              let data = await Self.previewBytes(for: a),
+              Self.sourceFingerprint(path) == fingerprint,
+              catalog.assets.first(where: { $0.id == a.id })?.sourceFingerprint == fingerprint else { return }
+        let fm = FileManager.default
+        try? fm.createDirectory(at: sourcePreviewRoot, withIntermediateDirectories: true)
+        let url = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(a.id))
+        guard (try? data.write(to: url, options: .atomic)) != nil else { return }
+        // A source may have changed while the tiny JPEG was written. Never attach it to that baseline.
+        guard Self.sourceFingerprint(path) == fingerprint,
+              catalog.assets.first(where: { $0.id == a.id })?.sourceFingerprint == fingerprint else {
+            try? fm.removeItem(at: url)
+            return
+        }
+        mutate { $0.bindSourcePreview(hash: fingerprint.sha256, for: a.id, path: path) }
+    }
+
+    func captureSourcePreviews(_ ids: [UUID]) {
+        let snapshots = ids.compactMap { id in catalog.assets.first { $0.id == id } }
+        Task { @MainActor in
+            for a in snapshots {
+                if let fingerprint = a.sourceFingerprint { await saveSourcePreview(for: a, fingerprint: fingerprint) }
+            }
+        }
+    }
+
+    func sourcePreview(_ a: StudioAsset) -> CGImage? {
+        guard let hash = a.sourcePreviewHash, hash == a.sourceFingerprint?.sha256 else { return nil }
+        let url = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(a.id))
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(src, 0, nil)
+    }
 
     init() {
         supportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ASSSETS", isDirectory: true)
@@ -1037,7 +1093,7 @@ final class StudioLibrary: ObservableObject {
         if !found.isEmpty {
             var c = catalog
             added = c.syncWatch(found: found)
-            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); Self.seedSourceFingerprints(&c, ids: added); c.autoStack(); mutate { $0 = c }; refreshAutoTags() }
+            if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); Self.seedSourceFingerprints(&c, ids: added); c.autoStack(); mutate { $0 = c }; captureSourcePreviews(added); refreshAutoTags() }
         }
         let now = catalog.missingIDs { fm.fileExists(atPath: $0) }
         if now != missing { missing = now }
@@ -1078,7 +1134,14 @@ final class StudioLibrary: ObservableObject {
             flash("Choose the original file type (\(URL(fileURLWithPath: old).pathExtension))"); return false
         }
         if catalog.assets.contains(where: { $0.importedPath == path && $0.id != id }) { flash("That file is already in the library"); return false }
-        mutate { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].importedPath = path } }
+        mutate { c in if let i = c.assets.firstIndex(where: { $0.id == id }) {
+            c.assets[i].importedPath = path
+            c.assets[i].sourceFingerprint = nil
+            c.assets[i].sourcePreviewHash = nil
+        } }
+        try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id)))
+        captureSourcePreviews([id])
+        refreshHealth(full: true)
         missing.remove(id)
         flash("Relinked \(a.title)")
         return true
@@ -1604,6 +1667,8 @@ final class StudioLibrary: ObservableObject {
         let afterResolution: String
         let beforePalette: [String]
         let afterPalette: [String]
+        let beforeImage: CGImage?
+        let currentImage: CGImage?
     }
     private var healthGeneration = 0
 
@@ -1645,10 +1710,29 @@ final class StudioLibrary: ObservableObject {
             refreshHealth(full: true)
             return
         }
-        sourceReviewPreview = SourceReviewPreview(id: id, path: path, baseline: old, current: current,
-            beforeResolution: a.resolution, afterResolution: derived.resolution,
-            beforePalette: a.palette, afterPalette: derived.palette)
-        reviewedSourceID = id
+        let beforeImage = sourcePreview(a)
+        Task { @MainActor in
+            let currentBytes = await Self.previewBytes(for: a)
+            guard Self.sourceFingerprint(path) == current,
+                  catalog.assets.first(where: { $0.id == id })?.sourceFingerprint == old else {
+                sourceRefreshError = "Source changed while rendering its preview. Check Again."
+                refreshHealth(full: true)
+                return
+            }
+            let currentImage = currentBytes.flatMap { bytes -> CGImage? in
+                guard let src = CGImageSourceCreateWithData(bytes as CFData, nil) else { return nil }
+                return CGImageSourceCreateImageAtIndex(src, 0, nil)
+            }
+            sourceReviewPreview = SourceReviewPreview(id: id, path: path, baseline: old, current: current,
+                beforeResolution: a.resolution, afterResolution: derived.resolution,
+                beforePalette: a.palette, afterPalette: derived.palette,
+                beforeImage: beforeImage, currentImage: currentImage)
+            if ProcessInfo.processInfo.arguments.contains("source-preview-review") {
+                let marker = "done before=\(beforeImage != nil) current=\(currentImage != nil) small=\(currentBytes.map { $0.count <= 120_000 } ?? false)"
+                try? marker.write(to: supportRoot.appendingPathComponent("demo-source-preview.txt"), atomically: true, encoding: .utf8)
+            }
+            reviewedSourceID = id
+        }
     }
 
     /// Refresh only the exact bytes and metadata the designer just reviewed.
@@ -1683,6 +1767,8 @@ final class StudioLibrary: ObservableObject {
             sourceQueueSelected = sourceReviewQueue.next(after: id)
             sourceQueueAnchor = sourceQueueSelected
             ThumbnailStore.shared.invalidate(id: id, path: reviewed.path)
+            try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id)))
+            captureSourcePreviews([id])
             psdCache.removeValue(forKey: reviewed.path)
             lookCache.removeValue(forKey: lookKey(a))
             refreshAutoTags()
@@ -1790,6 +1876,13 @@ final class StudioLibrary: ObservableObject {
                     else { changed = c.acceptTimestampOnly(fingerprint, for: id, path: path) || changed }
                 }
                 if changed { self.catalog = c; self.save() }
+                let safePreviews = c.assets.filter { a in
+                    guard !a.isStarter, a.placementRecipe == nil, let path = a.importedPath,
+                          let baseline = a.sourceFingerprint, a.sourcePreviewHash == nil,
+                          !r.changedSources.contains(a.id), let stat = Self.sourceStat(path) else { return false }
+                    return baseline.size == stat.size && baseline.modified == stat.modified
+                }.map(\.id)
+                if !safePreviews.isEmpty { self.captureSourcePreviews(safePreviews) }
                 r.changedSources.removeAll { id in
                     guard let snapshot = c.assets.first(where: { $0.id == id }),
                           let live = self.catalog.assets.first(where: { $0.id == id }) else { return true }
@@ -1975,6 +2068,7 @@ final class StudioLibrary: ObservableObject {
         pendingRemoval = []
         var n = 0
         mutate("Remove from Library") { n = $0.remove(ids) }
+        for id in ids { try? FileManager.default.removeItem(at: sourcePreviewRoot.appendingPathComponent(Self.previewFilename(id))) }
         if n > 0 { flash("Removed \(n) from library. Files on disk were not touched.") }
     }
 
@@ -2117,7 +2211,7 @@ final class StudioLibrary: ObservableObject {
             }
             if !added.isEmpty { enrichStarterMetadata(&c, userFilesOnly: true); Self.readFileMetadata(&c, ids: added); Self.seedSourceFingerprints(&c, ids: added); c.autoStack() }
         }
-        if !added.isEmpty { refreshAutoTags(); show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
+        if !added.isEmpty { captureSourcePreviews(added); refreshAutoTags(); show(collection: StudioCatalog.importedCollection); selection = Set(added); focusID = added.first; flash("Imported \(added.count) files") }
         else { flash("No new supported files found") }
     }
 
@@ -2685,7 +2779,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2808,25 +2902,31 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
                     // `find` above came from `all` before the demo's rights were assigned.
                     let expectedRights = catalog.assets.first { $0.id == source.id }?.rights
                     mutate { $0.seedSourceFingerprint(baseline, for: source.id, path: path) }
-                    let replacement = starterRoot.appendingPathComponent("risograph-4k.png")
-                    try? fm.removeItem(atPath: path)
-                    try? fm.copyItem(at: replacement, to: URL(fileURLWithPath: path))
-                    if demo == "source-review-queue" || demo == "source-review-queue-next" {
-                        // Second changed original in the same import set, separately fingerprinted and replaced.
-                        if let another = find("Atrium Cork Wall.png"), let otherPath = another.importedPath,
-                           let otherBase = Self.sourceFingerprint(otherPath) {
-                            mutate { $0.seedSourceFingerprint(otherBase, for: another.id, path: otherPath) }
-                            try? fm.removeItem(atPath: otherPath)
-                            try? fm.copyItem(at: starterRoot.appendingPathComponent("blueprint-4k.png"), to: URL(fileURLWithPath: otherPath))
+                    Task { @MainActor in
+                        if let original = catalog.assets.first(where: { $0.id == source.id }) {
+                            await saveSourcePreview(for: original, fingerprint: baseline)
                         }
-                    }
+                        let replacement = starterRoot.appendingPathComponent("risograph-4k.png")
+                        try? fm.removeItem(atPath: path)
+                        try? fm.copyItem(at: replacement, to: URL(fileURLWithPath: path))
+                        if demo == "source-review-queue" || demo == "source-review-queue-next" {
+                            if let another = find("Atrium Cork Wall.png"), let otherPath = another.importedPath,
+                               let otherBase = Self.sourceFingerprint(otherPath) {
+                                mutate { $0.seedSourceFingerprint(otherBase, for: another.id, path: otherPath) }
+                                if let original = catalog.assets.first(where: { $0.id == another.id }) {
+                                    await saveSourcePreview(for: original, fingerprint: otherBase)
+                                }
+                                try? fm.removeItem(atPath: otherPath)
+                                try? fm.copyItem(at: starterRoot.appendingPathComponent("blueprint-4k.png"), to: URL(fileURLWithPath: otherPath))
+                            }
+                        }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                         self.openLibraryHealth()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -2836,9 +2936,11 @@ final class StudioLibrary: ObservableObject {
                                 self.sourceQueueSelected = source.id
                                 if demo == "source-review-queue-next" {
                                     self.reviewChangedSource(source.id)
-                                    self.reviewedSourceID = nil
-                                    self.refreshChangedSource(source.id)
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                        self.reviewedSourceID = nil
+                                        self.refreshChangedSource(source.id)
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
                                         let q = self.sourceReviewQueue
                                         let ok = q.pending.count == 1 && q.selected != source.id &&
                                             self.catalog.sourceHistory(for: source.id).count == 1 &&
@@ -2848,7 +2950,7 @@ final class StudioLibrary: ObservableObject {
                                     }
                                 }
                             }
-                            if demo == "changed-source-review" { self.reviewChangedSource(source.id) }
+                            if demo == "changed-source-review" || demo == "source-preview-review" { self.reviewChangedSource(source.id) }
                             if demo == "changed-source-inspector" {
                                 self.healthOpen = false
                                 self.selection = [source.id]; self.focusID = source.id
@@ -2856,9 +2958,11 @@ final class StudioLibrary: ObservableObject {
                             }
                             if demo == "changed-source-apply" || demo == "source-history-inspector" {
                                 self.reviewChangedSource(source.id)
-                                self.reviewedSourceID = nil
-                                self.refreshChangedSource(source.id)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    self.reviewedSourceID = nil
+                                    self.refreshChangedSource(source.id)
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
                                     let a = self.catalog.assets.first { $0.id == source.id }
                                     let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == expectedRights
                                         && self.catalog.boardsUsing(source.id).count > 0 && self.catalog.sourceHistory(for: source.id).count == 1
@@ -2872,6 +2976,7 @@ final class StudioLibrary: ObservableObject {
                                 }
                             }
                         }
+                    }
                     }
                 }
             case "library-health":
@@ -7346,17 +7451,11 @@ struct LibraryHealthSheet: View {
                 Button { model.refreshHealth(full: true) } label: { Label("Check Again", systemImage: "arrow.clockwise") }.controlSize(.small).disabled(model.healthScanning)
             }
             .padding(20)
-            .alert("Refresh changed source?", isPresented: Binding(get: { model.reviewedSourceID != nil },
+            .sheet(isPresented: Binding(get: { model.reviewedSourceID != nil },
                 set: { if !$0 { model.reviewedSourceID = nil; model.sourceReviewPreview = nil } })) {
-                Button("Cancel", role: .cancel) { model.reviewedSourceID = nil; model.sourceReviewPreview = nil }
-                Button("Refresh Source") {
-                    if let id = model.reviewedSourceID { model.refreshChangedSource(id) }
-                    model.reviewedSourceID = nil
+                if let preview = model.sourceReviewPreview {
+                    SourceComparisonSheet(preview: preview).environmentObject(model)
                 }
-            } message: {
-                let p = model.sourceReviewPreview
-                let a = model.catalog.assets.first { $0.id == model.reviewedSourceID }
-                Text("\(a?.title ?? "Source") at \((p?.path as NSString?)?.abbreviatingWithTildeInPath ?? "unknown path")\nSize: \(p.map { ByteCountFormatter.string(fromByteCount: $0.baseline.size, countStyle: .file) } ?? "?") → \(p.map { ByteCountFormatter.string(fromByteCount: $0.current.size, countStyle: .file) } ?? "?")\nFile facts: \(p?.beforeResolution ?? "?") → \(p?.afterResolution ?? "?")\nPalette: \(p?.beforePalette.prefix(3).joined(separator: ", ") ?? "?") → \(p?.afterPalette.prefix(3).joined(separator: ", ") ?? "?")\nThe new bytes get the preview. ID, rights, boards and placed versions remain. The receipt saves metadata, not old bytes; this cannot restore the old file.")
             }
             Divider().overlay(Theme.hairline)
             ScrollViewReader { proxy in
@@ -7605,6 +7704,64 @@ struct FolderRelinkSheet: View {
                 }
             }
         }
+    }
+}
+
+/// A visual check uses one small saved snapshot and one transient current-disk miniature.
+/// Neither can recreate the original source file.
+struct SourceComparisonSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let preview: StudioLibrary.SourceReviewPreview
+    var body: some View {
+        let a = model.catalog.assets.first { $0.id == preview.id }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "square.on.square").foregroundStyle(Theme.warning)
+                Text("Review Changed Source").font(.system(size: 18, weight: .bold))
+                Spacer()
+                Text("One file · no bulk refresh").font(.caption).foregroundStyle(.secondary)
+            }
+            Text(a?.title ?? "Source").font(.headline)
+            Text((preview.path as NSString).abbreviatingWithTildeInPath)
+                .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+            HStack(spacing: 12) {
+                side("Before · saved small preview", image: preview.beforeImage,
+                     detail: preview.beforeImage == nil ? "No approved snapshot for this older source." : "Snapshot only, not original bytes.")
+                side("Now · on disk", image: preview.currentImage,
+                     detail: preview.currentImage == nil ? "No current visual preview for this file type." : "Live miniature; source stays on disk.")
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Size: \(ByteCountFormatter.string(fromByteCount: preview.baseline.size, countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: preview.current.size, countStyle: .file))")
+                Text("File facts: \(preview.beforeResolution) → \(preview.afterResolution)")
+                Text("Palette: \(preview.beforePalette.prefix(3).joined(separator: ", ")) → \(preview.afterPalette.prefix(3).joined(separator: ", "))")
+            }.font(.caption).foregroundStyle(.secondary)
+            Text("Refresh keeps the asset ID, rights, boards and placed versions. ASSSETS saves a metadata receipt, not the old file; neither preview can restore it.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel") { model.reviewedSourceID = nil; model.sourceReviewPreview = nil }.keyboardShortcut(.cancelAction)
+                Button("Refresh This Source") {
+                    model.refreshChangedSource(preview.id)
+                    model.reviewedSourceID = nil
+                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            }
+        }.padding(20).frame(width: 700).background(Theme.panel)
+    }
+
+    private func side(_ title: String, image: CGImage?, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption.weight(.semibold))
+            ZStack {
+                RoundedRectangle(cornerRadius: 9).fill(Color.black.opacity(0.35))
+                if let image {
+                    Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                        .padding(4)
+                } else {
+                    Image(systemName: "photo.on.rectangle.angled").font(.title).foregroundStyle(.tertiary)
+                }
+            }.frame(height: 180).clipShape(RoundedRectangle(cornerRadius: 9))
+            Text(detail).font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
