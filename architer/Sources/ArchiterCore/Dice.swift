@@ -396,11 +396,22 @@ public func dayShareText(_ group: RollDayGroup) -> String {
         + group.rolls.flatMap { $0.shareLines }.joined(separator: "\n") + "\n"
 }
 
+/// One Markdown table cell for a roll (2.95.0, extracted from
+/// sessionLogMarkdown): the label with its expression (or the bare
+/// expression), the roll's story note dash-appended when it carries
+/// one, pipes escaped so a table never breaks. Shared by the
+/// session-log, per-session and starred Markdown exports.
+private func markdownRollCell(_ roll: RollResult) -> String {
+    ((roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
+        + (roll.note.map { " - \($0)" } ?? ""))
+        .replacingOccurrences(of: "|", with: "\\|")
+}
+
 /// A per-session Markdown file (2.72.0): the session's title (custom
 /// name included) as the heading, its stats line (2.69.0) and note
 /// (2.71.0), then its rolls oldest first as one table - the
 /// single-session counterpart of the session-log Markdown export, with
-/// the same pipe-escaping.
+/// the same pipe-escaping. 2.95.0: a roll's story note rides its cell.
 public func sessionMarkdown(_ session: RollSession) -> String {
     var lines = ["# \(session.title)", "", sessionStats(session).line, ""]
     if let note = session.note {
@@ -412,9 +423,7 @@ public func sessionMarkdown(_ session: RollSession) -> String {
     for roll in session.rolls.reversed() {
         let stamp = roll.rolledAt
             .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
-        let what = (roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
-            .replacingOccurrences(of: "|", with: "\\|")
-        lines.append("| \(stamp) | \(what) | \(roll.total) |")
+        lines.append("| \(stamp) | \(markdownRollCell(roll)) | \(roll.total) |")
     }
     return lines.joined(separator: "\n") + "\n"
 }
@@ -423,6 +432,7 @@ public func sessionMarkdown(_ session: RollSession) -> String {
 /// document - the count as the heading, then the starred rolls oldest
 /// first as one table, matching the session export's shape and
 /// pipe-escaping. The output side of the star arc, past the pasteboard.
+/// 2.95.0: a roll's story note rides its cell.
 public func starredMarkdown(_ rolls: [RollResult]) -> String {
     let starred = rolls.starredRolls
     var lines = ["# Starred rolls (\(starred.count))", ""]
@@ -431,9 +441,7 @@ public func starredMarkdown(_ rolls: [RollResult]) -> String {
     for roll in starred.reversed() {
         let stamp = roll.rolledAt
             .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
-        let what = (roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
-            .replacingOccurrences(of: "|", with: "\\|")
-        lines.append("| \(stamp) | \(what) | \(roll.total) |")
+        lines.append("| \(stamp) | \(markdownRollCell(roll)) | \(roll.total) |")
     }
     return lines.joined(separator: "\n") + "\n"
 }
@@ -627,10 +635,7 @@ public func sessionLogMarkdown(character: String, range: SessionLogRange,
             for roll in group.rolls {
                 let stamp = roll.rolledAt
                     .map { RollResult.historyTimeFormatter.string(from: $0) } ?? ""
-                let what = ((roll.label.map { "\($0) (\(roll.expression))" } ?? roll.expression)
-                    + (roll.note.map { " - \($0)" } ?? ""))
-                    .replacingOccurrences(of: "|", with: "\\|")
-                lines.append("| \(stamp) | \(what) | \(roll.total) |")
+                lines.append("| \(stamp) | \(markdownRollCell(roll)) | \(roll.total) |")
             }
             lines.append("")
         }

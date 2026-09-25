@@ -221,11 +221,6 @@ func run(model: AppModel, character: Character, outDir: String) {
             try? sessionShareText(model.namedSessions(crafted)[0])
                 .write(to: URL(fileURLWithPath: "\(outDir)/session-copy.txt"),
                        atomically: true, encoding: .utf8)
-            // 2.72.0 proof: the divider's export - the session as its
-            // own Markdown file (name as title, note, stats, table).
-            try? sessionMarkdown(model.namedSessions(crafted)[0])
-                .write(to: URL(fileURLWithPath: "\(outDir)/session-export.md"),
-                       atomically: true, encoding: .utf8)
         }
         model.autoLogRollsToJournal = true
     }
@@ -254,6 +249,12 @@ func run(model: AppModel, character: Character, outDir: String) {
     if let fireball = model.rollHistory.first(where: { $0.label?.hasPrefix("Fireball") == true }) {
         model.noteRoll(fireball, to: "The bridge collapses behind them")
     }
+    // 2.72.0 proof: the divider's export - the session as its own
+    // Markdown file (name as title, note, stats, table). Written after
+    // the roll note lands so 2.95.0's note-carrying cells show here.
+    try? sessionMarkdown(model.namedSessions(model.rollHistory)[0])
+        .write(to: URL(fileURLWithPath: "\(outDir)/session-export.md"),
+               atomically: true, encoding: .utf8)
     // 2.39.0/2.41.0 proof: the compact export carries the character's
     // session-log appendix, ranged to Today - the Yesterday group is
     // filtered out, the rerolled 4d6kh3 stays.

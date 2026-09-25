@@ -1188,6 +1188,29 @@ struct SessionSegmentTests {
         #expect(starredMarkdown([b]).hasPrefix("# Starred rolls (0)\n"))
     }
 
+    @Test func starredMarkdownCarriesRollNotes() throws {
+        // 2.95.0: a noted starred roll's note rides its cell,
+        // dash-appended like the session-log Markdown export.
+        let t1 = try #require(ISO8601DateFormatter().date(from: "2026-09-24T20:00:00Z"))
+        var a = RollResult(expression: "8d6",
+                           dice: [DieResult(sides: 6, value: 5, kept: true)],
+                           modifier: 0, total: 31, alternateTotal: nil)
+        a.label = "Fireball"
+        a.rolledAt = t1
+        a.starred = true
+        a.note = "The bridge collapses behind them"
+        var b = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 11, kept: true)],
+                           modifier: 0, total: 11, alternateTotal: nil)
+        b.rolledAt = t1
+        b.starred = true
+        let md = starredMarkdown([b, a])
+        #expect(md.contains("| Fireball (8d6) - The bridge collapses behind them | 31 |"))
+        // The unnoted roll's cell is untouched.
+        #expect(md.contains("| d20 | 11 |"))
+        #expect(!md.contains("| d20 - "))
+    }
+
     // 2.89.0: the digest session wraps the starred rolls under a count
     /// title, newest first, ready for JournalEntry(sessionDigest:).
     @Test func starredDigestSessionWrapsReel() {
@@ -1304,6 +1327,22 @@ struct SessionSegmentTests {
         #expect(lines[6] == "| Time | Roll | Total |")
         #expect(lines[8].contains("| 2d6 | 10 |"))
         #expect(lines[9].contains("| Save \\| or suck (d20) | 10 |"))
+    }
+
+    @Test func sessionMarkdownCarriesRollNotes() throws {
+        // 2.95.0: a noted roll's note rides its cell in the per-session
+        // export too, and pipe-escaping still covers the whole cell.
+        let cal = utc
+        let now = at(cal, 24, 20)
+        var fireball = stamped("8d6", at: at(cal, 24, 17))
+        fireball.label = "Fireball"
+        fireball.note = "The bridge collapses | behind them"
+        let rolls = [stamped("2d6", at: at(cal, 24, 18)), fireball]
+        let session = sessionSegments(rolls, now: now, calendar: cal)[0]
+        let md = sessionMarkdown(session)
+        #expect(md.contains("| Fireball (8d6) - The bridge collapses \\| behind them | 10 |"))
+        #expect(md.contains("| 2d6 | 10 |"))
+        #expect(!md.contains("| 2d6 - "))
     }
 
     // 2.74.0: the Latest session scope keeps only the newest session's
