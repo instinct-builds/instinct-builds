@@ -963,6 +963,27 @@ struct SessionSegmentTests {
         #expect(log.togglingStar(on: absent) == log)
     }
 
+    // 2.86.0: clearingStars nils every star (true and false alike) and
+    /// leaves the rolls themselves untouched; an empty log stays empty.
+    @Test func clearingStarsClearsAll() {
+        var a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 20, kept: true)],
+                           modifier: 0, total: 20, alternateTotal: nil)
+        a.starred = true
+        var b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        b.starred = false
+        let c = RollResult(expression: "d8",
+                           dice: [DieResult(sides: 8, value: 3, kept: true)],
+                           modifier: 0, total: 3, alternateTotal: nil)
+        let cleared = [a, b, c].clearingStars()
+        #expect(cleared.allSatisfy { $0.starred == nil })
+        #expect(cleared.map(\.expression) == ["d20", "2d6", "d8"])
+        #expect(cleared.map(\.total) == [20, 4, 3])
+        #expect([RollResult]().clearingStars().isEmpty)
+    }
+
     // 2.85.0: the starred share text heads with the count and lists the
     /// starred rolls oldest first; an unstarred log still heads honestly.
     @Test func starredShareTextCountsAndLists() throws {

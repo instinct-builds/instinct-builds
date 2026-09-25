@@ -587,6 +587,27 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-starred-copy", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.86.0 proof: unstar all - with a second roll starred, one tap
+    // clears every star; the bar then shows neither Copy starred nor
+    // Unstar all, and the history itself is untouched.
+    if model.rollHistory.count > 1 {
+        model.toggleStar(model.rollHistory[1])
+    }
+    let preUnstar = model.rollHistory.starredRolls.count
+    model.unstarAll()
+    let unstarLines = ["Unstar all (2.86.0)", "",
+                       "starred rolls before: \(preUnstar)",
+                       "starred rolls after: \(model.rollHistory.starredRolls.count)",
+                       "history intact: \(model.rollHistory.count) rolls"]
+    try? unstarLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/roll-unstar-all.txt"),
+               atomically: true, encoding: .utf8)
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-unstar-all", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

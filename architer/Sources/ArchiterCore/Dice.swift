@@ -714,6 +714,18 @@ public extension Array where Element == RollResult {
         return copy
     }
 
+    /// The log with every star cleared (2.86.0): the reset half of the
+    /// export-then-reset loop - copy the highlight reel, then unstar all
+    /// so the next scene starts clean. Cleared stars write nil (not
+    /// false) so saved logs stay lean.
+    func clearingStars() -> [RollResult] {
+        map { roll in
+            var copy = roll
+            copy.starred = nil
+            return copy
+        }
+    }
+
     /// Rolls made for one character. nil returns the full table log.
     func forCharacter(_ name: String?) -> [RollResult] {
         guard let name else { return self }

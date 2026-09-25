@@ -194,6 +194,11 @@ public struct DiceRollerView: View {
                     Button("Copy starred") { model.copyStarredToPasteboard() }
                         .controlSize(.small)
                         .help("Copy just the starred rolls as text, oldest first")
+                    // 2.86.0: the reset half of the loop - one tap clears
+                    // every star once the reel is copied out.
+                    Button("Unstar all") { model.unstarAll() }
+                        .controlSize(.small)
+                        .help("Clear every star - reset the highlight reel for the next scene")
                 }
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }

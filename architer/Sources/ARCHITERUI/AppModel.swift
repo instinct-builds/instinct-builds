@@ -385,6 +385,13 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 2.86.0: clear every star in one tap - the reset after copying
+    /// the night's highlight reel, so the next scene starts clean.
+    public func unstarAll() {
+        rollHistory = rollHistory.clearingStars()
+        rollHistoryStore.save(rollHistory)
+    }
+
     /// 2.82.0: rename a roll's label in place; blank restores the raw
     /// expression as the card's title.
     public func renameRoll(_ roll: RollResult, to label: String) {
