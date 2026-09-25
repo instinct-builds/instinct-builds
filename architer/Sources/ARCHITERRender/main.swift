@@ -965,6 +965,26 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-count-notes", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.12.0 proof: the overflow menu - with a filter set, Digest,
+    // Export, and Delete collapse into the ellipsis while Copy
+    // filtered and Journal stay top-level. The txt states the rule;
+    // the 3.3.0 confirm render above now shows the confirm in the
+    // overflow's place.
+    do {
+        try? (["Filter-bar overflow (3.12.0)",
+               "filter set -> Digest/Export/Delete collapse into the ellipsis menu",
+               "Copy filtered, Journal, star menu, and Clear stay top-level",
+               "Delete filtered... from the menu still opens the inline confirm (3.3.0)"])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-overflow.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-overflow", outDir: outDir, minHeight: 420, maxHeight: 1100)
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(

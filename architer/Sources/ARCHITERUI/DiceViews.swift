@@ -374,33 +374,12 @@ public struct DiceRollerView: View {
                 // view's counterpart of Digest starred.
                 if !savingFilterPreset && renamingPresetOriginal == nil && !confirmingClearAll,
                    !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
-                    // 3.3.1: Digest/Export collapse while the delete
+                    // 3.3.1: the overflow collapses while the delete
                     // confirm is open - the confirm controls take the
                     // space, same discipline as 3.0.1.
-                    if !confirmingFilteredDelete {
-                        Button("Digest filtered") {
-                            model.addFilteredRollsToJournal(
-                                visibleHistory,
-                                query: historyFilter.trimmingCharacters(in: .whitespaces))
-                        }
-                            .controlSize(.small)
-                            .disabled(model.selected == nil)
-                            .help("Add the filtered rolls to the journal as one entry titled with the filter")
-                        // 3.1.0: the file side of the filter family - same
-                        // shape as the starred export, headed by the query.
-                        Button("Export filtered") {
-                            model.exportFilteredMarkdown(
-                                visibleHistory,
-                                query: historyFilter.trimmingCharacters(in: .whitespaces),
-                                ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
-                        }
-                            .controlSize(.small)
-                            .disabled(visibleHistory.isEmpty)
-                            .help("Save the filtered rolls as a Markdown file")
-                    }
-                    // 3.3.0: the destructive member of the filter
-                    // family - behind a confirm, with one undo step.
                     if confirmingFilteredDelete {
+                        // 3.3.0: the destructive member of the filter
+                        // family - behind a confirm, with one undo step.
                         Text("Delete \(visibleHistory.count) rolls?")
                             .font(Theme.Typeface.caption)
                             .foregroundStyle(Theme.inkMuted)
@@ -413,10 +392,36 @@ public struct DiceRollerView: View {
                         Button("Cancel") { confirmingFilteredDelete = false }
                             .controlSize(.small)
                     } else {
-                        Button("Delete filtered") { confirmingFilteredDelete = true }
-                            .controlSize(.small)
-                            .disabled(visibleHistory.isEmpty)
-                            .help("Remove the filtered rolls from history, with one undo step")
+                        // 3.12.0: the three less-used filter actions
+                        // collapse into one overflow menu so the bar
+                        // stops wrapping; Copy filtered and Journal
+                        // stay top-level. The ellipsis on Delete
+                        // signals the confirm step.
+                        Menu {
+                            Button("Digest filtered") {
+                                model.addFilteredRollsToJournal(
+                                    visibleHistory,
+                                    query: historyFilter.trimmingCharacters(in: .whitespaces))
+                            }
+                                .disabled(model.selected == nil)
+                            // 3.1.0: the file side of the filter family -
+                            // same shape as the starred export, headed
+                            // by the query.
+                            Button("Export filtered") {
+                                model.exportFilteredMarkdown(
+                                    visibleHistory,
+                                    query: historyFilter.trimmingCharacters(in: .whitespaces),
+                                    ofTotal: model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)
+                            }
+                                .disabled(visibleHistory.isEmpty)
+                            Divider()
+                            Button("Delete filtered…") { confirmingFilteredDelete = true }
+                                .disabled(visibleHistory.isEmpty)
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .controlSize(.small)
+                        .help("More filter actions - digest as one journal entry, export as Markdown, delete with one undo step")
                     }
                 }
                 // 2.85.0: the highlight reel - visible only while stars exist.
