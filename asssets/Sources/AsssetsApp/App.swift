@@ -1308,7 +1308,8 @@ final class StudioLibrary: ObservableObject {
     /// Checks files, license copies and sizes off the main thread. `full` also hashes same-size files to count identical sets.
     func refreshHealth(full: Bool = false) {
         let c = catalog
-        let paths = Dictionary(uniqueKeysWithValues: c.assets.filter { !$0.isStarter }.compactMap { a in a.importedPath.map { (a.id, $0) } })
+        // Every file, bundled ones too, so the identical-set count matches Find Duplicates. Big-file checks skip bundled media.
+        let paths = Dictionary(uniqueKeysWithValues: c.assets.compactMap { a in a.importedPath.map { (a.id, $0) } })
         let root = licensesRoot
         let order = c.assets.map(\.id)
         if full { healthScanning = true }
@@ -5776,7 +5777,7 @@ struct DuplicateGroupRow: View {
                     } }
                 }
             }
-            if let plan { MergeSummary(plan: plan, keeperTitle: members.first { $0.id == plan.keeper }?.title ?? "", sourceTitle: plan.rightsFrom.flatMap { id in members.first { $0.id == id }?.title }) }
+            if let plan { MergeSummary(plan: plan, keeperTitle: members.first { $0.id == plan.keeper }?.title ?? "", sourceTitle: plan.rightsFrom.flatMap { id in members.first { $0.id == id }?.title }, rightsChosen: chosenRights != nil) }
             if conflict {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("These copies carry different rights. Choose which to keep; the others' rights are dropped.").font(.caption).foregroundStyle(.secondary)
@@ -5864,6 +5865,7 @@ struct MergeSummary: View {
     let plan: MergePreview
     let keeperTitle: String
     let sourceTitle: String?
+    var rightsChosen = false
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "arrow.triangle.merge").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.accent).padding(.top, 4)
@@ -5877,7 +5879,8 @@ struct MergeSummary: View {
                     if plan.becomesFavorite { chip("Favorite", "heart.fill") }
                     if !plan.tagsAdded.isEmpty { chip("+\(plan.tagsAdded.count) \(plan.tagsAdded.count == 1 ? "tag" : "tags")", "tag") }
                     if let c = plan.collection { chip("Filed in \(c)", "folder") }
-                    if plan.rightsAdopted, let r = plan.rights { chip("Rights: \(r.license.rawValue)" + (sourceTitle.map { " from \($0)" } ?? ""), r.license.symbol) }
+                    if plan.hasRightsConflict && !rightsChosen { chip("Rights: choose below", "exclamationmark.shield", tint: Theme.danger) }
+                    else if plan.rightsAdopted, let r = plan.rights { chip("Rights: \(r.license.rawValue)" + (sourceTitle.map { " from \($0)" } ?? ""), r.license.symbol) }
                     if plan.licenseFilesAdded > 0 { chip("\(plan.licenseFilesAdded) license \(plan.licenseFilesAdded == 1 ? "file" : "files")", "paperclip") }
                     if plan.notesAdded > 0 { chip("\(plan.notesAdded) client \(plan.notesAdded == 1 ? "note" : "notes")", "text.bubble") }
                     if plan.boardCardsMoved > 0 { chip("\(plan.boardCardsMoved) board \(plan.boardCardsMoved == 1 ? "card follows" : "cards follow")", "rectangle.on.rectangle") }
@@ -7212,12 +7215,15 @@ struct BatchInspector: View {
                 }
                 Button { model.newCollection(with: ids) } label: { Label("New Collection from Selection", systemImage: "folder.badge.plus") }.buttonStyle(.bordered)
                 InspectorLabel(text: "OUTPUT")
+                // Two rows so no label truncates at the 1024-wide inspector (1.28 caught "Sh…" and "Key…").
                 HStack(spacing: 8) {
                     ExportMenuButton(ids: ids, title: "Export \(ids.count)")
                     ShareButton(ids: ids)
-                    Button { model.copyKeywords(ids) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
                 }
-                Button { model.exportRightsReport(assets.map(\.id), title: "\(assets.count) Selected Assets") } label: { Label("Rights Report…", systemImage: "list.bullet.rectangle") }.buttonStyle(.bordered)
+                HStack(spacing: 8) {
+                    Button { model.copyKeywords(ids) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
+                    Button { model.exportRightsReport(assets.map(\.id), title: "\(assets.count) Selected Assets") } label: { Label("Rights Report…", systemImage: "list.bullet.rectangle") }.buttonStyle(.bordered)
+                }
                 Button(role: .destructive) { model.pendingRemoval = ids } label: { Label("Remove from Library…", systemImage: "trash") }.buttonStyle(.borderless).padding(.top, 4)
             }
             .padding(16)
