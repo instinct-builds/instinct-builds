@@ -286,25 +286,43 @@ public struct DiceRollerView: View {
                 // 2.85.0: the highlight reel - visible only while stars exist.
                 // 3.0.1: also hidden while the preset naming form is open.
                 if !savingFilterPreset && !model.rollHistory.starredRolls.isEmpty {
-                    Button("Copy starred") { model.copyStarredToPasteboard() }
+                    // 3.2.0: with the filter cluster also in the bar the
+                    // four star actions collapse into one menu so the
+                    // bar stays on one line; without a filter they keep
+                    // their one-tap buttons.
+                    if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Menu {
+                            Button("Copy starred") { model.copyStarredToPasteboard() }
+                            Button("Unstar all") { model.unstarAll() }
+                            Button("Export starred") { model.exportStarredMarkdown() }
+                            Button("Digest starred") { model.addStarredToJournal() }
+                                .disabled(model.selected == nil)
+                        } label: {
+                            Label("Starred", systemImage: "star")
+                        }
                         .controlSize(.small)
-                        .help("Copy just the starred rolls as text, oldest first")
-                    // 2.86.0: the reset half of the loop - one tap clears
-                    // every star once the reel is copied out.
-                    Button("Unstar all") { model.unstarAll() }
-                        .controlSize(.small)
-                        .help("Clear every star - reset the highlight reel for the next scene")
-                    // 2.88.0: the reel as a file - the star arc's output
-                    // side beyond the pasteboard.
-                    Button("Export starred") { model.exportStarredMarkdown() }
-                        .controlSize(.small)
-                        .help("Save the starred rolls as a Markdown file")
-                    // 2.89.0: file the reel into the journal as one
-                    // entry - the star arc's journal destination.
-                    Button("Digest starred") { model.addStarredToJournal() }
-                        .controlSize(.small)
-                        .disabled(model.selected == nil)
-                        .help("Add the starred rolls to the journal as one entry")
+                        .help("Starred-roll actions - copy, unstar, export, digest")
+                    } else {
+                        Button("Copy starred") { model.copyStarredToPasteboard() }
+                            .controlSize(.small)
+                            .help("Copy just the starred rolls as text, oldest first")
+                        // 2.86.0: the reset half of the loop - one tap
+                        // clears every star once the reel is copied out.
+                        Button("Unstar all") { model.unstarAll() }
+                            .controlSize(.small)
+                            .help("Clear every star - reset the highlight reel for the next scene")
+                        // 2.88.0: the reel as a file - the star arc's
+                        // output side beyond the pasteboard.
+                        Button("Export starred") { model.exportStarredMarkdown() }
+                            .controlSize(.small)
+                            .help("Save the starred rolls as a Markdown file")
+                        // 2.89.0: file the reel into the journal as one
+                        // entry - the star arc's journal destination.
+                        Button("Digest starred") { model.addStarredToJournal() }
+                            .controlSize(.small)
+                            .disabled(model.selected == nil)
+                            .help("Add the starred rolls to the journal as one entry")
+                    }
                 }
                 Button("Clear") { model.clearRollHistory() }.controlSize(.small)
             }
