@@ -1501,6 +1501,94 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
             fflush(stdout);
         });
+        After(6.9994996, ^{ // 0.46.0: reverse the selected source span with preserved feather and range
+            CGFloat top = view.bounds.size.height - 100;
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() == 64, "feathered span test begins with 64-frame sound");
+            if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
+            muew::Preset setup = before;
+            muew::gainPartial(setup.tables[0][0], 4, -22);
+            muew::gainPartial(setup.tables[0][0], 8, -8);
+            muew::gainPartial(setup.tables[0][0], 16, 14);
+            muew::gainPartial(setup.tables[0][0], 17, 12);
+            NSString* setupText = [NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef setupRef = (__bridge CFStringRef)setupText;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &setupRef, sizeof(setupRef));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // expand
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 22, top - 184 + 8 + 43 + 7)); // page 1-32
+            Click(view, w, NSMakePoint(40 + 11, top - 220 + 14)); // source frame one
+            Click(view, w, NSMakePoint(40 + 26, top - 278 + 7)); // COPY
+            NSPoint a = NSMakePoint(40 + 3 * 25.5 + 11, top - 220 + 14);
+            NSPoint b = NSMakePoint(40 + 9 * 25.5 + 11, top - 220 + 14);
+            Click(view, w, a);
+            auto event = [&](NSEventType kind, NSPoint p, NSEventModifierFlags flags) -> NSEvent* {
+                return [NSEvent mouseEventWithType:kind location:p modifierFlags:flags
+                    timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+            };
+            [view mouseDown:event(NSEventTypeLeftMouseDown, b, NSEventModifierFlagShift)];
+            [view mouseUp:event(NSEventTypeLeftMouseUp, b, NSEventModifierFlagShift)];
+            SEL frameSel = NSSelectorFromString(@"selectTableFrame:");
+            if ([view respondsToSelector:frameSel]) ((void (*)(id, SEL, int))[view methodForSelector:frameSel])(view, frameSel, 25);
+            Click(view, w, NSMakePoint(40 + 72 + 74, top - 184 + 14 + 3)); // EDGE 100%
+            Click(view, w, NSMakePoint(310 + 75, top - 274 + 3)); // BLEND 75%
+            const CGFloat bx = 40 + 8 + 4, by = top - 184 + 8 + 63;
+            NSPoint h4 = NSMakePoint(bx + 3.5 * 188.0 / 32, by + 12);
+            NSPoint h16 = NSMakePoint(bx + 15.5 * 188.0 / 32, by + 12);
+            [view mouseDown:event(NSEventTypeLeftMouseDown, h4, NSEventModifierFlagShift)];
+            [view mouseDragged:event(NSEventTypeLeftMouseDragged, h16, NSEventModifierFlagShift)];
+            [view mouseUp:event(NSEventTypeLeftMouseUp, h16, NSEventModifierFlagShift)];
+            Click(view, w, NSMakePoint(310 + 37.5, top - 296 + 3)); // FEATHER 3 harmonics
+            Click(view, w, NSMakePoint(40 + 34, top - 300 + 8)); // REVERSE
+            NSString* span = [view respondsToSelector:NSSelectorFromString(@"muewProfileText")] ? [view valueForKey:@"muewProfileText"] : @"";
+            Check(std::string(span.UTF8String ?: "").find("span=4-16 feather=3 reverse=1") != std::string::npos,
+                  "REVERSE is armed for H4-H16 with three-bin feather");
+            Click(view, w, NSMakePoint(40 + 56 + 26, top - 278 + 7)); // PREVIEW
+            muew::Preset baseline; bool ok1 = State(baseline);
+            Snapshot(view, "MUEW_REVERSE46_PNG", "reversed source-profile preview snapshot written");
+            muew::Preset afterPreview; bool okPreview = State(afterPreview);
+            Check(ok1 && okPreview && afterPreview.tables[0] == baseline.tables[0], "reverse preview leaves AU state untouched");
+            Click(view, w, NSMakePoint(40 + 2 * 56 + 26, top - 278 + 7)); // PASTE
+            muew::Preset changed; bool ok2 = State(changed);
+            muew::SpectralClipboard expected; expected.capture(setup.tables[0][0], 0); expected.span(4,16);expected.feather=3; expected.reverse=true;
+            auto want = baseline.tables[0]; muew::FrameRange rr{13,38};
+            muew::applySpectralProfileTable(want, rr, 25, expected, .75, 1, false);
+            Check(ok2 && want == changed.tables[0] && changed.tables[0][13] == baseline.tables[0][13] &&
+                  changed.tables[0][38] == baseline.tables[0][38] && changed.tables[0][25] != baseline.tables[0][25],
+                  "reversed AU paste matches exact tapered range with untouched endpoints");
+            auto normal = baseline.tables[0]; muew::SpectralClipboard straight = expected;
+            straight.reverse = false; muew::applySpectralProfileTable(normal, rr, 25, straight, .75, 1, false);
+            const auto normSpec = muew::frameSpectrum(normal[25]);
+            const auto revSpec = muew::frameSpectrum(changed.tables[0][25]);
+            Check(ok2 && normal[25] != changed.tables[0][25] &&
+                std::abs(revSpec[4]/revSpec[1]) > std::abs(normSpec[4]/normSpec[1]),
+                "reverse swaps low and high source ratios in the audible edited frame");
+            const auto orig=muew::frameSpectrum(baseline.tables[0][25]), altered=muew::frameSpectrum(changed.tables[0][25]);
+            const double scale=std::abs(altered[1])/std::abs(orig[1]);
+            bool otherBins=true;for(int h=20;h<=muew::kEditablePartials;++h)
+                otherBins &= std::abs(altered[h]-orig[h]*scale)<.003*std::max(1.0,std::abs(altered[h]));
+            Check(otherBins, "reverse preserves partial ratios and phases beyond the feather");
+            NSString* history = [view respondsToSelector:NSSelectorFromString(@"muewHistoryText")] ? [view valueForKey:@"muewHistoryText"] : @"";
+            Check(std::string(history.UTF8String ?: "").find("last=PROFILE RANGE") != std::string::npos,
+                  "reverse range paste is one undo step");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5));
+            muew::Preset undone; bool ok3 = State(undone);
+            Check(ok3 && undone.tables[0] == baseline.tables[0], "one UNDO removes reverse paste");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == changed.tables[0], "one REDO restores reverse paste");
+            NSString* resetText = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef reset = (__bridge CFStringRef)resetText;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &reset, sizeof(reset));
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(40 + 72, top - 184 + 14 + 3)); // EDGE zero
+            Click(view, w, a); // clear range
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // collapse
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab

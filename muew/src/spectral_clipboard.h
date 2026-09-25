@@ -10,12 +10,17 @@ struct SpectralClipboard {
     int sourceFrame = -1;
     int firstH = 1, lastH = kEditablePartials;
     int feather = 0; // harmonic bins outside either span edge, 0-8
+    bool reverse = false; // reflect source ratios inside selected span only
     double weight(int h) const {
         if (h < 1 || h > kEditablePartials) return 0;
         if (includes(h)) return 1;
         if (feather <= 0) return 0;
         const int distance = h < firstH ? firstH - h : h - lastH;
         return distance <= feather ? (double)(feather + 1 - distance) / (feather + 1) : 0;
+    }
+    double sourceRatio(int h) const {
+        if (h < 1 || h > kEditablePartials) return 0;
+        return ratio[reverse && includes(h) ? firstH + lastH - h : h];
     }
     void span(int a, int b) {
         firstH = std::clamp(std::min(a, b), 1, kEditablePartials);
@@ -30,9 +35,9 @@ struct SpectralClipboard {
         if (peak < 1e-12) return false;
         for (int h = 1; h <= kEditablePartials; ++h)
             ratio[h] = std::abs(s[h]) >= peak * 1e-7 ? std::abs(s[h]) / peak : 0;
-        valid = true; sourceFrame = frame; return true;
+        valid = true; sourceFrame = frame; firstH = 1; lastH = kEditablePartials; feather = 0; reverse = false; return true;
     }
-    void clear() { valid = false; sourceFrame = -1; firstH = 1; lastH = kEditablePartials; feather = 0; ratio.fill(0); }
+    void clear() { valid = false; sourceFrame = -1; firstH = 1; lastH = kEditablePartials; feather = 0; reverse = false; ratio.fill(0); }
 };
 inline bool applySpectralProfile(Frame& f, const SpectralClipboard& copy, double strength = 1,
                                  bool createSilent = false) {
@@ -47,7 +52,7 @@ inline bool applySpectralProfile(Frame& f, const SpectralClipboard& copy, double
     for (int h = 1; h <= kEditablePartials; ++h) {
         const double w = copy.weight(h);
         if (w <= 0) continue;
-        double old = std::abs(original[h]), target = peak * copy.ratio[h];
+        double old = std::abs(original[h]), target = peak * copy.sourceRatio(h);
         if (old < peak * 1e-7 && !createSilent) continue;
         if (target < peak * 1e-7) target = 0;
         double desired = 0;

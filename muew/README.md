@@ -354,3 +354,15 @@ strength. Amber span shading and source ticks fade across the same ramp, so
 PREVIEW shows the exact region that PASTE will change. Zero is the previous
 hard boundary. Destination phases, the SEED gate, selected frame-range EDGE,
 and one-step undo behavior remain unchanged.
+
+## 0.46.0 Spectral transfer polarity
+
+REVERSE is a non-destructive, in-memory option for a copied spectral profile.
+Within the selected harmonic span it reflects source ratios low-to-high: H4
+reads source H16, H5 reads H15, and so on. The feather bins just outside the
+span keep their own original source ratio but retain their tapered transfer
+strength. PREVIEW's amber ticks show exactly those source ratios and the
+filled bars show the prospective result. BLEND, frame-range EDGE, explicit
+SEED for silent bins, phase preservation, and single-step undo stay intact.
+A new COPY starts normal again; neither the switch nor its clipboard state is
+serialized. The resulting edited wavetable is saved in the usual preset state.

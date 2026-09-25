@@ -810,6 +810,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtTaperBar { NSRect c = [self wtCanvas]; return NSMakeRect(c.origin.x + 72, c.origin.y + 14, 74, 6); }
 - (NSRect)wtProfileButton:(int)i { return NSMakeRect(40 + i * 56, [self top] - 278, 52, 14); }
 - (NSRect)wtProfileBlendBar { return NSMakeRect(310, [self top] - 274, 100, 6); }
+- (NSRect)wtReverseRect { return NSMakeRect(40, [self top] - 300, 68, 16); }
 - (NSRect)wtFeatherBar { return NSMakeRect(310, [self top] - 296, 100, 6); }
 - (NSRect)wtPartialBarArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 4, p.size.width - 8, 22); }
 - (NSRect)wtPartialStep:(int)i { NSRect p = [self wtSpecPreview]; return NSMakeRect(NSMaxX(p) - 51 + i * 24, p.origin.y + 30, 22, 11); }
@@ -1147,7 +1148,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             if (changed && o > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * o - .5, std::max<CGFloat>(1, bw - 1), 1.2), 0, C(0x8793a3));
             if (wtPartialLarge && wtProfile.valid && wtProfilePreview && spanWeight > 0) {
                 // Source profile as amber ticks, destination as pale ticks, proposed blend as solid bars.
-                const double src = dbh(wtProfile.ratio[h]);
+                const double src = dbh(wtProfile.sourceRatio(h));
                 if (src > 0) FillRound(NSMakeRect(x + .5, spectrum.origin.y + barTop * src - .5,
                     std::max<CGFloat>(1, bw - 1), 1.4), 0, C(0xf2b65c, .45 + .5 * spanWeight));
             }
@@ -1380,6 +1381,10 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
                   3, C(0xe6ebf1));
         TextA([NSString stringWithFormat:@"%.0f%%", wtProfileBlend * 100], NSMakeRect(NSMaxX(blend) + 4, blend.origin.y - 2, 42, 10),
               7, col, NSFontWeightBold, NSTextAlignmentRight);
+        const NSRect rev = [self wtReverseRect];
+        FillRound(rev, 3, wtProfile.valid && wtProfile.reverse ? C(0xf2b65c, .27) : C(0x1d2830));
+        TextA(@"REVERSE", NSMakeRect(rev.origin.x, rev.origin.y + 3, rev.size.width, 10), 6.7,
+              wtProfile.valid && wtProfile.reverse ? C(0xf2b65c) : C(0x8995a5), NSFontWeightBold, NSTextAlignmentCenter);
         const NSRect featherBar = [self wtFeatherBar];
         TextA(@"FEATHER", NSMakeRect(featherBar.origin.x - 58, featherBar.origin.y - 2, 55, 10),
               7, wtProfile.valid ? col : C(0x697683), NSFontWeightBold, NSTextAlignmentRight);
@@ -3386,9 +3391,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
 - (NSString*)muewProfileText {
-    return [NSString stringWithFormat:@"valid=%d source=%d preview=%d create=%d blend=%.2f span=%d-%d feather=%d",
+    return [NSString stringWithFormat:@"valid=%d source=%d preview=%d create=%d blend=%.2f span=%d-%d feather=%d reverse=%d",
         wtProfile.valid, wtProfile.sourceFrame + 1, wtProfilePreview, wtProfileCreate, wtProfileBlend,
-        wtProfile.firstH, wtProfile.lastH, wtProfile.feather];
+        wtProfile.firstH, wtProfile.lastH, wtProfile.feather, wtProfile.reverse];
 }
 - (NSString*)muewBrushTaperText {
     return [NSString stringWithFormat:@"edge=%.2f", wtBrushTaper];
@@ -3492,6 +3497,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
                 wtProfilePreview = false; wtProfileCreate = false;
             } else if (i == 3 && wtProfile.valid) wtProfileCreate = !wtProfileCreate;
             [self setNeedsDisplay:YES]; return;
+        }
+        if (wtProfile.valid && NSPointInRect(p, [self wtReverseRect])) {
+            wtProfile.reverse = !wtProfile.reverse; [self setNeedsDisplay:YES]; return;
         }
         if (wtProfile.valid && NSPointInRect(p, NSInsetRect([self wtFeatherBar], -4, -7))) {
             wtProfile.feather = std::clamp((int)std::lround((p.x - [self wtFeatherBar].origin.x) /

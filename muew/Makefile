@@ -241,3 +241,9 @@ clean:
 	rm -rf build out
 
 .PHONY: all test render clean
+
+build/muew-tests-reverse46: tests/tests_reverse46.cpp src/spectral_clipboard.h src/table_history.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-demo-reverse46: src/render_demo_reverse46.cpp src/spectral_clipboard.h src/synth.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
