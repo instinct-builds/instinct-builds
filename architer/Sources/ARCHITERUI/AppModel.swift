@@ -336,15 +336,42 @@ public final class AppModel: ObservableObject {
     }
 
     public func clearRollHistory() {
+        lastDeletion = nil
         rollHistory.removeAll()
         rollHistoryStore.save(rollHistory)
     }
+
+    /// 2.81.0: one-level undo for the destructive history actions. The
+    /// full log is snapshotted at deletion (plus a deleted session's
+    /// custom name and note); the next roll or Clear consumes the undo.
+    public struct HistoryDeletion {
+        public let historySnapshot: [RollResult]
+        public let sessionKey: String?
+        public let sessionName: String?
+        public let sessionNote: String?
+    }
+    @Published public private(set) var lastDeletion: HistoryDeletion?
 
     /// 2.79.0: per-roll delete - a mis-rolled entry leaves the log
     /// without clearing everything. Identical rolls are
     /// indistinguishable, so the first match goes.
     public func deleteRoll(_ roll: RollResult) {
+        lastDeletion = HistoryDeletion(historySnapshot: rollHistory,
+                                       sessionKey: nil, sessionName: nil, sessionNote: nil)
         rollHistory = rollHistory.removingFirst(roll)
+        rollHistoryStore.save(rollHistory)
+    }
+
+    /// 2.81.0: restore the last deleted roll or session - rolls, custom
+    /// name, and note - then consume the undo.
+    public func undoDelete() {
+        guard let d = lastDeletion else { return }
+        rollHistory = d.historySnapshot
+        if let key = d.sessionKey {
+            if let name = d.sessionName { renameSession(key, to: name) }
+            if let note = d.sessionNote { setSessionNote(key, to: note) }
+        }
+        lastDeletion = nil
         rollHistoryStore.save(rollHistory)
     }
 
@@ -363,6 +390,10 @@ public final class AppModel: ObservableObject {
         } else {
             doomed = session.rolls
         }
+        lastDeletion = HistoryDeletion(historySnapshot: rollHistory,
+                                       sessionKey: session.key,
+                                       sessionName: session.key.flatMap { sessionNames[$0] },
+                                       sessionNote: session.key.flatMap { sessionNotes[$0] })
         rollHistory = rollHistory.removingAll(in: doomed)
         if let key = session.key {
             renameSession(key, to: "")
@@ -374,6 +405,7 @@ public final class AppModel: ObservableObject {
     private func record(_ r: RollResult) {
         var r = r
         r.characterName = selected?.wrappedValue.name
+        lastDeletion = nil
         rollHistory.insert(r, at: 0)
         if rollHistory.count > 200 { rollHistory.removeLast(rollHistory.count - 200) }
         rollHistoryStore.save(rollHistory)

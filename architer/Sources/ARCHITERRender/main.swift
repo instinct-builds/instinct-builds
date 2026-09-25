@@ -505,6 +505,25 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-session-delete", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.81.0 proof: undo delete - the session deleted for the 2.80.0
+    // proof comes back, name and note included; the txt records the
+    // after-delete and after-undo states. (The 2.79.0/2.80.0 renders
+    // above already show the Undo button, live after each delete.)
+    model.undoDelete()
+    let sessionsUndone = model.namedSessions(model.rollHistory)
+    let undoneSessionLines = sessionsUndone.map(sessionLine)
+    let undoLines = ["Undo delete (2.81.0)", "",
+                     "after session delete (\(sessionsAfter.count) sessions):"] + afterSessionLines
+        + ["", "after undo (\(sessionsUndone.count) sessions):"] + undoneSessionLines
+    try? undoLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/session-undo.txt"),
+               atomically: true, encoding: .utf8)
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-undo", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

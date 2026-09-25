@@ -168,6 +168,13 @@ public struct DiceRollerView: View {
                 Toggle("Journal", isOn: $model.autoLogRollsToJournal)
                     .controlSize(.small)
                     .help("Automatically add every roll to the journal")
+                // 2.81.0: undo the last per-roll or per-session delete.
+                // Visible only while a deletion is unconsumed.
+                if model.lastDeletion != nil {
+                    Button("Undo") { model.undoDelete() }
+                        .controlSize(.small)
+                        .help("Restore the last deleted roll or session")
+                }
                 Button("Copy") { model.copyRollsToPasteboard(visibleHistory) }
                     .controlSize(.small)
                     .disabled(visibleHistory.isEmpty)
