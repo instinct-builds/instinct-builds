@@ -2,9 +2,11 @@
 
 Working date: 2026-09-10. Owner: PM/principal-engineer task agent.
 
-The user asked for 1:1 duplicates of Roll20's character sheet, Xfer Serum 2,
-and Adobe Stock. We build lawful originals with comparable core workflows
-instead. This document is the durable scope contract for all three.
+The three products take Roll20's character sheet, Xfer Serum 2, and Adobe
+Stock as functional reference points. The accepted scope is lawful original
+products: original code, original branding, and original content, with
+functional parity as inspiration only - never literal 1:1 duplication. This
+document is the durable scope contract for all three.
 
 ## Hard boundaries (all products)
 
