@@ -245,6 +245,13 @@ jobs:
           DELAY=13 shoot changed-source-review 1920x1200 changed-source-review
           DELAY=13 shoot changed-source-apply 1920x1200 changed-source-apply demo-changed-source.txt
           grep -q '^done changed=true rights=true boards=[1-9]' "$SUP/demo-changed-source.txt"
+          python3 - "$SUP/studio-catalog.json" <<'PY2'
+          import json,sys
+          c=json.load(open(sys.argv[1])); r=c['sourceRefreshHistory']; assert len(r)==1, r
+          entry=r[0]; assert entry['before']['sha256'] != entry['after']['sha256']
+          assert entry['path'].endswith('Northlight Lobby.png')
+          print('source receipt survives catalog reload; no source bytes embedded')
+          PY2
           DELAY=18 shoot folder-relink 1920x1200 folder-relink
           DELAY=18 shoot folder-relink-collapsed 1920x1200 folder-relink-collapsed
           DELAY=18 shoot folder-relink-apply 1920x1200 folder-relink-apply demo-folder-relink.txt

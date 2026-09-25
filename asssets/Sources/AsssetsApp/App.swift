@@ -1581,6 +1581,19 @@ final class StudioLibrary: ObservableObject {
     @Published var sourceRefreshBusy = false
     @Published var sourceRefreshError: String?
     @Published var reviewedSourceID: UUID?
+    @Published var sourceReviewPreview: SourceReviewPreview?
+    @Published var sourceHistoryExpanded = false
+
+    struct SourceReviewPreview {
+        let id: UUID
+        let path: String
+        let baseline: SourceFingerprint
+        let current: SourceFingerprint
+        let beforeResolution: String
+        let afterResolution: String
+        let beforePalette: [String]
+        let afterPalette: [String]
+    }
     private var healthGeneration = 0
 
     nonisolated static func sourceStat(_ path: String) -> (size: Int64, modified: TimeInterval)? {
@@ -1596,45 +1609,71 @@ final class StudioLibrary: ObservableObject {
         return SourceFingerprint(size: after.size, modified: after.modified, sha256: digest)
     }
 
-    /// Refresh a reviewed changed source without changing its ID or user-authored metadata.
-    func refreshChangedSource(_ id: UUID) {
+    /// Prepare the actual on-disk candidate before asking for acceptance.
+    func reviewChangedSource(_ id: UUID) {
+        sourceReviewPreview = nil; sourceRefreshError = nil
         guard !sourceRefreshBusy, let a = catalog.assets.first(where: { $0.id == id }),
-              let path = a.importedPath, let old = a.sourceFingerprint, health?.changedSources.contains(id) == true else { return }
+              let path = a.importedPath, let old = a.sourceFingerprint,
+              health?.changedSources.contains(id) == true,
+              let current = Self.sourceFingerprint(path), old.status(against: current) == .changed else {
+            sourceRefreshError = "Source changed since the scan. Check Again before reviewing."
+            refreshHealth(full: true)
+            return
+        }
+        var updated = a
+        updated.palette = StudioCatalog.placeholderPalette
+        updated.resolution = "Local file"
+        var temp = StudioCatalog()
+        temp.assets = [updated]
+        enrichStarterMetadata(&temp, userFilesOnly: true)
+        guard let derived = temp.assets.first, derived.resolution != "Local file",
+              Self.sourceFingerprint(path) == current,
+              catalog.assets.first(where: { $0.id == id })?.sourceFingerprint == old else {
+            sourceRefreshError = "Could not read a stable source and its metadata. Check Again."
+            refreshHealth(full: true)
+            return
+        }
+        sourceReviewPreview = SourceReviewPreview(id: id, path: path, baseline: old, current: current,
+            beforeResolution: a.resolution, afterResolution: derived.resolution,
+            beforePalette: a.palette, afterPalette: derived.palette)
+        reviewedSourceID = id
+    }
+
+    /// Refresh only the exact bytes and metadata the designer just reviewed.
+    func refreshChangedSource(_ id: UUID) {
+        guard !sourceRefreshBusy, let reviewed = sourceReviewPreview, reviewed.id == id,
+              let a = catalog.assets.first(where: { $0.id == id }),
+              a.importedPath == reviewed.path, a.sourceFingerprint == reviewed.baseline,
+              a.resolution == reviewed.beforeResolution, a.palette == reviewed.beforePalette,
+              health?.changedSources.contains(id) == true else {
+            sourceRefreshError = "Library details changed since review. Check Again."
+            sourceReviewPreview = nil
+            return
+        }
         sourceRefreshBusy = true; sourceRefreshError = nil
-        Task { @MainActor in
-            // Recheck live bytes before deriving anything. The user may have edited again after the report.
-            guard let current = Self.sourceFingerprint(path), old.status(against: current) == .changed else {
-                sourceRefreshBusy = false; sourceRefreshError = "Source changed since review. Check Again before refreshing."; refreshHealth(full: true); return
-            }
-            var updated = a
-            updated.palette = StudioCatalog.placeholderPalette
-            updated.resolution = "Local file"
-            var temp = StudioCatalog()
-            temp.assets = [updated]
-            enrichStarterMetadata(&temp, userFilesOnly: true)
-            let derived = temp.assets.first
-            guard let confirmed = Self.sourceFingerprint(path), confirmed == current,
-                  catalog.assets.first(where: { $0.id == id })?.sourceFingerprint == old else {
-                sourceRefreshBusy = false; sourceRefreshError = "Source changed during refresh. Check Again before trying again."; refreshHealth(full: true); return
-            }
-            var applied = false
-            guard let derived, derived.resolution != "Local file" else {
-                sourceRefreshBusy = false; sourceRefreshError = "Could not read this source's metadata. It was not refreshed."; return
-            }
-            mutate("Refresh Changed Source") { c in
-                applied = c.acceptChangedSource(confirmed, for: id, path: path,
-                    palette: derived.palette, resolution: derived.resolution)
-            }
+        sourceReviewPreview = nil
+        // The source can change while the alert is open; a new digest requires a new review.
+        guard Self.sourceFingerprint(reviewed.path) == reviewed.current else {
             sourceRefreshBusy = false
-            if applied {
-                sourceRefreshError = nil
-                ThumbnailStore.shared.invalidate(id: id, path: path)
-                psdCache.removeValue(forKey: path)
-                lookCache.removeValue(forKey: lookKey(a))
-                refreshAutoTags()
-                refreshHealth(full: true)
-                flash("Refreshed \(a.title); original ID, rights and versions kept.")
-            }
+            sourceRefreshError = "Source changed since review. Check Again before refreshing."
+            refreshHealth(full: true)
+            return
+        }
+        var applied = false
+        // A source refresh cannot be undone: the previous disk bytes are not in ASSSETS.
+        // Keep the receipt out of transient catalog undo snapshots.
+        mutate { c in
+            applied = c.acceptChangedSource(reviewed.current, for: id, path: reviewed.path,
+                palette: reviewed.afterPalette, resolution: reviewed.afterResolution, at: Date())
+        }
+        sourceRefreshBusy = false
+        if applied {
+            ThumbnailStore.shared.invalidate(id: id, path: reviewed.path)
+            psdCache.removeValue(forKey: reviewed.path)
+            lookCache.removeValue(forKey: lookKey(a))
+            refreshAutoTags()
+            refreshHealth(full: true)
+            flash("Refreshed \(a.title); metadata receipt saved, not old file bytes.")
         }
     }
     @Published var folderRelinkOpen = false
@@ -2767,13 +2806,15 @@ final class StudioLibrary: ObservableObject {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                         self.openLibraryHealth()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            if demo == "changed-source-review" { self.reviewedSourceID = source.id }
+                            if demo == "changed-source-review" { self.reviewChangedSource(source.id) }
                             if demo == "changed-source-apply" {
+                                self.reviewChangedSource(source.id)
+                                self.reviewedSourceID = nil
                                 self.refreshChangedSource(source.id)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                     let a = self.catalog.assets.first { $0.id == source.id }
                                     let passed = a?.sourceFingerprint?.sha256 != baseline.sha256 && a?.rights == expectedRights
-                                        && self.catalog.boardsUsing(source.id).count > 0
+                                        && self.catalog.boardsUsing(source.id).count > 0 && self.catalog.sourceHistory(for: source.id).count == 1
                                     try? "done changed=\(passed) rights=\(a?.rights != nil) boards=\(self.catalog.boardsUsing(source.id).count)".write(
                                         to: self.supportRoot.appendingPathComponent("demo-changed-source.txt"), atomically: true, encoding: .utf8)
                                 }
@@ -7254,15 +7295,16 @@ struct LibraryHealthSheet: View {
             }
             .padding(20)
             .alert("Refresh changed source?", isPresented: Binding(get: { model.reviewedSourceID != nil },
-                set: { if !$0 { model.reviewedSourceID = nil } })) {
-                Button("Cancel", role: .cancel) { model.reviewedSourceID = nil }
+                set: { if !$0 { model.reviewedSourceID = nil; model.sourceReviewPreview = nil } })) {
+                Button("Cancel", role: .cancel) { model.reviewedSourceID = nil; model.sourceReviewPreview = nil }
                 Button("Refresh Source") {
                     if let id = model.reviewedSourceID { model.refreshChangedSource(id) }
                     model.reviewedSourceID = nil
                 }
             } message: {
-                let asset = model.catalog.assets.first { $0.id == model.reviewedSourceID }
-                Text("\(asset?.title ?? "This asset") at \(asset?.importedPath ?? "unknown path") changed on disk. Use these bytes for the preview, palette and file facts? The asset ID, rights, boards and placed versions stay in the catalog. This can't restore the old source bytes.")
+                let p = model.sourceReviewPreview
+                let a = model.catalog.assets.first { $0.id == model.reviewedSourceID }
+                Text("\(a?.title ?? "Source") at \((p?.path as NSString?)?.abbreviatingWithTildeInPath ?? "unknown path")\nSize: \(p.map { ByteCountFormatter.string(fromByteCount: $0.baseline.size, countStyle: .file) } ?? "?") → \(p.map { ByteCountFormatter.string(fromByteCount: $0.current.size, countStyle: .file) } ?? "?")\nFile facts: \(p?.beforeResolution ?? "?") → \(p?.afterResolution ?? "?")\nPalette: \(p?.beforePalette.prefix(3).joined(separator: ", ") ?? "?") → \(p?.afterPalette.prefix(3).joined(separator: ", ") ?? "?")\nThe new bytes get the preview. ID, rights, boards and placed versions remain. The receipt saves metadata, not old bytes; this cannot restore the old file.")
             }
             Divider().overlay(Theme.hairline)
             ScrollView {
@@ -7288,7 +7330,7 @@ struct LibraryHealthSheet: View {
                             ForEach(h.changedSources.prefix(5), id: \.self) { id in
                                 if let a = byID[id] {
                                     HealthRow(asset: a, detail: a.importedPath ?? "") {
-                                        Button("Review…") { model.reviewedSourceID = id }
+                                        Button("Review…") { model.reviewChangedSource(id) }
                                             .controlSize(.small).disabled(model.sourceRefreshBusy)
                                     }
                                 }
@@ -7342,6 +7384,25 @@ struct LibraryHealthSheet: View {
                                         Button { model.reveal([f.id]) } label: { Image(systemName: "folder") }.controlSize(.small).help("Reveal in Finder")
                                     }
                                 }
+                            }
+                        }
+                    }
+                    if !model.catalog.sourceRefreshHistory.isEmpty {
+                        HealthCard(symbol: "clock.arrow.circlepath", tint: Theme.accent,
+                                   title: "Source refresh history · \(model.catalog.sourceRefreshHistory.count)",
+                                   detail: "Catalog receipts only. Old source bytes are not saved or recoverable here.",
+                                   action: model.catalog.sourceRefreshHistory.count > 5
+                                       ? (model.sourceHistoryExpanded ? "Show Recent" : "Show All", { model.sourceHistoryExpanded.toggle() }) : nil) {
+                            ForEach(Array(model.catalog.sourceRefreshHistory.reversed().prefix(model.sourceHistoryExpanded ? model.catalog.sourceRefreshHistory.count : 5))) { entry in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    let title = byID[entry.assetID]?.title ?? "Removed asset"
+                                    Text("\(title) · \(entry.refreshedAt.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("\((entry.path as NSString).abbreviatingWithTildeInPath) · \(ByteCountFormatter.string(fromByteCount: entry.before.size, countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: entry.after.size, countStyle: .file)) · \(entry.beforeResolution) → \(entry.afterResolution)")
+                                        .font(.caption2).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                                    Text("Palette: \(entry.beforePalette.prefix(3).joined(separator: ", ")) → \(entry.afterPalette.prefix(3).joined(separator: ", ")) · SHA-256: \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
+                                        .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                                }.padding(.leading, 42)
                             }
                         }
                     }

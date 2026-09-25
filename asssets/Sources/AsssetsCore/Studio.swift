@@ -162,8 +162,10 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var rightsPresets: [RightsPreset] = []
     /// Named reusable mockup/layer combinations (1.32).
     public var placementPresets: [PlacementPreset] = []
+    /// Reviewed source refresh receipts. Catalog metadata only; old file bytes are not saved.
+    public var sourceRefreshHistory: [SourceRefreshRecord] = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates, licenseDocs, rightsPresets, placementPresets }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates, licenseDocs, rightsPresets, placementPresets, sourceRefreshHistory }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -182,6 +184,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         licenseDocs = (try? c.decodeIfPresent([LicenseDoc].self, forKey: .licenseDocs)) ?? []
         rightsPresets = (try? c.decodeIfPresent([RightsPreset].self, forKey: .rightsPresets)) ?? []
         placementPresets = (try? c.decodeIfPresent([PlacementPreset].self, forKey: .placementPresets)) ?? []
+        sourceRefreshHistory = (try? c.decodeIfPresent([SourceRefreshRecord].self, forKey: .sourceRefreshHistory)) ?? []
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {

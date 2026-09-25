@@ -1,0 +1,44 @@
+import Foundation
+
+/// A catalog receipt, not a backup. The old file's bytes are not retained.
+public struct SourceRefreshRecord: Codable, Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public let assetID: UUID
+    public let path: String
+    public let refreshedAt: Date
+    public let before: SourceFingerprint
+    public let after: SourceFingerprint
+    public let beforeResolution: String
+    public let afterResolution: String
+    public let beforePalette: [String]
+    public let afterPalette: [String]
+
+    public init(id: UUID = UUID(), assetID: UUID, path: String, refreshedAt: Date,
+                before: SourceFingerprint, after: SourceFingerprint,
+                beforeResolution: String, afterResolution: String,
+                beforePalette: [String], afterPalette: [String]) {
+        self.id = id; self.assetID = assetID; self.path = path; self.refreshedAt = refreshedAt
+        self.before = before; self.after = after
+        self.beforeResolution = beforeResolution; self.afterResolution = afterResolution
+        self.beforePalette = beforePalette; self.afterPalette = afterPalette
+    }
+}
+
+extension StudioCatalog {
+    /// The accepted refresh and its receipt are a single catalog mutation.
+    @discardableResult
+    public mutating func acceptChangedSource(_ after: SourceFingerprint, for id: UUID, path: String,
+                                             palette: [String], resolution: String, at date: Date) -> Bool {
+        guard let current = assets.first(where: { $0.id == id && $0.importedPath == path }),
+              let before = current.sourceFingerprint, before.sha256 != after.sha256 else { return false }
+        guard acceptChangedSource(after, for: id, path: path, palette: palette, resolution: resolution) else { return false }
+        sourceRefreshHistory.append(SourceRefreshRecord(assetID: id, path: path, refreshedAt: date,
+            before: before, after: after, beforeResolution: current.resolution,
+            afterResolution: resolution, beforePalette: current.palette, afterPalette: palette))
+        return true
+    }
+
+    public func sourceHistory(for id: UUID) -> [SourceRefreshRecord] {
+        sourceRefreshHistory.filter { $0.assetID == id }.reversed()
+    }
+}
