@@ -1140,8 +1140,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             }
         }
         if (wtPartialLarge) {
-            TextA(@"OPTION-DRAG TO PAINT", NSMakeRect(pv.origin.x + 4, pv.origin.y + 58, 150, 9),
-                  6.5, C(0x667f86), NSFontWeightSemibold, NSTextAlignmentLeft);
+            TextA(@"OPTION-DRAG TO PAINT", NSMakeRect(pv.origin.x + 104, NSMaxY(pv) - 27, 85, 9),
+                  5.9, C(0x8b9a9f), NSFontWeightSemibold, NSTextAlignmentRight);
             for (int i = 0; i < 4; ++i) {
                 const NSRect b = [self wtPartialPageRect:i];
                 FillRound(b, 3, i == wtPartialPage ? [col colorWithAlphaComponent:.26] : C(0x1d2830));

@@ -1142,6 +1142,10 @@ int main() {
             if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
             Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
             Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // expand
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 22, top - 184 + 8 + 43 + 7)); // page 1-32
+            NSString* pageText = [view respondsToSelector:NSSelectorFromString(@"muewPartialText")] ? [view valueForKey:@"muewPartialText"] : @"";
+            Check(std::string(pageText.UTF8String ?: "").find("page=0 large=1") != std::string::npos,
+                  "brush starts on expanded harmonic page 1-32");
             NSPoint a = NSMakePoint(40 + 3 * 25.5 + 11, top - 220 + 14);
             NSPoint b = NSMakePoint(40 + 9 * 25.5 + 11, top - 220 + 14);
             Click(view, w, a);
@@ -1160,6 +1164,9 @@ int main() {
             NSPoint p1 = NSMakePoint(bx + 7.5 * 188.0 / 32, by + 24); // H8, around -23 dB
             [view mouseDown:event(NSEventTypeLeftMouseDown, p0, NSEventModifierFlagOption)];
             [view mouseDragged:event(NSEventTypeLeftMouseDragged, p1, NSEventModifierFlagOption)];
+            NSString* brushed = [view respondsToSelector:NSSelectorFromString(@"muewPartialText")] ? [view valueForKey:@"muewPartialText"] : @"";
+            Check(std::string(brushed.UTF8String ?: "").find("h=8") != std::string::npos,
+                  "stroke reaches harmonic eight");
             Snapshot(view, "MUEW_BRUSH41_PNG", "brush before/after snapshot written");
             [view mouseUp:event(NSEventTypeLeftMouseUp, p1, NSEventModifierFlagOption)];
             muew::Preset changed; bool ok2 = State(changed);
