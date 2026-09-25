@@ -647,6 +647,15 @@ public final class AppModel: ObservableObject {
         selected?.wrappedValue = c
     }
 
+    /// Digest the filtered subset into the journal (2.99.0): one entry
+    /// titled with the query, notes riding via the digest body.
+    public func addFilteredRollsToJournal(_ rolls: [RollResult], query: String) {
+        let subset = rolls.filteredDigestSession(query: query)
+        guard !subset.rolls.isEmpty, var c = selected?.wrappedValue else { return }
+        c.journal.append(JournalEntry(sessionDigest: subset, format: digestFormat))
+        selected?.wrappedValue = c
+    }
+
     /// Level-up assistant: roll the hit die or take the average, then apply.
     public func levelUp(rollHP: Bool) {
         guard var c = selected?.wrappedValue, c.level < 20 else { return }

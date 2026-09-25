@@ -205,6 +205,19 @@ public struct DiceRollerView: View {
                     .controlSize(.small)
                     .disabled(visibleHistory.isEmpty)
                     .help("Copy the shown rolls (scope and filter applied) as text, oldest first")
+                // 2.99.0: file the filtered subset into the journal as
+                // one digest entry titled with the query - the filter
+                // view's counterpart of Digest starred.
+                if !historyFilter.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button("Digest filtered") {
+                        model.addFilteredRollsToJournal(
+                            visibleHistory,
+                            query: historyFilter.trimmingCharacters(in: .whitespaces))
+                    }
+                        .controlSize(.small)
+                        .disabled(model.selected == nil)
+                        .help("Add the filtered rolls to the journal as one entry titled with the filter")
+                }
                 // 2.85.0: the highlight reel - visible only while stars exist.
                 if !model.rollHistory.starredRolls.isEmpty {
                     Button("Copy starred") { model.copyStarredToPasteboard() }

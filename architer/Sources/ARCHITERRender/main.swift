@@ -761,6 +761,16 @@ func run(model: AppModel, character: Character, outDir: String) {
         .filteredShareText(query: "bridge", ofTotal: model.rollHistory.count)
         .write(to: URL(fileURLWithPath: "\(outDir)/filtered-copy.txt"),
                atomically: true, encoding: .utf8)
+    // 2.99.0 proof: the filtered digest's journal entry - title names
+    // the query, the condensed body carries the noted roll with its
+    // note, exactly as filed by Digest filtered.
+    do {
+        let subset = model.rollHistory.matching("bridge").filteredDigestSession(query: "bridge")
+        let entry = JournalEntry(sessionDigest: subset, format: .condensed)
+        try? (entry.title + "\n\n" + entry.text)
+            .write(to: URL(fileURLWithPath: "\(outDir)/filtered-digest.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     // 2.97.0 proof: with a filter drafted the bar's Copy reads "Copy
     // filtered" - the button says when the filter narrows what it
     // copies; the action already rides visibleHistory.

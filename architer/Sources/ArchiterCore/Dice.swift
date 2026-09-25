@@ -789,6 +789,15 @@ public extension Array where Element == RollResult {
         "Filtered: \(query) (\(count) of \(total))\n\n" + historyText
     }
 
+    /// The filtered subset as a digest-ready session (2.99.0): titled
+    /// with the query so a journal entry filed from it says how the
+    /// rolls were gathered - the filter view's counterpart of
+    /// starredDigestSession.
+    func filteredDigestSession(query: String) -> RollSession {
+        RollSession(number: 0, title: "Filtered: \(query) (\(count))",
+                    key: nil, rolls: self)
+    }
+
     /// The log with the first entry equal to `roll`'s star flipped
     /// (2.84.0). nil and false both read as unstarred; toggling a
     /// starred roll clears back to nil so saved logs stay lean.

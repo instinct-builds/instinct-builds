@@ -685,6 +685,21 @@ struct RollHistoryFilterTests {
         #expect(pair.filteredShareText(query: "d", ofTotal: 2)
             .hasPrefix("Filtered: d (2 of 2)\n\nFireball: 10 (8d6)\n  The bridge collapses behind them\nd20: 10"))
     }
+
+    // 2.99.0: the filtered subset wraps as a digest-ready session
+    /// titled with the query, notes riding the digest body.
+    @Test func filteredDigestSessionTitlesWithQuery() throws {
+        var noted = roll("8d6", label: "Fireball")
+        noted.note = "The bridge collapses behind them"
+        let rolls = [roll("d20"), noted]
+        let session = rolls.matching("bridge").filteredDigestSession(query: "bridge")
+        #expect(session.title == "Filtered: bridge (1)")
+        #expect(session.rolls.count == 1)
+        let entry = JournalEntry(sessionDigest: session, format: .condensed)
+        #expect(entry.title == "Filtered: bridge (1)")
+        #expect(entry.isCollapsed == true)
+        #expect(entry.text.contains("Fireball: 10 (8d6)\n  The bridge collapses behind them"))
+    }
 }
 
 @Suite("Session segments")
