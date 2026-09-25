@@ -433,7 +433,8 @@ struct SessionLogRangeTests {
     }
 
     @Test func displayNamesAreStable() {
-        #expect(SessionLogRange.allCases.map(\.displayName) == ["All rolls", "Today", "Last 7 days"])
+        // 2.90.0: "Starred only" joins the menu.
+        #expect(SessionLogRange.allCases.map(\.displayName) == ["All rolls", "Today", "Last 7 days", "Starred only"])
         #expect(SessionLogRange(rawValue: "bogus") == nil)
     }
 }
