@@ -7619,9 +7619,9 @@ struct LibraryHealthSheet: View {
                                         .font(.system(size: 12, weight: .semibold))
                                     Text("\((entry.path as NSString).abbreviatingWithTildeInPath) · \(ByteCountFormatter.string(fromByteCount: entry.before.size, countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: entry.after.size, countStyle: .file)) · \(entry.beforeResolution) → \(entry.afterResolution)")
                                         .font(.caption2).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                                    SourceReceiptThumbnails(entry: entry, height: 64)
                                     Text("Palette: \(entry.beforePalette.prefix(3).joined(separator: ", ")) → \(entry.afterPalette.prefix(3).joined(separator: ", ")) · SHA-256: \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
                                         .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
-                                    SourceReceiptThumbnails(entry: entry, height: 64)
                                 }.padding(.leading, 42)
                             }
                         }
@@ -8158,6 +8158,7 @@ struct SourceChangesSection: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.refreshedAt.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption.weight(.semibold))
+                    SourceReceiptThumbnails(entry: entry, height: 86)
                     Text((entry.path as NSString).abbreviatingWithTildeInPath)
                         .font(.caption2.monospaced()).lineLimit(2).truncationMode(.middle).textSelection(.enabled)
                     Text("\(ByteCountFormatter.string(fromByteCount: entry.before.size, countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: entry.after.size, countStyle: .file)) · \(entry.beforeResolution) → \(entry.afterResolution)")
@@ -8173,7 +8174,6 @@ struct SourceChangesSection: View {
                     }.accessibilityLabel("Palette changed from \(entry.beforePalette.prefix(3).joined(separator: ", ")) to \(entry.afterPalette.prefix(3).joined(separator: ", "))")
                     Text("SHA-256 \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
                         .font(.caption2.monospaced()).lineLimit(1).truncationMode(.middle)
-                    SourceReceiptThumbnails(entry: entry, height: 86)
                 }
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -8201,7 +8201,7 @@ struct Inspector: View {
     var body: some View {
         GeometryReader { geo in
             VStack(alignment: .leading, spacing: 0) {
-                preview.frame(height: min(250, max(150, geo.size.height * 0.32)))
+                preview.frame(height: model.isDemo && model.inspectorAnchor == "source-changes" ? 150 : min(250, max(150, geo.size.height * 0.32)))
                     .clipShape(RoundedRectangle(cornerRadius: 13))
                     .overlay(RoundedRectangle(cornerRadius: 13).stroke(Theme.hairline))
                     .padding([.horizontal, .top], 14)
