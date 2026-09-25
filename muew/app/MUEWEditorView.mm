@@ -1004,7 +1004,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextA([NSString stringWithFormat:@"POS %.0f%%", pos * 100], NSMakeRect(r.origin.x + 8, NSMaxY(r) - 16, 70, 11), 7.5,
               col, NSFontWeightSemibold, NSTextAlignmentLeft);
         if (!ui::morphSpec(current.voice, o).isIdentity()) { // 0.35.0 MORPH badge, live while a note sounds
-            const NSRect mbg = NSMakeRect(r.origin.x + 58, NSMaxY(r) - 17, 48, 13);
+            // 0.36.0 fix2: bottom-left, clear of the POS label, CURVE and EDIT chips, wide enough for "MORPH 100%"
+            const NSRect mbg = NSMakeRect(r.origin.x + 5, r.origin.y + 15, 56, 13);
             FillRound(mbg, 4, C(0x0a0d12, .85));
             FillRound(NSMakeRect(mbg.origin.x + 3, mbg.origin.y + 2, 2, 9 * std::clamp(morphNow, 0.0, 1.0) + .01), 1, col); // tiny level bar
             TextA([NSString stringWithFormat:@"MORPH %.0f%%", morphNow * 100], NSMakeRect(mbg.origin.x + 7, mbg.origin.y + 1.5, mbg.size.width - 8, 10), 7,

@@ -892,6 +892,8 @@ int main() {
             if ([view respondsToSelector:sync]) ((SyncFn)[view methodForSelector:sync])(view, sync, YES);
             NSNumber* keptPage = [view valueForKey:@"matrixPage"];
             [view setValue:@0 forKey:@"matrixPage"];                          // matrix page 1-4, where row 01 sits
+            NSNumber* keptFx = [view valueForKey:@"fxDetail"];
+            [view setValue:@(-1) forKey:@"fxDetail"];                         // close the FX detail panel so the matrix shows
             SEL closeEd = NSSelectorFromString(@"muewCloseTableEditor");
             if ([view respondsToSelector:closeEd]) ((void (*)(id, SEL))[view methodForSelector:closeEd])(view, closeEd);
             MusicDeviceMIDIEvent(gUnit, 0x90, 48, 32, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 55, 70, 0); MusicDeviceMIDIEvent(gUnit, 0x90, 60, 121, 0);
@@ -941,6 +943,7 @@ int main() {
                 if ([view respondsToSelector:sync]) ((SyncFn)[view methodForSelector:sync])(view, sync, YES);
             }
             if (keptPage) [view setValue:keptPage forKey:@"matrixPage"];
+            if (keptFx) [view setValue:keptFx forKey:@"fxDetail"];
             if ([view respondsToSelector:openEd]) ((void (*)(id, SEL))[view methodForSelector:openEd])(view, openEd);
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab
             fflush(stdout);
