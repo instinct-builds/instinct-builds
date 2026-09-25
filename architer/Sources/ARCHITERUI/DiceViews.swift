@@ -38,13 +38,15 @@ public struct DiceRollerView: View {
     public init(initialLatestSession: Bool = false, initialCritsOnly: Bool = false,
                 initialStarredOnly: Bool = false, initialHistoryFilter: String = "",
                 initialSavingFilterPreset: Bool = false,
-                initialFilterPresetNameDraft: String = "") {
+                initialFilterPresetNameDraft: String = "",
+                initialConfirmingFilteredDelete: Bool = false) {
         _historyLatestSession = State(initialValue: initialLatestSession)
         _historyCritsOnly = State(initialValue: initialCritsOnly)
         _historyStarredOnly = State(initialValue: initialStarredOnly)
         _historyFilter = State(initialValue: initialHistoryFilter)
         _savingFilterPreset = State(initialValue: initialSavingFilterPreset)
         _filterPresetNameDraft = State(initialValue: initialFilterPresetNameDraft)
+        _confirmingFilteredDelete = State(initialValue: initialConfirmingFilteredDelete)
     }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
@@ -74,6 +76,9 @@ public struct DiceRollerView: View {
     /// the current filter as a preset; the draft pre-fills with the query.
     @State private var savingFilterPreset = false
     @State private var filterPresetNameDraft = ""
+    /// Filtered-delete confirm (3.3.0): true while the bar asks before
+    /// removing the filter-visible subset; Undo restores it.
+    @State private var confirmingFilteredDelete = false
 
     private var visibleHistory: [RollResult] {
         let name = historyForCharacter ? model.selected?.wrappedValue.name : nil
@@ -282,6 +287,26 @@ public struct DiceRollerView: View {
                         .controlSize(.small)
                         .disabled(visibleHistory.isEmpty)
                         .help("Save the filtered rolls as a Markdown file")
+                    // 3.3.0: the destructive member of the filter
+                    // family - behind a confirm, with one undo step.
+                    if confirmingFilteredDelete {
+                        Text("Delete \(visibleHistory.count) rolls?")
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                        Button("Delete") {
+                            model.deleteFilteredRolls(visibleHistory)
+                            confirmingFilteredDelete = false
+                        }
+                        .controlSize(.small)
+                        .help("Remove the filtered rolls from history - Undo restores them")
+                        Button("Cancel") { confirmingFilteredDelete = false }
+                            .controlSize(.small)
+                    } else {
+                        Button("Delete filtered") { confirmingFilteredDelete = true }
+                            .controlSize(.small)
+                            .disabled(visibleHistory.isEmpty)
+                            .help("Remove the filtered rolls from history, with one undo step")
+                    }
                 }
                 // 2.85.0: the highlight reel - visible only while stars exist.
                 // 3.0.1: also hidden while the preset naming form is open.

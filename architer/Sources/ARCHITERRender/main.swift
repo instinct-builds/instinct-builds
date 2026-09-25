@@ -809,6 +809,30 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-presets", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
+    // with Delete/Cancel before anything is removed.
+    renderPNG(
+        DiceRollerView(initialHistoryFilter: "fire",
+                       initialConfirmingFilteredDelete: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-filter-delete", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.3.0 proof: the model cycle end to end - delete the filtered
+    // subset, then the one undo step restores the full log. Runs last
+    // so every earlier proof's counts stay stable.
+    do {
+        let subset = model.rollHistory.matching("fire")
+        let before = model.rollHistory.count
+        model.deleteFilteredRolls(subset)
+        let afterDelete = model.rollHistory.count
+        model.undoDelete()
+        let afterUndo = model.rollHistory.count
+        try? ("Delete filtered (3.3.0)\n\nsubset: \(subset.count) of \(before)\n"
+              + "after delete: \(afterDelete)\nafter undo: \(afterUndo)")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-delete.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

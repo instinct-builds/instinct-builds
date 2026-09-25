@@ -398,6 +398,16 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 3.3.0: delete the filter-visible subset - the destructive member
+    /// of the filter family. One undo step like the other history
+    /// deletions; the snapshot restores the full log exactly.
+    public func deleteFilteredRolls(_ rolls: [RollResult]) {
+        lastDeletion = HistoryDeletion(historySnapshot: rollHistory,
+                                       sessionKey: nil, sessionName: nil, sessionNote: nil)
+        rollHistory = rollHistory.removingAll(in: rolls)
+        rollHistoryStore.save(rollHistory)
+    }
+
     /// 2.84.0: flip a roll's star - the manual memorable marker that
     /// the Starred history filter shows.
     public func toggleStar(_ roll: RollResult) {
