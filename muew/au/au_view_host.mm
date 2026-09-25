@@ -1428,15 +1428,14 @@ int main() {
             Check(ok0 && before.tables[0].size() == 64, "profile-span test begins with 64-frame sound");
             if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
             muew::Preset setup = before;
-            // The factory frame has effectively silent upper bins. Explicitly
-            // seed both ends of the seam in source and destination so preview
-            // and transfer prove audible data, not shading over empty bins.
-            for (int i = 0; i < (int)setup.tables[0].size(); ++i) {
+            // Force clear high-bin levels on every frame. seedPartial only
+            // fills truly silent bins; numerically nonzero FFT residue would
+            // leave some source/destination spectra unfit for visual proof.
+            for (int i = 0; i < (int)setup.tables[0].size(); ++i)
                 for (int h = 28; h <= 38; ++h)
-                    muew::seedPartial(setup.tables[0][i], h, -29.0 + (h % 4) * 3.0);
-            }
-            muew::gainPartial(setup.tables[0][0], 29, -12);
-            muew::gainPartial(setup.tables[0][0], 35, 18);
+                    muew::setFrameHarmonic(setup.tables[0][i], h, .07 + (h % 4) * .01);
+            muew::setFrameHarmonic(setup.tables[0][0], 29, .018);
+            muew::setFrameHarmonic(setup.tables[0][0], 35, .24);
             NSString* setupText = [NSString stringWithUTF8String:setup.serialize().c_str()];
             CFStringRef setupRef = (__bridge CFStringRef)setupText;
             AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &setupRef, sizeof(setupRef));
