@@ -317,3 +317,17 @@ stay full-strength. A miniature strength rail above the frame thumbnails
 shows the taper before painting. The EDGE control does not change the sound
 by itself, and the brush gesture still makes only one undo step. The level
 blend is replayed from the gesture's frozen baseline, including on long drags.
+
+## 0.43.0 Spectral profile clipboard
+
+In expanded SPEC, COPY stores all 127 relative harmonic magnitudes from the
+selected frame. Choose a destination frame or range, set BLEND, and toggle
+PREVIEW to compare the proposed spectrum against the real frame's pale
+original-level ticks. PREVIEW does not change the AU sound or consume undo.
+PASTE blends those ratios into existing harmonics while preserving their
+individual destination phases. The EDGE setting tapers the paste across a
+selected frame range. Silent destination harmonics stay silent unless SEED is
+explicitly armed, in which case new harmonics use a predictable sine phase.
+SEED resets off after PASTE. COPY and PREVIEW are in-memory editor state, not
+part of the preset. One PASTE takes one undo step and stored sound state
+round-trips through existing presets.

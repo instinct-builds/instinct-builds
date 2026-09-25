@@ -11,6 +11,7 @@
 #include "partial_edit.h"
 #include "partial_view.h"
 #include "partial_brush.h"
+#include "spectral_clipboard.h"
 #include <set>
 #include <string>
 #include <vector>
@@ -128,6 +129,10 @@ struct MUEWEditorHost {
     double wtBrushLastDb;
     muew::TableFrames wtBrushBase;
     muew::PartialBrush wtBrush;
+    muew::SpectralClipboard wtProfile;
+    double wtProfileBlend; // preview strength, 0..1
+    bool wtProfilePreview;
+    bool wtProfileCreate; // explicit arming to create silent destination bins
     muew::TableHistory wtHistory[2]; // 0.32.0 WT editor undo/redo, one per oscillator
     // 0.33.0 per-oscillator A/B compare: A = the oscillator as the preset loaded it
     // (table, morph target, morph amount), B = the edit. wtCmpA is the oscillator

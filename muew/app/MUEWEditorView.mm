@@ -82,7 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1;
+        wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1; wtProfileBlend = 1; wtProfilePreview = false; wtProfileCreate = false;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
@@ -137,7 +137,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
-    if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); } // a different sound starts on page 1, with no table history
+    if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; } // a different sound starts on page 1, with no table history
     current = p;
     currentIndex = index;
     edited = wasEdited;
@@ -160,7 +160,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     currentIndex = i;
     current = lib.at(i);
     matrixPage = 0;
-    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); // 0.32.0: undo never crosses into another preset
+    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; // 0.32.0: undo never crosses into another preset
     wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
     wtCmpSnap[0] = wtCmpSnap[1] = false; // 0.36.0: a new sound drops any SNAP
     for (int o = 0; o < 2; ++o) {
@@ -789,7 +789,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
     return f[std::clamp(id, 0, 6)];
 }
 - (NSRect)subPill:(int)i { return NSMakeRect(563, [self top] - 190 - i * 19, 48, 15); } // 0.22.0: 4 pt lower, clear of the MIX bars
-- (NSRect)wtPanel { return NSMakeRect(24, [self top] - 260, 440, 260); }
+- (NSRect)wtPanel { return NSMakeRect(24, [self top] - 284, 440, 284); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
 - (NSRect)wtButton:(int)i { return NSMakeRect(40 + i * 51, [self top] - 250, 48, 20); }
@@ -808,6 +808,8 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtPartialCreate { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 75, p.origin.y + 30, 47, 11); }
 - (NSRect)wtPartialLargeArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 63, p.size.width - 8, p.size.height - 68); }
 - (NSRect)wtTaperBar { NSRect c = [self wtCanvas]; return NSMakeRect(c.origin.x + 72, c.origin.y + 14, 74, 6); }
+- (NSRect)wtProfileButton:(int)i { return NSMakeRect(40 + i * 56, [self top] - 278, 52, 14); }
+- (NSRect)wtProfileBlendBar { return NSMakeRect(310, [self top] - 274, 100, 6); }
 - (NSRect)wtPartialBarArea { NSRect p = [self wtSpecPreview]; return NSMakeRect(p.origin.x + 4, p.origin.y + 4, p.size.width - 8, 22); }
 - (NSRect)wtPartialStep:(int)i { NSRect p = [self wtSpecPreview]; return NSMakeRect(NSMaxX(p) - 51 + i * 24, p.origin.y + 30, 22, 11); }
 - (NSRect)wtFrameToolRect:(int)i { NSRect pv = [self wtSpecPreview]; return NSMakeRect(pv.origin.x + 4 + i * 47, pv.origin.y + 43, 44, 14); } // 0.37.0 selected-frame spectral tools
@@ -1100,9 +1102,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         const bool morphOn = !ms.isIdentity();
         const double morphAmt = [self shownMorph:wtEdit]; // 0.35.0: live while a note sounds
         // 0.33.0: with no pending process the preview plays back the live morph blend.
-        const Frame pf = !wtSpec.isIdentity() ? processFrame(f, wtSpec) : ui::morphPreviewFrame(f, ms, morphAmt);
+        Frame pf = !wtSpec.isIdentity() ? processFrame(f, wtSpec) : ui::morphPreviewFrame(f, ms, morphAmt);
+        if (wtPartialLarge && wtProfilePreview && wtProfile.valid) {
+            pf = f;
+            applySpectralProfile(pf, wtProfile, wtProfileBlend *
+                brushRangeStrength(wtFrame, wtRange, (int)t.size(), wtBrushTaper), wtProfileCreate);
+        }
         const bool pending = !wtSpec.isIdentity();
-        const bool changed = pending || (morphOn && morphAmt > 0);
+        const bool changed = pending || (morphOn && morphAmt > 0) || (wtPartialLarge && wtProfilePreview);
         if (!wtPartialLarge) {
             StrokeFrame(f, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
             if (!pending && morphOn) // 0.36.0 per-voice ghosts: the other held voices' blends, thin
@@ -1187,7 +1194,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(b, 2, C(0x26313c));
             TextA(i ? @"+3" : @"-3", NSMakeRect(b.origin.x, b.origin.y + 1, b.size.width, 9), 6.5, C(0xc6e7e1), NSFontWeightBold, NSTextAlignmentCenter);
         }
-        NSString* pvLabel = wtCmpA == wtEdit ? (wtCmpSnap[wtEdit] ? @"A \u2022 SNAPSHOT" : @"A \u2022 AS LOADED") : pending ? @"PREVIEW" : changed ? [NSString stringWithFormat:@"MORPH %.0f%%", morphAmt * 100] : @"FRAME";
+        NSString* pvLabel = wtProfilePreview && wtPartialLarge ? @"PROFILE PREVIEW" : wtCmpA == wtEdit ? (wtCmpSnap[wtEdit] ? @"A \u2022 SNAPSHOT" : @"A \u2022 AS LOADED") : pending ? @"PREVIEW" : changed ? [NSString stringWithFormat:@"MORPH %.0f%%", morphAmt * 100] : @"FRAME";
         TextA(pvLabel, NSMakeRect(pv.origin.x + 6, NSMaxY(pv) - 14, 100, 10), 7, wtCmpA == wtEdit ? C(0xf0b44a) : changed ? col : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
         { // 0.36.0 SNAP: capture this state as the A side of the compare
             const NSRect sn = [self wtSnapRect];
@@ -1343,6 +1350,25 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         NSRect r = [self wtButton:i];
         FillRound(r, 4, C(0x1d2430));
         TextA(labels[i], NSMakeRect(r.origin.x, r.origin.y + 4.5, r.size.width, 11), 7.5, C(0xc3cbd6), NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    if (wtMode == 3 && wtPartialLarge) {
+        NSArray* profileLabels = @[@"COPY", @"PREVIEW", @"PASTE", @"SEED"];
+        for (int i = 0; i < 4; ++i) {
+            const NSRect r = [self wtProfileButton:i];
+            const BOOL active = i == 1 ? wtProfilePreview : i == 3 ? wtProfileCreate : wtProfile.valid;
+            FillRound(r, 3, active ? [col colorWithAlphaComponent:.27] : C(0x1d2830));
+            TextA(profileLabels[i], NSMakeRect(r.origin.x, r.origin.y + 2, r.size.width, 10), 6.7,
+                  active ? col : C(0x8995a5), NSFontWeightBold, NSTextAlignmentCenter);
+        }
+        const NSRect blend = [self wtProfileBlendBar];
+        TextA(@"BLEND", NSMakeRect(blend.origin.x - 48, blend.origin.y - 2, 45, 10), 7, col, NSFontWeightBold, NSTextAlignmentRight);
+        FillRound(blend, 3, C(0x26313c));
+        FillRound(NSMakeRect(blend.origin.x, blend.origin.y, blend.size.width * wtProfileBlend, blend.size.height), 3,
+                  [col colorWithAlphaComponent:.8]);
+        FillRound(NSMakeRect(blend.origin.x + blend.size.width * wtProfileBlend - 3, blend.origin.y - 2, 6, 10),
+                  3, C(0xe6ebf1));
+        TextA([NSString stringWithFormat:@"%.0f%%", wtProfileBlend * 100], NSMakeRect(NSMaxX(blend) + 4, blend.origin.y - 2, 42, 10),
+              7, col, NSFontWeightBold, NSTextAlignmentRight);
     }
 }
 
@@ -3337,6 +3363,10 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 }
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
+- (NSString*)muewProfileText {
+    return [NSString stringWithFormat:@"valid=%d source=%d preview=%d create=%d blend=%.2f",
+        wtProfile.valid, wtProfile.sourceFrame + 1, wtProfilePreview, wtProfileCreate, wtProfileBlend];
+}
 - (NSString*)muewBrushTaperText {
     return [NSString stringWithFormat:@"edge=%.2f", wtBrushTaper];
 }
@@ -3426,6 +3456,26 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }
     for (int i = 0; i < 2; ++i) // 0.32.0 UNDO / REDO
         if (NSPointInRect(p, NSInsetRect([self wtUndoRect:i], -1, -2))) { [self wtStep:i == 1]; return; }
+    if (wtMode == 3 && wtPartialLarge) {
+        for (int i = 0; i < 4; ++i) if (NSPointInRect(p, [self wtProfileButton:i])) {
+            if (i == 0) { wtProfile.capture(t[wtFrame], wtFrame); wtProfilePreview = false; wtProfileCreate = false; }
+            else if (i == 1 && wtProfile.valid) wtProfilePreview = !wtProfilePreview;
+            else if (i == 2 && wtProfile.valid) {
+                TableFrames next = t;
+                if (applySpectralProfileTable(next, wtRange, wtFrame, wtProfile, wtProfileBlend, wtBrushTaper, wtProfileCreate)) {
+                    [self wtRemember:wtRange.active((int)t.size()) ? "PROFILE RANGE" : "PROFILE"];
+                    t = std::move(next); edited = true; [self applySound];
+                }
+                wtProfilePreview = false; wtProfileCreate = false;
+            } else if (i == 3 && wtProfile.valid) wtProfileCreate = !wtProfileCreate;
+            [self setNeedsDisplay:YES]; return;
+        }
+        if (NSPointInRect(p, NSInsetRect([self wtProfileBlendBar], -4, -7))) {
+            wtProfileBlend = std::round(std::clamp((p.x - [self wtProfileBlendBar].origin.x) /
+                [self wtProfileBlendBar].size.width, 0.0, 1.0) * 20) / 20.0;
+            [self setNeedsDisplay:YES]; return;
+        }
+    }
     for (int i = 0; i < std::min((int)t.size(), 16); ++i)
         if (NSPointInRect(p, [self wtThumb:i])) {
             const int f = ThumbFrame(i, (int)t.size());
