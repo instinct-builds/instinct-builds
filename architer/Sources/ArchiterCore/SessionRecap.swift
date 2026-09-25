@@ -51,8 +51,11 @@ public func sessionRecap(character: Character, rolls: [RollResult],
         }
         if !todayRolls.isEmpty {
             lines.append("ROLLS - Today (\(todayRolls.count))")
+            // 2.94.0: the roll list rides the shared shareLines helper,
+            // so a noted roll's note appears under its line here too,
+            // matching every copy/share block and digest.
             for roll in todayRolls.reversed() {
-                lines.append(roll.historyLine)
+                lines.append(contentsOf: roll.shareLines)
             }
         }
     }

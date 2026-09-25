@@ -85,6 +85,25 @@ struct SessionRecapTests {
         """)
     }
 
+    @Test func recapRollsSectionCarriesNotes() throws {
+        // 2.94.0: the recap's ROLLS section rides shareLines, so a noted
+        // roll's note appears indented under its line; an unnoted roll
+        // keeps the single-line contract.
+        let cal = utc
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
+        let morning = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 9)))
+        let c = Character(name: "Wren Halloway")
+        var fireball = roll("8d6", label: "Fireball", character: "Wren Halloway", at: morning)
+        fireball.note = "The bridge collapses behind them"
+        let plain = roll("2d6+3", character: "Wren Halloway", at: now)
+        let text = sessionRecap(character: c, rolls: [plain, fireball], now: now, calendar: cal)
+        let t9 = RollResult.historyTimeFormatter.string(from: morning)
+        let t18 = RollResult.historyTimeFormatter.string(from: now)
+        #expect(text.contains("[\(t9)] Fireball: 10 (8d6)\n  The bridge collapses behind them\n"))
+        #expect(text.contains("[\(t18)] 2d6+3: 10\n"))
+        #expect(!text.contains("[\(t18)] 2d6+3: 10\n  "))
+    }
+
     @Test func nothingTodaySaysSo() throws {
         let cal = utc
         let now = try #require(cal.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
