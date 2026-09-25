@@ -395,3 +395,7 @@ Old `arpx` lines stay byte-identical and load with one strike per step.
 ## 0.49.0 ARP octave lane
 
 Each ON step may shift its selected pitch by -1, 0 or +1 octave; ratchets repeat the shifted pitch. TIE holds the previous sounding pitch and REST stays silent. The lower step badge cycles the octave, while the top badge still controls ratchets. An optional `arpo` line stores non-default shifts without changing `arpx` or `arpr`, so older patterns and factory sounds retain their values.
+
+## 0.50.0 ARP step chance
+
+Each ON step can play with 100, 75, 50 or 25 percent chance. Click the center step badge to cycle it; unchanged 100% cells stay visually quiet. A skipped ON acts like REST and cannot be revived by a following TIE. Fixed mode hashes absolute step cycles, so host seek and rewind repeat; the LIVE switch opts into changing passes. The optional `arpc` line stores chance and LIVE without changing old pattern data or factory sound.

@@ -305,8 +305,12 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     NSRect sy = [self arpSyncRect];
     FillRound(sy, 4, v.clockSync ? [sky colorWithAlphaComponent:.22] : C(0x0f141b));
     TextA(@"HOST SYNC", NSMakeRect(sy.origin.x, sy.origin.y + 5, sy.size.width, 10), 6.5, v.clockSync ? sky : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
-    NSString* clk = !v.clockSync ? @"FREE CLOCK" : arpLiveLocked ? @"ON HOST BAR" : @"WAITING FOR PLAY";
-    TextA(clk, NSMakeRect(700, sy.origin.y + 5.5, 68, 10), 6, v.clockSync && arpLiveLocked ? sky : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
+    NSString* clk = !v.clockSync ? @"FREE" : arpLiveLocked ? @"LOCK" : @"WAIT";
+    TextA(clk, NSMakeRect(700, sy.origin.y + 5.5, 28, 10), 5.5, v.clockSync && arpLiveLocked ? sky : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
+    NSRect liveToggle = [self arpChanceLiveRect];
+    FillRound(liveToggle, 3, v.arpChanceLive ? C(0x304534) : C(0x151b23));
+    TextA(@"LIVE", NSMakeRect(liveToggle.origin.x, liveToggle.origin.y + 4, liveToggle.size.width, 9), 5.5,
+          v.arpChanceLive ? C(0x8ad898) : C(0x697683), NSFontWeightBold, NSTextAlignmentCenter);
     NSRect lane = [self arpPatLane];
     FillRound(lane, 5, C(0x0f141b));
     const int len = std::clamp(v.arpPatLen, 1, arp::kPatSteps);
@@ -343,6 +347,11 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
                 TextA(oct > 0 ? @"+1" : @"-1", NSMakeRect(c.origin.x, c.origin.y + 10, c.size.width, 8),
                       5.5, C(0x80cfdb), NSFontWeightBold, NSTextAlignmentCenter);
             }
+        }
+        if (used && kind == arp::StepOn && v.arpPatChance[i] < 100) {
+            FillRound(NSMakeRect(c.origin.x + 1, c.origin.y + 19, c.size.width - 2, 8), 2, C(0x3b3424));
+            TextA([NSString stringWithFormat:@"%d", v.arpPatChance[i]], NSMakeRect(c.origin.x, c.origin.y + 19, c.size.width, 8),
+                  5.5, C(0xf5cc78), NSFontWeightBold, NSTextAlignmentCenter);
         }
         NSString* tag = kind == arp::StepOn ? @"" : kind == arp::StepRest ? @"R" : @"T";
         FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 1.5, c.size.width - 4, 6), 1.5, used && kind != arp::StepOn ? C(0x232b36) : C(0x151b23));
@@ -426,6 +435,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     NSRect pl = [self arpPatLenRect];
     if (NSPointInRect(p, pl)) { v.arpPatLen = std::clamp(v.arpPatLen + (p.x < NSMidX(pl) ? -1 : 1), 1, arp::kPatSteps); [self voiceParamEdited:-1]; return YES; }
     if (NSPointInRect(p, [self arpSyncRect])) { v.clockSync = !v.clockSync; [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, [self arpChanceLiveRect])) { v.arpChanceLive = !v.arpChanceLive; [self voiceParamEdited:-1]; return YES; }
     if (NSPointInRect(p, [self arpPatLane])) {
         const int i = std::clamp((int)((p.x - [self arpPatLane].origin.x) / [self arpPatCell:0].size.width), 0, arp::kPatSteps - 1);
         const NSRect c = [self arpPatCell:i];
@@ -436,6 +446,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         else if (p.y < c.origin.y + 9) v.arpPatKind[i] = (v.arpPatKind[i] + 1) % arp::kStepKinds; // kind strip: ON -> REST -> TIE
         else if (v.arpPatKind[i] == arp::StepOn && p.y < c.origin.y + 19) // lower badge: 0 -> +1 -> -1
             v.arpPatOctave[i] = v.arpPatOctave[i] == 0 ? 1 : v.arpPatOctave[i] == 1 ? -1 : 0;
+        else if (v.arpPatKind[i] == arp::StepOn && p.y < c.origin.y + 28) // center badge: 100 -> 75 -> 50 -> 25
+            v.arpPatChance[i] = v.arpPatChance[i] == 100 ? 75 : v.arpPatChance[i] == 75 ? 50 : v.arpPatChance[i] == 50 ? 25 : 100;
         else { v.arpPatKind[i] = arp::StepOn; [self setPatVelocity:i at:p]; patDrag = i; }
         [self voiceParamEdited:-1];
         return YES;
@@ -569,6 +581,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     [s appendFormat:@" index=%d note=%d", arpLiveIndex, arpLiveNote];
     [s appendFormat:@" sync=%d locked=%d pat=%d len=%d cell=%d steps=", v.clockSync ? 1 : 0, arpLiveLocked ? 1 : 0, v.arpPatOn ? 1 : 0, v.arpPatLen, arpLivePatCell]; // 0.26.0
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%c%d/x%d/o%+d", i ? "," : "", "ORT"[std::clamp(v.arpPatKind[i], 0, 2)], v.arpPatVel[i], v.arpPatRatchet[i], v.arpPatOctave[i]];
+    [s appendFormat:@" chanceLive=%d chances=", v.arpChanceLive ? 1 : 0];
+    for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%d", i ? "," : "", v.arpPatChance[i]];
     return s;
 }
 - (void)drawVoiceStrip {
@@ -790,6 +804,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)arpPatOnRect { return NSMakeRect(492, [self top] - 205, 62, 18); }
 - (NSRect)arpPatLenRect { return NSMakeRect(560, [self top] - 205, 70, 18); }
 - (NSRect)arpSyncRect { return NSMakeRect(636, [self top] - 205, 62, 18); }
+- (NSRect)arpChanceLiveRect { return NSMakeRect(733, [self top] - 205, 35, 18); }
 - (NSRect)arpPatLane { return NSMakeRect(492, [self top] - 246, 276, 37); }
 - (NSRect)arpPatCell:(int)i { NSRect l = [self arpPatLane]; const CGFloat w = l.size.width / arp::kPatSteps; return NSMakeRect(l.origin.x + i * w, l.origin.y, w, l.size.height); }
 - (NSRect)f2Display { return NSMakeRect(686, [self top] - 138, 86, 94); }

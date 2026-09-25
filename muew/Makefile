@@ -265,3 +265,9 @@ build/muew-tests-octave49: tests/tests_octave49.cpp src/synth.h src/preset.h | b
 
 build/muew-demo-octave49: src/render_demo_octave49.cpp src/synth.h src/wav_writer.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-tests-chance50: tests/tests_chance50.cpp src/synth.h src/preset.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-demo-chance50: src/render_demo_chance50.cpp src/synth.h src/wav_writer.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<

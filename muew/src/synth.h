@@ -398,6 +398,8 @@ private:
         patOn_ = p.arpPatOn;
         patLen_ = std::clamp(p.arpPatLen, 1, arp::kPatSteps);
         for (int i = 0; i < arp::kPatSteps; ++i) { patVel_[i] = std::clamp(p.arpPatVel[i], 1, 127); patKind_[i] = std::clamp(p.arpPatKind[i], 0, arp::kStepKinds - 1); patRatchet_[i] = std::clamp(p.arpPatRatchet[i], 1, 4); patOctave_[i] = std::clamp(p.arpPatOctave[i], -1, 1); }
+        chanceLive_ = p.arpChanceLive;
+        for (int i = 0; i < arp::kPatSteps; ++i) patChance_[i] = std::clamp(p.arpPatChance[i], 25, 100);
         const bool latch = p.arpLatch;
         if (arpLatch_ && !latch) { // latch off: drop keys that are no longer held
             int w = 0;
@@ -450,6 +452,24 @@ private:
         for (int i = 0; i < arpSounding_; ++i) release(arpNotes_[i]);
         arpSounding_ = 0;
     }
+    // A pure hash of the absolute host/free step fixes chance under seek and
+    // rewind. LIVE advances an independent generator only on chance cells.
+    bool chancePass(int cell) {
+        const int pct = patChance_[cell];
+        if (pct >= 100) return true;
+        uint32_t x;
+        if (chanceLive_) {
+            liveChanceRng_ ^= liveChanceRng_ << 13;
+            liveChanceRng_ ^= liveChanceRng_ >> 17;
+            liveChanceRng_ ^= liveChanceRng_ << 5;
+            x = liveChanceRng_;
+        } else {
+            const uint64_t cycle = chanceStep_ / (uint64_t)patLen_;
+            x = (uint32_t)cycle ^ (uint32_t)(cycle >> 32) ^ (uint32_t)cell * 0x9e3779b9u ^ 0x7f4a7c15u;
+            x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;
+        }
+        return x % 100u < (uint32_t)pct;
+    }
     // Starts step arpStep_: picks and plays its notes, honoring the step
     // pattern. Returns the gate as a fraction of the step (>= 1 holds through).
     double arpBeginStep() {
@@ -458,6 +478,7 @@ private:
         if (patOn_) {
             const int k = arp::wrapStep(arpStep_, patLen_);
             kind = patKind_[k]; vel = patVel_[k] / 127.0f; octaveShift = patOctave_[k];
+            if (kind == arp::StepOn && !chancePass(k)) kind = arp::StepRest;
             if (kind == arp::StepOn && patKind_[arp::wrapStep(arpStep_ + 1, patLen_)] != arp::StepTie)
                 ratchetCount_ = patRatchet_[k];
             nextTie = patKind_[arp::wrapStep(arpStep_ + 1, patLen_)] == arp::StepTie;
@@ -514,6 +535,7 @@ private:
         if (g != arpGridLast_ && !(arpGridLast_ == kNoGrid && st + ln - beat_ < 0.25 * ln)) {
             arpGridLast_ = g;
             arpStep_ = (int)(g % 1000000000LL);
+            chanceStep_ = (uint64_t)std::max(0LL, g);
             const double gate = arpBeginStep();
             arpGateEnd_ = gate >= 1.0 ? 1e300 : st + ln * gate;
             arpPos_ = 0; ratchetStartBeat_ = st; ratchetStepBeats_ = ln;
@@ -536,6 +558,7 @@ private:
             return;
         }
         if (arpPos_ == 0) {
+            chanceStep_ = (uint64_t)arpStep_;
             arpLen_ = arp::stepSamplesAt(arpClock_, sr_, tempo_, arpRate_, arpSwing_, arpStep_);
             arpClock_ += arp::stepLength(sr_, tempo_, arpRate_, arpSwing_, arpStep_);
             const double gate = arpBeginStep();
@@ -561,6 +584,10 @@ private:
     double beat_ = 0.0, beatInc_ = 0.0, arpGateEnd_ = 0.0;
     long long arpGridLast_ = kNoGrid;
     int patLen_ = 16, patVel_[arp::kPatSteps] = {}, patKind_[arp::kPatSteps] = {}, patRatchet_[arp::kPatSteps] = {}, patOctave_[arp::kPatSteps] = {}, arpPatIdx_ = -1;
+    int patChance_[arp::kPatSteps] = {};
+    bool chanceLive_ = false;
+    uint64_t chanceStep_ = 0;
+    uint32_t liveChanceRng_ = 0x6bc1827du;
     int ratchetCount_ = 1, ratchetIndex_ = 0, ratchetNotesCount_ = 0, ratchetNotes_[arp::kPool] = {}; float ratchetKeyVel_[arp::kPool] = {}; float ratchetVelocity_ = 1;
     double ratchetStartBeat_ = 0, ratchetStepBeats_ = 0;
     int poolNote_[arp::kPool] = {};

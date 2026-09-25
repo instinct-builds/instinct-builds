@@ -57,6 +57,7 @@ struct PresetInfo {
 //                  0.25.0 adds optional `arp <on> <mode> <octaves> <rate> <gate> <swing> <latch>`.
 //                  0.26.0 adds optional `arpx <clocksync> <pattern on> <length> (<velocity> <kind>)x16`.
 //                  0.49.0 adds optional `arpo <octave shift>x16` (-1..+1); prior lines unchanged.
+//                  0.50.0 adds optional `arpc <live> <chance>x16` (100/75/50/25).
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
@@ -268,6 +269,16 @@ struct Preset {
                 for (int i = 0; i < arp::kPatSteps; ++i) {
                     int n = 0; if (!(ls >> n)) break;
                     voice.arpPatOctave[i] = std::clamp(n, -1, 1);
+                }
+            }
+            else if (key == "arpc") { // 0.50.0: optional chance and LIVE mode
+                int live = 0;
+                if (ls >> live) {
+                    voice.arpChanceLive = live != 0;
+                    for (int i = 0; i < arp::kPatSteps; ++i) {
+                        int n = 100; if (!(ls >> n)) break;
+                        voice.arpPatChance[i] = n >= 100 ? 100 : n >= 75 ? 75 : n >= 50 ? 50 : 25;
+                    }
                 }
             }
             else if (key == "arp") { // 0.25.0: on mode octaves rate gate swing latch
@@ -642,8 +653,8 @@ struct Preset {
         if (a.oscQuality != b.oscQuality) return false; // 0.30.0
         if (a.arpOn != b.arpOn || a.arpMode != b.arpMode || a.arpOctaves != b.arpOctaves || a.arpRate != b.arpRate
             || a.arpGate != b.arpGate || a.arpSwing != b.arpSwing || a.arpLatch != b.arpLatch) return false; // 0.25.0
-        if (a.clockSync != b.clockSync || a.arpPatOn != b.arpPatOn || a.arpPatLen != b.arpPatLen) return false; // 0.26.0
-        for (int i = 0; i < arp::kPatSteps; ++i) if (a.arpPatVel[i] != b.arpPatVel[i] || a.arpPatKind[i] != b.arpPatKind[i] || a.arpPatRatchet[i] != b.arpPatRatchet[i] || a.arpPatOctave[i] != b.arpPatOctave[i]) return false;
+        if (a.clockSync != b.clockSync || a.arpPatOn != b.arpPatOn || a.arpPatLen != b.arpPatLen || a.arpChanceLive != b.arpChanceLive) return false; // 0.26.0
+        for (int i = 0; i < arp::kPatSteps; ++i) if (a.arpPatVel[i] != b.arpPatVel[i] || a.arpPatKind[i] != b.arpPatKind[i] || a.arpPatRatchet[i] != b.arpPatRatchet[i] || a.arpPatOctave[i] != b.arpPatOctave[i] || a.arpPatChance[i] != b.arpPatChance[i]) return false;
         if (a.voiceMode != b.voiceMode || a.polyVoices != b.polyVoices || a.glideTime != b.glideTime || a.glideLegato != b.glideLegato || a.uniPhase != b.uniPhase) return false; // 0.23.0
         if (a.filter1Mix != b.filter1Mix || a.filter2Mix != b.filter2Mix || a.filterBalance != b.filterBalance || a.filter2Morph != b.filter2Morph) return false; // 0.22.0
         if (a.filterDrive != b.filterDrive || a.filterKeytrack != b.filterKeytrack || a.filterMorph != b.filterMorph) return false; // 0.21.0
@@ -751,6 +762,13 @@ private:
         if (octaves) {
             o << "arpo";
             for (int i = 0; i < arp::kPatSteps; ++i) o << " " << std::clamp(v.arpPatOctave[i], -1, 1);
+            o << "\n";
+        }
+        bool chances = v.arpChanceLive;
+        for (int i = 0; i < arp::kPatSteps; ++i) chances |= v.arpPatChance[i] != 100;
+        if (chances) {
+            o << "arpc " << (v.arpChanceLive ? 1 : 0);
+            for (int i = 0; i < arp::kPatSteps; ++i) o << " " << v.arpPatChance[i];
             o << "\n";
         }
         if (v.voiceMode != 0 || v.polyVoices != 16 || v.glideTime != 0 || v.glideLegato || v.uniPhase != 0) // 0.23.0

@@ -1884,6 +1884,10 @@ int main() {
                 Click(view, w, NSMakePoint(cellX(0), t - 246 + 14));
                 Click(view, w, NSMakePoint(cellX(1), t - 246 + 14));
                 Click(view, w, NSMakePoint(cellX(1), t - 246 + 14));
+                // 0.50.0 center badges: step 1 -> 75%, step 2 -> 50%; LIVE remains off for fixed playback.
+                Click(view, w, NSMakePoint(cellX(0), t - 246 + 23));
+                Click(view, w, NSMakePoint(cellX(1), t - 246 + 23));
+                Click(view, w, NSMakePoint(cellX(1), t - 246 + 23));
                 Click(view, w, NSMakePoint(636 + 31, t - 205 + 9));                         // HOST SYNC
                 muew::Preset ps;
                 const bool okp = State(ps);
@@ -1901,6 +1905,16 @@ int main() {
                 Check(okp && pv.arpPatOctave[0] == 1 && pv.arpPatOctave[1] == -1 && pv.arpPatOctave[4] == 0 &&
                       ps.serialize().find("\narpo 1 -1 0 0 0 ") != std::string::npos,
                       "lower badges set +1/-1 octave, TIE remains neutral, arpo reaches AU");
+                Check(okp && pv.arpPatChance[0] == 75 && pv.arpPatChance[1] == 50 && pv.arpPatChance[4] == 100 &&
+                      !pv.arpChanceLive && ps.serialize().find("\narpc 0 75 50 100 100 100 ") != std::string::npos &&
+                      arpText().find("chanceLive=0 chances=75,50,100,100,100,") != std::string::npos,
+                      "center badges set chance, TIE remains 100, arpc state reaches AU");
+                Click(view, w, NSMakePoint(733 + 17, t - 205 + 9)); // LIVE opt-in
+                muew::Preset liveState;
+                Check(State(liveState) && liveState.voice.arpChanceLive &&
+                      liveState.serialize().find("\narpc 1 75 50 100 100 100 ") != std::string::npos &&
+                      arpText().find("chanceLive=1 chances=75,50,100,100,100,") != std::string::npos,
+                      "LIVE opt-in changes the AU state without changing chance badges");
             }
             for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x90, k, 100, 0);
             for (int k : {60, 64, 67}) MusicDeviceMIDIEvent(gUnit, 0x80, k, 0, 0);   // LATCH keeps them
@@ -1921,6 +1935,7 @@ int main() {
             printf("arp: AU on %u pool %d step %d index %d note %d; editor %s\n", (unsigned)pf.arpOn, (int)pf.poolCount, (int)pf.arpStep, (int)pf.arpIndex, (int)pf.arpNote, txt.c_str());
             Check(pf.arpOn == 1 && pf.poolCount == 3 && pf.arpStep >= 3 && pf.arpNote >= 60 && txt.find("page=2 on=1 mode=UP/DN oct=2 rate=1/16 gate=0.62 swing=0.25 latch=1 live=1 pool=60,64,67") == 0,
                   "the latched chord plays; the ARP page shows the AU's pool and step");
+            Snapshot(view, "MUEW_CHANCE50_PNG", "ARP chance pattern snapshot written");
             Snapshot(view, "MUEW_OCTAVE49_PNG", "ARP octave pattern snapshot written");
             Snapshot(view, "MUEW_RATCHET48_PNG", "ARP ratchet pattern snapshot written");
             Snapshot(view, "MUEW_ARP_PNG", "ARP page snapshot written");

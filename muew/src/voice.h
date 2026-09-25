@@ -174,6 +174,8 @@ struct VoiceParams {
     int arpPatKind[16] = {};                              // arp::StepKind
     int arpPatRatchet[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}; // retriggers per ON step, 1..4
     int arpPatOctave[16] = {}; // 0.49.0 ON-step octave shift, -1..+1; TIE retains sounding pitch
+    int arpPatChance[16] = {100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100}; // 0.50.0 ON-step chance
+    bool arpChanceLive = false; // opt-in evolving chance; fixed mode follows absolute pattern cycle
     bool arpPatDefault() const {
         for (int i = 0; i < 16; ++i) if (arpPatVel[i] != 127 || arpPatKind[i] != 0) return false;
         return !arpPatOn && arpPatLen == 16;
