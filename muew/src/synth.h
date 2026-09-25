@@ -40,6 +40,15 @@ public:
     FXChain& fx() { return fx_; }
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
+        // 0.33.0: a changed morph target rebuilds that oscillator's playback table first.
+        if (p.osc1MorphSpec != morphSpec_[0] || p.osc2MorphSpec != morphSpec_[1]) {
+            const bool c0 = p.osc1MorphSpec != morphSpec_[0], c1 = p.osc2MorphSpec != morphSpec_[1];
+            morphSpec_[0] = p.osc1MorphSpec; morphSpec_[1] = p.osc2MorphSpec;
+            if (c0) buildTable(0);
+            if (c1) buildTable(1);
+            for (auto& v : voices_) v.setCustomTables(tables_[0].get(), tables_[1].get());
+        }
+        trim_ = p.trimDb == 0.0 ? 1.0f : (float)std::pow(10.0, std::clamp(p.trimDb, -24.0, 12.0) / 20.0);
         for (auto& v : voices_) v.setParams(p, routes);
         oscQ_ = std::clamp(p.oscQuality, 0, 1); applyHQ(); // 0.30.0
         const int mode = std::clamp(p.voiceMode, 0, 2);
@@ -111,9 +120,15 @@ public:
         for (int i = 0; i < 2; ++i) {
             if (*in[i] == tableFrames_[i] && (bool)tables_[i] == !in[i]->empty()) continue;
             tableFrames_[i] = *in[i];
-            tables_[i] = in[i]->empty() ? nullptr : std::make_shared<const CustomTable>(*in[i]);
+            buildTable(i);
         }
         for (auto& v : voices_) v.setCustomTables(tables_[0].get(), tables_[1].get());
+    }
+
+    void buildTable(int i) {
+        if (tableFrames_[i].empty()) { tables_[i] = nullptr; return; }
+        if (morphSpec_[i].isIdentity()) tables_[i] = std::make_shared<const CustomTable>(tableFrames_[i]);
+        else tables_[i] = std::make_shared<const CustomTable>(tableFrames_[i], processTable(tableFrames_[i], morphSpec_[i]));
     }
 
     // Host tempo (BPM) for tempo-synced LFOs; 120 until a host reports one.
@@ -260,6 +275,7 @@ public:
             float l, r;
             if (arpOn_) arpTick();
             mixVoicesStereo(l, r);
+            if (trim_ != 1.0f) { l *= trim_; r *= trim_; } // 0.33.0 preset trim
             if (locked_) beat_ += beatInc_;
             fx_.process(l, r);
             interleaved[i * 2]     = std::tanh(l * 1.6f);
@@ -273,6 +289,7 @@ public:
             float l, r;
             if (arpOn_) arpTick();
             mixVoicesStereo(l, r);
+            if (trim_ != 1.0f) { l *= trim_; r *= trim_; } // 0.33.0 preset trim
             if (locked_) beat_ += beatInc_;
             fx_.process(l, r);
             left[i]  = std::tanh(l * 1.6f);
@@ -521,6 +538,8 @@ private:
     uint64_t clock_ = 0; // 0.18.0: samples rendered, for free-run LFOs
     TableFrames tableFrames_[2];
     std::shared_ptr<const CustomTable> tables_[2];
+    SpectralProcess morphSpec_[2]; // 0.33.0
+    float trim_ = 1.0f;            // 0.33.0
 };
 
 } // namespace muew

@@ -786,6 +786,44 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab for the steps that follow
             fflush(stdout);
         });
+        After(6.9993, ^{ // 0.33.0 live SPEC morph: TILT -9 as OSC A's morph target, MORPH bar at 60%, then A / B compare
+            CGFloat t = view.bounds.size.height - 100;
+            const CGFloat top = t - 46, cvy = t - 184; // canvas top and bottom edges
+            auto morphText = [&]() -> std::string {
+                NSString* s4 = [view respondsToSelector:NSSelectorFromString(@"muewMorphText")] ? [view valueForKey:@"muewMorphText"] : @"";
+                return s4.UTF8String ?: "";
+            };
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, t - 32 + 8.5));      // SPEC tab
+            Click(view, w, NSMakePoint(40 + 272 + 44 - 33, top - 22 - 44 + 3)); // TILT bar at -75%: -9 dB/oct
+            muew::Preset b0; const bool ok0 = State(b0);
+            Click(view, w, NSMakePoint(40 + 214 + 26, cvy + 8 + 9));           // TO MORPH
+            muew::Preset b1; const bool ok1 = State(b1);
+            int wired = 0;
+            for (const auto& r : b1.routes) if (r.dest == muew::ModRoute::Dest::Osc1SpecMorph && r.source == muew::ModRoute::Source::Macro2) ++wired;
+            Check(ok0 && ok1 && b1.voice.osc1MorphSpec.tiltDb == -9 && b1.tables[0] == b0.tables[0] && wired == 1,
+                  "TO MORPH stored TILT -9 as OSC A's morph target, kept the table and wired the WARP macro in the AU");
+            Click(view, w, NSMakePoint(40 + 272 + 0.6 * 88, cvy + 33 + 3));    // MORPH bar at 60%
+            muew::Preset b2; const bool ok2 = State(b2);
+            const std::string m2 = morphText();
+            Snapshot(view, "MUEW_MORPH_PNG", "SPEC morph snapshot written");
+            printf("morph33: %s\n", m2.c_str());
+            Check(ok2 && std::fabs(b2.voice.osc1SpecMorph - 0.6) < 0.011, "the MORPH bar set OSC A's morph amount to 60% in the AU");
+            Click(view, w, NSMakePoint(134 + 7, t - 32 + 8.5));               // A
+            muew::Preset ca; const bool ok3 = State(ca);
+            const std::string ma = morphText();
+            Snapshot(view, "MUEW_COMPARE_PNG", "A / B compare snapshot written");
+            Click(view, w, NSMakePoint(134 + 15 + 7, t - 32 + 8.5));          // B
+            muew::Preset cb; const bool ok4 = State(cb);
+            printf("compare33: A %s | B %s\n", ma.c_str(), morphText().c_str());
+            Check(ok3 && ma.find("cmp=A") != std::string::npos && !(ca.tables[0] == b2.tables[0]) && ca.voice.osc1MorphSpec.isIdentity(),
+                  "A plays OSC A as the preset loaded it: the original table and no morph target");
+            Check(ok4 && cb.tables[0] == b2.tables[0] && cb.voice.osc1MorphSpec == b2.voice.osc1MorphSpec && cb.voice.osc1SpecMorph == b2.voice.osc1SpecMorph,
+                  "B puts the edited table, morph target and amount back");
+            muew::Preset rt; const std::string txt = ok4 ? cb.serialize() : "";
+            Check(ok4 && rt.parse(txt) && rt == cb && txt.find("\nmorphspec1 0 0 -9 0\n") != std::string::npos, "the AU state saves the morph target");
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, t - 32 + 8.5));      // back to the 3D tab for the steps that follow
+            fflush(stdout);
+        });
         After(6.9995, ^{ // 0.21.0 filter depth: step FILTER 1 to LADDER 24 with the model arrows, set DRIVE and KEYTRACK on their bars
             CGFloat t = view.bounds.size.height - 100;
             Click(view, w, NSMakePoint(492 + 30, t - 29 + 8.5));             // FILTER 1 tab

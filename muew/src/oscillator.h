@@ -41,7 +41,7 @@ public:
         double p = warpedPhase(warpMode_, warp_, phase_);
         const double p1 = p;
         if (warpMode2_ != WarpMode::Off) p = warpedPhase(warpMode2_, warp2_, p);
-        float out = custom_ ? custom_->sample(wtPos_, level, p) : table_->sampleFractional(shape_, level, p);
+        float out = custom_ ? custom_->sample(wtPos_, level, p, specMorph_) : table_->sampleFractional(shape_, level, p);
         out = outputStage(warpMode_, warp_, out, phase_);
         if (warpMode2_ != WarpMode::Off) out = outputStage(warpMode2_, warp2_, out, p1);
         phase_ += hz / sr_; phase_ -= std::floor(phase_);
@@ -53,6 +53,7 @@ public:
     // 0.9.0: play a user table (null = the built-in shape) at frame position 0..1.
     void setCustom(const CustomTable* c) { custom_ = c; }
     void setWtPos(double p) { wtPos_ = p; }
+    void setSpecMorph(double m) { specMorph_ = m; } // 0.33.0: 0 = the table, 1 = its morph target
     double frequency() const { return freq_; }
     double phase() const { return phase_; }
 
@@ -102,7 +103,7 @@ private:
 
     const Wavetable* table_ = nullptr;
     const CustomTable* custom_ = nullptr;
-    double wtPos_ = 0.0;
+    double wtPos_ = 0.0, specMorph_ = 0.0;
     double sr_ = 44100.0, freq_ = 440.0, detune_ = 0.0, phase_ = 0.0, warp_ = 0.0;
     int shape_ = 0;
     WarpMode warpMode_ = WarpMode::Off, warpMode2_ = WarpMode::Off;

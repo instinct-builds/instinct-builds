@@ -21,6 +21,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.1 0 0.6 0.7
 lfo34 0.07 1 0.11 0
+trim 7
 wtgen1 morph 2 4 16
 wtspec1 0 0.4 2 0
 routes 9

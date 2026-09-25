@@ -3029,6 +3029,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 5 1 0.2 0 0.9 0.8
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim 10
 wtgen1 noise 101 32 0.9 0.03
 wtspec1 0 0 -2 0
 routes 9
@@ -3068,6 +3069,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
+trim 1.5
 wtgen1 noise 202 24 0.5 0.12
 wtspec1 4 0 -4 0
 routes 9
@@ -3108,6 +3110,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim 3
 wtgen1 bands 303 32 350 2600 6
 wtspec1 0 0 -1 0
 routes 9
@@ -3148,6 +3151,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 4 1 0.08 0 0.9 0.7
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim 4
 wtgen1 bands 404 24 900 5200 18
 routes 9
 route 0 11 0.5
@@ -3187,6 +3191,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.05 1 0.03 0
 wtpos 0.3 0
+trim 7.5
 wtgen1 noise 505 16 0.4 0.05
 wtspec1 0 0.35 -3 0
 routes 9
@@ -3227,6 +3232,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim 7
 wtgen1 noise 606 32 0.7 0.08
 wtspec1 0 0 -2 -1
 routes 9
@@ -3267,6 +3273,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 5 3 0.15 0.15 0.9 0.8
 lfo34 0.07 1 0.11 0
 wtpos 0.4 0
+trim 4
 wtgen1 bands 707 32 500 1500 4
 wtspec1 7 0 -3 0
 routes 9
@@ -3307,6 +3314,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim 7.5
 wtgen1 noise 808 24 1.0 0.3
 wtspec1 0 -0.2 -1 0.5
 routes 9
@@ -3347,6 +3355,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim 3.5
 wtgen1 bands 909 16 180 900 10
 wtspec1 -5 0 -5 0
 routes 9
@@ -3386,6 +3395,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
+trim 7
 wtgen1 noise 111 32 0.03 0.95
 routes 9
 route 1 11 1
@@ -3425,6 +3435,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 5 3 0.18 0.18 0.9 0.8
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim -3.5
 wtgen1 morph 2 3 16
 wtspec1 5 0 -3 0
 routes 9
@@ -3505,6 +3516,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
 wtpos 0.4 0
+trim -2
 wtgen1 noise 333 24 0.35 0.08
 wtspec1 0 0 -6 0
 routes 9
@@ -3544,6 +3556,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 5 3 0.16 0.16 0.9 0.8
 lfo34 0.07 1 0.11 0
+trim -3.5
 wtgen1 morph 2 2 8
 wtspec1 0 0.25 -1 0
 routes 8
@@ -3583,6 +3596,7 @@ mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.12 0 0.7 0.7
 lfo34 0.07 1 0.11 0
 wtpos 0.5 0
+trim -5.5
 wtgen1 morph 2 3 8
 wtspec1 0 0 -2 1
 routes 9
@@ -3662,6 +3676,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 1 1 0 0 0.5 0.7
 lfo34 0.07 1 0.11 0
+trim -3
 wtgen1 morph 3 2 16
 wtspec1 9 0 0 0
 routes 9
@@ -3701,6 +3716,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 1 1 0 0 0.5 0.7
 lfo34 0.07 1 0.11 0
+trim 3
 wtgen1 noise 555 16 0.6 0.25
 wtspec1 0 0 -4 -1
 routes 9
@@ -3740,6 +3756,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 3 1 0.1 0 0.6 0.7
 lfo34 0.07 1 0.11 0
+trim 7
 wtgen1 morph 2 4 16
 wtspec1 0 0.4 2 0
 routes 9
@@ -3779,6 +3796,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 1 1 0 0 0.5 0.7
 lfo34 0.07 1 0.11 0
+trim -4.5
 wtgen1 morph 0 2 16
 wtspec1 0 0 -5 0
 routes 10
@@ -3819,6 +3837,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 1 1 0 0 0.5 0.7
 lfo34 0.07 1 0.11 0
+trim 12
 wtgen1 bands 666 16 300 1200 8
 wtspec1 0 0 -3 0
 routes 9
@@ -3858,6 +3877,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 1 1 0 0 0.5 0.7
 lfo34 0.07 1 0.11 0
+trim 1.5
 wtgen1 morph 2 3 16
 wtspec1 -7 0 0 0
 routes 10
@@ -3898,6 +3918,7 @@ warp2 0 0
 mseg 1 0 4 0 0 0.15 1 0.55 -0.3 1 0
 unison 1 1 0 0 0.5 0.7
 lfo34 0.07 1 0.11 0
+trim 3.5
 wtgen1 noise 777 16 0.25 0.9
 wtspec1 0 0 -2 0
 routes 9

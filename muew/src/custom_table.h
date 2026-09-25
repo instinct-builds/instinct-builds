@@ -89,6 +89,15 @@ public:
         for (const auto& f : frames) levels_.push_back(buildMipmapLevels(upsampleFrame(f)));
         if (levels_.empty()) levels_.push_back(buildMipmapLevels(upsampleFrame(shapeFrame(2))));
     }
+    // 0.33.0 live spectral morph: a second table (same frame count) that
+    // sample() crossfades toward by `morph`. The frames keep their phases
+    // through the spectral process, so the crossfade moves each partial's
+    // level from one setting to the other.
+    CustomTable(const TableFrames& frames, const TableFrames& morphTarget) : CustomTable(frames) {
+        if (morphTarget.size() == frames.size() && !frames.empty())
+            for (const auto& f : morphTarget) morph_.push_back(buildMipmapLevels(upsampleFrame(f)));
+    }
+    bool hasMorph() const { return !morph_.empty(); }
     int frames() const { return (int)levels_.size(); }
     // pos 0..1 across frames, fractional mip level, phase 0..1.
     inline float sample(double pos, double level, double phase) const {
@@ -96,16 +105,30 @@ public:
         double fp = std::clamp(pos, 0.0, 1.0) * (F - 1);
         int f0 = (int)fp, f1 = std::min(f0 + 1, F - 1);
         float t = (float)(fp - f0);
-        float a = at(f0, level, phase);
-        return t > 0 ? a + t * (at(f1, level, phase) - a) : a;
+        float a = at(levels_, f0, level, phase);
+        return t > 0 ? a + t * (at(levels_, f1, level, phase) - a) : a;
+    }
+    // 0.33.0: with a morph amount above 0 and a morph table, blend toward it.
+    inline float sample(double pos, double level, double phase, double morph) const {
+        const float a = sample(pos, level, phase);
+        if (morph <= 0.0 || morph_.empty()) return a;
+        const int F = (int)morph_.size();
+        double fp = std::clamp(pos, 0.0, 1.0) * (F - 1);
+        int f0 = (int)fp, f1 = std::min(f0 + 1, F - 1);
+        float t = (float)(fp - f0);
+        float b = at(morph_, f0, level, phase);
+        if (t > 0) b += t * (at(morph_, f1, level, phase) - b);
+        const float m = (float)std::min(morph, 1.0);
+        return a + m * (b - a);
     }
 
 private:
-    inline float at(int f, double level, double phase) const {
+    using Levels = std::vector<std::vector<std::vector<float>>>;
+    static inline float at(const Levels& L, int f, double level, double phase) {
         if (level < 0) level = 0;
         int l0 = (int)level, l1 = std::min(l0 + 1, Wavetable::kNumLevels - 1);
         float lf = (float)(level - l0);
-        return one(levels_[f][l0], phase) * (1.0f - lf) + one(levels_[f][l1], phase) * lf;
+        return one(L[f][l0], phase) * (1.0f - lf) + one(L[f][l1], phase) * lf;
     }
     static inline float one(const std::vector<float>& t, double phase) {
         const int N = Wavetable::kTableSize;
@@ -114,7 +137,7 @@ private:
         float fr = (float)(pos - std::floor(pos));
         return t[i0] + fr * (t[i1] - t[i0]);
     }
-    std::vector<std::vector<std::vector<float>>> levels_;
+    Levels levels_, morph_;
 };
 
 // ---- table editing (editor model) ----

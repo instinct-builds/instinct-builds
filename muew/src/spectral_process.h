@@ -23,6 +23,8 @@ struct SpectralProcess {
     double tiltDb = 0.0;    // -12..12 dB / octave
     double oddEven = 0.0;   // -1..1
     bool isIdentity() const { return formantSt == 0.0 && stretch == 0.0 && tiltDb == 0.0 && oddEven == 0.0; }
+    bool operator==(const SpectralProcess& o) const { return formantSt == o.formantSt && stretch == o.stretch && tiltDb == o.tiltDb && oddEven == o.oddEven; }
+    bool operator!=(const SpectralProcess& o) const { return !(*this == o); }
 };
 
 inline Frame processFrame(const Frame& f, const SpectralProcess& sp) {

@@ -113,6 +113,14 @@ struct MUEWEditorHost {
     muew::SpectralProcess wtSpec;
     int wtSpecDrag;
     muew::TableHistory wtHistory[2]; // 0.32.0 WT editor undo/redo, one per oscillator
+    // 0.33.0 per-oscillator A/B compare: A = the oscillator as the preset loaded it
+    // (table, morph target, morph amount), B = the edit. wtCmpA is the oscillator
+    // showing A (-1 = none); the edit waits in the hold slots meanwhile.
+    muew::TableFrames wtCmpRef[2], wtCmpHold[2];
+    muew::SpectralProcess wtCmpRefMs[2], wtCmpHoldMs[2];
+    double wtCmpRefAmt[2], wtCmpHoldAmt[2];
+    bool wtCmpHas[2];
+    int wtCmpA;
     // 0.10.0: FILTER panel page (0 = FILTER 1 + AMP, 1 = FILTER 2 + SUB/NOISE, 2 = ARP since 0.25.0).
     int filterPage;
     // 0.11.0 full browser: open flag, sort order (ui::SortMode), star

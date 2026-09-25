@@ -82,6 +82,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
         wtEdit = -1; wtFrame = 0; wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1;
+        wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
@@ -159,6 +160,11 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     current = lib.at(i);
     matrixPage = 0;
     wtHistory[0].clear(); wtHistory[1].clear(); // 0.32.0: undo never crosses into another preset
+    wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
+    for (int o = 0; o < 2; ++o) {
+        wtCmpHas[o] = !current.tables[o].empty();
+        wtCmpRef[o] = current.tables[o]; wtCmpRefMs[o] = ui::morphSpec(current.voice, o); wtCmpRefAmt[o] = ui::specMorphAmount(current.voice, o);
+    }
     edited = false;
     [self applySound];
     [self revealCurrent];
@@ -731,6 +737,9 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)wtSpecBar:(int)i { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, NSMaxY(cv) - 22 - i * 22, 88, 6); }
 - (NSRect)wtSpecButton:(int)i { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272 + i * 66, cv.origin.y + 8, 60, 18); }
 - (NSRect)wtDoneRect { return NSMakeRect(400, [self top] - 32, 48, 17); }
+- (NSRect)wtCmpRect:(int)i { return NSMakeRect(134 + i * 15, [self top] - 32, 14, 17); } // 0.33.0 A / B compare
+- (NSRect)wtMorphBar { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 272, cv.origin.y + 33, 88, 6); } // 0.33.0
+- (NSRect)wtMorphButton { NSRect cv = [self wtCanvas]; return NSMakeRect(cv.origin.x + 214, cv.origin.y + 8, 52, 18); } // 0.33.0
 - (NSRect)modField:(int)j {
     int n = [self modFieldCount];
     CGFloat w = (148 - (n - 1) * 4) / (CGFloat)std::max(n, 1);
@@ -927,8 +936,16 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     NSBezierPath* bg = [NSBezierPath bezierPathWithRoundedRect:P xRadius:12 yRadius:12];
     [C(0x131820) setFill]; [bg fill];
     [[col colorWithAlphaComponent:.55] setStroke]; bg.lineWidth = 1; [bg stroke];
-    Text([NSString stringWithFormat:@"WAVETABLE  \u2022  OSC %@", wtEdit ? @"B" : @"A"],
-         NSMakeRect(40, NSMaxY(P) - 30, 150, 20), 11, col, NSFontWeightSemibold);
+    // 0.33.0: OSC title, a small WAVETABLE tag, then the A / B compare pair.
+    Text([NSString stringWithFormat:@"OSC %@", wtEdit ? @"B" : @"A"], NSMakeRect(40, NSMaxY(P) - 30, 44, 20), 11, col, NSFontWeightSemibold);
+    TextA(@"WAVETABLE", NSMakeRect(80, NSMaxY(P) - 25.5, 52, 10), 7, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
+    for (int i = 0; i < 2; ++i) {
+        const NSRect r = [self wtCmpRect:i];
+        const bool on = (wtCmpA == wtEdit) == (i == 0);
+        FillRound(r, 4, on ? (i == 0 ? C(0xe0a33a, .30) : [col colorWithAlphaComponent:.28]) : C(0x1b222c));
+        TextA(i == 0 ? @"A" : @"B", NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 11), 8,
+              on ? (i == 0 ? C(0xf0b44a) : col) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+    }
     // 0.32.0 fix1: the UNDO / REDO arrows took the old FRAME n / N space, so the readout is the bare
     // frame count, right-aligned against the arrows and clear of the OSC title.
     TextA([NSString stringWithFormat:@"%d / %d", wtFrame + 1, (int)t.size()],
@@ -976,8 +993,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         for (int i = 1; i < 4; ++i) FillRound(NSMakeRect(wv.origin.x + wv.size.width * i / 4, wv.origin.y + 4, 1, wv.size.height - 8), 0, C(0x161c25));
         FillRound(NSMakeRect(wv.origin.x + 4, NSMidY(wv) - .5, wv.size.width - 8, 1), 0, C(0x222a36));
         FillRound(NSMakeRect(pv.origin.x + 4, pv.origin.y + specH + 1.5, pv.size.width - 8, 1), 0, C(0x1b222c));
-        const Frame pf = processFrame(f, wtSpec);
-        const bool changed = !wtSpec.isIdentity();
+        const SpectralProcess& ms = ui::morphSpec(current.voice, wtEdit);
+        const bool morphOn = !ms.isIdentity();
+        const double morphAmt = ui::specMorphLevel(current, wtEdit);
+        // 0.33.0: with no pending process the preview plays back the live morph blend.
+        const Frame pf = !wtSpec.isIdentity() ? processFrame(f, wtSpec) : ui::morphPreviewFrame(f, ms, morphAmt);
+        const bool pending = !wtSpec.isIdentity();
+        const bool changed = pending || (morphOn && morphAmt > 0);
         StrokeFrame(f, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:changed ? .22 : .9], changed ? 1.2 : 1.8);
         if (changed) { StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, [col colorWithAlphaComponent:.22], 5); StrokeFrame(pf, NSInsetRect(wv, 4, 6), .42, col, 1.8); }
         // Partials 1-32 on a 48 dB scale: processed bars, original as a grey cap line on each bar.
@@ -994,7 +1016,8 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         }
         TextA(@"PARTIALS 1-32", NSMakeRect(sp.origin.x + 2, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
         TextA(changed ? @"GREY = BEFORE" : @"48 dB", NSMakeRect(NSMaxX(sp) - 92, NSMaxY(sp) - 8, 90, 9), 6.5, C(0x4a5462), NSFontWeightBold, NSTextAlignmentRight);
-        TextA(changed ? @"PREVIEW" : @"FRAME", NSMakeRect(pv.origin.x + 6, NSMaxY(pv) - 14, 80, 10), 7, changed ? col : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
+        NSString* pvLabel = wtCmpA == wtEdit ? @"A \u2022 AS LOADED" : pending ? @"PREVIEW" : changed ? [NSString stringWithFormat:@"MORPH %.0f%%", morphAmt * 100] : @"FRAME";
+        TextA(pvLabel, NSMakeRect(pv.origin.x + 6, NSMaxY(pv) - 14, 100, 10), 7, wtCmpA == wtEdit ? C(0xf0b44a) : changed ? col : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentLeft);
         NSArray* names = @[@"FORMANT", @"STRETCH", @"TILT", @"ODD/EVEN"];
         for (int i = 0; i < 4; ++i) {
             const NSRect bar = [self wtSpecBar:i];
@@ -1007,11 +1030,28 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
             FillRound(NSMakeRect(x - 4, NSMidY(bar) - 4, 8, 8), 4, v == 0 ? C(0x5f6b7b) : C(0xeaf1f8));
             TextA(SpecValueText(wtSpec, i), NSMakeRect(NSMaxX(bar) + 4, bar.origin.y - 2.5, 50, 11), 8, v == 0 ? C(0x5f6b7b) : C(0xe6ebf1), NSFontWeightSemibold, NSTextAlignmentRight);
         }
-        TextA([NSString stringWithFormat:@"APPLIES TO ALL %d FRAMES", (int)t.size()], NSMakeRect(cv.origin.x + 214, cv.origin.y + 31, 190, 10), 7,
-              C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentLeft);
+        { // 0.33.0 MORPH row: the static amount toward the stored target; the WARP macro adds on top
+            const NSRect mb = [self wtMorphBar];
+            const double base = ui::specMorphAmount(current.voice, wtEdit);
+            TextA(@"MORPH", NSMakeRect(cv.origin.x + 214, mb.origin.y - 2, 56, 10), 7.5, morphOn ? col : C(0x4a5462), NSFontWeightBold, NSTextAlignmentLeft);
+            FillRound(mb, 3, C(0x1a212b));
+            if (morphOn) {
+                if (morphAmt > base) FillRound(NSMakeRect(mb.origin.x, mb.origin.y, mb.size.width * morphAmt, mb.size.height), 3, [col colorWithAlphaComponent:.25]);
+                if (base > 0) FillRound(NSMakeRect(mb.origin.x, mb.origin.y, std::max<CGFloat>(6, mb.size.width * base), mb.size.height), 3, [col colorWithAlphaComponent:wtSpecDrag == 4 ? .95 : .7]);
+                FillRound(NSMakeRect(mb.origin.x + mb.size.width * morphAmt - 1, mb.origin.y - 2, 2, mb.size.height + 4), 1, C(0xeaf1f8));
+            }
+            TextA(morphOn ? [NSString stringWithFormat:@"%.0f%%", morphAmt * 100] : @"NO TARGET", NSMakeRect(NSMaxX(mb) + 2, mb.origin.y - 2.5, 52, 11), morphOn ? 8 : 6.5,
+                  morphOn ? C(0xe6ebf1) : C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
+            const NSRect tb = [self wtMorphButton];
+            const bool canSet = pending, canClear = !pending && morphOn;
+            FillRound(tb, 4, C(0x1b222c));
+            if (canSet) { NSBezierPath* o = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(tb, .5, .5) xRadius:4 yRadius:4]; o.lineWidth = 1; [col setStroke]; [o stroke]; }
+            TextA(canClear ? @"CLEAR" : @"TO MORPH", NSMakeRect(tb.origin.x, tb.origin.y + 4, tb.size.width, 11), 7.5,
+                  canSet ? col : canClear ? C(0xc9d2dd) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+        }
         for (int i = 0; i < 2; ++i) {
             const NSRect b = [self wtSpecButton:i];
-            const bool live = changed;
+            const bool live = pending;
             if (i == 0) FillRound(b, 4, live ? col : C(0x1b222c));
             else { FillRound(b, 4, C(0x1b222c)); }
             TextA(i == 0 ? @"APPLY" : @"RESET", NSMakeRect(b.origin.x, b.origin.y + 4, b.size.width, 11), 8,
@@ -2877,6 +2917,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     VoiceParams& v = current.voice;
     TableFrames& t = current.tables[o];
     if (t.empty()) t.push_back(shapeFrame(std::clamp(OscShape(v, o), 0, 4))); // start from the current shape
+    if (o >= 0 && o <= 1 && !wtCmpHas[o]) { // 0.33.0: A = the oscillator as loaded (a stock shape as its one-frame table)
+        wtCmpRef[o] = t; wtCmpRefMs[o] = ui::morphSpec(v, o); wtCmpRefAmt[o] = ui::specMorphAmount(v, o); wtCmpHas[o] = true;
+    }
     OscShape(v, o) = kCustomShape;
     wtEdit = o;
     wtFrame = std::clamp((int)std::lround(OscWtPos(v, o) * ((int)t.size() - 1)), 0, (int)t.size() - 1);
@@ -2957,6 +3000,31 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (!(redo ? wtHistory[wtEdit].redo(t, f) : wtHistory[wtEdit].undo(t, f))) { NSBeep(); return; }
     [self selectTableFrame:f]; // moves WT POS onto the restored frame, applies the sound and redraws
 }
+// 0.33.0 A / B compare: swap the loaded oscillator in (A) or put the edit back (B).
+- (void)wtCompare:(BOOL)showA {
+    if (wtEdit < 0 || wtEdit > 1) return;
+    VoiceParams& v = current.voice;
+    if (showA && wtCmpA < 0 && wtCmpHas[wtEdit]) {
+        const int o = wtEdit; wtCmpA = o;
+        wtCmpHold[o] = current.tables[o]; wtCmpHoldMs[o] = ui::morphSpec(v, o); wtCmpHoldAmt[o] = ui::specMorphAmount(v, o);
+        current.tables[o] = wtCmpRef[o];
+        ui::morphSpec(v, o) = wtCmpRefMs[o]; ui::specMorphAmount(v, o) = wtCmpRefAmt[o];
+    } else if (!showA && wtCmpA >= 0) {
+        const int o = wtCmpA; wtCmpA = -1;
+        current.tables[o] = wtCmpHold[o]; ui::morphSpec(v, o) = wtCmpHoldMs[o]; ui::specMorphAmount(v, o) = wtCmpHoldAmt[o];
+    } else return;
+    wtFrame = std::clamp(wtFrame, 0, (int)current.tables[wtEdit].size() - 1);
+    [self applySound];
+    [self setNeedsDisplay:YES];
+}
+- (void)muewCompareA { [self wtCompare:YES]; }
+- (void)muewCompareB { [self wtCompare:NO]; }
+- (NSString*)muewMorphText {
+    if (wtEdit < 0 || wtEdit > 1) return @"";
+    const SpectralProcess& ms = ui::morphSpec(current.voice, wtEdit);
+    return [NSString stringWithFormat:@"cmp=%@ target=%.1f/%.2f/%.1f/%.2f amount=%.2f level=%.2f frames=%d", wtCmpA == wtEdit ? @"A" : @"B",
+            ms.formantSt, ms.stretch, ms.tiltDb, ms.oddEven, ui::specMorphAmount(current.voice, wtEdit), ui::specMorphLevel(current, wtEdit), (int)current.tables[wtEdit].size()];
+}
 - (void)muewTableUndo { [self wtStep:NO]; }
 - (void)muewTableRedo { [self wtStep:YES]; }
 - (NSString*)muewHistoryText {
@@ -3008,6 +3076,11 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 }
 
 - (void)specDragTo:(NSPoint)p { // 0.31.0: bipolar bar, centre = 0; snaps to 0 near the centre
+    if (wtSpecDrag == 4) { // 0.33.0 MORPH amount, 0..1 in 1% steps
+        const NSRect mb = [self wtMorphBar];
+        ui::specMorphAmount(current.voice, wtEdit) = std::round(std::clamp((p.x - mb.origin.x) / mb.size.width, 0.0, 1.0) * 100) / 100;
+        edited = true; [self applySound]; [self setNeedsDisplay:YES]; return;
+    }
     const NSRect bar = [self wtSpecBar:wtSpecDrag];
     double v = std::clamp((p.x - NSMidX(bar)) / (bar.size.width / 2), -1.0, 1.0);
     if (std::fabs(v) < 0.04) v = 0;
@@ -3025,6 +3098,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 }
 - (void)tableMouseDown:(NSPoint)p {
     TableFrames& t = current.tables[wtEdit];
+    for (int i = 0; i < 2; ++i) // 0.33.0 A / B
+        if (NSPointInRect(p, NSInsetRect([self wtCmpRect:i], -1, -2))) { [self wtCompare:i == 0]; return; }
+    if (wtCmpA >= 0) [self wtCompare:NO]; // any other click goes back to the edit first
     if (NSPointInRect(p, [self wtDoneRect])) { wtEdit = -1; [self setNeedsDisplay:YES]; return; }
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self wtModeTab:i])) { wtMode = i; [self setNeedsDisplay:YES]; return; }
@@ -3033,6 +3109,13 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (wtMode == 3 && NSPointInRect(p, NSInsetRect([self wtCanvas], -4, -4))) { // 0.31.0 SPECTRAL page
         for (int i = 0; i < 4; ++i)
             if (NSPointInRect(p, NSInsetRect([self wtSpecBar:i], -6, -7))) { wtSpecDrag = i; [self specDragTo:p]; return; }
+        if (NSPointInRect(p, NSInsetRect([self wtMorphBar], -6, -6)) && !ui::morphSpec(current.voice, wtEdit).isIdentity()) { wtSpecDrag = 4; [self specDragTo:p]; return; }
+        if (NSPointInRect(p, [self wtMorphButton])) { // 0.33.0 TO MORPH / CLEAR
+            if (!wtSpec.isIdentity()) { ui::setSpecMorphTarget(current, wtEdit, wtSpec); wtSpec = SpectralProcess{}; }
+            else if (!ui::morphSpec(current.voice, wtEdit).isIdentity()) ui::clearSpecMorph(current, wtEdit);
+            else return;
+            edited = true; [self applySound]; [self setNeedsDisplay:YES]; return;
+        }
         if (NSPointInRect(p, [self wtSpecButton:0]) && !wtSpec.isIdentity()) {
             [self wtRemember:"APPLY"];
             t = processTable(t, wtSpec); wtSpec = SpectralProcess{};

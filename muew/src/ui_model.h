@@ -80,6 +80,8 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::UnisonBlend: return "UNI BLEND";
     case ModRoute::Dest::FxHyperDetune: return "HY DETUNE";   // 0.27.0
     case ModRoute::Dest::FxFilterCutoff: return "FX CUTOFF";  // 0.27.0
+    case ModRoute::Dest::Osc1SpecMorph: return "SPEC MORPH A"; // 0.33.0
+    case ModRoute::Dest::Osc2SpecMorph: return "SPEC MORPH B";
     }
     return "?";
 }
@@ -210,7 +212,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::FilterDrive, D::FilterMorph, // 0.21.0 appended
                                   D::Filter2Morph, D::FilterBalance, // 0.22.0 appended
                                   D::UnisonBlend, // 0.23.0 appended
-                                  D::FxHyperDetune, D::FxFilterCutoff}; // 0.27.0 appended
+                                  D::FxHyperDetune, D::FxFilterCutoff, // 0.27.0 appended
+                                  D::Osc1SpecMorph, D::Osc2SpecMorph}; // 0.33.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.
@@ -904,6 +907,50 @@ inline std::string lfoFadeReadout(double sec) {
 // Seconds <-> 0..1 for delay/rise drags: 0 = off, then 10 ms .. 8 s log.
 inline double fadeFrom01(double x) { x = std::clamp(x, 0.0, 1.0); return x < 0.02 ? 0.0 : 0.01 * std::pow(800.0, (x - 0.02) / 0.98); }
 inline double fadeTo01(double s) { return s <= 0 ? 0.0 : 0.02 + 0.98 * std::log(std::clamp(s, 0.01, 8.0) / 0.01) / std::log(800.0); }
+
+// 0.33.0 live spectral morph. Setting a target on an oscillator stores the
+// SPECTRAL setting as that table's morph target and, when the matrix has
+// room and no route yet, wires the WARP macro to the morph amount at full
+// depth so the morph plays from a knob. Clearing removes the target and
+// that macro route (other routes to the destination stay).
+inline SpectralProcess& morphSpec(VoiceParams& v, int o) { return o ? v.osc2MorphSpec : v.osc1MorphSpec; }
+inline double& specMorphAmount(VoiceParams& v, int o) { return o ? v.osc2SpecMorph : v.osc1SpecMorph; }
+inline ModRoute::Dest specMorphDest(int o) { return o ? ModRoute::Dest::Osc2SpecMorph : ModRoute::Dest::Osc1SpecMorph; }
+inline bool setSpecMorphTarget(Preset& p, int o, const SpectralProcess& sp) {
+    if (sp.isIdentity()) return false;
+    morphSpec(p.voice, o) = sp;
+    const auto d = specMorphDest(o);
+    for (const auto& r : p.routes) if (r.dest == d) return true;
+    if ((int)p.routes.size() >= kMaxRoutes) return true;
+    ModRoute r; r.source = ModRoute::Source::Macro2; r.dest = d; r.amount = 1.0;
+    p.routes.push_back(r);
+    return true;
+}
+inline void clearSpecMorph(Preset& p, int o) {
+    morphSpec(p.voice, o) = SpectralProcess{};
+    specMorphAmount(p.voice, o) = 0.0;
+    const auto d = specMorphDest(o);
+    p.routes.erase(std::remove_if(p.routes.begin(), p.routes.end(), [&](const ModRoute& r) {
+        return r.dest == d && r.source == ModRoute::Source::Macro2 && r.aux < 0; }), p.routes.end());
+}
+// The frame the SPECTRAL page previews for a morph amount: a straight blend,
+// the same crossfade the oscillator plays.
+inline Frame morphPreviewFrame(const Frame& f, const SpectralProcess& sp, double amt) {
+    if (sp.isIdentity() || amt <= 0) return f;
+    Frame b = processFrame(f, sp), out(f.size());
+    const double m = std::min(amt, 1.0);
+    for (size_t i = 0; i < f.size(); ++i) out[i] = (float)(f[i] + m * (b[i] - f[i]));
+    return out;
+}
+// Where the morph is heard from: the static amount plus the live macro routes.
+inline double specMorphLevel(const Preset& p, int o) {
+    const VoiceParams& v = p.voice;
+    double a = o ? v.osc2SpecMorph : v.osc1SpecMorph;
+    const auto d = specMorphDest(o);
+    for (const auto& r : p.routes)
+        if (r.dest == d && r.aux < 0 && (int)r.source >= 5 && (int)r.source <= 8) a += r.amount * v.macros[(int)r.source - 5];
+    return std::clamp(a, 0.0, 1.0);
+}
 
 } // namespace ui
 } // namespace muew

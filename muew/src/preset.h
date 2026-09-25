@@ -127,6 +127,13 @@ struct Preset {
             if (v.noiseLevel != d.noiseLevel || v.noiseTone != d.noiseTone) o << "noise " << v.noiseLevel << " " << v.noiseTone << "\n";
             if (v.filter2Type != d.filter2Type || v.filter2Cutoff != d.filter2Cutoff || v.filter2Reso != d.filter2Reso || v.filterRouting != d.filterRouting)
                 o << "filter2 " << v.filter2Type << " " << v.filter2Cutoff << " " << v.filter2Reso << " " << v.filterRouting << "\n";
+            // 0.33.0 live spectral morph and output trim
+            if (v.osc1SpecMorph != 0 || v.osc2SpecMorph != 0) o << "specmorph " << v.osc1SpecMorph << " " << v.osc2SpecMorph << "\n";
+            for (int t = 0; t < 2; ++t) {
+                const SpectralProcess& ms = t ? v.osc2MorphSpec : v.osc1MorphSpec;
+                if (!ms.isIdentity()) o << "morphspec" << (t + 1) << " " << ms.formantSt << " " << ms.stretch << " " << ms.tiltDb << " " << ms.oddEven << "\n";
+            }
+            if (v.trimDb != 0) o << "trim " << v.trimDb << "\n";
             for (int t = 0; t < 2; ++t) {
                 if (tables[t].empty()) continue;
                 if (!tableRecipe[t].empty() && tables[t] == recipeTable[t]) { // 0.32.0: unedited recipe table
@@ -524,7 +531,7 @@ struct Preset {
                 ModRoute r; int s, d;
                 ls >> s >> d >> r.amount;
                 // Sources/destinations from a newer build are skipped, not guessed.
-                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Keytrack && d >= 0 && d <= (int)ModRoute::Dest::FxFilterCutoff) {
+                if (ls && (int)routes.size() < kMaxRoutes && s >= 0 && s <= (int)ModRoute::Source::Keytrack && d >= 0 && d <= (int)ModRoute::Dest::Osc2SpecMorph) {
                     r.source = (ModRoute::Source)s; r.dest = (ModRoute::Dest)d;
                     // 0.16.0 optional keyed suffix: `curve <c>` and `aux <source>`.
                     std::string k2;
@@ -553,6 +560,14 @@ struct Preset {
                 tableRecipe[o] = restOf(line, key);
                 tables[o] = tableFromRecipe(tableRecipe[o]);
             }
+            else if (key == "specmorph") { // 0.33.0
+                ls >> voice.osc1SpecMorph >> voice.osc2SpecMorph;
+                voice.osc1SpecMorph = std::clamp(voice.osc1SpecMorph, 0.0, 1.0); voice.osc2SpecMorph = std::clamp(voice.osc2SpecMorph, 0.0, 1.0);
+            }
+            else if (key == "morphspec1" || key == "morphspec2") {
+                specFromText(restOf(line, key), key == "morphspec1" ? voice.osc1MorphSpec : voice.osc2MorphSpec);
+            }
+            else if (key == "trim") { ls >> voice.trimDb; voice.trimDb = std::clamp(voice.trimDb, -24.0, 12.0); }
             else if (key == "wtspec1" || key == "wtspec2") {
                 const int o = key == "wtspec1" ? 0 : 1;
                 if (specFromText(restOf(line, key), pendingSpec[o])) tableSpec[o] = restOf(line, key);
@@ -605,6 +620,8 @@ struct Preset {
             && a.noiseLevel == b.noiseLevel && a.noiseTone == b.noiseTone
             && a.filter2Type == b.filter2Type && a.filter2Cutoff == b.filter2Cutoff && a.filter2Reso == b.filter2Reso
             && a.filterRouting == b.filterRouting
+            && a.osc1SpecMorph == b.osc1SpecMorph && a.osc2SpecMorph == b.osc2SpecMorph
+            && a.osc1MorphSpec == b.osc1MorphSpec && a.osc2MorphSpec == b.osc2MorphSpec && a.trimDb == b.trimDb
             && tables[0] == o.tables[0] && tables[1] == o.tables[1];
         if (!voiceEq || !(info == o.info) || routes.size() != o.routes.size()) return false;
         if (!pointsEq(a.mseg1Points, b.mseg1Points) || !pointsEq(a.mseg2Points, b.mseg2Points)) return false;

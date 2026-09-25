@@ -7,6 +7,7 @@
 #include "layers.h"
 #include "tempo_sync.h"
 #include "mod_curve.h"
+#include "spectral_process.h"
 #include <cmath>
 
 namespace muew {
@@ -35,7 +36,8 @@ struct ModRoute {
                       FilterDrive = 23, FilterMorph = 24,             // 0.21.0: filter 1 drive / morph (0..1)
                       Filter2Morph = 25, FilterBalance = 26,          // 0.22.0: filter 2 morph, parallel F1/F2 balance (0..1)
                       UnisonBlend = 27,                               // 0.23.0: unison outer-voice level (0..1)
-                      FxHyperDetune = 28, FxFilterCutoff = 29 } dest; // 0.27.0: HYPER detune, FILTER FX cutoff (1 = +4 oct)
+                      FxHyperDetune = 28, FxFilterCutoff = 29,        // 0.27.0: HYPER detune, FILTER FX cutoff (1 = +4 oct)
+                      Osc1SpecMorph = 30, Osc2SpecMorph = 31 } dest;  // 0.33.0: live spectral morph toward the table's target (0..1)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -125,6 +127,12 @@ struct VoiceParams {
     // 0.9.0: frame position (0..1) through each oscillator's user table; only
     // heard when the oscillator's shape is kCustomShape.
     double osc1WtPos = 0.0, osc2WtPos = 0.0;
+    // 0.33.0 live spectral morph: each oscillator's table can carry a morph
+    // target (a SPECTRAL setting); the amount crossfades toward it and is a
+    // mod destination. trimDb is a per-preset output trim (0 = untouched).
+    double osc1SpecMorph = 0.0, osc2SpecMorph = 0.0;
+    SpectralProcess osc1MorphSpec, osc2MorphSpec;
+    double trimDb = 0.0;
     // 0.10.0 layers. Level 0 / type Off skip the stage entirely.
     double subLevel = 0.0;     // 0..1
     int subOctave = 1;         // 1 or 2 octaves below oscillator A
@@ -224,13 +232,15 @@ public:
         filter_.setMorph(p.filterMorph); filterR_.setMorph(p.filterMorph);
         usesFilterX_ = false;
         bool driveRouted = false;
-        usesF2Morph_ = false; usesBalance_ = false; usesUniBlend_ = false;
+        usesF2Morph_ = false; usesBalance_ = false; usesUniBlend_ = false; usesSpecMorph_[0] = usesSpecMorph_[1] = false;
         for (const auto& r : routes) {
             if (r.dest == ModRoute::Dest::FilterDrive || r.dest == ModRoute::Dest::FilterMorph) usesFilterX_ = true;
             if (r.dest == ModRoute::Dest::FilterDrive) driveRouted = true;
             if (r.dest == ModRoute::Dest::Filter2Morph) usesF2Morph_ = true;   // 0.22.0
             if (r.dest == ModRoute::Dest::FilterBalance) usesBalance_ = true;
             if (r.dest == ModRoute::Dest::UnisonBlend) usesUniBlend_ = true; // 0.23.0
+            if (r.dest == ModRoute::Dest::Osc1SpecMorph) usesSpecMorph_[0] = true; // 0.33.0
+            if (r.dest == ModRoute::Dest::Osc2SpecMorph) usesSpecMorph_[1] = true;
         }
         filter_.setOversample(p.filterDrive > 0 || driveRouted); filterR_.setOversample(p.filterDrive > 0 || driveRouted); // 0.22.0
         ampEnv_.set(p.ampA, p.ampD, p.ampS, p.ampR);
@@ -449,6 +459,10 @@ public:
         const int n2 = std::clamp(params_.osc2Unison, 1, kMaxUnison);
         if (active1_) { const double wp = std::clamp(params_.osc1WtPos + modSum(ModRoute::Dest::Osc1WtPos), 0.0, 1.0); for (int i = 0; i < n1; ++i) osc1_[i].setWtPos(wp); }
         if (active2_) { const double wp = std::clamp(params_.osc2WtPos + modSum(ModRoute::Dest::Osc2WtPos), 0.0, 1.0); for (int i = 0; i < n2; ++i) osc2_[i].setWtPos(wp); }
+        if (active1_ && (params_.osc1SpecMorph != 0.0 || usesSpecMorph_[0])) { // 0.33.0
+            const double sm = std::clamp(params_.osc1SpecMorph + modSum(ModRoute::Dest::Osc1SpecMorph), 0.0, 1.0); for (int i = 0; i < n1; ++i) osc1_[i].setSpecMorph(sm); }
+        if (active2_ && (params_.osc2SpecMorph != 0.0 || usesSpecMorph_[1])) {
+            const double sm = std::clamp(params_.osc2SpecMorph + modSum(ModRoute::Dest::Osc2SpecMorph), 0.0, 1.0); for (int i = 0; i < n2; ++i) osc2_[i].setSpecMorph(sm); }
         float l, r;
         bool stereo = false;
         auto oscBlock = [&](float& l, float& r) {
@@ -690,6 +704,7 @@ private:
     bool usesFilterX_ = false;
     bool usesF2Morph_ = false, usesBalance_ = false; // 0.22.0
     bool usesUniBlend_ = false; double blendMod_ = 0.0; // 0.23.0
+    bool usesSpecMorph_[2] = {false, false}; // 0.33.0
     AlignDelay alignDry1L_, alignDry1R_, alignDry2L_, alignDry2R_, alignParL_, alignParR_, alignPar2L_, alignPar2R_; // 0.22.0 // 0.21.0: a route targets FILTER DRIVE or MORPH
     double w2a_ = 0.0, w2b_ = 0.0;
     static bool warp2Prone(int mode) { return mode >= 2 && mode != 5 && mode != 6 ? true : false; }
