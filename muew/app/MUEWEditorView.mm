@@ -843,6 +843,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)noiseCharacterRect { return NSMakeRect(666, [self top] - 190, 50, 15); }
 - (NSRect)noiseColorRect { return NSMakeRect(666, [self top] - 209, 50, 15); }
 - (NSRect)noiseWidthRect { return NSMakeRect(666, [self top] - 233, 50, 13); } // narrow gap between NOISE/TONE rings, below COLOR
+- (NSRect)noiseBurstRect { return NSMakeRect(712, [self top] - 252, 62, 13); } // below WIDTH/TONE, clear of both rings
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 306, 440, 306); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
@@ -1882,6 +1883,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextA(@"WIDTH", NSMakeRect(width.origin.x + 2, width.origin.y + 1.5, 29, 10), 6.3, v.noiseWidth > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
         TextA([NSString stringWithFormat:@"%.0f", v.noiseWidth * 100], NSMakeRect(width.origin.x + 32, width.origin.y + 1.5, 16, 10), 6.5,
               v.noiseWidth > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
+        NSRect burst = [self noiseBurstRect];
+        FillRound(burst, 3, C(0x1c232d));
+        if (v.noiseBurst > 0) FillRound(NSMakeRect(burst.origin.x, burst.origin.y, burst.size.width * v.noiseBurst / .5, burst.size.height), 3, C(0xf5cc78, .62));
+        TextA(@"BURST", NSMakeRect(burst.origin.x + 3, burst.origin.y + 1.5, 30, 10), 6.5, v.noiseBurst > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
+        TextA(v.noiseBurst > 0 ? [NSString stringWithFormat:@"%.0f", v.noiseBurst * 1000] : @"OFF", NSMakeRect(burst.origin.x + 34, burst.origin.y + 1.5, 25, 10), 6.5,
+              v.noiseBurst > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
         NSString* pills[2] = {v.subOctave >= 2 ? @"-2 OCT" : @"-1 OCT", S(ui::subShapeName(v.subShape))};
         for (int i = 0; i < 2; ++i) {
             NSRect r = [self subPill:i];
@@ -3737,6 +3744,12 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     if (!hit && NSPointInRect(p, [self subPill:1])) { v.subShape = (v.subShape + 1) % kSubShapes; hit = true; }
     if (!hit && NSPointInRect(p, [self noiseCharacterRect])) { v.noiseCharacter = (v.noiseCharacter + 1) % 4; hit = true; }
     if (!hit && NSPointInRect(p, [self noiseColorRect])) { NSRect r = [self noiseColorRect]; v.noiseColor = std::round(std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0) * 100) / 100.0; hit = true; }
+    if (!hit && NSPointInRect(p, [self noiseBurstRect])) {
+        NSRect r = [self noiseBurstRect];
+        const double norm = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
+        v.noiseBurst = norm < .025 ? 0.0 : std::round(std::max(.005, norm * .5) * 1000) / 1000.0;
+        hit = true;
+    }
     if (!hit && NSPointInRect(p, [self noiseWidthRect])) { NSRect r = [self noiseWidthRect]; v.noiseWidth = std::round(std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0) * 100) / 100.0; hit = true; }
     if (!hit) return NO;
     edited = true;

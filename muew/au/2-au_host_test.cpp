@@ -808,6 +808,20 @@ int main() {
         printf("stereo noise WIDTH recalled through AU; legacy noise and noisex lines intact\n");
     }
 
+    // 0.55.0: per-note noise burst is optional state, not an AU parameter.
+    {
+        muew::Preset p=muew::factoryPresets()[0],got;
+        p.voice.noiseLevel=.7; p.voice.noiseCharacter=2; p.voice.noiseWidth=.8; p.voice.noiseBurst=.125;
+        AudioUnit t=openUnit();bool ok=t && setState(t,p) && getState(t,got);
+        auto saved=got.serialize();
+        if(!ok || !(got==p) || saved.find("\nnoiseb 0.125\n")==std::string::npos ||
+           saved.find("\nnoisew 0.8\n")==std::string::npos){
+            printf("FAIL: AU noise burst state\n");return 1;
+        }
+        AudioUnitUninitialize(t);AudioComponentInstanceDispose(t);
+        printf("noise BURST recalled through AU; 40 published parameter IDs unchanged\n");
+    }
+
     // Cocoa editor is advertised with a loadable bundle and class name.
     {
         UInt32 size = 0; Boolean writable = false;

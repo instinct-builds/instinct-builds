@@ -425,3 +425,13 @@ while FX LFO routes follow the rack's block-rate activity. Unsupported
 source/destination pairs show no activity. The AU publishes all 16 values to
 its hosted editor and the standalone uses the same engine readings. Meter
 work does not add modulation or change rendered audio.
+
+## 0.55.0 Noise BURST
+
+FILTER 2 + SUB has a noise-only BURST control. OFF preserves the original
+sustained noise, including factory sounds. Set 5-500 ms to fade the noise from
+full to zero after each note onset; repeated notes retrigger it. The burst
+affects both noise channels equally, including HQ output, without changing
+oscillators, sub, filter or the main amp envelope. It also follows a routed
+NOISE level when the base level is zero. The optional `noiseb <seconds>` preset
+line stores the setting; no AU parameter IDs were added.

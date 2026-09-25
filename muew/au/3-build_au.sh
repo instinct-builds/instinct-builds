@@ -10,7 +10,7 @@ mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources" build
 echo "== Compiling MUEW.component =="
 clang++ -std=c++17 -O2 -bundle -arch arm64 -arch x86_64 \
   -isysroot "$(xcrun --show-sdk-path)" \
-  -Isrc -Iau -Iapp -fobjc-arc -DMUEW_EDITOR_CLASS=MUEWEditorView_AU_0_54 \
+  -Isrc -Iau -Iapp -fobjc-arc -DMUEW_EDITOR_CLASS=MUEWEditorView_AU_0_55 \
   au/MUEWAU.cpp au/MUEWAUView.mm app/MUEWEditorView.mm \
   -framework AudioToolbox -framework CoreAudio -framework CoreMIDI -framework CoreFoundation \
   -framework AppKit -framework AudioUnit \

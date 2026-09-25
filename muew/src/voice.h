@@ -144,6 +144,7 @@ struct VoiceParams {
     int noiseCharacter = 0;    // 0 legacy, 1 AIR, 2 GRAIN, 3 DUST
     double noiseColor = 0.5;   // new modes only; old NOISE TONE behavior unchanged
     double noiseWidth = 0.0;   // 0.53.0: 0 mono legacy, 1 decorrelated stereo
+    double noiseBurst = 0.0;   // 0.55.0: 0 off, 0.005..0.5 s per-note noise-only decay
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
@@ -236,12 +237,14 @@ public:
         mseg1_.setSampleRate(sr);
         sub_.setSampleRate(hq_ ? 2 * sr : sr); sub_.setTable(table);
         noise_.setSampleRate(sr); noiseR_.setSampleRate(sr);
+        noiseBurstPos_ = 0; noiseBurstLength_ = 0;
         dcL_.setSampleRate(sr); dcR_.setSampleRate(sr);
         f2L_.setSampleRate(sr); f2R_.setSampleRate(sr);
     }
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
         params_ = p; routes_ = routes;
+        noiseBurstLength_ = p.noiseBurst > 0.0 ? (uint64_t)std::ceil(std::clamp(p.noiseBurst, 0.005, 0.5) * sr_) : 0;
         for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setShape(std::clamp(p.osc1Shape, 0, 4)); osc2_[i].setShape(std::clamp(p.osc2Shape, 0, 4)); }
         applyCustom();
         filter_.setMode(p.filterMode);
@@ -346,6 +349,7 @@ public:
         age_ = 0;
         sub_.setPhase(0.0);
         dcL_.reset(); dcR_.reset(); dcOn_ = false;
+        noiseBurstPos_ = 0; // the burst retriggers with each played note
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
         noiseR_.reset(0x6c8e9cf5u ^ (uint32_t)(note * 2246822519u));
     }
@@ -387,6 +391,7 @@ public:
         dcL_.reset(); dcR_.reset();
         glideLeft_ = 0; glideSemi_ = 0.0;
         hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset(); hbNoiseR_.reset(); // 0.30.0 / 0.31.0 / 0.53.0
+        noiseBurstPos_ = 0;
         resetRouteMeters();
     }
     // 0.30.0: oscillator oversampling on/off (the synth passes the effective QUALITY).
@@ -549,13 +554,18 @@ public:
                 noise_.setCharacter(params_.noiseCharacter, color);
                 if (params_.noiseWidth > 0) noiseR_.setCharacter(params_.noiseCharacter, color);
             }
+            float burst = 1.0f;
+            if (noiseBurstLength_ > 0) {
+                burst = (float)std::max(0.0, 1.0 - (double)noiseBurstPos_ / noiseBurstLength_);
+                if (noiseBurstPos_ < noiseBurstLength_) ++noiseBurstPos_;
+            }
             const float lv = (float)std::clamp(params_.noiseLevel + modSum(ModRoute::Dest::NoiseLevel), 0.0, 1.0);
-            float nv = noise_.process() * lv;
+            float nv = noise_.process() * lv * burst;
             if (hq_) nv = (float)hbNoise_.down(nv, nv); // legacy left/mono alignment
             l += nv;
             if (params_.noiseWidth > 0) {
                 const double width = std::clamp(params_.noiseWidth, 0.0, 1.0);
-                float nr = noiseR_.process() * lv;
+                float nr = noiseR_.process() * lv * burst;
                 if (hq_) nr = (float)hbNoiseR_.down(nr, nr);
                 // Keep the left legacy stream untouched. Normalize the right
                 // blend's power; width 1 is an independent right channel.
@@ -631,6 +641,7 @@ private:
     bool hq_ = false;          // 0.30.0
     Halfband2x hbL_, hbR_;
     Halfband2x hbSub_, hbNoise_, hbNoiseR_; // 0.31.0 sub / noise alignment in HQ
+    uint64_t noiseBurstPos_ = 0, noiseBurstLength_ = 0; // samples since note-on; saturates at end of burst
     int note_ = -1;
     float velocity_ = 0.0f;
     double baseFreq_ = 440.0;

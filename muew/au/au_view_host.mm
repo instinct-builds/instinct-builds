@@ -1780,6 +1780,16 @@ int main() {
                   wideState.serialize().find("\nnoisew 0.8\n")!=std::string::npos,
                   "noise WIDTH 80 reached the AU without changing the color route");
             Snapshot(view,"MUEW_NOISE53_PNG","stereo noise WIDTH panel snapshot written");
+            // 0.55.0: a narrow noise-only BURST duration is selectable without
+            // touching WIDTH or the neighboring NOISE/TONE controls.
+            Click(view,w,NSMakePoint(712+(.24/.5)*62,t-252+6.5)); // BURST 240 ms
+            muew::Preset burstState; bool burstOk=State(burstState);
+            Check(burstOk && std::fabs(burstState.voice.noiseBurst-.24)<.012 &&
+                  burstState.voice.noiseWidth==wideState.voice.noiseWidth &&
+                  burstState.voice.noiseTone==wideState.voice.noiseTone &&
+                  burstState.serialize().find("\nnoiseb 0.24\n")!=std::string::npos,
+                  "noise BURST 240ms reached AU without disturbing WIDTH/TONE");
+            Snapshot(view,"MUEW_NOISE55_PNG","noise BURST envelope panel snapshot written");
             // 0.54.0: the matrix meter follows signed, curved/AUX-scaled
             // engine contributions. Snapshot while the routed note sounds.
             muew::Preset metered=wideState;
