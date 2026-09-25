@@ -557,6 +557,23 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-copy-roll", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 2.84.0 proof: star a roll - the renamed card gets the table's
+    // star, and the Starred filter then shows only it.
+    if let top = model.rollHistory.first {
+        model.toggleStar(top)
+        let starLines = ["Star a roll (2.84.0)", "",
+                         "starred: \((model.rollHistory.first?.label ?? model.rollHistory.first?.expression) ?? "<missing>")",
+                         "starred rolls in history: \(model.rollHistory.starredRolls.count)"]
+        try? starLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/roll-star.txt"),
+                   atomically: true, encoding: .utf8)
+    }
+    renderPNG(
+        DiceRollerView(initialStarredOnly: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-star", outDir: outDir, minHeight: 420, maxHeight: 1100)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

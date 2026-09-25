@@ -370,6 +370,13 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
+    /// 2.84.0: flip a roll's star - the manual memorable marker that
+    /// the Starred history filter shows.
+    public func toggleStar(_ roll: RollResult) {
+        rollHistory = rollHistory.togglingStar(on: roll)
+        rollHistoryStore.save(rollHistory)
+    }
+
     /// 2.82.0: rename a roll's label in place; blank restores the raw
     /// expression as the card's title.
     public func renameRoll(_ roll: RollResult, to label: String) {

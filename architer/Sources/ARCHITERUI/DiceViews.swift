@@ -33,10 +33,12 @@ public struct DiceRollerView: View {
     @EnvironmentObject var model: AppModel
 
     /// 2.74.0: harness hook - start with the Latest session scope on.
-    /// 2.78.0: or with the crits-only filter on.
-    public init(initialLatestSession: Bool = false, initialCritsOnly: Bool = false) {
+    /// 2.78.0/2.84.0: or with the crits-only / starred-only filter on.
+    public init(initialLatestSession: Bool = false, initialCritsOnly: Bool = false,
+                initialStarredOnly: Bool = false) {
         _historyLatestSession = State(initialValue: initialLatestSession)
         _historyCritsOnly = State(initialValue: initialCritsOnly)
+        _historyStarredOnly = State(initialValue: initialStarredOnly)
     }
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
@@ -57,6 +59,9 @@ public struct DiceRollerView: View {
     /// Crits-only filter (2.78.0): true shows only rolls with a kept
     /// natural 20 or natural 1 - the moments that mattered.
     @State private var historyCritsOnly = false
+    /// Starred-only filter (2.84.0): true shows only rolls the table
+    /// starred - manual curation next to the automatic crits filter.
+    @State private var historyStarredOnly = false
     /// Text filter over history labels and expressions; blank shows all.
     @State private var historyFilter = ""
 
@@ -65,7 +70,8 @@ public struct DiceRollerView: View {
         let base = model.rollHistory.forCharacter(name)
         let scoped = historyLatestSession ? base.latestSession() : base
         let critted = historyCritsOnly ? scoped.critRolls : scoped
-        return critted.matching(historyFilter)
+        let starred = historyStarredOnly ? critted.starredRolls : critted
+        return starred.matching(historyFilter)
     }
 
     public var body: some View {
@@ -155,6 +161,10 @@ public struct DiceRollerView: View {
                     .toggleStyle(.checkbox)
                     .font(Theme.Typeface.caption)
                     .help("Show only rolls with a kept natural 20 or natural 1")
+                Toggle("Starred", isOn: $historyStarredOnly)
+                    .toggleStyle(.checkbox)
+                    .font(Theme.Typeface.caption)
+                    .help("Show only rolls the table starred")
                 TextField("Filter rolls", text: $historyFilter)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(maxWidth: 160)
@@ -592,6 +602,12 @@ struct RollCard: View {
                         }
                     }
             }
+            // 2.84.0: star the memorable ones by hand.
+            Button { model.toggleStar(roll) }
+                label: { Image(systemName: roll.starred == true ? "star.fill" : "star") }
+                .buttonStyle(.plain)
+                .foregroundStyle(roll.starred == true ? Theme.accent : Theme.inkFaint)
+                .help(roll.starred == true ? "Unstar this roll" : "Star this roll")
             // 2.82.0: rename the label in place.
             Button {
                 labelDraft = roll.label ?? ""

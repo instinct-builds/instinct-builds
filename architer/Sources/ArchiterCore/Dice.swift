@@ -55,12 +55,16 @@ public struct RollResult: Equatable, Codable, Sendable {
     /// which fall back to a plain reroll of the expression. Optional so
     /// old saves decode unchanged.
     public var reroll: RerollSpec? = nil
+    /// Starred by the table (2.84.0): a manually marked memorable roll,
+    /// complementing the automatic crits filter. Optional so old saves
+    /// decode unchanged and nil stays unencoded.
+    public var starred: Bool? = nil
 
     /// Explicit public init: the memberwise one is internal, and the
     /// render harness (a separate module) builds crafted history rolls.
     public init(expression: String, dice: [DieResult], modifier: Int, total: Int,
                 alternateTotal: Int?, label: String? = nil, characterName: String? = nil,
-                rolledAt: Date? = nil, reroll: RerollSpec? = nil) {
+                rolledAt: Date? = nil, reroll: RerollSpec? = nil, starred: Bool? = nil) {
         self.expression = expression
         self.dice = dice
         self.modifier = modifier
@@ -70,6 +74,7 @@ public struct RollResult: Equatable, Codable, Sendable {
         self.characterName = characterName
         self.rolledAt = rolledAt
         self.reroll = reroll
+        self.starred = starred
     }
 }
 
@@ -683,6 +688,22 @@ public extension Array where Element == RollResult {
         guard let i = copy.firstIndex(of: roll) else { return copy }
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
         copy[i].label = trimmed.isEmpty ? nil : trimmed
+        return copy
+    }
+
+    /// Rolls the table starred (2.84.0): manually marked memorable
+    /// moments, complementing the automatic crits filter.
+    var starredRolls: [RollResult] {
+        filter { $0.starred == true }
+    }
+
+    /// The log with the first entry equal to `roll`'s star flipped
+    /// (2.84.0). nil and false both read as unstarred; toggling a
+    /// starred roll clears back to nil so saved logs stay lean.
+    func togglingStar(on roll: RollResult) -> [RollResult] {
+        var copy = self
+        guard let i = copy.firstIndex(of: roll) else { return copy }
+        copy[i].starred = (copy[i].starred == true) ? nil : true
         return copy
     }
 

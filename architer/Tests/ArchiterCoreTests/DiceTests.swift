@@ -941,6 +941,28 @@ struct SessionSegmentTests {
         #expect(log.relabelingFirst(a, to: "X")[0].label == "X")
     }
 
+    // 2.84.0: starring flips the first match on, then back to nil;
+    // starredRolls filters to starred-only; an absent roll is a no-op.
+    @Test func togglingStarFlipsAndClears() {
+        let a = RollResult(expression: "d20",
+                           dice: [DieResult(sides: 20, value: 20, kept: true)],
+                           modifier: 0, total: 20, alternateTotal: nil)
+        let b = RollResult(expression: "2d6",
+                           dice: [DieResult(sides: 6, value: 4, kept: true)],
+                           modifier: 0, total: 4, alternateTotal: nil)
+        let absent = RollResult(expression: "d8",
+                                dice: [DieResult(sides: 8, value: 3, kept: true)],
+                                modifier: 0, total: 3, alternateTotal: nil)
+        let log = [a, b]
+        let starred = log.togglingStar(on: a)
+        #expect(starred[0].starred == true)
+        #expect(starred[1].starred == nil)
+        #expect(starred.starredRolls.count == 1)
+        let cleared = starred.togglingStar(on: starred[0])
+        #expect(cleared[0].starred == nil)
+        #expect(log.togglingStar(on: absent) == log)
+    }
+
     // 2.71.0: noted() carries the session note; blank clears it. The
     // note rides the copy text under the stats line and follows its
     // session's name into export headers in parentheses.
