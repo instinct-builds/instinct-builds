@@ -465,11 +465,14 @@ func run(model: AppModel, character: Character, outDir: String) {
     // leaves the history; the txt records the log before and after.
     let beforeDelete = model.rollHistory
     if let victim = beforeDelete.first { model.deleteRoll(victim) }
+    func deleteLine(_ r: RollResult) -> String {
+        "  " + (r.label ?? r.expression) + " = \(r.total)"
+    }
+    let beforeLines = beforeDelete.prefix(4).map(deleteLine)
+    let afterLines = model.rollHistory.prefix(4).map(deleteLine)
     let deleteLines = ["Per-roll delete (2.79.0)", "",
-                       "before (\(beforeDelete.count) rolls):"]
-        + beforeDelete.prefix(4).map { "  " + ($0.label ?? $0.expression) + " = \($0.total)" }
-        + ["", "after (\(model.rollHistory.count) rolls):"]
-        + model.rollHistory.prefix(4).map { "  " + ($0.label ?? $0.expression) + " = \($0.total)" }
+                       "before (\(beforeDelete.count) rolls):"] + beforeLines
+        + ["", "after (\(model.rollHistory.count) rolls):"] + afterLines
     try? deleteLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/history-delete.txt"),
                atomically: true, encoding: .utf8)
