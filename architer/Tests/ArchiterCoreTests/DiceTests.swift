@@ -858,9 +858,9 @@ struct SessionSegmentTests {
                                                         now: now, calendar: cal),
                                          now: now, calendar: cal)
         let group = try #require(groups.first)
-        #expect(group.title == "Today - 1 session \u{00B7} 2 rolls")
+        #expect(group.title == "Today - 2 sessions \u{00B7} 2 rolls")
         let text = dayShareText(group)
-        #expect(text.hasPrefix("Today - 1 session \u{00B7} 2 rolls\n\n"))
+        #expect(text.hasPrefix("Today - 2 sessions \u{00B7} 2 rolls\n\n"))
         let lines = text.components(separatedBy: "\n")
         #expect(lines[2].contains("2d6: 10"))
         #expect(lines[3].contains("d20: 10"))
