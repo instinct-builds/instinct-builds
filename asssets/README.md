@@ -861,3 +861,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Every artwork card in Batch Place shows a compact source view with the exact visible Fill region outlined next to the live placed mockup. A darkened surround marks what the mockup crops away, with SOURCE · FRAME and PLACED labels. In Fit the whole source stays visible without a crop outline; the placed preview shows its margins. These are read-only comparisons; Crop/Adjusted opens the existing per-art drag editor.
 - Changing the shared mockup, design layer, mode, background or a single artwork's crop rerenders the placed view and updates the source frame. No extra recipe data or remote rendering is needed. Native CI proof covers the regular batch and two distinct adjusted frames.
+
+## 1.35.0: focused batch comparison
+
+- Inspect on a batch artwork opens a larger, read-only source-frame and placed-mockup comparison without closing the batch or making a render. The source uses that art's current crop and the same Fill/Fit setting as its compact card; the placed side shows the actual local preview with the chosen mockup and design layer. Back to Batch preserves every artwork's choices.
+- Adjust Crop from the focused view returns to the batch and opens that artwork's drag editor. Fit keeps the full artwork and disables crop adjustment. No new stored data or service is needed. A native `batch-focus` screenshot checks the enlarged layout at 1024x768.

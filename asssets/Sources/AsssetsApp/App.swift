@@ -1957,7 +1957,7 @@ final class StudioLibrary: ObservableObject {
                     psdToggled[a.id] = Set(flips)
                 }
             }
-        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results", "batch-compare":
+        case "batch-place", "batch-place-results", "placement-presets", "batch-crop", "batch-crop-results", "batch-compare", "batch-focus":
             let starters = catalog.assets.filter(\.isStarter)
             let names = ["risograph-4k.png", "blueprint-4k.png", "ink-fiber-4k.png"]
             let art = names.compactMap { name in starters.first { $0.importedPath?.hasSuffix(name) == true } }
@@ -1976,7 +1976,7 @@ final class StudioLibrary: ObservableObject {
                             self.batchPlacement = active
                         }
                     }
-                    if demo == "batch-crop" || demo == "batch-crop-results" || demo == "batch-compare" {
+                    if demo == "batch-crop" || demo == "batch-crop-results" || demo == "batch-compare" || demo == "batch-focus" {
                         self.batchPlacement?.crops[art[0].id] = BoardRect(x: 0.18, y: 0.12, w: 0.5, h: 0.5)
                         self.batchPlacement?.crops[art[1].id] = BoardRect(x: 0.05, y: 0.25, w: 0.7, h: 0.6)
                     }
@@ -4347,6 +4347,7 @@ struct BatchPlaceSheet: View {
     @State private var previews: [UUID: CGImage] = [:]
     @State private var sourceImages: [UUID: CGImage] = [:]
     @State private var cropArt: StudioAsset?
+    @State private var focusedArt: StudioAsset?
     @State private var presetName = ""
     @State private var namingPreset = false
     @State private var presetIssue: String?
@@ -4474,6 +4475,10 @@ struct BatchPlaceSheet: View {
                             HStack(spacing: 5) {
                                 Text(art.title).font(.caption.weight(.semibold)).lineLimit(1)
                                 Spacer(minLength: 0)
+                                Button { focusedArt = art } label: {
+                                    Label("Inspect", systemImage: "arrow.up.left.and.arrow.down.right")
+                                        .font(.caption2.weight(.semibold))
+                                }.buttonStyle(.borderless).help("Compare this artwork at larger size")
                                 Button { cropArt = art } label: {
                                     Label(state.crops[art.id] == nil ? "Crop" : "Adjusted", systemImage: "crop.rotate")
                                         .font(.caption2.weight(.semibold))
@@ -4490,6 +4495,13 @@ struct BatchPlaceSheet: View {
                 }
                 .padding(2)
             }.frame(height: 408)
+            .sheet(item: $focusedArt) { art in
+                BatchFocusedComparison(art: art, source: sourceImages[art.id], placed: previews[art.id],
+                    mode: state.mode, areaAspect: designAspect, crop: state.crops[art.id],
+                    mockupName: mockup?.title ?? "Mockup", close: { focusedArt = nil },
+                    edit: { focusedArt = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { cropArt = art } })
+                    .environment(\.colorScheme, .dark)
+            }
             .popover(item: $cropArt) { art in
                 BatchArtCropper(art: art, image: sourceImages[art.id], mode: state.mode,
                     areaAspect: designAspect, crop: Binding(
@@ -4511,6 +4523,9 @@ struct BatchPlaceSheet: View {
             await makePreviews()
             if ProcessInfo.processInfo.arguments.contains("batch-crop"), cropArt == nil {
                 cropArt = arts.first
+            }
+            if ProcessInfo.processInfo.arguments.contains("batch-focus"), focusedArt == nil {
+                focusedArt = arts.first
             }
         }
         .alert("Save Placement Preset", isPresented: $namingPreset) {
@@ -4613,6 +4628,63 @@ struct BatchSourceFrame: View {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .accessibilityLabel("Source artwork with visible framing")
+    }
+}
+
+/// A larger, read-only comparison for one batch artwork. Keeps the same state in the batch
+/// sheet so closing the view neither commits a render nor loses the other artworks' crops.
+struct BatchFocusedComparison: View {
+    let art: StudioAsset
+    let source: CGImage?
+    let placed: CGImage?
+    let mode: PlacementMode
+    let areaAspect: Double
+    let crop: BoardRect?
+    let mockupName: String
+    let close: () -> Void
+    let edit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.split.2x1").foregroundStyle(Theme.accent)
+                Text("Inspect Placement").font(.system(size: 17, weight: .bold))
+                Spacer()
+                Text(art.title).font(.caption.weight(.semibold)).lineLimit(1).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 14) {
+                panel("SOURCE · FRAME") {
+                    BatchSourceFrame(image: source, mode: mode, areaAspect: areaAspect, crop: crop)
+                }
+                panel("PLACED · \(mockupName)") {
+                    ZStack {
+                        Theme.panel
+                        if let placed {
+                            Image(decorative: placed, scale: 1).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        } else { ProgressView().controlSize(.small) }
+                    }
+                }
+            }
+            HStack {
+                Text(mode == .fill ? (crop == nil ? "Automatic Fill framing" : "Custom Fill framing") : "Fit shows the whole artwork")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Back to Batch") { close() }.keyboardShortcut(.cancelAction)
+                Button("Adjust Crop…") { edit() }.buttonStyle(.borderedProminent).disabled(mode == .fit)
+            }
+        }
+        .padding(20).frame(width: 850).background(Theme.backdrop)
+    }
+
+    private func panel<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 10, weight: .bold, design: .rounded)).tracking(1)
+                .foregroundStyle(Theme.accent).lineLimit(1)
+            content().frame(height: 320)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline))
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
