@@ -247,3 +247,9 @@ build/muew-tests-reverse46: tests/tests_reverse46.cpp src/spectral_clipboard.h s
 
 build/muew-demo-reverse46: src/render_demo_reverse46.cpp src/spectral_clipboard.h src/synth.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-tests-page47: tests/tests_page47.cpp src/partial_view.h src/spectral_clipboard.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-demo-page47: src/render_demo_page47.cpp src/spectral_clipboard.h src/synth.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<

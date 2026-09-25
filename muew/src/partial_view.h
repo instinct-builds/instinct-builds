@@ -10,6 +10,12 @@ constexpr int kPartialPageSize = 32;
 inline int partialPageStart(int page) { return std::clamp(page, 0, 3) * kPartialPageSize + 1; }
 inline int partialPageEnd(int page) { return std::min(kEditablePartials, partialPageStart(page) + kPartialPageSize - 1); }
 inline int partialPageFor(int harmonic) { return std::clamp((harmonic - 1) / kPartialPageSize, 0, 3); }
+// While selecting a span, a page chip carries the anchored selection to the
+// nearest bin on that page; moving onto the bars then sets the exact endpoint.
+inline int spanPageHandoffEnd(int anchor, int page) {
+    return std::clamp(anchor, 1, kEditablePartials) < partialPageStart(page)
+        ? partialPageStart(page) : partialPageEnd(page);
+}
 
 // Explicitly add a silent harmonic at -24 dB relative to the frame's strongest
 // existing partial. Pure silence has no reference level and stays silent.

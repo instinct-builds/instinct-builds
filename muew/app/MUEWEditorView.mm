@@ -4092,7 +4092,21 @@ static int SortForColumn(int c) {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
     if (wtProfileSpanSelecting && wtProfile.valid) {
-        wtProfile.span(wtProfileSpanAnchor, [self wtBrushH:p]); [self setNeedsDisplay:YES]; return;
+        // Drag onto a page chip to carry the anchored span across the 32-bin
+        // viewport. Entering a chip sets a visible boundary endpoint; dragging
+        // back into its bars selects the exact harmonic on that page.
+        for (int page = 0; page < 4; ++page) if (NSPointInRect(p, [self wtPartialPageRect:page])) {
+            wtPartialPage = page;
+            wtPartial = spanPageHandoffEnd(wtProfileSpanAnchor, page);
+            wtProfile.span(wtProfileSpanAnchor, wtPartial);
+            [self setNeedsDisplay:YES]; return;
+        }
+        if (NSPointInRect(p, [self wtPartialLargeArea])) {
+            wtPartial = [self wtBrushH:p];
+            wtProfile.span(wtProfileSpanAnchor, wtPartial);
+            [self setNeedsDisplay:YES];
+        }
+        return;
     }
     if (wtTaperDrag >= 0) { [self wtTaperTo:p]; return; }
     if (wtBrushActive) { [self wtBrushTo:p]; return; }

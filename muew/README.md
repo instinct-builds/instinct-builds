@@ -366,3 +366,16 @@ filled bars show the prospective result. BLEND, frame-range EDGE, explicit
 SEED for silent bins, phase preservation, and single-step undo stay intact.
 A new COPY starts normal again; neither the switch nor its clipboard state is
 serialized. The resulting edited wavetable is saved in the usual preset state.
+
+## 0.47.0 Span page-handoff
+
+Shift-drag a copied profile span across the expanded spectrum, then move onto
+another 32-bin page chip without releasing the mouse. The viewport changes
+and the anchored span reaches the nearest bin of that page (H33 when moving
+right from page 1, H32 when moving left from page 2). Move back over the bars
+to place the exact far endpoint. Page 4 ends at H127, never H128. The span
+readout keeps its absolute harmonic numbers; the shading and source/proposed
+ticks show only the visible part of that same span on each page. Ordinary chip
+clicks and wheel page navigation never change the span. This is editor-only
+navigation: the original DSP, REVERSE, feather, SEED, EDGE, phase and undo
+semantics are unchanged.

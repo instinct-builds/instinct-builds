@@ -1422,6 +1422,100 @@ int main() {
             Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
             fflush(stdout);
         });
+        After(6.9994997, ^{ // 0.47.0: carry selected span across page 1/page 2 seam
+            CGFloat top = view.bounds.size.height - 100;
+            muew::Preset before; bool ok0 = State(before);
+            Check(ok0 && before.tables[0].size() == 64, "profile-span test begins with 64-frame sound");
+            if (!ok0 || before.tables[0].size() != 64) { fflush(stdout); return; }
+            muew::Preset setup = before;
+            muew::gainPartial(setup.tables[0][0], 29, -24);
+            muew::gainPartial(setup.tables[0][0], 35, 18);
+            NSString* setupText = [NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef setupRef = (__bridge CFStringRef)setupText;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &setupRef, sizeof(setupRef));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(258 + 3 * 35 + 16, top - 32 + 8.5)); // SPEC
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // expand
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 22, top - 184 + 8 + 43 + 7)); // page 1-32
+            Click(view, w, NSMakePoint(40 + 11, top - 220 + 14)); // source frame one
+            Click(view, w, NSMakePoint(40 + 26, top - 278 + 7)); // COPY
+            NSPoint a = NSMakePoint(40 + 3 * 25.5 + 11, top - 220 + 14);
+            NSPoint b = NSMakePoint(40 + 9 * 25.5 + 11, top - 220 + 14);
+            Click(view, w, a);
+            auto event = [&](NSEventType kind, NSPoint p, NSEventModifierFlags flags) -> NSEvent* {
+                return [NSEvent mouseEventWithType:kind location:p modifierFlags:flags
+                    timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+            };
+            [view mouseDown:event(NSEventTypeLeftMouseDown, b, NSEventModifierFlagShift)];
+            [view mouseUp:event(NSEventTypeLeftMouseUp, b, NSEventModifierFlagShift)];
+            SEL frameSel = NSSelectorFromString(@"selectTableFrame:");
+            if ([view respondsToSelector:frameSel]) ((void (*)(id, SEL, int))[view methodForSelector:frameSel])(view, frameSel, 25);
+            Click(view, w, NSMakePoint(40 + 72 + 74, top - 184 + 14 + 3)); // EDGE 100%
+            Click(view, w, NSMakePoint(310 + 75, top - 274 + 3)); // BLEND 75%
+            const CGFloat bx = 40 + 8 + 4, by = top - 184 + 8 + 63;
+            NSPoint h28 = NSMakePoint(bx + 27.5 * 188.0 / 32, by + 12);
+            NSPoint page2 = NSMakePoint(40 + 8 + 4 + 48 + 22, top - 184 + 8 + 43 + 7);
+            NSPoint h38 = NSMakePoint(bx + 5.5 * 188.0 / 32, by + 12);
+            [view mouseDown:event(NSEventTypeLeftMouseDown, h28, NSEventModifierFlagShift)];
+            [view mouseDragged:event(NSEventTypeLeftMouseDragged, page2, NSEventModifierFlagShift)];
+            NSString* crossing = [view respondsToSelector:NSSelectorFromString(@"muewProfileText")] ? [view valueForKey:@"muewProfileText"] : @"";
+            Check(std::string(crossing.UTF8String ?: "").find("span=28-33") != std::string::npos,
+                  "page chip carries anchored span to H33 across page boundary");
+            NSString* pageText = [view respondsToSelector:NSSelectorFromString(@"muewPartialText")] ? [view valueForKey:@"muewPartialText"] : @"";
+            Check(std::string(pageText.UTF8String ?: "").find("page=1 large=1") != std::string::npos,
+                  "page 2 viewport follows drag handoff");
+            [view mouseDragged:event(NSEventTypeLeftMouseDragged, h38, NSEventModifierFlagShift)];
+            [view mouseUp:event(NSEventTypeLeftMouseUp, h38, NSEventModifierFlagShift)];
+            NSString* span = [view respondsToSelector:NSSelectorFromString(@"muewProfileText")] ? [view valueForKey:@"muewProfileText"] : @"";
+            Check(std::string(span.UTF8String ?: "").find("span=28-38") != std::string::npos &&
+                  std::string(span.UTF8String ?: "").find("blend=0.75") != std::string::npos,
+                  "Shift-drag selects H28-H38 across two pages at 75 percent blend");
+            Click(view, w, NSMakePoint(40 + 56 + 26, top - 278 + 7)); // PREVIEW
+            muew::Preset baseline; bool ok1 = State(baseline);
+            Snapshot(view, "MUEW_PAGE47_PNG", "second-page segment preview snapshot written");
+            muew::Preset afterPreview; bool okPreview = State(afterPreview);
+            Check(ok1 && okPreview && afterPreview.tables[0] == baseline.tables[0], "span preview leaves AU sound unchanged");
+            // Switch back to page one after preview: the absolute span must
+            // survive navigation and show its first-page portion.
+            Click(view, w, NSMakePoint(40 + 8 + 4 + 22, top - 184 + 8 + 43 + 7));
+            NSString* stillSpan = [view respondsToSelector:NSSelectorFromString(@"muewProfileText")] ? [view valueForKey:@"muewProfileText"] : @"";
+            Check(std::string(stillSpan.UTF8String ?: "").find("span=28-38") != std::string::npos,
+                  "page switch retains full absolute span");
+            Snapshot(view, "MUEW_PAGE47_FIRST_PNG", "first-page segment preview snapshot written");
+            Click(view, w, NSMakePoint(40 + 2 * 56 + 26, top - 278 + 7)); // PASTE
+            muew::Preset changed; bool ok2 = State(changed);
+            muew::SpectralClipboard expected; expected.capture(setup.tables[0][0], 0); expected.span(28,38);
+            auto want = baseline.tables[0]; muew::FrameRange rr{13,38};
+            muew::applySpectralProfileTable(want, rr, 25, expected, .75, 1, false);
+            Check(ok2 && want == changed.tables[0] && changed.tables[0][13] == baseline.tables[0][13] &&
+                  changed.tables[0][38] == baseline.tables[0][38] && changed.tables[0][25] != baseline.tables[0][25],
+                  "page-spanning paste matches tapered range and preserves untouched edges");
+            auto baseSpec = muew::frameSpectrum(baseline.tables[0][25]);
+            auto editSpec = muew::frameSpectrum(changed.tables[0][25]);
+            double scale = std::abs(editSpec[1])/std::abs(baseSpec[1]);
+            bool otherBins = true;
+            for (int h=1;h<=muew::kEditablePartials;++h) if(h<28||h>38)
+                otherBins &= std::abs(editSpec[h]-baseSpec[h]*scale)<.003*std::max(1.0,std::abs(editSpec[h]));
+            Check(otherBins, "all harmonics outside H28-H38 preserve relative levels and phases");
+            NSString* history = [view respondsToSelector:NSSelectorFromString(@"muewHistoryText")] ? [view valueForKey:@"muewHistoryText"] : @"";
+            Check(std::string(history.UTF8String ?: "").find("last=PROFILE RANGE") != std::string::npos, "page-spanning paste has one history step");
+            Click(view, w, NSMakePoint(224 + 7.5, top - 32 + 8.5));
+            muew::Preset undone; bool ok3 = State(undone);
+            Check(ok3 && undone.tables[0] == baseline.tables[0], "one UNDO removes page-spanning paste");
+            Click(view, w, NSMakePoint(224 + 18 + 7.5, top - 32 + 8.5));
+            muew::Preset redone; bool ok4 = State(redone);
+            Check(ok4 && redone.tables[0] == changed.tables[0], "one REDO restores page-spanning paste");
+            NSString* resetText = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef reset = (__bridge CFStringRef)resetText;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &reset, sizeof(reset));
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
+            Click(view, w, NSMakePoint(40 + 72, top - 184 + 14 + 3)); // EDGE zero
+            Click(view, w, a); // clear range
+            Click(view, w, NSMakePoint(40 + 8 + 124 + 10, top - 184 + 8 + 30 + 5.5)); // collapse
+            Click(view, w, NSMakePoint(258 + 2 * 35 + 16, top - 32 + 8.5)); // 3D
+            fflush(stdout);
+        });
         After(6.9994995, ^{ // 0.45.0: feathered H4-H16 transfer, source/destination/proposal overlay
             CGFloat top = view.bounds.size.height - 100;
             muew::Preset before; bool ok0 = State(before);
