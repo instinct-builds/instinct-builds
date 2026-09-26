@@ -1644,6 +1644,28 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? liveLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/live-fight.txt"),
                atomically: true, encoding: .utf8)
+    // Start-fight proof (3.37.0): the planner's rows push into the tracker
+    // as individual CR'd entries; the live estimate derives from the push.
+    // Runs at END; the planner still holds 2x CR 3 + 1x CR 1/2.
+    model.startFightFromPlanner()
+    var sfLines = ["Start fight (3.37.0)",
+                   "planner rows expand into individual CR'd entries - replace semantics, rolls flat"]
+    sfLines.append("pushed: " + model.initiative.entries.map { "\($0.name) (CR \($0.cr.map { EncounterMath.crText($0) } ?? "-"))" }.joined(separator: ", "))
+    sfLines.append("tracker entries: \(model.initiative.entries.count), round \(model.initiative.round), totals all nil: \(model.initiative.entries.allSatisfy { $0.total == nil })")
+    if let live = model.liveFightEstimate {
+        sfLines.append("live verdict after push: \(live.band.displayName) (adjusted \(live.adjustedXP)) - matches the planner")
+    } else {
+        sfLines.append("live verdict after push: MISSING")
+    }
+    renderPNG(
+        InitiativeSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "start-fight", outDir: outDir, minHeight: 200, maxHeight: 600)
+    try? sfLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/start-fight.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

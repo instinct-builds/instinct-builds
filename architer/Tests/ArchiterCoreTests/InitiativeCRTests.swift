@@ -74,3 +74,50 @@ struct InitiativeCRTests {
         #expect(tracker.entries[0].total == nil)
     }
 }
+
+@Suite("Start fight (3.37.0)")
+struct StartFightTests {
+    @Test func expandsRowsIntoIndividualEntries() {
+        let tracker = InitiativeTracker.startingFight(from: [
+            EncounterLine(count: 2, cr: 3),
+            EncounterLine(count: 1, cr: 0.5),
+        ])
+        #expect(tracker.entries.map(\.name) == ["CR 3 #1", "CR 3 #2", "CR 1/2 #1"])
+        #expect(tracker.entries.map(\.cr) == [3, 3, 0.5])
+        #expect(tracker.entries.allSatisfy { $0.bonus == 0 && $0.total == nil })
+        #expect(tracker.round == 1)
+        #expect(tracker.activeID == nil)
+    }
+
+    @Test func numberingIsGlobalAcrossSameCRRows() {
+        let tracker = InitiativeTracker.startingFight(from: [
+            EncounterLine(count: 2, cr: 3),
+            EncounterLine(count: 1, cr: 3),
+        ])
+        #expect(tracker.entries.map(\.name) == ["CR 3 #1", "CR 3 #2", "CR 3 #3"])
+    }
+
+    @Test func unknownCRAndZeroCountAreSkipped() {
+        let tracker = InitiativeTracker.startingFight(from: [
+            EncounterLine(count: 1, cr: 1.7),
+            EncounterLine(count: 0, cr: 3),
+            EncounterLine(count: 1, cr: 2),
+        ])
+        #expect(tracker.entries.map(\.name) == ["CR 2 #1"])
+    }
+
+    @Test func emptyInputYieldsEmptyTracker() {
+        #expect(InitiativeTracker.startingFight(from: []).entries.isEmpty)
+        #expect(InitiativeTracker.startingFight(from: [EncounterLine(count: 1, cr: 1.7)]).entries.isEmpty)
+    }
+
+    @Test func pushedTrackerDrivesTheLiveEstimate() {
+        let tracker = InitiativeTracker.startingFight(from: [
+            EncounterLine(count: 2, cr: 3),
+            EncounterLine(count: 1, cr: 0.5),
+        ])
+        let est = EncounterMath.estimate(levels: [6, 5, 5], lines: tracker.encounterLinesFromCRs)
+        #expect(est?.adjustedXP == 3000)
+        #expect(est?.band == .hard)
+    }
+}

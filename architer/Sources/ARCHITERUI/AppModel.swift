@@ -767,6 +767,16 @@ public final class AppModel: ObservableObject {
         initiativeStore.save(initiative)
     }
 
+    /// Start fight (3.37.0): replace the tracker with the planner's rows,
+    /// expanded into individual CR'd entries. The UI arms a confirm when
+    /// the tracker is non-empty - the tracker has no undo.
+    public func startFightFromPlanner() {
+        let tracker = InitiativeTracker.startingFight(from: encounterLines)
+        guard !tracker.entries.isEmpty else { return }
+        initiative = tracker
+        initiativeStore.save(initiative)
+    }
+
     /// Roll a saved macro: labeled with its name. A macro with a damage-type
     /// tag (2.36.0) takes the same outgoing-defense-note path as typed free
     /// rolls and attack damage; an unknown stored tag falls back to a plain

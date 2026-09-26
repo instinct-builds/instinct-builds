@@ -89,6 +89,27 @@ public struct InitiativeTracker: Codable, Equatable, Sendable {
             .joined(separator: " + ")
     }
 
+    /// Start fight (3.37.0): expand planner rows into individual entries -
+    /// "x2 CR 3" becomes "CR 3 #1", "CR 3 #2", each carrying its CR for the
+    /// live-fight estimate. Numbering runs globally per CR text, so same-CR
+    /// rows never collide. Bonuses are 0 (flat): CR says nothing about
+    /// dexterity, and inventing one would be fake precision. Unknown-CR and
+    /// zero-count rows are skipped - the planner already flags them.
+    public static func startingFight(from lines: [EncounterLine]) -> InitiativeTracker {
+        var entries: [InitiativeEntry] = []
+        var numbers: [String: Int] = [:]
+        for line in lines where line.count > 0 {
+            guard EncounterMath.xp(forCR: line.cr) != nil else { continue }
+            let label = EncounterMath.crText(line.cr)
+            for _ in 0..<line.count {
+                let n = (numbers[label] ?? 0) + 1
+                numbers[label] = n
+                entries.append(InitiativeEntry(name: "CR \(label) #\(n)", bonus: 0, cr: line.cr))
+            }
+        }
+        return InitiativeTracker(entries: entries)
+    }
+
     /// Advance the turn: the next rolled entry becomes active; wrapping
     /// the rotation increments the round. With no active entry the first
     /// rolled entry takes the turn. No-op under two rolled entries.

@@ -1049,6 +1049,7 @@ public struct MacroRowView: View {
 /// adjudication.
 public struct EncounterSectionView: View {
     @EnvironmentObject var model: AppModel
+    @State private var startArmed = false
 
     public init() {}
 
@@ -1058,6 +1059,30 @@ public struct EncounterSectionView: View {
                 Text("Encounter estimate").font(.headline)
                     .help("Genre-standard difficulty estimate: party thresholds from roster levels, enemy XP from entered rows")
                 Spacer()
+                // Start fight (3.37.0): push the rows into the tracker as
+                // individual CR'd entries. Replace semantics - arms a
+                // confirm when a fight (or its leftovers) is on the tracker.
+                if startArmed {
+                    Button("Replace \(model.initiative.entries.count)") {
+                        model.startFightFromPlanner()
+                        startArmed = false
+                    }
+                    .controlSize(.small)
+                    .help("Replace the tracker's entries with these enemies - this cannot be undone")
+                    Button("Cancel") { startArmed = false }
+                        .controlSize(.small)
+                } else {
+                    Button("Start fight") {
+                        if model.initiative.entries.isEmpty {
+                            model.startFightFromPlanner()
+                        } else {
+                            startArmed = true
+                        }
+                    }
+                    .controlSize(.small)
+                    .disabled(!model.encounterLines.contains { $0.count > 0 && EncounterMath.xp(forCR: $0.cr) != nil })
+                    .help("Replace the tracker with these enemies as individual entries - rolls flat (bonus 0); set bonuses at the table")
+                }
                 Button("Add enemies") { model.addEncounterLine() }
                     .controlSize(.small)
                     .help("Add a row: how many enemies at what challenge rating")
