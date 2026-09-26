@@ -2059,6 +2059,70 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? psLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/journal-party-search.txt"),
                atomically: true, encoding: .utf8)
+    // Party damage/heal + table-log export proofs (3.47.0). Runs at END.
+    var phLines = ["Party damage/heal (3.47.0)",
+                   "the rest row's exact discipline: own undo stacks, temp-HP absorption, 0-HP floor"]
+    // Give Wren temp HP 5 through the tracked selected binding.
+    if let wren = model.characters.first(where: { $0.name == "Wren Halloway" }) {
+        model.selectedID = wren.id
+        if var sel = model.selected?.wrappedValue {
+            sel.tempHP = 5
+            model.selected?.wrappedValue = sel
+        }
+    }
+    let wrenPre = model.characters.first(where: { $0.name == "Wren Halloway" })
+    let bramPre = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    let seraPre = model.characters.first(where: { $0.name == "Sera Vint" })
+    phLines.append("before: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) temp \($0.tempHP)" }.joined(separator: ", "))
+    let damaged = model.adjustPartyHP(amount: 10, damage: true)
+    let wrenDmg = model.characters.first(where: { $0.name == "Wren Halloway" })
+    let bramDmg = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    let seraDmg = model.characters.first(where: { $0.name == "Sera Vint" })
+    phLines.append("party damage 10: adjusted \(damaged.count) (\(damaged.joined(separator: ", ")))")
+    phLines.append("after: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) temp \($0.tempHP)" }.joined(separator: ", "))
+    phLines.append("temp absorbs then floor: Wren temp \(wrenPre?.tempHP ?? -1)->\(wrenDmg?.tempHP ?? -1), HP \(wrenPre?.currentHP ?? -1)->\(wrenDmg?.currentHP ?? -1) (floored at 0: \(wrenDmg?.currentHP == 0))")
+    phLines.append("no temp: Bram \(bramPre?.currentHP ?? -1)->\(bramDmg?.currentHP ?? -1), Sera \(seraPre?.currentHP ?? -1)->\(seraDmg?.currentHP ?? -1)")
+    // One member's undo restores just them - own undo stacks.
+    if let wren2 = model.characters.first(where: { $0.name == "Wren Halloway" }) {
+        model.selectedID = wren2.id
+        model.undo()
+        let back = model.characters.first(where: { $0.name == "Wren Halloway" })
+        let bramStill = model.characters.first(where: { $0.name == "Bram Oakfel" })
+        phLines.append("Wren-only undo: HP \(back?.currentHP ?? -1) temp \(back?.tempHP ?? -1) (pre-damage \(wrenPre?.currentHP ?? -1)/\(wrenPre?.tempHP ?? -1): \(back?.currentHP == wrenPre?.currentHP && back?.tempHP == wrenPre?.tempHP)); Bram untouched: \(bramStill?.currentHP == bramDmg?.currentHP)")
+    }
+    let healed = model.adjustPartyHP(amount: 6, damage: false)
+    phLines.append("party heal 6: adjusted \(healed.count)")
+    phLines.append("after heal: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) temp \($0.tempHP)" }.joined(separator: ", "))
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 520, name: "party-hp", outDir: outDir, minHeight: 200, maxHeight: 480)
+    try? phLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-hp.txt"),
+               atomically: true, encoding: .utf8)
+    // Table-log export: the whole log as one text block, oldest-first.
+    let exportText = TableLogExport.text(entries: model.tableLog)
+    var teLines = ["Table-log export (3.47.0)",
+                   "one text block, oldest-first, day labels"]
+    let emberRange = exportText.range(of: "Ember Warrens")
+    let fightRange = exportText.range(of: "Fight recap")
+    teLines.append("head line: \(exportText.hasPrefix("Table log"))")
+    teLines.append("both titles present: \(emberRange != nil && fightRange != nil)")
+    if let e = emberRange, let f = fightRange {
+        teLines.append("oldest-first: \(e.lowerBound < f.lowerBound)")
+    }
+    if let first = model.tableLog.sorted(by: { $0.createdAt < $1.createdAt }).first {
+        teLines.append("day label: \(exportText.contains(JournalStamp.day(first.createdAt)))")
+    }
+    teLines.append("")
+    teLines.append(exportText)
+    try? teLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/table-log-export.txt"),
+               atomically: true, encoding: .utf8)
+    // 3.47.0 hygiene: hand selection back to Bram.
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

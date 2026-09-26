@@ -921,6 +921,14 @@ public final class AppModel: ObservableObject {
         pb.setString(entry.shareText, forType: .string)
     }
 
+    /// Copy the whole table log as one shareable text block (3.47.0) -
+    /// the 3.45.0 held scope, retired. Derived, harmless, no confirm.
+    public func copyTableLogToPasteboard() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(TableLogExport.text(entries: tableLog), forType: .string)
+    }
+
     /// Copy-filtered export (2.63.0): the filter-visible entries as one
     /// share block, in display order.
     public func copyFilteredJournalToPasteboard(_ entries: [JournalEntry]) {
@@ -1338,6 +1346,29 @@ public final class AppModel: ObservableObject {
             rested.append(c.name)
         }
         return rested
+    }
+
+    /// Party damage/heal (3.47.0): "the fireball hits everyone for 26" is
+    /// said to the party, like the rest. Every member rides their own undo
+    /// stack and save path exactly like restParty; temp-HP absorption, the
+    /// 0-HP floor, the max-HP cap, and death-save resets ride the existing
+    /// per-character adjust. Concentration saves are NOT rolled here - the
+    /// DM resolves those per character.
+    public func adjustPartyHP(amount: Int, damage: Bool) -> [String] {
+        guard amount > 0 else { return [] }
+        var adjusted: [String] = []
+        for idx in characters.indices {
+            var c = characters[idx]
+            if damage { c.applyDamage(amount) } else { c.applyHealing(amount) }
+            guard c != characters[idx] else { continue }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            adjusted.append(c.name)
+        }
+        return adjusted
     }
 
     /// Cast a specific spell: spends the slot and, for concentration spells,

@@ -1214,6 +1214,14 @@ public struct EncounterSectionView: View {
 public struct GroupCheckSectionView: View {
     @EnvironmentObject var model: AppModel
     @State private var rollKind = 0 // 0 = skill check, 1 = saving throw (3.31.0)
+    /// 3.47.0: party damage/heal amount draft; display-only.
+    @State private var partyAmount = ""
+
+    /// The party HP amount (3.47.0); 0 when the draft is blank or not a
+    /// number, which disables both buttons (same discipline as barTargetDC).
+    private var partyAmountValue: Int {
+        Int(partyAmount.trimmingCharacters(in: .whitespaces)) ?? 0
+    }
     @State private var skillPick = "Stealth"
     @State private var abilityPick: Ability = .wisdom
     @State private var dcDraft = ""
@@ -1281,6 +1289,22 @@ public struct GroupCheckSectionView: View {
                     .controlSize(.small)
                     .disabled(model.characters.isEmpty)
                     .help("Long rest for all \(model.characters.count) roster characters - HP, slots, hit dice, exhaustion per the era preset")
+            }
+            // Party damage/heal (3.47.0): "the fireball hits everyone for
+            // 26". The rest row's exact discipline - own undo stacks,
+            // temp-HP absorption, 0-HP floor, no confirm.
+            HStack(spacing: Theme.Gap.sm) {
+                TextField("Amount", text: $partyAmount)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 56)
+                Button("Damage (party)") { model.adjustPartyHP(amount: partyAmountValue, damage: true) }
+                    .controlSize(.small)
+                    .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
+                    .help("Damage all \(model.characters.count) roster characters - temp HP absorbs, floor at 0, undo restores")
+                Button("Heal (party)") { model.adjustPartyHP(amount: partyAmountValue, damage: false) }
+                    .controlSize(.small)
+                    .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
+                    .help("Heal all \(model.characters.count) roster characters - capped at max HP, undo restores")
             }
             if let outcome = model.lastGroupCheck {
                 VStack(alignment: .leading, spacing: Theme.Gap.xs) {
@@ -1806,6 +1830,11 @@ public struct TableLogView: View {
                 .disabled(titleDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                           && textDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help("Add a note to the table log")
+                // 3.47.0: copy the whole log as one text block.
+                Button("Copy") { model.copyTableLogToPasteboard() }
+                    .controlSize(.small)
+                    .disabled(model.tableLog.isEmpty)
+                    .help("Copy the whole table log as one text block")
             }
             ForEach(model.tableLog.sorted { $0.createdAt > $1.createdAt }) { entry in
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Gap.sm) {

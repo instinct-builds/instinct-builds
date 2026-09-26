@@ -17,6 +17,20 @@ public struct TableLogEntry: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// Share text for the whole log (3.47.0): a head line, then each entry
+/// oldest-first as "day - title" with its body. Derived from the entries,
+/// mirroring the journal's copy-filtered precedent.
+public enum TableLogExport {
+    public static func text(entries: [TableLogEntry]) -> String {
+        var blocks = ["Table log"]
+        for entry in entries.sorted(by: { $0.createdAt < $1.createdAt }) {
+            let head = "\(JournalStamp.day(entry.createdAt)) - \(entry.title.isEmpty ? "Note" : entry.title)"
+            blocks.append(entry.text.isEmpty ? head : head + "\n" + entry.text)
+        }
+        return blocks.joined(separator: "\n\n")
+    }
+}
+
 /// JSON persistence for the table log, alongside the character files.
 /// Missing or corrupt data loads empty - every store's fail-safe.
 public struct TableLogStore: Sendable {
