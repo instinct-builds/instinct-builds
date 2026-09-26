@@ -1064,19 +1064,21 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-latest-chip", outDir: outDir, minHeight: 420, maxHeight: 1100)
-    // 3.15.0 proof: pin a macro - Fireball jumps to the top of the
-    // Table group with a filled accent pin; the character group above
-    // keeps its order. Runs last so every earlier dice render keeps
-    // the unpinned layout.
+    // 3.15.1 proof: pin a macro - Magic missile jumps above Fireball
+    // to the top of the Table group with a filled accent pin; the
+    // character group above keeps its order. The second table macro is
+    // added here, at the end of the sequence, so every earlier dice
+    // render keeps the unpinned two-macro layout.
     do {
-        if let fireball = model.macros.first(where: { $0.name == "Fireball" }) {
-            model.toggleMacroPin(fireball)
+        model.saveMacro(name: "Magic missile", expression: "3d4+3", damageType: "force")
+        if let missile = model.macros.first(where: { $0.name == "Magic missile" }) {
+            model.toggleMacroPin(missile)
         }
         let table = pinnedFirst(model.visibleMacros.filter { $0.characterName == nil })
-        try? (["Pinned macros (3.15.0)",
+        try? (["Pinned macros (3.15.1)",
                "pinned macros float to the top of their group; owner sections stay put",
                "Table group order: \(table.map(\.name).joined(separator: ", "))",
-               "Fireball pinned: \(model.macros.first(where: { $0.name == "Fireball" })?.pinned == true)"])
+               "Magic missile pinned: \(model.macros.first(where: { $0.name == "Magic missile" })?.pinned == true)"])
             .joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/macro-pin.txt"),
                    atomically: true, encoding: .utf8)
