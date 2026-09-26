@@ -8133,8 +8133,10 @@ struct LibraryHealthSheet: View {
                         }.id("source-receipt-history")
                     }
                     if let status = model.healthScanStatus, !status.duplicateFreshForThisScan && !model.healthScanning {
-                        Text(status.duplicateCheckedAt.map { "Identical files last checked \($0.formatted(date: .abbreviated, time: .shortened)); not checked in this quick sweep." }
-                            ?? "Identical files not checked yet. Use Check Again for a full scan.")
+                        Text(status.full && !status.coverage.covers(.duplicates)
+                            ? "Identical-file check incomplete: one or more source files could not be read. Check Again to retry."
+                            : status.duplicateCheckedAt.map { "Identical files last checked \($0.formatted(date: .abbreviated, time: .shortened)); not checked in this quick sweep." }
+                                ?? "Identical files not checked yet. Use Check Again for a full scan.")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                     if !model.healthScanning {
