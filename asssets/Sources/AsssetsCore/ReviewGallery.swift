@@ -112,6 +112,19 @@ public enum ReviewGallery {
         return template.replacingOccurrences(of: "__TITLE__", with: escape(m.title)).replacingOccurrences(of: "__MANIFEST__", with: json)
     }
 
+    /// Read only the inert JSON manifest embedded in an original offline gallery page.
+    public static func manifest(fromHTML html: String) -> Manifest? {
+        let start = "<script type=\"application/json\" id=\"manifest\">"
+        guard let first = html.range(of: start), let last = html.range(of: "</script>", range: first.upperBound..<html.endIndex),
+              html.distance(from: first.upperBound, to: last.lowerBound) < 1_000_000 else { return nil }
+        let encoded = String(html[first.upperBound..<last.lowerBound]).replacingOccurrences(of: "<\\/", with: "</")
+        guard let m = try? JSONDecoder().decode(Manifest.self, from: Data(encoded.utf8)),
+              !m.items.isEmpty,
+              m.items.allSatisfy({ UUID(uuidString: $0.id) != nil }),
+              Set(m.items.compactMap { UUID(uuidString: $0.id) }).count == m.items.count else { return nil }
+        return m
+    }
+
     public static func escape(_ s: String) -> String {
         s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
@@ -244,15 +257,29 @@ extension StudioCatalog {
     @discardableResult
     public mutating func applyFeedback(_ f: ReviewGallery.Feedback, imported: String = "") -> FeedbackResult {
         var r = FeedbackResult()
-        if let b = board(forGallery: f.gallery) {
-            r.statuses = previewFeedback(f).statusChanges
+        guard let roster = roster(for: f.gallery), roster.title == f.title else {
+            r.unknown = f.items.count; return r
+        }
+        let scope = scopedFeedback(f)
+        r.unknown = scope.skipped.count
+        let scoped = scope.feedback
+        if !roster.recovered, let b = roster.board, let board = board(b) {
+            // Board cards are mutable. If an asset now has several cards, an ID-only review
+            // cannot tell which card was shared, so leave all its board effects alone.
+            let allowed = Set(roster.cards.filter { card in
+                board.items.filter { $0.kind == .asset && $0.assetID == card.asset }.count == 1 &&
+                board.items.contains { $0.id == card.id && $0.assetID == card.asset }
+            }.map(\.asset))
+            let boardFeedback = ReviewGallery.Feedback(gallery: f.gallery, title: f.title, reviewer: f.reviewer,
+                items: scoped.items.filter { UUID(uuidString: $0.id).map(allowed.contains) ?? false })
+            r.statuses = previewFeedback(boardFeedback).statusChanges
             var pinned = false
-            _ = updateBoard(b) { pinned = $0.recordReview(f, imported: imported) }
+            _ = updateBoard(b) { pinned = $0.recordReview(boardFeedback, imported: imported) }
             if pinned { r.board = b }
         }
         let reviewer = f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Client" : f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines)
         let index = Dictionary(uniqueKeysWithValues: assets.enumerated().map { ($1.id.uuidString.uppercased(), $0) })
-        for e in f.items {
+        for e in scoped.items {
             guard let i = index[e.id.uppercased()] else { r.unknown += 1; continue }
             if e.favorite {
                 r.favorites += 1

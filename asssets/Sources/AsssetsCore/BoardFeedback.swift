@@ -9,13 +9,14 @@ public struct FeedbackPreview: Equatable, Sendable {
         /// Nil when the asset isn't in this library.
         public var asset: UUID?
         public var title: String
+        public var skipped: String? = nil
         public var favorite: Bool
         public var note: String
         /// Status of the asset's card on the round's board now; nil when there is no board or no card.
         public var from: CardStatus?
         /// What the client asked for with Approve / Request changes.
         public var to: CardStatus?
-        public var known: Bool { asset != nil }
+        public var known: Bool { asset != nil && skipped == nil }
         /// True when the import will move this card's status.
         public var changesStatus: Bool { from != nil && to != nil && from != to }
     }
@@ -26,6 +27,8 @@ public struct FeedbackPreview: Equatable, Sendable {
     /// The same reviewer already sent feedback on this gallery; theirs gets replaced.
     public var replaces: Bool
     public var rows: [Row]
+    public var rosterIssue: String? = nil
+    public var skippedCount: Int { rows.filter { !$0.known }.count }
 
     public var picks: Int { rows.filter { $0.known && $0.favorite }.count }
     public var notes: Int { rows.filter { $0.known && !$0.note.isEmpty }.count }
@@ -42,18 +45,38 @@ extension StudioCatalog {
     public func previewFeedback(_ f: ReviewGallery.Feedback) -> FeedbackPreview {
         let who = f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines)
         let reviewer = who.isEmpty ? "Client" : who
-        let bid = board(forGallery: f.gallery)
+        let roster = roster(for: f.gallery)
+        let issue = roster == nil ? "Gallery roster unavailable" : roster?.title != f.title ? "Gallery title differs from published roster" : nil
+        let bid = issue == nil && roster?.recovered == false ? roster?.board : nil
         let b = bid.flatMap { board($0) }
         let byID = Dictionary(assets.map { ($0.id.uuidString.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
+        var seen = Set<UUID>()
         let rows = f.items.map { e -> FeedbackPreview.Row in
-            let a = byID[e.id.uppercased()]
-            let card = a.flatMap { a in b?.items.first { $0.kind == .asset && $0.assetID == a.id } }
-            return FeedbackPreview.Row(id: e.id, asset: a?.id, title: a?.title ?? "Not in this library",
+            let id = UUID(uuidString: e.id)
+            var reason: String? = issue
+            if let id {
+                if !seen.insert(id).inserted { reason = "Duplicate asset ID" }
+                else if reason == nil && !(roster?.allows(id) ?? false) { reason = "Not in this gallery" }
+                else if reason == nil && byID[e.id.uppercased()] == nil { reason = "No longer in this library" }
+            } else { reason = "Invalid asset ID" }
+            let a = reason == nil ? byID[e.id.uppercased()] : nil
+            let card = a.flatMap { asset -> BoardItem? in
+                guard let b else { return nil }
+                let matches = b.items.filter { $0.kind == .asset && $0.assetID == asset.id }
+                guard matches.count == 1, let only = matches.first,
+                      roster?.cards.contains(where: { $0.id == only.id && $0.asset == asset.id }) == true else { return nil }
+                return only
+            }
+            var row = FeedbackPreview.Row(id: e.id, asset: a?.id, title: a?.title ?? (reason ?? "Not in this library"),
                                        favorite: e.favorite, note: e.note.trimmingCharacters(in: .whitespacesAndNewlines),
-                                       from: card.map { b!.status(of: $0.id) }, to: e.cardStatus)
+                                       from: card.map { b!.status(of: $0.id) }, to: card == nil ? nil : e.cardStatus)
+            row.skipped = reason
+            return row
         }
         let replaces = b?.reviews.contains { $0.gallery == f.gallery && $0.reviewer == reviewer } ?? false
-        return FeedbackPreview(reviewer: reviewer, title: f.title, board: b == nil ? nil : bid, boardName: b?.name, replaces: replaces, rows: rows)
+        var preview = FeedbackPreview(reviewer: reviewer, title: f.title, board: b == nil ? nil : bid, boardName: b?.name, replaces: replaces, rows: rows)
+        preview.rosterIssue = issue
+        return preview
     }
 }
 

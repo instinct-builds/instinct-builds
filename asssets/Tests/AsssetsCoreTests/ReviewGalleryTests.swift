@@ -41,6 +41,7 @@ struct ReviewGalleryTests {
                   {"id":"not-in-library","favorite":true,"note":""}]}
         """
         let f = ReviewGallery.decodeFeedback(Data(json.utf8))!
+        #expect(c.recordGallery(GalleryRoster(gallery: "g1", title: "Launch", created: "2026-09-26", assets: [a.id, b.id])!))
         let r = c.applyFeedback(f)
         #expect(r.favorites == 1 && r.notes == 2 && r.unknown == 1 && r.smartCollection != nil)
         #expect(c.assets[0].tags.contains("client-pick")); #expect(!c.assets[1].tags.contains("client-pick"))

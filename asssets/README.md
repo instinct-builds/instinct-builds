@@ -971,3 +971,22 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Library Health shows the last completed Full or Quick check time in the current app session and labels it a snapshot, not live monitoring. While a scan runs, old results are explicitly dated; an initial scan says there are no results yet. Superseded scans do not publish a completion time, and relaunch does not reuse an old timestamp.
 - A quick sweep checks file/license availability, sizes and stat-gated source changes, but never claims to have newly hashed duplicate files. The duplicate count is not carried into its result; the last full duplicate check time remains visible in neutral text. A green "No identical files" chip appears only after the current full check. Native CI captures quick and full states; core tests cover provenance and completion scope. No persistent watcher or new polling is added.
+
+## 1.65.0: feedback provenance
+
+A published review gallery now records its exact gallery ID, title, creation date,
+asset IDs and, for a board round, the card-to-asset mapping in the local library.
+The roster is saved only after the gallery folder and ZIP land. If it cannot be
+saved, ASSSETS warns not to send that gallery. Feedback imports first show a
+scoped preview: a mismatched gallery/title, duplicate ID, asset outside the
+published gallery, or asset since removed from the library is skipped with a
+reason. An entire older gallery with no roster is blocked by default.
+
+To recover an older gallery, choose its original `index.html` from the feedback
+preview. ASSSETS reads the inert embedded manifest, shows the asset IDs for
+review, and saves a recovered roster only after confirmation. This permits
+favorites and notes on matching assets but **does not** infer old board-card
+membership or apply board status changes. Keep the exported gallery intact for
+this step. If the file changes before confirmation, the recovery is refused.
+The manifest and feedback JSON are not cryptographically bound and do not
+verify who wrote either file; use a trusted handoff and inspect the preview.

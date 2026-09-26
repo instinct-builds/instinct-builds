@@ -157,6 +157,7 @@ final class StudioLibrary: ObservableObject {
     @Published var savingTemplate: UUID?
     /// Client feedback read but not applied yet (1.23): the import preview sheet shows it.
     @Published var pendingFeedback: PendingFeedback?
+    @Published var galleryRecovery: GalleryRecovery?
     /// Licenses that ended since the last launch (1.26); shown once as a banner.
     @Published var rightsNotice: [RightsIssue]?
     /// Warning shown before expired or editorial-only assets go into client work (1.25).
@@ -494,7 +495,16 @@ final class StudioLibrary: ObservableObject {
                 try? fm.removeItem(at: stage)
                 await MainActor.run {
                     self.galleryRunning = false
-                    if let boardID { self.mutate { $0.noteGalleryShared(galleryID, from: boardID) } }
+                    let cards = board?.layout.items.compactMap { it -> GalleryRoster.Card? in
+                        guard it.kind == .asset, let asset = it.assetID, expected.contains(asset) else { return nil }
+                        return .init(id: it.id, asset: asset)
+                    } ?? []
+                    guard let roster = GalleryRoster(gallery: galleryID, title: name, created: created, assets: expected, board: boardID, cards: cards) else {
+                        self.flash("Gallery files landed, but their roster could not be saved. Do not send yet."); return
+                    }
+                    guard self.persistRoster(roster, sharedFrom: boardID) else {
+                        self.flash("Gallery files landed, but their roster was not saved. Do not send yet."); return
+                    }
                     self.flash("Gallery ready: \(items.count) of \(jobs.count) assets\(summaryPDF != nil ? " + round summary" : ""), zipped")
                     if fixedDir == nil { NSWorkspace.shared.activateFileViewerSelecting([zip]) }
                     else { try? "\(items.count)".write(to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8) }
@@ -528,8 +538,67 @@ final class StudioLibrary: ObservableObject {
         pendingFeedback = PendingFeedback(files: files, unreadable: bad)
     }
 
+    func chooseGalleryManifest(for fileID: UUID) {
+        let p = NSOpenPanel(); p.allowedContentTypes = [.html]; p.allowsMultipleSelection = false
+        p.message = "Select the original exported gallery's index.html. Feedback alone cannot establish its roster."
+        guard p.runModal() == .OK, let url = p.url,
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              let manifest = ReviewGallery.manifest(fromHTML: text),
+              let pending = pendingFeedback, let file = pending.files.first(where: { $0.id == fileID }),
+              manifest.gallery.caseInsensitiveCompare(file.feedback.gallery) == .orderedSame,
+              manifest.title == file.feedback.title,
+              !manifest.items.isEmpty,
+              manifest.items.allSatisfy({ UUID(uuidString: $0.id) != nil }),
+              Set(manifest.items.compactMap { UUID(uuidString: $0.id) }).count == manifest.items.count,
+              let ids = Optional(manifest.items.compactMap { UUID(uuidString: $0.id) }),
+              let roster = GalleryRoster(gallery: manifest.gallery, title: manifest.title, created: manifest.created,
+                                         assets: ids, board: nil, recovered: true),
+              catalog.roster(for: manifest.gallery).map({ $0 == roster }) ?? true else {
+            flash("The gallery manifest does not match this feedback, or its roster conflicts with an existing record."); return
+        }
+        galleryRecovery = GalleryRecovery(fileID: fileID, roster: roster, path: url.path)
+    }
+
+    func acceptGalleryRecovery() {
+        guard let review = galleryRecovery, let pending = pendingFeedback,
+              let file = pending.files.first(where: { $0.id == review.fileID }),
+              let text = try? String(contentsOfFile: review.path, encoding: .utf8),
+              let manifest = ReviewGallery.manifest(fromHTML: text),
+              let exact = GalleryRoster(gallery: manifest.gallery, title: manifest.title, created: manifest.created,
+                                        assets: manifest.items.compactMap { UUID(uuidString: $0.id) }, recovered: true),
+              exact == review.roster, Set(exact.assets).count == manifest.items.count,
+              file.feedback.gallery.caseInsensitiveCompare(exact.gallery) == .orderedSame,
+              file.feedback.title == exact.title else { galleryRecovery = nil; flash("Gallery changed; choose the original index.html again."); return }
+        guard catalog.roster(for: exact.gallery).map({ $0 == exact }) ?? true else {
+            galleryRecovery = nil; flash("Gallery roster conflict; nothing imported."); return
+        }
+        guard persistRoster(exact) else { flash("Gallery roster could not be saved; nothing imported."); return }
+        galleryRecovery = nil
+        pendingFeedback = PendingFeedback(files: pending.files.map { f in
+            .init(feedback: f.feedback, preview: catalog.previewFeedback(f.feedback), name: f.name)
+        }, unreadable: pending.unreadable)
+    }
+
+    /// Commit a roster to disk before treating it as evidence. Never leave a memory-only roster.
+    @discardableResult func persistRoster(_ roster: GalleryRoster, sharedFrom boardID: UUID? = nil) -> Bool {
+        if cleanupEntryExists(cleanupJournalURL) { return false }
+        var next = catalog
+        guard next.recordGallery(roster) else { return false }
+        if let boardID { next.noteGalleryShared(roster.gallery, from: boardID) }
+        guard let data = try? next.encoded(), (try? data.write(to: catalogURL, options: .atomic)) != nil else { return false }
+        catalog = next
+        return true
+    }
+
     func applyPendingFeedback() {
         guard let p = pendingFeedback else { return }
+        let current = p.files.map { catalog.previewFeedback($0.feedback) }
+        guard zip(p.files, current).allSatisfy({ $0.preview == $1 }),
+              Set(p.files.map { $0.feedback.gallery.lowercased() + "|" + $0.feedback.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == p.files.count else {
+            pendingFeedback = PendingFeedback(files: p.files.map { .init(feedback: $0.feedback, preview: catalog.previewFeedback($0.feedback), name: $0.name) }, unreadable: p.unreadable)
+            flash("Feedback or gallery changed; review the updated preview before importing.")
+            return
+        }
         pendingFeedback = nil
         importFeedback(feedback: p.files.map(\.feedback), unreadable: p.unreadable)
     }
@@ -545,7 +614,10 @@ final class StudioLibrary: ObservableObject {
     func importFeedback(feedback list: [ReviewGallery.Feedback], unreadable bad: Int) {
         var total = StudioCatalog.FeedbackResult(), reviewers: [String] = []
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let today = df.string(from: Date())
+        var seenReviews = Set<String>()
         for f in list {
+            let key = f.gallery.lowercased() + "|" + f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard seenReviews.insert(key).inserted else { total.unknown += f.items.count; continue }
             var r = StudioCatalog.FeedbackResult()
             mutate { r = $0.applyFeedback(f, imported: today) }
             total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown; total.statuses += r.statuses
@@ -559,7 +631,7 @@ final class StudioLibrary: ObservableObject {
         var msg = "\(total.favorites) client \(total.favorites == 1 ? "pick" : "picks"), \(total.notes) \(total.notes == 1 ? "note" : "notes")"
         if total.statuses > 0 { msg += ", \(total.statuses) \(total.statuses == 1 ? "status" : "statuses") updated" }
         if !reviewers.isEmpty { msg += " from " + reviewers.joined(separator: ", ") }
-        if total.unknown > 0 { msg += " · \(total.unknown) not in this library" }
+        if total.unknown > 0 { msg += " · \(total.unknown) skipped (outside gallery, duplicate, missing or legacy)" }
         if let b = total.board, let name = catalog.board(b)?.name {
             // Shared from a board: the round lands back on it as pins.
             flash(msg + " · pinned on \(name)")
@@ -3240,6 +3312,9 @@ final class StudioLibrary: ObservableObject {
             let notes = ["Love this one. Can we try it with the warmer backdrop?", "", "Great for the store page, maybe crop tighter."]
             let items = mocks.prefix(3).enumerated().map { i, a in ReviewGallery.Feedback.Entry(id: a.id.uuidString.lowercased(), favorite: i != 1, note: notes[i]) }
             let fb = ReviewGallery.Feedback(gallery: "demo", title: "Launch Mockups", reviewer: "Jordan (client)", items: Array(items))
+            if let roster = GalleryRoster(gallery: "demo", title: "Launch Mockups", created: "2026-09-26", assets: Array(mocks.prefix(3).map(\.id))) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("Launch Mockups feedback - Jordan.json")
             if let data = try? JSONEncoder().encode(fb) { try? data.write(to: url) }
             importFeedback([url])
@@ -3410,6 +3485,25 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
+        case "feedback-roster", "feedback-legacy":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(2).map(\.id))
+            let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
+            if demo == "feedback-roster", let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            let feedback = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                .init(id: ids[0].uuidString, favorite: true, note: "Use this one"),
+                .init(id: outsider.uuidString, favorite: true, note: "Unrelated asset")])
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-feedback-roster.json")
+            if let data = try? JSONEncoder().encode(feedback) { try? data.write(to: url) }
+            previewFeedback([url])
+            if demo == "feedback-roster" {
+                let p = pendingFeedback?.files.first?.preview
+                let marker = "done picks=\(p?.picks ?? -1) skipped=\(p?.skippedCount ?? -1) outsider=\(p?.rows.last?.skipped ?? "missing")"
+                try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-roster.txt"), atomically: true, encoding: .utf8)
+            }
         case "feedback-preview", "feedback-imported":
             // A third reviewer's file with Approve / Request changes, against the Lobby Refresh round.
             let id = makeDemoApproval().0
@@ -4734,6 +4828,14 @@ extension StudioLibrary {
                 b.saveVersion(named: "Sent to client", saved: stamp(95))
             }
             c.noteGalleryShared(gallery, from: id)
+            if let b = c.board(id) {
+                let cards = b.items.compactMap { item -> GalleryRoster.Card? in
+                    guard item.kind == .asset, let asset = item.assetID else { return nil }
+                    return .init(id: item.id, asset: asset)
+                }
+                if let roster = GalleryRoster(gallery: gallery, title: "Lobby Refresh", created: "2026-09-26",
+                                              assets: cards.map(\.asset), board: id, cards: cards) { _ = c.recordGallery(roster) }
+            }
         }
         let all = catalog.assets
         func aid(_ f: String) -> String { all.first { $0.importedPath?.hasSuffix(f) == true }?.id.uuidString.lowercased() ?? "" }
@@ -7227,7 +7329,12 @@ struct Sidebar: View {
             Button("Cancel", role: .cancel) { model.savingTemplate = nil }
         } message: { Text("Sections, headings, notes, palettes and arrows are kept. Every image becomes an empty slot of the same size.") }
         .sheet(isPresented: $model.templatePickerOpen) { TemplatePickerSheet().environmentObject(model) }
-        .sheet(item: $model.pendingFeedback) { p in FeedbackPreviewSheet(pending: p).environmentObject(model) }
+        .sheet(item: $model.pendingFeedback) { p in
+            Group {
+                if let recovery = model.galleryRecovery { GalleryRecoverySheet(recovery: recovery) }
+                else { FeedbackPreviewSheet(pending: p) }
+            }.environmentObject(model)
+        }
     }
 
     private func symbol(for name: String) -> String {
@@ -11974,6 +12081,13 @@ struct TemplatePickerSheet: View {
 }
 
 /// Feedback files read but not applied (1.23).
+struct GalleryRecovery: Identifiable {
+    let id = UUID()
+    let fileID: UUID
+    let roster: GalleryRoster
+    let path: String
+}
+
 struct PendingFeedback: Identifiable {
     struct File: Identifiable {
         let id = UUID()
@@ -12037,6 +12151,31 @@ struct ArrangeMenu: View {
     }
 }
 
+/// Recovery requires the actual exported page, an exact feedback match, and a second review.
+struct GalleryRecoverySheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let recovery: GalleryRecovery
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Recover Gallery Roster").font(.title3.weight(.bold))
+            Text("From \(URL(fileURLWithPath: recovery.path).lastPathComponent): \(recovery.roster.title) · \(recovery.roster.assets.count) assets · \(recovery.roster.created)")
+            Text("This links feedback to the asset IDs in the original gallery page. It does not verify who wrote the feedback. Legacy board-card membership cannot be proved, so recovered feedback will not update board cards.")
+                .font(.caption).foregroundStyle(.secondary)
+            ScrollView {
+                ForEach(recovery.roster.assets, id: \.self) { id in
+                    Text(model.catalog.assets.first(where: { $0.id == id })?.title ?? "Missing asset · \(id.uuidString)")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { model.galleryRecovery = nil }
+                Button("Use This Gallery") { model.acceptGalleryRecovery() }.buttonStyle(.borderedProminent)
+            }
+        }.padding(20).frame(width: 620, height: 420).background(Theme.panel)
+    }
+}
+
 /// What a client's feedback file will do, before it does it.
 struct FeedbackPreviewSheet: View {
     @EnvironmentObject var model: StudioLibrary
@@ -12093,6 +12232,12 @@ struct FeedbackPreviewSheet: View {
                 chip("\(p.changeRequests)", CardThreadBadge.symbol(.changes), CardThreadBadge.color(.changes))
                 chip("\(p.notes)", "text.bubble.fill", Color(white: 0.75))
             }
+            if let issue = p.rosterIssue {
+                Label(issue + ". Choose the original gallery index.html to recover its roster; nothing imports without it.", systemImage: "exclamationmark.triangle")
+                    .font(.caption2).foregroundStyle(Theme.warning)
+                Button("Choose Original Gallery…") { model.chooseGalleryManifest(for: f.id) }
+            }
+            if p.skippedCount > 0 { Text("\(p.skippedCount) skipped or unverified item(s)").font(.caption2).foregroundStyle(Theme.warning) }
             if p.replaces {
                 Label("\(p.reviewer) already sent feedback on this round. Importing replaces their earlier picks and notes.", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2).foregroundStyle(Theme.warning)
@@ -12133,7 +12278,7 @@ struct FeedbackPreviewSheet: View {
                 if !r.note.isEmpty {
                     Text("\u{201C}\(r.note)\u{201D}").font(.caption2).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
-                if !r.known { Text("Not in this library, so it's skipped").font(.caption2).foregroundStyle(.tertiary) }
+                if let reason = r.skipped { Text("Skipped: " + reason).font(.caption2).foregroundStyle(Theme.warning) }
             }
             Spacer(minLength: 8)
             if r.known, let to = r.to { statusChange(r.from, to) }

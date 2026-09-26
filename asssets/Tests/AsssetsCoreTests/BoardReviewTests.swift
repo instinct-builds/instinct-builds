@@ -12,6 +12,11 @@ struct BoardReviewTests {
         let board = c.createBoard(named: "Pitch")
         _ = c.addToBoard(board, assets: [a, b])
         c.noteGalleryShared("G1", from: board)
+        let cards = c.board(board)!.items.compactMap { it -> GalleryRoster.Card? in
+            guard it.kind == .asset, let asset = it.assetID else { return nil }
+            return .init(id: it.id, asset: asset)
+        }
+        #expect(c.recordGallery(GalleryRoster(gallery: "G1", title: "Pitch", created: "2026-09-26", assets: [a, b], board: board, cards: cards)!))
         #expect(c.board(forGallery: "G1") == board)
         let f = FB(gallery: "G1", title: "Pitch", reviewer: "Mara", items: [
             .init(id: a.uuidString, favorite: true, note: "Love this"),
@@ -34,7 +39,7 @@ struct BoardReviewTests {
         let board = c.createBoard(named: "Pitch")
         _ = c.addToBoard(board, assets: [a])
         let r = c.applyFeedback(FB(gallery: "other", title: "", reviewer: "M", items: [.init(id: a.uuidString, favorite: true, note: "")]))
-        #expect(r.board == nil && r.favorites == 1)
+        #expect(r.board == nil && r.favorites == 0)
         #expect(c.boards.first { $0.id == board }!.reviews.isEmpty)
     }
 

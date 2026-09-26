@@ -12,6 +12,11 @@ struct BoardFeedbackTests {
         let board = c.createBoard(named: "Lobby")
         _ = c.addToBoard(board, assets: a)
         c.noteGalleryShared("G", from: board)
+        let boardCards = c.board(board)!.items.compactMap { it -> GalleryRoster.Card? in
+            guard it.kind == .asset, let asset = it.assetID else { return nil }
+            return .init(id: it.id, asset: asset)
+        }
+        #expect(c.recordGallery(GalleryRoster(gallery: "G", title: "Lobby", created: "2026-09-26", assets: a, board: board, cards: boardCards)!))
         let cards = a.map { id in c.board(board)!.items.first { $0.assetID == id }!.id }
         return (c, board, a, cards)
     }
@@ -36,7 +41,7 @@ struct BoardFeedbackTests {
         let p = c.previewFeedback(f)
         #expect(p.reviewer == "Mara" && p.board == board && p.boardName == "Lobby" && !p.replaces)
         #expect(p.picks == 1 && p.notes == 1 && p.approvals == 1 && p.changeRequests == 1 && p.unknown == 1 && p.statusChanges == 2)
-        #expect(p.rows[0].note == "Brass by the door" && p.rows[0].from == .open && p.rows[0].to == .approved && p.rows[2].title == "Not in this library")
+        #expect(p.rows[0].note == "Brass by the door" && p.rows[0].from == .open && p.rows[0].to == .approved && p.rows[2].skipped == "Not in this gallery")
         #expect(c.board(board)!.status(of: cards[0]) == .open && c.board(board)!.reviews.isEmpty)
     }
 
