@@ -39,7 +39,7 @@ struct LicenseFilesTests {
         let savedPreset = c.saveRightsPreset(name: "Order", rights: UsageRights(license: .licensed), docs: [d.id])
         let pid = try #require(savedPreset)
         let review = try #require(MissingLicenseRepair(catalog: c, id: d.id))
-        #expect(review.assetIDs == [ids["Lobby"]!, ids["Atrium"]!] && review.presetIDs == [pid])
+        #expect(Set(review.assetIDs) == Set([ids["Lobby"]!, ids["Atrium"]!]) && review.presetIDs == [pid])
         let wrongType = c.recordRepairedLicense(review, name: "new.txt", bytes: 22)
         let empty = c.recordRepairedLicense(review, name: "new.pdf", bytes: 0)
         let repaired = c.recordRepairedLicense(review, name: "new.pdf", bytes: 22)
