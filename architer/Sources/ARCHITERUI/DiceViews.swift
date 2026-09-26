@@ -1120,6 +1120,22 @@ public struct EncounterSectionView: View {
                     .font(Theme.Typeface.caption)
                     .foregroundStyle(Theme.inkMuted)
             }
+            // Live fight (3.36.0): derived from the initiative tracker's
+            // CRs - the fight actually lined up, not a second entry surface.
+            if let live = model.liveFightEstimate {
+                Text("Live fight").font(.headline)
+                    .help("Derived from the initiative tracker's challenge ratings - entered there once, never duplicated")
+                Text("\(live.band.displayName) - adjusted \(live.adjustedXP.formatted()) XP (base \(live.baseXP.formatted()) x \(live.multiplier.formatted()))")
+                    .font(Theme.Typeface.body.bold())
+                Text("From initiative: \(model.initiative.crBreakdown)")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+                if model.initiative.entriesWithoutCR > 0 {
+                    Text("\(model.initiative.entriesWithoutCR) entries without CR excluded from the estimate.")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                }
+            }
         }
     }
 }
@@ -1217,6 +1233,7 @@ public struct InitiativeSectionView: View {
     @EnvironmentObject var model: AppModel
     @State private var nameDraft = ""
     @State private var bonusDraft = ""
+    @State private var crDraft = ""
 
     public init() {}
 
@@ -1252,11 +1269,17 @@ public struct InitiativeSectionView: View {
                 TextField("Bonus", text: $bonusDraft)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 56)
+                TextField("CR", text: $crDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 48)
+                    .help("Challenge rating (optional) - feeds the live-fight estimate")
                 Button("Add") {
                     model.addInitiativeEntry(name: nameDraft,
-                                             bonus: Int(bonusDraft.trimmingCharacters(in: .whitespaces)) ?? 0)
+                                             bonus: Int(bonusDraft.trimmingCharacters(in: .whitespaces)) ?? 0,
+                                             cr: EncounterMath.parseCR(crDraft))
                     nameDraft = ""
                     bonusDraft = ""
+                    crDraft = ""
                 }
                 .buttonStyle(RollButtonStyle())
                 .disabled(nameDraft.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -1276,11 +1299,13 @@ public struct InitiativeRowView: View {
     let entry: InitiativeEntry
     let active: Bool
     @State private var totalDraft: String
+    @State private var crDraft: String
 
     public init(entry: InitiativeEntry, active: Bool) {
         self.entry = entry
         self.active = active
         _totalDraft = State(initialValue: entry.total.map(String.init) ?? "")
+        _crDraft = State(initialValue: entry.cr.map { EncounterMath.crText($0) } ?? "")
     }
 
     public var body: some View {
@@ -1295,6 +1320,14 @@ public struct InitiativeRowView: View {
                 .font(Theme.Typeface.captionSmall)
                 .foregroundStyle(Theme.inkMuted)
                 .help("Initiative bonus - ties break on the higher bonus")
+            TextField("CR", text: $crDraft)
+                .textFieldStyle(InsetFieldStyle())
+                .frame(width: 44)
+                .onSubmit {
+                    let trimmed = crDraft.trimmingCharacters(in: .whitespaces)
+                    model.setInitiativeCR(entry, cr: trimmed.isEmpty ? nil : EncounterMath.parseCR(trimmed))
+                }
+                .help("Challenge rating - feeds the live-fight estimate; blank excludes the entry")
             Spacer()
             TextField("", text: $totalDraft)
                 .textFieldStyle(InsetFieldStyle())

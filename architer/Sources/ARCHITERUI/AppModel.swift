@@ -672,11 +672,12 @@ public final class AppModel: ObservableObject {
 
     // MARK: - Initiative tracker (3.22.0)
 
-    public func addInitiativeEntry(name: String, bonus: Int, forCharacter characterName: String? = nil) {
+    public func addInitiativeEntry(name: String, bonus: Int, forCharacter characterName: String? = nil,
+                                   cr: Double? = nil) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         initiative.entries.append(InitiativeEntry(name: trimmed, bonus: bonus,
-                                                  characterName: characterName))
+                                                  characterName: characterName, cr: cr))
         initiativeStore.save(initiative)
     }
 
@@ -715,6 +716,14 @@ public final class AppModel: ObservableObject {
     public func setInitiativeTotal(_ entry: InitiativeEntry, total: Int?) {
         guard let i = initiative.entries.firstIndex(where: { $0.id == entry.id }) else { return }
         initiative.entries[i].total = total
+        initiativeStore.save(initiative)
+    }
+
+    /// Set or clear an entry's challenge rating (3.36.0) - the live-fight
+    /// estimate derives from these; nil excludes the entry.
+    public func setInitiativeCR(_ entry: InitiativeEntry, cr: Double?) {
+        guard let i = initiative.entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        initiative.entries[i].cr = cr
         initiativeStore.save(initiative)
     }
 
@@ -985,6 +994,14 @@ public final class AppModel: ObservableObject {
     /// from the entered rows; nil when either side is empty.
     public var encounterEstimate: EncounterEstimate? {
         EncounterMath.estimate(levels: characters.map(\.level), lines: encounterLines)
+    }
+
+    /// Live-fight estimate (3.36.0): the same encounter math over the
+    /// initiative tracker's CR'd entries. Derived, never stored; nil when
+    /// no entry carries a CR.
+    public var liveFightEstimate: EncounterEstimate? {
+        EncounterMath.estimate(levels: characters.map(\.level),
+                               lines: initiative.encounterLinesFromCRs)
     }
 
     /// Group save (3.31.0): the same saving throw for the whole roster.

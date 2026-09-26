@@ -1612,6 +1612,38 @@ func run(model: AppModel, character: Character, outDir: String) {
           .joined(separator: "\n"))
         .write(to: URL(fileURLWithPath: "\(outDir)/party-strip-concentration.txt"),
                atomically: true, encoding: .utf8)
+    // Live-fight estimate proof (3.36.0): CRs ride the initiative entries;
+    // the estimate derives from the tracker - entered once, never
+    // duplicated. Runs at END and resets the tracker, so the earlier dice
+    // and encounter renders stay CR-free.
+    model.clearInitiative()
+    model.addInitiativeEntry(name: "Gnoll 1", bonus: 1, cr: 3)
+    model.addInitiativeEntry(name: "Gnoll 2", bonus: 1, cr: 3)
+    model.addInitiativeEntry(name: "Snapjaw", bonus: 2, cr: 0.5)
+    for c in model.characters {
+        model.addInitiativeEntry(name: c.name, bonus: c.initiative, forCharacter: c.name)
+    }
+    var liveLines = ["Live-fight estimate (3.36.0)",
+                     "CRs ride initiative entries; the estimate derives from the tracker - entered once, never duplicated"]
+    liveLines.append("from initiative: \(model.initiative.crBreakdown)")
+    if let live = model.liveFightEstimate {
+        liveLines.append("base \(live.baseXP) XP x\(live.multiplier) = adjusted \(live.adjustedXP)")
+        let t = live.thresholds
+        liveLines.append("thresholds: Easy \(t.easy) - Medium \(t.medium) - Hard \(t.hard) - Deadly \(t.deadly)")
+        liveLines.append("verdict: \(live.band.displayName)")
+    } else {
+        liveLines.append("verdict: MISSING - no live estimate")
+    }
+    liveLines.append("excluded from the estimate: \(model.initiative.entriesWithoutCR) entries without CR")
+    renderPNG(
+        EncounterSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 520, name: "live-fight", outDir: outDir, minHeight: 240, maxHeight: 900)
+    try? liveLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/live-fight.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

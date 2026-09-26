@@ -10,20 +10,27 @@ public struct InitiativeEntry: Codable, Equatable, Sendable, Identifiable {
     public var bonus: Int
     public var total: Int?
     public var characterName: String?
+    /// Challenge rating (3.36.0): set on enemy entries; the live-fight
+    /// estimate derives from these. Optional so older saves decode
+    /// unchanged; nil excludes the entry, never guesses it.
+    public var cr: Double?
 
     public init(id: UUID = UUID(), name: String, bonus: Int, total: Int? = nil,
-                characterName: String? = nil) {
+                characterName: String? = nil, cr: Double? = nil) {
         self.id = id
         self.name = name
         self.bonus = bonus
         self.total = total
         self.characterName = characterName
+        self.cr = cr
     }
 }
 
 /// The initiative tracker (3.22.0): ordered entries, the active turn,
 /// and the round. Deliberately order-only - no HP, no conditions, no
 /// per-entry notes; this tracks whose turn it is, not the fight.
+/// (3.36.0: entries may carry a challenge rating for the live-fight
+/// estimate - enemy strength entered on the entry, never inferred.)
 public struct InitiativeTracker: Codable, Equatable, Sendable {
     public var entries: [InitiativeEntry]
     public var activeID: UUID?
@@ -58,6 +65,28 @@ public struct InitiativeTracker: Codable, Equatable, Sendable {
     /// The rolled entries in display order - the turn rotation.
     public var rolledOrder: [InitiativeEntry] {
         ordered.filter { $0.total != nil }
+    }
+
+    /// Live-fight estimate input (3.36.0): each entry carrying a CR is one
+    /// creature. Entries without a CR never contribute - enemy strength is
+    /// entered on the entry, never inferred.
+    public var encounterLinesFromCRs: [EncounterLine] {
+        entries.compactMap { $0.cr.map { EncounterLine(count: 1, cr: $0) } }
+    }
+
+    /// Entries the live-fight estimate excludes for lack of a CR - the UI
+    /// captions the count so the exclusion is visible, not silent.
+    public var entriesWithoutCR: Int {
+        entries.filter { $0.cr == nil }.count
+    }
+
+    /// "2x CR 3 + 1x CR 1/2" over the CR'd entries, highest first - the
+    /// derivation line under the live-fight verdict.
+    public var crBreakdown: String {
+        let grouped = Dictionary(grouping: entries.compactMap(\.cr), by: { $0 })
+        return grouped.keys.sorted(by: >)
+            .map { "\(grouped[$0]?.count ?? 0)x CR \(EncounterMath.crText($0))" }
+            .joined(separator: " + ")
     }
 
     /// Advance the turn: the next rolled entry becomes active; wrapping
