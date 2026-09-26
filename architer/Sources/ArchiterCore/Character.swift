@@ -1041,6 +1041,13 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         return .normal
     }
 
+    /// Milestone-ahead (3.42.0): the stored level sits past what the XP
+    /// track alone would grant - a hand-raised level that awards keep
+    /// until the track catches up. Derived, never stored.
+    public var isMilestoneAhead: Bool {
+        level > RulesMath.level(forXP: experience)
+    }
+
     public var xpToNextLevel: Int? {
         guard let next = RulesMath.xpForNextLevel(level) else { return nil }
         return max(0, next - experience)
@@ -1376,11 +1383,13 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     // MARK: Experience
 
     /// Award XP; returns true when the character crossed into a new level.
+    /// Level is a floor (3.42.0): a level raised by hand past the XP track
+    /// holds through awards until the track passes it - awards never demote.
     @discardableResult
     public mutating func addXP(_ amount: Int) -> Bool {
         let before = level
         experience = max(0, experience + max(0, amount))
-        level = RulesMath.level(forXP: experience)
+        level = max(before, RulesMath.level(forXP: experience))
         return level > before
     }
 }

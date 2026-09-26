@@ -14,19 +14,24 @@ public struct XPAwardPlan: Equatable, Sendable {
         /// shows the whole roster and re-checking is one tap.
         public let included: Bool
         public let currentXP: Int
+        /// The stored level the award applies to (3.42.0): level is a
+        /// floor, so the preview must agree with the apply against the
+        /// stored level, not the track alone.
+        public let currentLevel: Int
         public let amount: Int
 
-        public init(id: UUID, name: String, included: Bool, currentXP: Int, amount: Int) {
+        public init(id: UUID, name: String, included: Bool, currentXP: Int, currentLevel: Int, amount: Int) {
             self.id = id
             self.name = name
             self.included = included
             self.currentXP = max(0, currentXP)
+            self.currentLevel = max(1, min(20, currentLevel))
             self.amount = max(0, amount)
         }
 
         public var newXP: Int { currentXP + amount }
-        public var newLevel: Int { RulesMath.level(forXP: newXP) }
-        public var levelsUp: Bool { newLevel > RulesMath.level(forXP: currentXP) }
+        public var newLevel: Int { max(currentLevel, RulesMath.level(forXP: newXP)) }
+        public var levelsUp: Bool { newLevel > currentLevel }
     }
 
     /// How the pool reaches the checked members: an even floor split with
@@ -44,7 +49,7 @@ public struct XPAwardPlan: Equatable, Sendable {
 
     /// Nil when no challenge rating pays or no member is checked - there
     /// is nothing to award in either case.
-    public init?(crs: [Double], members: [(id: UUID, name: String, xp: Int, included: Bool)], mode: Mode) {
+    public init?(crs: [Double], members: [(id: UUID, name: String, xp: Int, level: Int, included: Bool)], mode: Mode) {
         let known = crs.compactMap { EncounterMath.xp(forCR: $0) }
         let checked = members.filter { $0.included }
         guard !known.isEmpty, !checked.isEmpty else { return nil }
@@ -55,6 +60,7 @@ public struct XPAwardPlan: Equatable, Sendable {
         let split = base / checked.count
         shares = members.map { m in
             Share(id: m.id, name: m.name, included: m.included, currentXP: m.xp,
+                  currentLevel: m.level,
                   amount: m.included ? (mode == .equalSplit ? split : base) : 0)
         }
     }

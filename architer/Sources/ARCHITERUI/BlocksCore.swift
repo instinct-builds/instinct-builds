@@ -142,6 +142,14 @@ struct IdentityBlock: View {
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkFaint)
                 }
+                // 3.42.0: a hand-raised level holds through awards - say so
+                // on the row or it reads as a bug.
+                if character.isMilestoneAhead {
+                    Text("(milestone)")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                        .help("Level was raised by hand past the XP track - awards keep it until the track catches up")
+                }
                 Spacer()
                 TextField("Award XP", text: $xpToAdd)
                     .textFieldStyle(InsetFieldStyle())

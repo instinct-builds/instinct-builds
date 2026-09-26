@@ -1062,7 +1062,8 @@ public final class AppModel: ObservableObject {
     public func xpAwardPlan(mode: XPAwardPlan.Mode, excluded: Set<UUID>) -> XPAwardPlan? {
         let crs = initiative.entries.compactMap(\.cr)
         let members = characters.map {
-            (id: $0.id, name: $0.name, xp: $0.experience, included: !excluded.contains($0.id))
+            (id: $0.id, name: $0.name, xp: $0.experience, level: $0.level,
+             included: !excluded.contains($0.id))
         }
         return XPAwardPlan(crs: crs, members: members, mode: mode)
     }

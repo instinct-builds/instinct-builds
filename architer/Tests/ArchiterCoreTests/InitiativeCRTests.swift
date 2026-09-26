@@ -170,8 +170,8 @@ struct AddToFightTests {
 
 
 @Suite struct XPAwardPlanTests {
-    private func members() -> [(id: UUID, name: String, xp: Int, included: Bool)] {
-        [(UUID(), "A", 0, true), (UUID(), "B", 7200, true), (UUID(), "C", 200, true)]
+    private func members() -> [(id: UUID, name: String, xp: Int, level: Int, included: Bool)] {
+        [(UUID(), "A", 0, 1, true), (UUID(), "B", 7200, 5, true), (UUID(), "C", 200, 1, true)]
     }
 
     @Test func equalSplitFloorsEvenly() {
@@ -202,7 +202,7 @@ struct AddToFightTests {
 
     @Test func nilWhenNoCRorNoneChecked() {
         #expect(XPAwardPlan(crs: [], members: members(), mode: .equalSplit) == nil)
-        #expect(XPAwardPlan(crs: [3], members: members().map { ($0.id, $0.name, $0.xp, false) }, mode: .equalSplit) == nil)
+        #expect(XPAwardPlan(crs: [3], members: members().map { ($0.id, $0.name, $0.xp, $0.level, false) }, mode: .equalSplit) == nil)
     }
 
     @Test func levelUpBadgeReadsTheXPTrack() {
@@ -214,5 +214,18 @@ struct AddToFightTests {
         #expect(b?.levelsUp == false)   // 7200 + 750 = 7950 stays level 5
         #expect(c?.levelsUp == true)    // 200 + 750 = 950 reaches level 3
         #expect(c?.newLevel == 3)
+    }
+
+    @Test func milestoneAheadMemberKeepsLevelAndBadgeStaysOff() {
+        // 3.42.0: the preview reads the stored level as a floor, so it
+        // agrees with the apply by construction.
+        var m = members()
+        m[0].included = false
+        m[1] = (m[1].id, "B", 7200, 8, true)   // hand-raised: L8 at 7200 XP
+        let p = XPAwardPlan(crs: [3, 3, 0.5], members: m, mode: .equalSplit)
+        let b = p?.shares.first { $0.name == "B" }
+        #expect(b?.levelsUp == false)   // the track derives 5, under stored 8
+        #expect(b?.newLevel == 8)       // preview matches the apply
+        #expect(b?.amount == 750)       // the XP still pays
     }
 }

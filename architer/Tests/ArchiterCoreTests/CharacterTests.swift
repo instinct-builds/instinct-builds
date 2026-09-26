@@ -421,6 +421,23 @@ struct CharacterTests {
         #expect(c.xpToNextLevel != nil)
     }
 
+    @Test func xpAwardNeverDemotesMilestoneLevels() {
+        // Level is a floor (3.42.0): a hand-raised level holds through
+        // awards until the XP track passes it.
+        var c = Character(name: "T", level: 8, experience: 7200)
+        #expect(c.isMilestoneAhead)
+        let noLevel = c.addXP(1000)
+        #expect(!noLevel)
+        #expect(c.level == 8)   // pre-3.42.0 this dropped to 5
+        #expect(c.experience == 8200)
+        #expect(c.isMilestoneAhead)
+        // The track takes over once it passes the milestone.
+        let crossed = c.addXP(40000)
+        #expect(crossed)
+        #expect(c.level == 9)   // 48200 XP reaches level 9 on the track
+        #expect(!c.isMilestoneAhead)
+    }
+
     @Test func computedACFromArmorShieldAndMisc() {
         var scores = AbilityScores()
         scores[.dexterity] = 16 // +3

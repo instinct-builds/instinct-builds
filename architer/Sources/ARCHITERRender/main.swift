@@ -1780,6 +1780,45 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? axLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/award-xp.txt"),
                atomically: true, encoding: .utf8)
+    // Milestone-safe leveling proofs (3.42.0): a hand-raised level holds
+    // through awards until the track passes it. Runs at END.
+    var msLines = ["Milestone-safe leveling (3.42.0)",
+                   "level is a floor: awards never demote; the track takes over once it passes the milestone"]
+    if let sidx = model.characters.firstIndex(where: { $0.name == "Sera Vint" }) {
+        model.characters[sidx].level = 8   // hand-raised past the track (8200 XP derives 5)
+    }
+    if let parked = model.characters.first(where: { $0.name == "Sera Vint" }) {
+        msLines.append("parked: Sera Vint L\(parked.level) at \(parked.experience) XP (track derives L\(RulesMath.level(forXP: parked.experience))) - milestone-ahead: \(parked.isMilestoneAhead)")
+    }
+    renderPNG(
+        SheetColumnView(character: .constant(model.characters.first(where: { $0.name == "Sera Vint" }) ?? model.characters[0]))
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 1180, name: "milestone-leveling", outDir: outDir)
+    let others = Set(model.characters.filter { $0.name != "Sera Vint" }.map(\.id))
+    if let plan = model.xpAwardPlan(mode: .equalSplit, excluded: others),
+       let share = plan.shares.first(where: { $0.name == "Sera Vint" }) {
+        msLines.append("preview: Sera \(share.currentXP) + \(share.amount) = \(share.newXP), badge \(share.levelsUp ? "ON" : "off (holds L\(share.newLevel))")")
+    }
+    let leveled2 = model.awardFightXP(mode: .equalSplit, excluded: others)
+    let after1 = model.characters.first(where: { $0.name == "Sera Vint" })
+    msLines.append("applied: level-ups \(leveled2.isEmpty ? "none" : leveled2.joined(separator: ", ")); Sera \(after1?.experience ?? -1) XP L\(after1?.level ?? -1) (pre-3.42.0 she would drop to L5)")
+    // Park XP just under the next threshold; the next award lets the track
+    // pass the milestone.
+    if let sidx = model.characters.firstIndex(where: { $0.name == "Sera Vint" }) {
+        model.characters[sidx].experience = 47900   // derives L8, level holds at 8
+    }
+    if let plan = model.xpAwardPlan(mode: .equalSplit, excluded: others),
+       let share = plan.shares.first(where: { $0.name == "Sera Vint" }) {
+        msLines.append("catch-up preview: Sera \(share.currentXP) + \(share.amount) = \(share.newXP)\(share.levelsUp ? " LEVEL UP -> L\(share.newLevel)" : " (no badge - WRONG)")")
+    }
+    let leveled3 = model.awardFightXP(mode: .equalSplit, excluded: others)
+    let after2 = model.characters.first(where: { $0.name == "Sera Vint" })
+    msLines.append("applied: level-ups \(leveled3.isEmpty ? "none" : leveled3.joined(separator: ", ")); Sera \(after2?.experience ?? -1) XP L\(after2?.level ?? -1) (the track took over past the milestone)")
+    try? msLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/milestone-leveling.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",
