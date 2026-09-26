@@ -950,7 +950,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)noiseBurstDetailRect { return NSMakeRect(662, [self top] - 252, 44, 13); } // right of NOISE label and left of duration, clear of rings
 - (NSRect)burstPanel { return NSMakeRect(36, 48, 424, 200); } // replaces the matrix temporarily, not the crowded FILTER panel
 - (NSRect)burstClose { NSRect r = [self burstPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
-- (NSRect)burstBar:(int)i { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 22, NSMaxY(r) - 76 - i * 34, 176, 15); }
+- (NSRect)burstBar:(int)i { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 22, NSMaxY(r) - 76 - i * 28, 176, 15); }
 - (NSRect)burstPlot { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 218, r.origin.y + 38, 186, 114); }
 - (NSRect)burstSyncRect { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 22, r.origin.y + 42, 176, 17); }
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 306, 440, 306); }
@@ -2209,7 +2209,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     if (outputDetailOpen) [self drawOutputDetail];
 }
 
-// A dedicated editor keeps the duration, attack, and decay curve legible.
+// A dedicated editor keeps duration, attack, curve, and velocity response legible.
 // OFF bypasses the entire envelope; the preview is dimmed until duration is on.
 - (void)drawBurstDetail {
     NSRect P = [self burstPanel];
@@ -2222,13 +2222,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
          NSMakeRect(P.origin.x + 20, NSMaxY(P) - 44, P.size.width - 40, 13), 8, C(0x9ca6b4), NSFontWeightMedium);
     NSRect cl = [self burstClose];
     TextA(@"×", cl, 16, C(0xc3cbd6), NSFontWeightRegular, NSTextAlignmentCenter);
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 3; ++i) {
         NSRect r = [self burstBar:i];
-        const double norm = i ? (current.voice.noiseBurstCurve + 1) * .5 : current.voice.noiseBurstAttack / .8;
+        const double norm = i == 2 ? current.voice.noiseBurstVelocity : i ? (current.voice.noiseBurstCurve + 1) * .5 : current.voice.noiseBurstAttack / .8;
         FillRound(r, 4, C(0x10161d));
         FillRound(NSMakeRect(r.origin.x, r.origin.y, r.size.width * norm, r.size.height), 4, C(0xf5cc78, .52));
-        NSString* name = i ? @"DECAY CURVE" : @"ATTACK";
-        NSString* value = i ? [NSString stringWithFormat:@"%+.2f", current.voice.noiseBurstCurve] : [NSString stringWithFormat:@"%.0f%%", current.voice.noiseBurstAttack * 100];
+        NSString* name = i == 2 ? @"VEL DEPTH" : i ? @"DECAY CURVE" : @"ATTACK";
+        NSString* value = i == 2 ? [NSString stringWithFormat:@"%.0f%%", current.voice.noiseBurstVelocity * 100] : i ? [NSString stringWithFormat:@"%+.2f", current.voice.noiseBurstCurve] : [NSString stringWithFormat:@"%.0f%%", current.voice.noiseBurstAttack * 100];
         TextA(name, NSMakeRect(r.origin.x + 6, r.origin.y + 3, 100, 10), 8, C(0xe8edf3), NSFontWeightBold, NSTextAlignmentLeft);
         TextA(value, NSMakeRect(NSMaxX(r) - 48, r.origin.y + 3, 42, 10), 8, C(0xe8edf3), NSFontWeightSemibold, NSTextAlignmentRight);
     }
@@ -2238,12 +2238,12 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
           current.voice.noiseBurstSync > 0 ? C(0xf5cc78) : C(0xe8edf3), NSFontWeightSemibold, NSTextAlignmentRight);
     Text(@"Click TIME to step divisions", NSMakeRect(P.origin.x + 22, P.origin.y + 27, 174, 11), 7, C(0x758192));
     NSRect plot = [self burstPlot]; FillRound(plot, 5, C(0x0e141b));
-    Text(@"AMP", NSMakeRect(plot.origin.x + 5, NSMaxY(plot) - 14, 40, 10), 7, C(0x758192), NSFontWeightBold);
+    Text(@"AMP · VEL 60%", NSMakeRect(plot.origin.x + 5, NSMaxY(plot) - 14, 95, 10), 7, C(0x758192), NSFontWeightBold);
     TextA(@"TIME →", NSMakeRect(NSMaxX(plot) - 54, plot.origin.y + 3, 48, 10), 7, C(0x758192), NSFontWeightBold, NSTextAlignmentRight);
     NSBezierPath* path = [NSBezierPath bezierPath];
     for (int k = 0; k <= 64; ++k) {
         const CGFloat x = plot.origin.x + 9 + (plot.size.width - 18) * k / 64.0;
-        const float y = noiseBurstGain(k, 64, current.voice.noiseBurstAttack, current.voice.noiseBurstCurve);
+        const float y = noiseBurstGain(k, 64, current.voice.noiseBurstAttack, current.voice.noiseBurstCurve) * (1.0f - (float)current.voice.noiseBurstVelocity * .4f);
         NSPoint pt = NSMakePoint(x, plot.origin.y + 17 + y * (plot.size.height - 30));
         if (k) [path lineToPoint:pt]; else [path moveToPoint:pt];
     }
@@ -2259,10 +2259,11 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         sync = (sync + 1) % kSyncCount;
         edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
     }
-    for (int i = 0; i < 2; ++i) if (NSPointInRect(p, NSInsetRect([self burstBar:i], -3, -3))) {
+    for (int i = 0; i < 3; ++i) if (NSPointInRect(p, NSInsetRect([self burstBar:i], -3, -3))) {
         NSRect r = [self burstBar:i];
         const double x = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
-        if (i) current.voice.noiseBurstCurve = e.clickCount == 2 ? 0.0 : std::round((2 * x - 1) * 100) / 100.0;
+        if (i == 2) current.voice.noiseBurstVelocity = e.clickCount == 2 ? 0.0 : std::round(x * 100) / 100.0;
+        else if (i) current.voice.noiseBurstCurve = e.clickCount == 2 ? 0.0 : std::round((2 * x - 1) * 100) / 100.0;
         else current.voice.noiseBurstAttack = e.clickCount == 2 ? 0.0 : std::round(x * 80) / 100.0;
         edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
     }

@@ -179,6 +179,18 @@ int main() {
         printf("AU BURST note latch survives mid-note tempo jump and retrigger takes new BPM\n");
     }
 
+    // 0.63.0: optional velocity response is serialized without any new AU ID.
+    {
+        AudioUnit t=openUnit();muew::Preset p;
+        p.voice.noiseLevel=.7;p.voice.noiseBurst=.125;p.voice.noiseBurstVelocity=.65;
+        bool ok=t && setState(t,p);muew::Preset back;
+        ok=ok&&getState(t,back)&&back==p&&back.serialize().find("\nnoisebvel 0.65\n")!=std::string::npos;
+        if(ok)ok=MusicDeviceMIDIEvent(t,0x90,60,70,0)==noErr && render(t,l,r);
+        if(t){AudioUnitUninitialize(t);AudioComponentInstanceDispose(t);}
+        if(!ok){printf("FAIL: AU noise BURST velocity state\n");return 1;}
+        printf("AU noise BURST velocity depth recalls and renders; 40 published parameter IDs unchanged\n");
+    }
+
     // Every factory preset selects and sounds through the host path.
     for(SInt32 n=0;n<kExpectedPresets;++n){
         AUPreset sel{n,nullptr};

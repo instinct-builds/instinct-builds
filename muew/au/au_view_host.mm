@@ -1813,6 +1813,16 @@ int main() {
                   synced.serialize().find("\nnoisebsync 6\n")!=std::string::npos,
                   "noise BURST 1/4T tempo sync retains free duration and shape in AU state");
             Snapshot(view,"MUEW_NOISE60_PNG","noise BURST tempo-sync shape panel snapshot written");
+            // 0.63.0: depth is a third row in the shape panel, keeping
+            // default zero and old preset serialization unchanged.
+            Click(view,w,NSMakePoint(164,120)); // VEL DEPTH about 60%
+            muew::Preset velocityShape;bool velocityOk=State(velocityShape);
+            Check(velocityOk && std::fabs(velocityShape.voice.noiseBurstVelocity-.60)<.02 &&
+                  velocityShape.voice.noiseBurstSync==synced.voice.noiseBurstSync &&
+                  velocityShape.serialize().find("\nnoisebvel 0.6\n")!=std::string::npos,
+                  "noise BURST VEL DEPTH edits the AU state without disturbing TIME/shape");
+            Snapshot(view,"MUEW_NOISE63_PNG","noise BURST velocity-response shape panel snapshot written");
+
             Click(view,w,NSMakePoint(440,232)); // close shape panel before matrix proof
 
             // 0.54.0: the matrix meter follows signed, curved/AUX-scaled

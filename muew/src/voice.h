@@ -149,6 +149,7 @@ struct VoiceParams {
     int noiseBurstSync = 0;    // 0.60.0: 0 free, otherwise tempo_sync.h division
     double noiseBurstAttack = 0.0; // 0.57.0: 0..0.8 fraction of total burst time
     double noiseBurstCurve = 0.0;  // 0.57.0: -1 fast, 0 linear, +1 slow tail
+    double noiseBurstVelocity = 0.0; // 0.63.0: 0 legacy/static; 1 scales burst noise by note velocity
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
@@ -583,12 +584,16 @@ public:
                 if (noiseBurstPos_ < noiseBurstLength_) ++noiseBurstPos_;
             }
             const float lv = (float)std::clamp(params_.noiseLevel + modSum(ModRoute::Dest::NoiseLevel), 0.0, 1.0);
-            float nv = noise_.process() * lv * burst;
+            // The global voice velocity remains unchanged. This adds optional
+            // velocity response only to the noise layer of an enabled burst.
+            const float burstVelocity = noiseBurstLength_ > 0 ?
+                (float)(1.0 - std::clamp(params_.noiseBurstVelocity, 0.0, 1.0) * (1.0 - std::clamp((double)velocity_, 0.0, 1.0))) : 1.0f;
+            float nv = noise_.process() * lv * burst * burstVelocity;
             if (hq_) nv = (float)hbNoise_.down(nv, nv); // legacy left/mono alignment
             l += nv;
             if (params_.noiseWidth > 0) {
                 const double width = std::clamp(params_.noiseWidth, 0.0, 1.0);
-                float nr = noiseR_.process() * lv * burst;
+                float nr = noiseR_.process() * lv * burst * burstVelocity;
                 if (hq_) nr = (float)hbNoiseR_.down(nr, nr);
                 // Keep the left legacy stream untouched. Normalize the right
                 // blend's power; width 1 is an independent right channel.

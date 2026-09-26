@@ -506,3 +506,13 @@ A tempo jump or loss of the host clock cannot retime that hit while it plays;
 the next note picks up the changed BPM or deterministic 120 BPM fallback. The
 FREE duration, existing preset format, 108 factory sounds, and all 40 AU
 parameter IDs stay the same.
+
+## 0.63.0 Noise burst velocity response
+
+The BURST SHAPE editor adds VEL DEPTH from 0 to 100%. At zero, existing
+noise is unchanged. With an enabled burst, nonzero depth makes soft notes'
+noise layer quieter while hard notes retain their level; the existing voice
+velocity still applies to all layers. The shape preview shows a velocity-60
+example. This is optional `noisebvel <depth>` preset state, default zero;
+old presets and sustained-noise sounds stay byte-identical, and no new AU
+parameter is published.
