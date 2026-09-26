@@ -272,3 +272,56 @@ struct AddToFightTests {
         #expect(s.summary == "2x Gnolls · 1x CR 1/2")
     }
 }
+/// Pre-fight restore + fight recap (3.44.0): the snapshot is one level
+/// deep and survives persistence; the recap derives from stored inputs
+/// and stays silent on an idle tracker.
+@Suite struct PreFightRecapTests {
+    @Test func pre344TrackerDecodesWithoutNewKeys() throws {
+        // Pre-3.44.0 tracker JSON lacks fightAward / preFightSnapshot.
+        let json = #"{"entries":[],"round":2}"#
+        let t = try JSONDecoder().decode(InitiativeTracker.self, from: Data(json.utf8))
+        #expect(t.round == 2)
+        #expect(t.fightAward == nil)
+        #expect(t.preFightSnapshot == nil)
+    }
+
+    @Test func recapNilUntilTheFightRan() {
+        var t = InitiativeTracker.startingFight(from: [EncounterLine(count: 2, cr: 3),
+                                                       EncounterLine(count: 1, cr: 0.5)])
+        #expect(t.fightRecapLine == nil)   // never rolled, round 1, no award
+        t.entries[0].total = 15
+        #expect(t.fightRecapLine == "Fight over: 2x CR 3 + 1x CR 1/2 - 1 round")
+    }
+
+    @Test func recapNamesRoundsAndAward() {
+        var t = InitiativeTracker.startingFight(from: [EncounterLine(count: 2, cr: 3),
+                                                       EncounterLine(count: 1, cr: 0.5)])
+        t.entries[0].total = 15
+        t.round = 3
+        t.fightAward = FightAward(total: 1500, recipients: ["Wren", "Bram", "Sera"])
+        #expect(t.fightRecapLine == "Fight over: 2x CR 3 + 1x CR 1/2 - 3 rounds - 1500 XP to Wren, Bram, Sera")
+    }
+
+    @Test func endCombatConsumesTheAward() {
+        var t = InitiativeTracker.startingFight(from: [EncounterLine(count: 1, cr: 3)])
+        t.entries[0].total = 12
+        t.fightAward = FightAward(total: 700, recipients: ["Wren"])
+        #expect(t.fightRecapLine != nil)
+        t.endCombat()
+        #expect(t.fightAward == nil)
+        #expect(t.fightRecapLine == nil)   // totals cleared, round reset
+    }
+
+    @Test func snapshotSurvivesPersistence() throws {
+        var t = InitiativeTracker.startingFight(from: [EncounterLine(count: 1, cr: 2)])
+        t.preFightSnapshot = PreFightSnapshot(
+            entries: [InitiativeEntry(name: "Lone sentry", bonus: 2, total: 14, cr: 1)],
+            activeID: nil, round: 2,
+            fightAward: FightAward(total: 450, recipients: ["Wren"]))
+        let data = try JSONEncoder().encode(t)
+        let back = try JSONDecoder().decode(InitiativeTracker.self, from: data)
+        #expect(back.preFightSnapshot?.entries.map(\.name) == ["Lone sentry"])
+        #expect(back.preFightSnapshot?.round == 2)
+        #expect(back.preFightSnapshot?.fightAward?.total == 450)
+    }
+}

@@ -1861,6 +1861,43 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? elLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/encounter-library.txt"),
                atomically: true, encoding: .utf8)
+    // Pre-fight restore + fight recap proofs (3.44.0). Runs at END.
+    var prLines = ["Pre-fight restore + fight recap (3.44.0)",
+                   "Start fight snapshots the displaced tracker one level deep; End combat files a derived recap to the selected character's journal"]
+    // A live mid-round fight on the tracker, displaced by Start fight.
+    model.initiative = InitiativeTracker(entries: [InitiativeEntry(name: "Lone sentry", bonus: 2, total: 14, cr: 1),
+                                                   InitiativeEntry(name: "Wren Halloway", bonus: 3, total: 18, characterName: "Wren Halloway")],
+                                         activeID: nil, round: 2)
+    model.startFightFromPlanner()   // planner still holds 2x Gnolls + 1x CR 1/2
+    prLines.append("snapshot: start fight over a mid-round tracker -> \(model.initiative.entries.count) new entries; snapshot holds '\(model.initiative.preFightSnapshot?.entries.map(\.name).joined(separator: ", ") ?? "MISSING")' round \(model.initiative.preFightSnapshot?.round ?? -1)")
+    renderPNG(
+        InitiativeSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 520, name: "initiative-restore", outDir: outDir, minHeight: 160, maxHeight: 600)
+    model.restorePreFight()
+    prLines.append("restore: tracker back to \(model.initiative.entries.map(\.name).joined(separator: ", ")) round \(model.initiative.round); snapshot consumed: \(model.initiative.preFightSnapshot == nil)")
+    model.restorePreFight()
+    prLines.append("second restore is a no-op (one level, no chain): still \(model.initiative.entries.map(\.name).joined(separator: ", "))")
+    // Fight recap: run the planner fight three rounds, award, end.
+    model.startFightFromPlanner()
+    model.rollInitiative()
+    for _ in 0..<6 { model.advanceInitiative() }   // two wraps -> round 3
+    _ = model.awardFightXP(mode: .equalSplit, excluded: [])
+    if let wren = model.characters.first(where: { $0.name == "Wren Halloway" }) { model.selectedID = wren.id }
+    model.endCombat()
+    let recapEntry = model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.last
+    prLines.append("recap: '\(recapEntry?.title ?? "MISSING")' - \(recapEntry?.text ?? "MISSING")")
+    prLines.append("after end combat: totals cleared \(model.initiative.entries.allSatisfy { $0.total == nil }), round \(model.initiative.round), award consumed \(model.initiative.fightAward == nil)")
+    // Negative: a second End combat on the idle tracker files nothing.
+    let journalCountBefore = model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.count ?? -1
+    model.endCombat()
+    let journalCountAfter = model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.count ?? -1
+    prLines.append("idle end combat files nothing: journal \(journalCountBefore) -> \(journalCountAfter)")
+    try? prLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/prefight-recap.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

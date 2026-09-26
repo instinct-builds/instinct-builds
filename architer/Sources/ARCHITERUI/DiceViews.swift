@@ -1070,7 +1070,7 @@ public struct EncounterSectionView: View {
                         startArmed = false
                     }
                     .controlSize(.small)
-                    .help("Replace the tracker's entries with these enemies - this cannot be undone")
+                    .help("Replace the tracker's entries with these enemies - the displaced tracker stays restorable (one level)")
                     Button("Cancel") { startArmed = false }
                         .controlSize(.small)
                 } else {
@@ -1304,6 +1304,7 @@ public struct InitiativeSectionView: View {
     @State private var nameDraft = ""
     @State private var bonusDraft = ""
     @State private var crDraft = ""
+    @State private var restoreArmed = false
 
     public init() {}
 
@@ -1326,7 +1327,25 @@ public struct InitiativeSectionView: View {
                 Button("End combat") { model.endCombat() }
                     .buttonStyle(RollButtonStyle())
                     .disabled(model.initiative.entries.isEmpty)
-                    .help("Clear totals and the round; entries stay for the rerun")
+                    .help("Clear totals and the round; entries stay for the rerun - a fight that ran files a recap to the selected character's journal")
+                // Restore pre-fight (3.44.0): the tracker Start fight
+                // displaced is one armed confirm away. Consumed on use.
+                if model.initiative.preFightSnapshot != nil {
+                    if restoreArmed {
+                        Button("Restore?") {
+                            model.restorePreFight()
+                            restoreArmed = false
+                        }
+                        .buttonStyle(RollButtonStyle())
+                        .help("Replace the current fight with the displaced tracker - the snapshot is consumed")
+                        Button("Cancel") { restoreArmed = false }
+                            .buttonStyle(RollButtonStyle())
+                    } else {
+                        Button("Restore pre-fight") { restoreArmed = true }
+                            .buttonStyle(RollButtonStyle())
+                            .help("Bring back the tracker Start fight replaced - one level, consumed on use")
+                    }
+                }
             }
             ForEach(model.initiative.ordered) { entry in
                 InitiativeRowView(entry: entry,

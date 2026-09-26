@@ -790,6 +790,16 @@ public final class AppModel: ObservableObject {
     }
 
     public func endCombat() {
+        // 3.44.0: file the fight recap BEFORE the reset - derived from
+        // stored inputs (CR breakdown, rounds fought, the recorded
+        // award). Rides the selected character's journal and undo stack
+        // exactly like any journal add; an idle tracker files nothing.
+        if let line = initiative.fightRecapLine, var c = selected?.wrappedValue {
+            let now = Date()
+            c.journal.append(JournalEntry(date: JournalStamp.day(now), title: "Fight recap",
+                                          text: line, createdAt: now))
+            selected?.wrappedValue = c
+        }
         initiative.endCombat()
         initiativeStore.save(initiative)
     }
@@ -801,11 +811,30 @@ public final class AppModel: ObservableObject {
 
     /// Start fight (3.37.0): replace the tracker with the planner's rows,
     /// expanded into individual CR'd entries. The UI arms a confirm when
-    /// the tracker is non-empty - the tracker has no undo.
+    /// the tracker is non-empty. 3.44.0: the displaced tracker is
+    /// snapshotted one level deep - "Restore pre-fight" is the undo,
+    /// retiring the 3.37.0 "cannot be undone" caveat.
     public func startFightFromPlanner() {
-        let tracker = InitiativeTracker.startingFight(from: encounterLines)
+        var tracker = InitiativeTracker.startingFight(from: encounterLines)
         guard !tracker.entries.isEmpty else { return }
+        if !initiative.entries.isEmpty {
+            tracker.preFightSnapshot = PreFightSnapshot(entries: initiative.entries,
+                                                        activeID: initiative.activeID,
+                                                        round: initiative.round,
+                                                        fightAward: initiative.fightAward)
+        }
         initiative = tracker
+        initiativeStore.save(initiative)
+    }
+
+    /// Restore the tracker Start fight displaced (3.44.0). Consumed on
+    /// use - the restored tracker carries no snapshot of its own, so the
+    /// restore never chains. The UI arms a confirm: the current fight is
+    /// replaced.
+    public func restorePreFight() {
+        guard let snap = initiative.preFightSnapshot else { return }
+        initiative = InitiativeTracker(entries: snap.entries, activeID: snap.activeID,
+                                       round: snap.round, fightAward: snap.fightAward)
         initiativeStore.save(initiative)
     }
 
@@ -1126,6 +1155,19 @@ public final class AppModel: ObservableObject {
             undoStacks[c.id] = stack
             characters[idx] = c
             try? store.save(c)
+        }
+        // 3.44.0: record what the fight paid so End combat's recap can
+        // name it. Repeat taps accumulate - awards are deliberately not
+        // idempotent.
+        let paid = plan.shares.filter { $0.included && $0.amount > 0 }
+        if !paid.isEmpty {
+            var award = initiative.fightAward ?? FightAward(total: 0, recipients: [])
+            award.total += paid.reduce(0) { $0 + $1.amount }
+            for share in paid where !award.recipients.contains(share.name) {
+                award.recipients.append(share.name)
+            }
+            initiative.fightAward = award
+            initiativeStore.save(initiative)
         }
         return leveled
     }
