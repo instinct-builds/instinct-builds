@@ -334,6 +334,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-color-search.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.csv.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-licenses-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf
