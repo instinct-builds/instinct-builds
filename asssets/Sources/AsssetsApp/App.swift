@@ -2824,7 +2824,10 @@ final class StudioLibrary: ObservableObject {
                 // The old bytes move to `stage` in one filesystem operation. An interrupted export
                 // cannot leave the target absent, and a changed target is rolled back before cleanup.
                 guard renamex_np(stage.path, target.path, UInt32(RENAME_SWAP)) == 0 else { return false }
-                guard fileIdentity(stage) == reviewed, Self.sha256(path: target.path) == digest else {
+                let swapped = fileIdentity(stage)
+                guard swapped?.device == reviewed.device, swapped?.inode == reviewed.inode,
+                      swapped?.bytes == reviewed.bytes, swapped?.digest == reviewed.digest,
+                      Self.sha256(path: target.path) == digest else {
                     // If the exchange exposed an unreviewed old file, restore it; never silently delete it.
                     if renamex_np(stage.path, target.path, UInt32(RENAME_SWAP)) != 0 { safeToRemoveStage = false }
                     return false
