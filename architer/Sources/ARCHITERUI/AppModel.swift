@@ -180,10 +180,15 @@ public final class AppModel: ObservableObject {
     /// Saved dice shortcuts (app-wide, persisted next to the character files).
     @Published public var macros: [DiceMacro] = []
     public var macroStore: MacroStore { MacroStore(directory: store.directory) }
+    public var initiativeStore: InitiativeStore { InitiativeStore(directory: store.directory) }
     public var rulesetStore: RulesetStore { RulesetStore(directory: store.directory) }
     /// User-defined ruleset library (persisted).
     @Published public var rulesets: [Ruleset] = []
     public let roller = DiceRoller()
+
+    /// The initiative tracker (3.22.0): order, the active turn, and the
+    /// round. Persisted across launches; its rolls stay out of History.
+    @Published public var initiative = InitiativeTracker()
 
     public init() { reload() }
 
@@ -208,6 +213,7 @@ public final class AppModel: ObservableObject {
         favorites = favoritesStore.load()
         rollHistory = rollHistoryStore.load()
         macros = macroStore.load()
+        initiative = initiativeStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
                let uuid = UUID(uuidString: saved),
@@ -627,6 +633,69 @@ public final class AppModel: ObservableObject {
             rollHistory = carried
             rollHistoryStore.save(rollHistory)
         }
+    }
+
+    // MARK: - Initiative tracker (3.22.0)
+
+    public func addInitiativeEntry(name: String, bonus: Int, forCharacter characterName: String? = nil) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        initiative.entries.append(InitiativeEntry(name: trimmed, bonus: bonus,
+                                                  characterName: characterName))
+        initiativeStore.save(initiative)
+    }
+
+    /// Link the selected character: the entry pulls the sheet's live
+    /// initiative bonus (DEX mod + misc).
+    public func addSelectedToInitiative() {
+        guard let c = selected?.wrappedValue else { return }
+        addInitiativeEntry(name: c.name, bonus: c.initiative, forCharacter: c.name)
+    }
+
+    public func removeInitiativeEntry(_ entry: InitiativeEntry) {
+        initiative.entries.removeAll { $0.id == entry.id }
+        if initiative.activeID == entry.id { initiative.activeID = nil }
+        initiativeStore.save(initiative)
+    }
+
+    /// Roll 1d20 + bonus for every entry through the dice engine. The
+    /// rolls stay in the tracker - eight goblins don't spam History.
+    public func rollInitiative() {
+        for i in initiative.entries.indices {
+            initiative.entries[i].total = roller.check("Initiative", bonus: initiative.entries[i].bonus).total
+        }
+        if initiative.activeID == nil {
+            initiative.activeID = initiative.rolledOrder.first?.id
+        }
+        initiativeStore.save(initiative)
+    }
+
+    public func rerollInitiative(_ entry: InitiativeEntry) {
+        guard let i = initiative.entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        initiative.entries[i].total = roller.check("Initiative", bonus: entry.bonus).total
+        initiativeStore.save(initiative)
+    }
+
+    /// Set a total by hand - some tables roll physically.
+    public func setInitiativeTotal(_ entry: InitiativeEntry, total: Int?) {
+        guard let i = initiative.entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        initiative.entries[i].total = total
+        initiativeStore.save(initiative)
+    }
+
+    public func advanceInitiative() {
+        initiative.advance()
+        initiativeStore.save(initiative)
+    }
+
+    public func endCombat() {
+        initiative.endCombat()
+        initiativeStore.save(initiative)
+    }
+
+    public func clearInitiative() {
+        initiative = InitiativeTracker()
+        initiativeStore.save(initiative)
     }
 
     /// Roll a saved macro: labeled with its name. A macro with a damage-type

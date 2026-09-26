@@ -187,6 +187,7 @@ public struct DiceRollerView: View {
                     }
                 }
             }
+            InitiativeSectionView()
             HStack {
                 Text("History").font(.headline)
                 if let name = model.selected?.wrappedValue.name {
@@ -1023,6 +1024,115 @@ public struct MacroRowView: View {
                 } label: { Image(systemName: "minus.circle") }
             }
         }
+    }
+}
+
+/// The initiative tracker (3.22.0): order, the active turn, and the
+/// round. Rolls stay here - they never record to History.
+public struct InitiativeSectionView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var nameDraft = ""
+    @State private var bonusDraft = ""
+
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.sm) {
+            HStack {
+                Text("Initiative").font(.headline)
+                Text("Round \(model.initiative.round)")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.accent)
+                Spacer()
+                Button("Roll all") { model.rollInitiative() }
+                    .buttonStyle(RollButtonStyle())
+                    .disabled(model.initiative.entries.isEmpty)
+                    .help("Roll 1d20 + bonus for every entry - stays out of History")
+                Button("Next") { model.advanceInitiative() }
+                    .buttonStyle(RollButtonStyle())
+                    .disabled(model.initiative.rolledOrder.count < 2)
+                    .help("Advance the turn; wrapping the list increments the round")
+                Button("End combat") { model.endCombat() }
+                    .buttonStyle(RollButtonStyle())
+                    .disabled(model.initiative.entries.isEmpty)
+                    .help("Clear totals and the round; entries stay for the rerun")
+            }
+            ForEach(model.initiative.ordered) { entry in
+                InitiativeRowView(entry: entry,
+                                  active: model.initiative.activeID == entry.id)
+            }
+            HStack {
+                TextField("Name", text: $nameDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 140)
+                TextField("Bonus", text: $bonusDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 56)
+                Button("Add") {
+                    model.addInitiativeEntry(name: nameDraft,
+                                             bonus: Int(bonusDraft.trimmingCharacters(in: .whitespaces)) ?? 0)
+                    nameDraft = ""
+                    bonusDraft = ""
+                }
+                .buttonStyle(RollButtonStyle())
+                .disabled(nameDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                if let name = model.selected?.wrappedValue.name {
+                    Button("Add \(name)") { model.addSelectedToInitiative() }
+                        .buttonStyle(RollButtonStyle())
+                        .help("Link the selected character - pulls the sheet's live initiative bonus")
+                }
+            }
+        }
+    }
+}
+
+/// One combatant row: active marker, name, bonus, editable total, reroll.
+public struct InitiativeRowView: View {
+    @EnvironmentObject var model: AppModel
+    let entry: InitiativeEntry
+    let active: Bool
+    @State private var totalDraft: String
+
+    public init(entry: InitiativeEntry, active: Bool) {
+        self.entry = entry
+        self.active = active
+        _totalDraft = State(initialValue: entry.total.map(String.init) ?? "")
+    }
+
+    public var body: some View {
+        HStack {
+            Image(systemName: active ? "arrowtriangle.right.fill" : "circle")
+                .font(Theme.Typeface.captionSmall)
+                .foregroundStyle(active ? Theme.accent : Theme.inkFaint)
+            Text(entry.name)
+                .font(Theme.Typeface.headline)
+                .foregroundStyle(Theme.ink)
+            Text(signed(entry.bonus))
+                .font(Theme.Typeface.captionSmall)
+                .foregroundStyle(Theme.inkMuted)
+                .help("Initiative bonus - ties break on the higher bonus")
+            Spacer()
+            TextField("", text: $totalDraft)
+                .textFieldStyle(InsetFieldStyle())
+                .frame(width: 48)
+                .onSubmit {
+                    let trimmed = totalDraft.trimmingCharacters(in: .whitespaces)
+                    model.setInitiativeTotal(entry, total: trimmed.isEmpty ? nil : Int(trimmed))
+                }
+                .help("Rolled total - edit by hand if the table rolled physically")
+            Button { model.rerollInitiative(entry) } label: { Image(systemName: "arrow.clockwise") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help("Reroll this entry")
+            Button { model.removeInitiativeEntry(entry) } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help("Remove from the tracker")
+        }
+        .padding(.horizontal, Theme.Gap.sm)
+        .padding(.vertical, 3)
+        .background(active ? Theme.surfaceRaised : Color.clear,
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 }
 

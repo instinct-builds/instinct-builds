@@ -1032,6 +1032,52 @@ struct SessionSegmentTests {
         #expect(macro.isValid)
     }
 
+    @Test func initiativeOrderBreaksTiesOnBonus() throws {
+        let tracker = InitiativeTracker(entries: [
+            InitiativeEntry(name: "Wren", bonus: 2, total: 17),
+            InitiativeEntry(name: "Rogue", bonus: 5, total: 17),
+            InitiativeEntry(name: "Goblin", bonus: 2, total: 17),
+            InitiativeEntry(name: "Ogre", bonus: -1, total: 12),
+            InitiativeEntry(name: "Late", bonus: 0),
+        ])
+        // Tie at 17: Rogue's +5 leads; Wren's insertion precedes Goblin's
+        // at the same +2; the unrolled entry sinks to the bottom.
+        #expect(tracker.ordered.map(\.name) == ["Rogue", "Wren", "Goblin", "Ogre", "Late"])
+        #expect(tracker.rolledOrder.map(\.name) == ["Rogue", "Wren", "Goblin", "Ogre"])
+    }
+
+    @Test func initiativeAdvanceWrapsAndCountsRounds() throws {
+        var tracker = InitiativeTracker(entries: [
+            InitiativeEntry(name: "A", bonus: 0, total: 20),
+            InitiativeEntry(name: "B", bonus: 0, total: 10),
+        ])
+        // No active yet: the first rolled entry takes the turn.
+        tracker.advance()
+        #expect(tracker.activeID == tracker.rolledOrder[0].id)
+        #expect(tracker.round == 1)
+        tracker.advance()
+        #expect(tracker.activeID == tracker.rolledOrder[1].id)
+        #expect(tracker.round == 1)
+        tracker.advance()
+        #expect(tracker.activeID == tracker.rolledOrder[0].id)
+        #expect(tracker.round == 2)
+    }
+
+    @Test func initiativeEndCombatKeepsEntries() throws {
+        var tracker = InitiativeTracker(entries: [
+            InitiativeEntry(name: "A", bonus: 0, total: 20),
+            InitiativeEntry(name: "B", bonus: 0, total: 10),
+        ])
+        tracker.advance()
+        tracker.advance()
+        tracker.advance()
+        tracker.endCombat()
+        #expect(tracker.entries.count == 2)
+        #expect(tracker.entries.allSatisfy { $0.total == nil })
+        #expect(tracker.activeID == nil)
+        #expect(tracker.round == 1)
+    }
+
     @Test func sessionStatsLineCarriesTheSpan() throws {
         let cal = utc
         let t0 = at(cal, 24, 16)

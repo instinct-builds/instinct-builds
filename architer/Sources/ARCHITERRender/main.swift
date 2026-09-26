@@ -1249,6 +1249,59 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/combo-roll.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.22.0 proof: initiative tracker. Runs last, after every sheet
+    // render and PDF, so the byte-diffs hold.
+    do {
+        model.clearInitiative()
+        model.addInitiativeEntry(name: "Wren Halloway", bonus: 2,
+                                 forCharacter: model.selected?.wrappedValue.name)
+        model.addInitiativeEntry(name: "Goblin 1", bonus: 2)
+        model.addInitiativeEntry(name: "Goblin 2", bonus: 2)
+        model.addInitiativeEntry(name: "Ogre", bonus: -1)
+        model.addInitiativeEntry(name: "Rogue NPC", bonus: 5)
+        model.rollInitiative()
+        // Force the proof's values so the tie cases are pinned: Rogue
+        // and Wren tie at 17 - the higher bonus goes first.
+        func setTotal(_ name: String, _ total: Int) {
+            if let e = model.initiative.entries.first(where: { $0.name == name }) {
+                model.setInitiativeTotal(e, total: total)
+            }
+        }
+        setTotal("Rogue NPC", 17)
+        setTotal("Wren Halloway", 17)
+        setTotal("Goblin 1", 15)
+        setTotal("Goblin 2", 12)
+        setTotal("Ogre", 9)
+        // Pin the rotation narrative: Rogue leads, advance hands the
+        // turn to Wren (the tied, lower bonus).
+        model.initiative.activeID = model.initiative.ordered.first?.id
+        model.advanceInitiative()
+        var proofLines = ["Initiative tracker (3.22.0)",
+                          "order: total desc, ties on bonus then insertion; rolls stay out of History"]
+        for e in model.initiative.ordered {
+            let activeMark = model.initiative.activeID == e.id ? " <- active" : ""
+            proofLines.append("  \(e.name) \(e.total ?? -1) (bonus \(e.bonus))\(activeMark)")
+        }
+        renderPNG(
+            DiceRollerView()
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "dice-initiative", outDir: outDir, minHeight: 420, maxHeight: 1100)
+        // Advance through the rotation: wrapping increments the round.
+        model.advanceInitiative()
+        model.advanceInitiative()
+        model.advanceInitiative()
+        model.advanceInitiative()
+        if let active = model.initiative.ordered.first(where: { $0.id == model.initiative.activeID }) {
+            proofLines.append("after wrapping the rotation: active \(active.name), round \(model.initiative.round)")
+        }
+        model.endCombat()
+        proofLines.append("after End combat: \(model.initiative.entries.count) entries kept, totals cleared: \(model.initiative.entries.allSatisfy { $0.total == nil }), round \(model.initiative.round)")
+        try? proofLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/initiative.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
