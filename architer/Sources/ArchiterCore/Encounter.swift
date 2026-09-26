@@ -8,11 +8,26 @@ public struct EncounterLine: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
     public var count: Int
     public var cr: Double
+    /// Optional row label (3.43.0): named enemies ("Gnolls") flow into
+    /// tracker entry names and numbering. Empty keeps CR-text naming.
+    public var label: String
 
-    public init(id: UUID = UUID(), count: Int = 1, cr: Double = 1) {
+    public init(id: UUID = UUID(), count: Int = 1, cr: Double = 1, label: String = "") {
         self.id = id
         self.count = count
         self.cr = cr
+        self.label = label
+    }
+
+    // Explicit decoder (3.43.0): pre-label saved rows lack the key; the
+    // synthesized decoder would reject them and load() would silently
+    // return [], wiping the planner.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        count = try c.decode(Int.self, forKey: .count)
+        cr = try c.decode(Double.self, forKey: .cr)
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
     }
 }
 
@@ -191,6 +206,57 @@ public enum EncounterMath {
 
 /// JSON persistence for the encounter rows, alongside the character files -
 /// a DM revisits an encounter between sessions.
+/// A named, saved encounter (3.43.0): the planner's rows - labels and
+/// all - parked under a name for later reload. The summary derives from
+/// the lines at display time, never stored.
+public struct SavedEncounter: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID
+    public var name: String
+    public var lines: [EncounterLine]
+
+    public init(id: UUID = UUID(), name: String, lines: [EncounterLine]) {
+        self.id = id
+        self.name = name
+        self.lines = lines
+    }
+
+    /// "2x Gnolls · 1x CR 1/2" - per row, labels first-class.
+    public var summary: String {
+        lines.filter { $0.count > 0 }.map {
+            let custom = $0.label.trimmingCharacters(in: .whitespaces)
+            let what = custom.isEmpty ? "CR \(EncounterMath.crText($0.cr))" : custom
+            return "\($0.count)x \(what)"
+        }.joined(separator: " · ")
+    }
+}
+
+/// The encounter library (3.43.0): named saved encounters in one JSON
+/// file, mirroring EncounterStore. New file, new type - no migration.
+public struct EncounterLibraryStore {
+    public let directory: URL
+
+    public init(directory: URL) { self.directory = directory }
+
+    private var fileURL: URL { directory.appendingPathComponent("encounter-library.json") }
+
+    public func load() -> [SavedEncounter] {
+        guard let data = try? Data(contentsOf: fileURL),
+              let saved = try? JSONDecoder().decode([SavedEncounter].self, from: data) else {
+            return []
+        }
+        return saved
+    }
+
+    public func save(_ encounters: [SavedEncounter]) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? enc.encode(encounters) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
+}
+
 public struct EncounterStore {
     public let directory: URL
 

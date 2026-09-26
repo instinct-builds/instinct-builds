@@ -1819,6 +1819,48 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? msLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/milestone-leveling.txt"),
                atomically: true, encoding: .utf8)
+    // Encounter library + labeled rows proofs (3.43.0). Runs at END.
+    var elLines = ["Encounter library + labeled rows (3.43.0)",
+                   "save/reload carries labels; overwrite upserts by name; wave numbering keys the label FIELD, never names"]
+    // Migration: pre-label rows (no label key in the JSON) decode unchanged.
+    let oldJSON = "[{\"id\":\"\(UUID().uuidString)\",\"count\":2,\"cr\":3.0}]"
+    let oldLines = (try? JSONDecoder().decode([EncounterLine].self, from: Data(oldJSON.utf8))) ?? []
+    elLines.append("migration: old-format row decodes (count \(oldLines.first?.count ?? -1), label '\(oldLines.first?.label ?? "?")') - saved planner rows survive")
+    // Label the CR 3 row, save as a named encounter, junk the rows, reload.
+    if let idx = model.encounterLines.firstIndex(where: { $0.cr == 3 }) {
+        model.encounterLines[idx].label = "Gnolls"
+        model.saveEncounterLines()
+    }
+    model.saveEncounterAs(name: "Bridge ambush")
+    let savedSummary = model.savedEncounters.first?.summary ?? "MISSING"
+    model.encounterLines = [EncounterLine(count: 5, cr: 10)]
+    model.saveEncounterLines()
+    if let saved = model.savedEncounters.first {
+        model.loadSavedEncounter(saved)
+    }
+    elLines.append("library: saved 'Bridge ambush' (\(savedSummary)); junked rows, reload restored: \(model.encounterLines.map { "\($0.count)x \($0.label.isEmpty ? "CR \(EncounterMath.crText($0.cr))" : $0.label)" }.joined(separator: ", "))")
+    model.saveEncounterAs(name: "Bridge ambush")   // the UI arms an overwrite confirm first
+    elLines.append("overwrite: duplicate name upserts in place - library count \(model.savedEncounters.count)")
+    renderPNG(
+        EncounterLibraryView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "encounter-library", outDir: outDir, minHeight: 120, maxHeight: 400)
+    if let saved = model.savedEncounters.first { model.deleteSavedEncounter(saved) }
+    elLines.append("delete: library count \(model.savedEncounters.count)")
+    // Labeled start fight, then a wave after a rename.
+    model.startFightFromPlanner()
+    elLines.append("labels: start fight -> \(model.initiative.entries.map { $0.name }.joined(separator: ", "))")
+    if let first = model.initiative.entries.first(where: { $0.label == "Gnolls" }) {
+        model.renameInitiativeEntry(first, name: "Bridge boss")
+    }
+    model.addToFightFromPlanner()
+    let gnolls = model.initiative.entries.filter { $0.label == "Gnolls" }.map { $0.name }
+    elLines.append("wave after rename: Gnolls-labeled entries now \(gnolls.joined(separator: ", ")) ('Bridge boss' keeps its label field; numbering never parses names)")
+    try? elLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/encounter-library.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

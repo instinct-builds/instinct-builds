@@ -1051,6 +1051,7 @@ public struct EncounterSectionView: View {
     @EnvironmentObject var model: AppModel
     @State private var startArmed = false
     @State private var awardArmed = false
+    @State private var libraryOpen = false
 
     public init() {}
 
@@ -1134,6 +1135,15 @@ public struct EncounterSectionView: View {
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 56)
                     .help("Challenge rating: 0-30, or 1/8, 1/4, 1/2")
+                    // 3.43.0: optional row label - named enemies flow into
+                    // tracker names and numbering ("Gnolls" -> Gnolls #1).
+                    TextField("Label", text: Binding(
+                        get: { line.label },
+                        set: { line.label = $0; model.saveEncounterLines() }
+                    ))
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 90)
+                    .help("Optional row label: named enemies flow into tracker names (\"Gnolls\" -> Gnolls #1, #2)")
                     if let xp = EncounterMath.xp(forCR: line.cr) {
                         Text("\(xp * line.count) XP")
                             .font(Theme.Typeface.caption)
@@ -1179,6 +1189,22 @@ public struct EncounterSectionView: View {
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkMuted)
                 }
+            }
+            // Encounter library (3.43.0): saved encounters ride a chevron
+            // so the section stays lean; the content is its own view so
+            // the harness can render it expanded.
+            Button(action: { libraryOpen.toggle() }) {
+                HStack(spacing: Theme.Gap.xs) {
+                    Image(systemName: libraryOpen ? "chevron.down" : "chevron.right")
+                        .font(.caption)
+                    Text("Saved encounters (\(model.savedEncounters.count))")
+                        .font(Theme.Typeface.caption)
+                }
+                .foregroundStyle(Theme.inkMuted)
+            }
+            .buttonStyle(.plain)
+            if libraryOpen {
+                EncounterLibraryView()
             }
         }
     }
@@ -1709,6 +1735,101 @@ public struct XPAwardPanelView: View {
                     .foregroundStyle(Theme.inkMuted)
                 Button("Cancel") { onClose() }
                     .controlSize(.small)
+            }
+        }
+    }
+}
+
+
+/// The encounter library content (3.43.0): save the current rows under a
+/// name, reload them later. Overwrite, load-replace, and delete each arm
+/// an inline confirm - prep is rebuildable in theory but not experienced
+/// that way at the table. The chevron header lives in
+/// EncounterSectionView so the harness can render this content expanded.
+public struct EncounterLibraryView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var libraryName = ""
+    @State private var saveArmed = false
+    @State private var loadArmedID: UUID?
+    @State private var deleteArmedID: UUID?
+
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+            HStack(spacing: Theme.Gap.sm) {
+                TextField("Encounter name", text: $libraryName)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(maxWidth: 180)
+                if saveArmed {
+                    Button("Overwrite?") {
+                        model.saveEncounterAs(name: libraryName)
+                        libraryName = ""
+                        saveArmed = false
+                    }
+                    .controlSize(.small)
+                    .help("Replace the saved encounter that has this name")
+                    Button("Cancel") { saveArmed = false }
+                        .controlSize(.small)
+                } else {
+                    Button("Save") {
+                        if model.savedEncounterExists(named: libraryName.trimmingCharacters(in: .whitespaces)) {
+                            saveArmed = true
+                        } else {
+                            model.saveEncounterAs(name: libraryName)
+                            libraryName = ""
+                        }
+                    }
+                    .controlSize(.small)
+                    .disabled(libraryName.trimmingCharacters(in: .whitespaces).isEmpty
+                              || model.encounterLines.isEmpty)
+                    .help("Save the current rows under this name")
+                }
+            }
+            ForEach(model.savedEncounters) { saved in
+                HStack(spacing: Theme.Gap.sm) {
+                    Text(saved.name)
+                        .font(Theme.Typeface.body)
+                    Text(saved.summary)
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                    Spacer()
+                    if loadArmedID == saved.id {
+                        Button("Replace \(model.encounterLines.count) rows") {
+                            model.loadSavedEncounter(saved)
+                            loadArmedID = nil
+                        }
+                        .controlSize(.small)
+                        .help("Replace the current planner rows with this encounter")
+                        Button("Cancel") { loadArmedID = nil }
+                            .controlSize(.small)
+                    } else {
+                        Button("Load") {
+                            if model.encounterLines.isEmpty {
+                                model.loadSavedEncounter(saved)
+                            } else {
+                                loadArmedID = saved.id
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                    if deleteArmedID == saved.id {
+                        Button("Delete?") {
+                            model.deleteSavedEncounter(saved)
+                            deleteArmedID = nil
+                        }
+                        .controlSize(.small)
+                    } else {
+                        Button(role: .destructive) { deleteArmedID = saved.id }
+                            label: { Image(systemName: "minus.circle") }
+                            .controlSize(.small)
+                    }
+                }
+            }
+            if model.savedEncounters.isEmpty {
+                Text("No saved encounters yet.")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkFaint)
             }
         }
     }

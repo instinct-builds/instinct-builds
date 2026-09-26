@@ -229,3 +229,46 @@ struct AddToFightTests {
         #expect(b?.amount == 750)       // the XP still pays
     }
 }
+
+
+@Suite struct EncounterLibraryTests {
+    @Test func labeledRowsNameAndNumberByLabel() {
+        let t = InitiativeTracker.startingFight(from: [
+            EncounterLine(count: 2, cr: 3, label: "Gnolls"),
+            EncounterLine(count: 1, cr: 0.5),
+        ])
+        #expect(t.entries.map(\.name) == ["Gnolls #1", "Gnolls #2", "CR 1/2 #1"])
+        #expect(t.entries[0].label == "Gnolls")
+        #expect(t.entries[2].label == nil)
+    }
+
+    @Test func waveNumberingKeysTheLabelFieldNotNames() {
+        var t = InitiativeTracker.startingFight(from: [EncounterLine(count: 2, cr: 3, label: "Gnolls")])
+        t.entries[0].name = "Bridge boss"   // a rename, as at the table
+        let t2 = t.appendingFight(from: [EncounterLine(count: 2, cr: 3, label: "Gnolls")])
+        #expect(t2.entries.map(\.name) == ["Bridge boss", "Gnolls #2", "Gnolls #3", "Gnolls #4"])
+    }
+
+    @Test func unlabeledNumberingUnchanged() {
+        let t = InitiativeTracker.startingFight(from: [EncounterLine(count: 2, cr: 3)])
+        #expect(t.entries.map(\.name) == ["CR 3 #1", "CR 3 #2"])
+        #expect(t.entries.allSatisfy { $0.label == nil })
+    }
+
+    @Test func preLabelRowsDecodeUnchanged() throws {
+        let json = "[{\"id\":\"\(UUID().uuidString)\",\"count\":2,\"cr\":3.0}]"
+        let lines = try JSONDecoder().decode([EncounterLine].self, from: Data(json.utf8))
+        #expect(lines.count == 1)
+        #expect(lines[0].label == "")
+        #expect(lines[0].count == 2)
+        #expect(lines[0].cr == 3)
+    }
+
+    @Test func summaryDerivesFromLines() {
+        let s = SavedEncounter(name: "T", lines: [
+            EncounterLine(count: 2, cr: 3, label: "Gnolls"),
+            EncounterLine(count: 1, cr: 0.5),
+        ])
+        #expect(s.summary == "2x Gnolls · 1x CR 1/2")
+    }
+}

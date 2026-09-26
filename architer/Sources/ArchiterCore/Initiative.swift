@@ -14,15 +14,21 @@ public struct InitiativeEntry: Codable, Equatable, Sendable, Identifiable {
     /// estimate derives from these. Optional so older saves decode
     /// unchanged; nil excludes the entry, never guesses it.
     public var cr: Double?
+    /// Planner label (3.43.0): set on entries from labeled planner rows.
+    /// Append-wave numbering counts this FIELD, never the name, so waves
+    /// stay rename-proof exactly like CR numbering. Optional so older
+    /// saves decode unchanged.
+    public var label: String?
 
     public init(id: UUID = UUID(), name: String, bonus: Int, total: Int? = nil,
-                characterName: String? = nil, cr: Double? = nil) {
+                characterName: String? = nil, cr: Double? = nil, label: String? = nil) {
         self.id = id
         self.name = name
         self.bonus = bonus
         self.total = total
         self.characterName = characterName
         self.cr = cr
+        self.label = label
     }
 }
 
@@ -108,8 +114,13 @@ public struct InitiativeTracker: Codable, Equatable, Sendable {
     public func appendingFight(from lines: [EncounterLine]) -> InitiativeTracker {
         var seed: [String: Int] = [:]
         for entry in entries {
-            guard let cr = entry.cr else { continue }
-            seed[EncounterMath.crText(cr), default: 0] += 1
+            // 3.43.0: labeled entries seed by their label FIELD, never by
+            // parsing names - waves stay rename-proof.
+            if let label = entry.label {
+                seed[label, default: 0] += 1
+            } else if let cr = entry.cr {
+                seed[EncounterMath.crText(cr), default: 0] += 1
+            }
         }
         var copy = self
         copy.entries.append(contentsOf: InitiativeTracker.expand(lines, seeding: seed))
@@ -124,11 +135,16 @@ public struct InitiativeTracker: Codable, Equatable, Sendable {
         var numbers = seed
         for line in lines where line.count > 0 {
             guard EncounterMath.xp(forCR: line.cr) != nil else { continue }
-            let label = EncounterMath.crText(line.cr)
+            // Labeled rows (3.43.0) name and number by their label;
+            // unlabeled rows keep CR-text naming - two domains, one map.
+            let custom = line.label.trimmingCharacters(in: .whitespaces)
+            let key = custom.isEmpty ? EncounterMath.crText(line.cr) : custom
             for _ in 0..<line.count {
-                let n = (numbers[label] ?? 0) + 1
-                numbers[label] = n
-                entries.append(InitiativeEntry(name: "CR \(label) #\(n)", bonus: 0, cr: line.cr))
+                let n = (numbers[key] ?? 0) + 1
+                numbers[key] = n
+                let name = custom.isEmpty ? "CR \(key) #\(n)" : "\(key) #\(n)"
+                entries.append(InitiativeEntry(name: name, bonus: 0, cr: line.cr,
+                                               label: custom.isEmpty ? nil : key))
             }
         }
         return entries

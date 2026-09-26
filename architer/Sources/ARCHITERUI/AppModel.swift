@@ -221,6 +221,7 @@ public final class AppModel: ObservableObject {
         rollHistory = rollHistoryStore.load()
         macros = macroStore.load()
         encounterLines = encounterStore.load()
+        savedEncounters = encounterLibraryStore.load()
         initiative = initiativeStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
@@ -1030,6 +1031,40 @@ public final class AppModel: ObservableObject {
     }
 
     public func saveEncounterLines() { encounterStore.save(encounterLines) }
+
+    /// The encounter library (3.43.0): named saved encounters. Save
+    /// upserts by name - the name is the identity; the UI arms an
+    /// overwrite confirm before calling with a duplicate.
+    @Published public var savedEncounters: [SavedEncounter] = []
+    var encounterLibraryStore: EncounterLibraryStore { EncounterLibraryStore(directory: store.directory) }
+
+    public func savedEncounterExists(named name: String) -> Bool {
+        savedEncounters.contains { $0.name == name }
+    }
+
+    public func saveEncounterAs(name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !encounterLines.isEmpty else { return }
+        let saved = SavedEncounter(name: trimmed, lines: encounterLines)
+        if let idx = savedEncounters.firstIndex(where: { $0.name == trimmed }) {
+            savedEncounters[idx] = saved
+        } else {
+            savedEncounters.append(saved)
+        }
+        encounterLibraryStore.save(savedEncounters)
+    }
+
+    /// Load replaces the planner's rows - the UI arms a replace confirm
+    /// when rows are present, matching Start fight's replace precedent.
+    public func loadSavedEncounter(_ saved: SavedEncounter) {
+        encounterLines = saved.lines
+        saveEncounterLines()
+    }
+
+    public func deleteSavedEncounter(_ saved: SavedEncounter) {
+        savedEncounters.removeAll { $0.id == saved.id }
+        encounterLibraryStore.save(savedEncounters)
+    }
 
     public func addEncounterLine() {
         encounterLines.append(EncounterLine())
