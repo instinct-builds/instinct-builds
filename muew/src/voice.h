@@ -151,6 +151,7 @@ struct VoiceParams {
     double noiseBurstCurve = 0.0;  // 0.57.0: -1 fast, 0 linear, +1 slow tail
     double noiseBurstVelocity = 0.0; // 0.63.0: 0 legacy/static; 1 scales burst noise by note velocity
     double noiseBurstVelTime = 0.0; // 0.64.0: 0 legacy duration; 1 shortens soft-note burst to velocity fraction
+    double noiseBurstKeyTime = 0.0; // 0.65.0: bipolar -1..1; higher notes shorter at positive depth
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
@@ -372,6 +373,13 @@ public:
         if (noiseBurstLength_ && params_.noiseBurstVelTime > 0.0) {
             const double factor = 1.0 - std::clamp(params_.noiseBurstVelTime, 0.0, 1.0) *
                                   (1.0 - std::clamp((double)velocity_, 0.0, 1.0));
+            noiseBurstLength_ = std::max<uint64_t>(1, (uint64_t)std::ceil(noiseBurstLength_ * factor));
+        }
+        if (noiseBurstLength_ && params_.noiseBurstKeyTime != 0.0) {
+            // Middle C is the neutral note. Bound even the extreme keys to
+            // 1/4..4x so a low-key synced burst cannot grow without limit.
+            const double octaves = (std::clamp(note_, 0, 127) - 60) / 24.0;
+            const double factor = std::clamp(std::exp2(-std::clamp(params_.noiseBurstKeyTime, -1.0, 1.0) * octaves), 0.25, 4.0);
             noiseBurstLength_ = std::max<uint64_t>(1, (uint64_t)std::ceil(noiseBurstLength_ * factor));
         }
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));

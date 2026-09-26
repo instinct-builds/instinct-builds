@@ -1794,7 +1794,7 @@ int main() {
             // editor over the matrix so the three noise controls do not crowd.
             Click(view,w,NSMakePoint(684,t-252+6.5));
             Click(view,w,NSMakePoint(113,174)); // 25% attack, within the 240ms duration
-            Click(view,w,NSMakePoint(102,155)); // -0.50: a faster decay tail
+            Click(view,w,NSMakePoint(102,156)); // -0.50: a faster decay tail
             muew::Preset shaped; bool shapedOk=State(shaped);
             Check(shapedOk && std::fabs(shaped.voice.noiseBurst-.24)<.012 &&
                   std::fabs(shaped.voice.noiseBurstAttack-.25)<.015 &&
@@ -1806,7 +1806,7 @@ int main() {
             // 0.60.0: sync is in the existing large shape panel, not
             // another chip crowded into FILTER 2. One click steps FREE to 1/1;
             // six clicks select 1/4T while keeping the free 240 ms value.
-            for(int k=0;k<6;++k) Click(view,w,NSMakePoint(150,100));
+            for(int k=0;k<6;++k) Click(view,w,NSMakePoint(150,73));
             muew::Preset synced;bool syncedOk=State(synced);
             Check(syncedOk && synced.voice.noiseBurstSync==6 && synced.voice.noiseBurst==shaped.voice.noiseBurst &&
                   synced.voice.noiseBurstAttack==shaped.voice.noiseBurstAttack && synced.voice.noiseBurstCurve==shaped.voice.noiseBurstCurve &&
@@ -1815,7 +1815,7 @@ int main() {
             Snapshot(view,"MUEW_NOISE60_PNG","noise BURST tempo-sync shape panel snapshot written");
             // 0.63.0: depth is a third row in the shape panel, keeping
             // default zero and old preset serialization unchanged.
-            Click(view,w,NSMakePoint(164,136)); // VEL DEPTH about 60%
+            Click(view,w,NSMakePoint(164,138)); // VEL DEPTH about 60%
             muew::Preset velocityShape;bool velocityOk=State(velocityShape);
             Check(velocityOk && std::fabs(velocityShape.voice.noiseBurstVelocity-.60)<.02 &&
                   velocityShape.voice.noiseBurstSync==synced.voice.noiseBurstSync &&
@@ -1824,7 +1824,7 @@ int main() {
             Snapshot(view,"MUEW_NOISE63_PNG","noise BURST velocity-response shape panel snapshot written");
             // 0.64.0: the fourth row shortens soft-note duration without
             // adding a second tiny control to FILTER 2 + SUB.
-            Click(view,w,NSMakePoint(146,117)); // VEL TIME 50%
+            Click(view,w,NSMakePoint(146,120)); // VEL TIME 50%
             muew::Preset timed;bool timedOk=State(timed);
             Check(timedOk && std::fabs(timed.voice.noiseBurstVelTime-.5)<.02 &&
                   timed.voice.noiseBurstVelocity==velocityShape.voice.noiseBurstVelocity &&
@@ -1832,6 +1832,17 @@ int main() {
                   timed.serialize().find("\nnoisebvtime 0.5\n")!=std::string::npos,
                   "noise BURST VEL TIME edits AU state without disturbing velocity level or TIME");
             Snapshot(view,"MUEW_NOISE64_PNG","noise BURST velocity-time panel snapshot written");
+            // 0.65.0: bipolar KEY TIME is a fifth row, leaving TIME and
+            // both velocity depths as the user set them.
+            Click(view,w,NSMakePoint(168,100)); // KEY TIME about +0.25
+            muew::Preset keyed;bool keyedOk=State(keyed);
+            Check(keyedOk && std::fabs(keyed.voice.noiseBurstKeyTime-.25)<.02 &&
+                  keyed.voice.noiseBurstVelTime==timed.voice.noiseBurstVelTime &&
+                  keyed.voice.noiseBurstSync==timed.voice.noiseBurstSync &&
+                  keyed.serialize().find("\nnoisebkey 0.25\n")!=std::string::npos,
+                  "noise BURST KEY TIME edits AU state without disturbing velocity time or sync");
+            Snapshot(view,"MUEW_NOISE65_PNG","noise BURST pitch-time panel snapshot written");
+
 
 
             Click(view,w,NSMakePoint(440,232)); // close shape panel before matrix proof

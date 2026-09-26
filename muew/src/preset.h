@@ -66,6 +66,7 @@ struct PresetInfo {
 //                  0.60.0 adds optional `noisebsync <division>`; zero remains free milliseconds.
 //                  0.63.0 adds optional `noisebvel <depth>`; zero preserves legacy static noise.
 //                  0.64.0 adds optional `noisebvtime <depth>`; zero preserves the old burst duration.
+//                  0.65.0 adds optional `noisebkey <depth>`; zero preserves prior note-on time.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
@@ -143,6 +144,7 @@ struct Preset {
                 o << "noiseenv " << v.noiseBurstAttack << " " << v.noiseBurstCurve << "\n";
             if (v.noiseBurstVelocity != d.noiseBurstVelocity) o << "noisebvel " << v.noiseBurstVelocity << "\n";
             if (v.noiseBurstVelTime != d.noiseBurstVelTime) o << "noisebvtime " << v.noiseBurstVelTime << "\n";
+            if (v.noiseBurstKeyTime != d.noiseBurstKeyTime) o << "noisebkey " << v.noiseBurstKeyTime << "\n";
             if (v.filter2Type != d.filter2Type || v.filter2Cutoff != d.filter2Cutoff || v.filter2Reso != d.filter2Reso || v.filterRouting != d.filterRouting)
                 o << "filter2 " << v.filter2Type << " " << v.filter2Cutoff << " " << v.filter2Reso << " " << v.filterRouting << "\n";
             // 0.33.0 live spectral morph and output trim
@@ -482,6 +484,9 @@ struct Preset {
             else if (key == "noisebvtime") {
                 double depth; if (ls >> depth && std::isfinite(depth)) voice.noiseBurstVelTime = std::clamp(depth, 0.0, 1.0);
             }
+            else if (key == "noisebkey") {
+                double depth; if (ls >> depth && std::isfinite(depth)) voice.noiseBurstKeyTime = std::clamp(depth, -1.0, 1.0);
+            }
             else if (key == "filter2") {
                 ls >> voice.filter2Type >> voice.filter2Cutoff >> voice.filter2Reso >> voice.filterRouting;
                 voice.filter2Type = std::clamp(voice.filter2Type, 0, kFilter2Types - 1);
@@ -685,7 +690,7 @@ struct Preset {
             && a.env3A == b.env3A && a.env3D == b.env3D && a.env3S == b.env3S && a.env3R == b.env3R
             && a.osc1WtPos == b.osc1WtPos && a.osc2WtPos == b.osc2WtPos
             && a.subLevel == b.subLevel && a.subOctave == b.subOctave && a.subShape == b.subShape
-            && a.noiseLevel == b.noiseLevel && a.noiseTone == b.noiseTone && a.noiseCharacter == b.noiseCharacter && a.noiseColor == b.noiseColor && a.noiseWidth == b.noiseWidth && a.noiseBurst == b.noiseBurst && a.noiseBurstSync == b.noiseBurstSync && a.noiseBurstAttack == b.noiseBurstAttack && a.noiseBurstCurve == b.noiseBurstCurve && a.noiseBurstVelocity == b.noiseBurstVelocity && a.noiseBurstVelTime == b.noiseBurstVelTime
+            && a.noiseLevel == b.noiseLevel && a.noiseTone == b.noiseTone && a.noiseCharacter == b.noiseCharacter && a.noiseColor == b.noiseColor && a.noiseWidth == b.noiseWidth && a.noiseBurst == b.noiseBurst && a.noiseBurstSync == b.noiseBurstSync && a.noiseBurstAttack == b.noiseBurstAttack && a.noiseBurstCurve == b.noiseBurstCurve && a.noiseBurstVelocity == b.noiseBurstVelocity && a.noiseBurstVelTime == b.noiseBurstVelTime && a.noiseBurstKeyTime == b.noiseBurstKeyTime
             && a.filter2Type == b.filter2Type && a.filter2Cutoff == b.filter2Cutoff && a.filter2Reso == b.filter2Reso
             && a.filterRouting == b.filterRouting
             && a.osc1SpecMorph == b.osc1SpecMorph && a.osc2SpecMorph == b.osc2SpecMorph

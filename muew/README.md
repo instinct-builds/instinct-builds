@@ -526,3 +526,14 @@ time. Each computed duration is latched at note-on, so host tempo jumps and
 clock loss never retime a playing hit; the next hit uses the latest valid BPM
 or 120 BPM fallback. This is optional `noisebvtime <depth>` preset state with
 default zero, no new AU parameter ID, and no change to sustained noise.
+
+## 0.65.0 Noise burst keyboard time
+
+KEY TIME is a bipolar depth in BURST SHAPE. Positive settings shorten
+higher-note bursts and lengthen lower-note bursts; negative settings reverse
+that slope. C4 is neutral. The multiplier is bounded to one-quarter to four
+times the FREE or synced duration, calculated at note-on after any velocity
+time scaling and latched for the whole note. A host tempo jump cannot change
+the active hit; a new note uses the current BPM or the 120 fallback. Depth
+zero skips the new math, preserving existing audio. The optional
+`noisebkey <depth>` line defaults to zero; no new AU parameter ID.

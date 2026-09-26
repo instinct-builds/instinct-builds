@@ -203,6 +203,18 @@ int main() {
         printf("AU noise BURST velocity time recalls and renders; 40 published parameter IDs unchanged\n");
     }
 
+    // 0.65.0: optional pitch-time depth is recalled and renders via AU.
+    {
+        AudioUnit t=openUnit();muew::Preset p;
+        p.voice.noiseLevel=.7;p.voice.noiseBurst=.2;p.voice.noiseBurstKeyTime=.75;
+        bool ok=t&&setState(t,p);muew::Preset back;
+        ok=ok&&getState(t,back)&&back==p&&back.serialize().find("\nnoisebkey 0.75\n")!=std::string::npos;
+        if(ok)ok=MusicDeviceMIDIEvent(t,0x90,84,75,0)==noErr&&render(t,l,r);
+        if(t){AudioUnitUninitialize(t);AudioComponentInstanceDispose(t);}
+        if(!ok){printf("FAIL: AU noise BURST key time state\n");return 1;}
+        printf("AU noise BURST key time recalls and renders; 40 published parameter IDs unchanged\n");
+    }
+
     // Every factory preset selects and sounds through the host path.
     for(SInt32 n=0;n<kExpectedPresets;++n){
         AUPreset sel{n,nullptr};
