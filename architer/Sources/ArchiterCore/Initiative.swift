@@ -96,8 +96,32 @@ public struct InitiativeTracker: Codable, Equatable, Sendable {
     /// dexterity, and inventing one would be fake precision. Unknown-CR and
     /// zero-count rows are skipped - the planner already flags them.
     public static func startingFight(from lines: [EncounterLine]) -> InitiativeTracker {
+        InitiativeTracker(entries: expand(lines, seeding: [:]))
+    }
+
+    /// Add to fight (3.39.0): append planner rows as new entries - the wave
+    /// case, deliberately not idempotent. Existing entries, totals, the
+    /// active turn, and the round carry over; arrivals roll flat and sink
+    /// to the bottom of the order until rolled. Numbering continues per CR
+    /// VALUE from the current entries, never parsed from names - renames
+    /// and removals cannot break it.
+    public func appendingFight(from lines: [EncounterLine]) -> InitiativeTracker {
+        var seed: [String: Int] = [:]
+        for entry in entries {
+            guard let cr = entry.cr else { continue }
+            seed[EncounterMath.crText(cr), default: 0] += 1
+        }
+        var copy = self
+        copy.entries.append(contentsOf: InitiativeTracker.expand(lines, seeding: seed))
+        return copy
+    }
+
+    /// Shared expansion for start/append so the two paths cannot drift:
+    /// valid rows become one flat entry per creature, numbered per CR text
+    /// from the seed counts. Unknown-CR and zero-count rows are skipped.
+    private static func expand(_ lines: [EncounterLine], seeding seed: [String: Int]) -> [InitiativeEntry] {
         var entries: [InitiativeEntry] = []
-        var numbers: [String: Int] = [:]
+        var numbers = seed
         for line in lines where line.count > 0 {
             guard EncounterMath.xp(forCR: line.cr) != nil else { continue }
             let label = EncounterMath.crText(line.cr)
@@ -107,7 +131,7 @@ public struct InitiativeTracker: Codable, Equatable, Sendable {
                 entries.append(InitiativeEntry(name: "CR \(label) #\(n)", bonus: 0, cr: line.cr))
             }
         }
-        return InitiativeTracker(entries: entries)
+        return entries
     }
 
     /// Advance the turn: the next rolled entry becomes active; wrapping

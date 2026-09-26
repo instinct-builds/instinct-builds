@@ -787,6 +787,16 @@ public final class AppModel: ObservableObject {
         initiativeStore.save(initiative)
     }
 
+    /// Add to fight (3.39.0): append the planner's rows to the current
+    /// tracker - the wave case. Non-destructive, so no confirm; the
+    /// per-row remove is the undo.
+    public func addToFightFromPlanner() {
+        let updated = initiative.appendingFight(from: encounterLines)
+        guard updated.entries.count > initiative.entries.count else { return }
+        initiative = updated
+        initiativeStore.save(initiative)
+    }
+
     /// Roll a saved macro: labeled with its name. A macro with a damage-type
     /// tag (2.36.0) takes the same outgoing-defense-note path as typed free
     /// rolls and attack damage; an unknown stored tag falls back to a plain

@@ -1688,6 +1688,28 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? rnLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/initiative-rename.txt"),
                atomically: true, encoding: .utf8)
+    // Add-to-fight proof (3.39.0): the wave appends, numbering continues by
+    // CR value through the renamed entry, and the live verdict re-derives
+    // over the bigger fight - Hard tips to Deadly. Runs at END.
+    model.addToFightFromPlanner()
+    var afLines = ["Add to fight (3.39.0)",
+                   "the wave appends; numbering continues by CR value through renames; turn state carries"]
+    afLines.append("tracker now: " + model.initiative.entries.map { $0.name }.joined(separator: ", "))
+    afLines.append("round \(model.initiative.round), entries \(model.initiative.entries.count)")
+    if let live = model.liveFightEstimate {
+        afLines.append("live verdict after the wave: \(live.band.displayName) (adjusted \(live.adjustedXP)) - was Hard 3000 before")
+    } else {
+        afLines.append("live verdict after the wave: MISSING")
+    }
+    renderPNG(
+        InitiativeSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "add-to-fight", outDir: outDir, minHeight: 260, maxHeight: 700)
+    try? afLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/add-to-fight.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

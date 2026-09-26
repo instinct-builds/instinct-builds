@@ -121,3 +121,49 @@ struct StartFightTests {
         #expect(est?.band == .hard)
     }
 }
+
+@Suite("Add to fight (3.39.0)")
+struct AddToFightTests {
+    @Test func appendPreservesTurnState() {
+        let wren = InitiativeEntry(name: "Wren", bonus: 2, total: 17)
+        let tracker = InitiativeTracker(entries: [
+            InitiativeEntry(name: "CR 3 #1", bonus: 0, total: 14, cr: 3),
+            wren,
+        ], activeID: wren.id, round: 2)
+        let updated = tracker.appendingFight(from: [EncounterLine(count: 1, cr: 3)])
+        #expect(updated.round == 2)
+        #expect(updated.activeID == wren.id)
+        #expect(updated.entries[0].total == 14)
+        #expect(updated.entries.count == 3)
+    }
+
+    @Test func numberingContinuesByCRValueThroughRenames() {
+        let tracker = InitiativeTracker(entries: [
+            InitiativeEntry(name: "CR 3 #1", bonus: 0, cr: 3),
+            InitiativeEntry(name: "Gnoll archer", bonus: 0, cr: 3),
+            InitiativeEntry(name: "CR 1/2 #1", bonus: 0, cr: 0.5),
+        ])
+        let updated = tracker.appendingFight(from: [
+            EncounterLine(count: 2, cr: 3),
+            EncounterLine(count: 1, cr: 0.5),
+        ])
+        #expect(updated.entries.suffix(3).map(\.name) == ["CR 3 #3", "CR 3 #4", "CR 1/2 #2"])
+    }
+
+    @Test func invalidRowsAppendNothing() {
+        let tracker = InitiativeTracker(entries: [InitiativeEntry(name: "CR 3 #1", bonus: 0, cr: 3)])
+        let updated = tracker.appendingFight(from: [EncounterLine(count: 1, cr: 1.7),
+                                                    EncounterLine(count: 0, cr: 2)])
+        #expect(updated == tracker)
+    }
+
+    @Test func arrivalsSinkBelowRolledEntries() {
+        let tracker = InitiativeTracker(entries: [
+            InitiativeEntry(name: "Wren", bonus: 2, total: 17),
+            InitiativeEntry(name: "CR 3 #1", bonus: 0, total: 12, cr: 3),
+        ])
+        let updated = tracker.appendingFight(from: [EncounterLine(count: 1, cr: 3)])
+        #expect(updated.ordered.first?.name == "Wren")
+        #expect(updated.ordered.last?.total == nil)
+    }
+}

@@ -1083,6 +1083,14 @@ public struct EncounterSectionView: View {
                     .disabled(!model.encounterLines.contains { $0.count > 0 && EncounterMath.xp(forCR: $0.cr) != nil })
                     .help("Replace the tracker with these enemies as individual entries - rolls flat (bonus 0); set bonuses at the table")
                 }
+                // Add to fight (3.39.0): append the rows to the current
+                // fight - reinforcements. No confirm: non-destructive, and
+                // the per-row remove is the undo.
+                Button("Add to fight") { model.addToFightFromPlanner() }
+                    .controlSize(.small)
+                    .disabled(model.initiative.entries.isEmpty
+                              || !model.encounterLines.contains { $0.count > 0 && EncounterMath.xp(forCR: $0.cr) != nil })
+                    .help("Append these enemies to the current fight - reinforcements roll in at the bottom (with an empty tracker, use Start fight)")
                 Button("Add enemies") { model.addEncounterLine() }
                     .controlSize(.small)
                     .help("Add a row: how many enemies at what challenge rating")
