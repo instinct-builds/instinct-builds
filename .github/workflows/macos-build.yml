@@ -271,7 +271,8 @@ jobs:
           DELAY=18 shoot source-receipt-search 1920x1200 source-receipt-search demo-source-receipt-search.txt
           grep -q '^done found=true count=1$' "$SUP/demo-source-receipt-search.txt"
           DELAY=18 shoot source-receipt-csv 1920x1200 source-receipt-csv demo-source-receipt-csv.txt
-          grep -q '^done rows=1 safe=true$' "$SUP/demo-source-receipt-csv.txt"
+          cat "$SUP/demo-source-receipt-csv.txt"
+          grep -q '^done rows=1 safe=true hash=true noPath=true$' "$SUP/demo-source-receipt-csv.txt"
           cp "$SUP/demo-source-receipts.csv" "ASSSETS-$ASSSETS_VERSION-source-receipts.csv.txt"
           test "$(wc -l < "ASSSETS-$ASSSETS_VERSION-source-receipts.csv.txt")" -eq 2
           DELAY=18 shoot folder-relink 1920x1200 folder-relink

@@ -7692,7 +7692,7 @@ struct LibraryHealthSheet: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                                 TextField("Source filename", text: $receiptFilename)
-                                    .textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                                    .textFieldStyle(.roundedBorder).frame(width: 170)
                                 Toggle("Dates", isOn: $receiptDateEnabled).toggleStyle(.checkbox).controlSize(.small)
                                     .onChange(of: receiptDateEnabled) { _, enabled in
                                         if enabled {
@@ -7701,7 +7701,7 @@ struct LibraryHealthSheet: View {
                                         }
                                     }
                                 Button("Export CSV…") { model.exportSourceReceiptCSV(matched) }
-                                    .controlSize(.small).disabled(matched.isEmpty)
+                                    .controlSize(.small).fixedSize().disabled(matched.isEmpty)
                                     .help("Export all matching receipts, even rows hidden by Show Recent. Dates, filenames, sizes and hashes only.")
                                 if filtered {
                                     Text("\(matched.count) found").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -7779,9 +7779,12 @@ struct LibraryHealthSheet: View {
                         let output = model.supportRoot.appendingPathComponent("demo-source-receipts.csv")
                         model.exportSourceReceiptCSV(results, to: output)
                         let csv = (try? String(contentsOf: output, encoding: .utf8)) ?? ""
-                        let safe = csv.contains(results[0].after.sha256) && !csv.contains(results[0].path) &&
-                            csv.split(separator: "\n").count == 2
-                        try? "done rows=1 safe=\(safe)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-csv.txt"), atomically: true, encoding: .utf8)
+                        let hasHash = csv.contains(results[0].after.sha256)
+                        let noPath = !csv.contains(results[0].path)
+                        let rows = csv.split(separator: "\n").count
+                        let safe = hasHash && noPath && rows == 2
+                        try? "done rows=\(rows - 1) safe=\(safe) hash=\(hasHash) noPath=\(noPath)".write(
+                            to: model.supportRoot.appendingPathComponent("demo-source-receipt-csv.txt"), atomically: true, encoding: .utf8)
                     }
                 }
             }
