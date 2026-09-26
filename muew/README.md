@@ -516,3 +516,13 @@ velocity still applies to all layers. The shape preview shows a velocity-60
 example. This is optional `noisebvel <depth>` preset state, default zero;
 old presets and sustained-noise sounds stay byte-identical, and no new AU
 parameter is published.
+
+## 0.64.0 Noise burst velocity time
+
+The BURST SHAPE panel adds VEL TIME. At zero, the exact old duration and
+audio remain. Above zero, softer notes shorten the burst up to their note
+velocity fraction while maximum-velocity hits keep the chosen FREE or synced
+time. Each computed duration is latched at note-on, so host tempo jumps and
+clock loss never retime a playing hit; the next hit uses the latest valid BPM
+or 120 BPM fallback. This is optional `noisebvtime <depth>` preset state with
+default zero, no new AU parameter ID, and no change to sustained noise.

@@ -150,6 +150,7 @@ struct VoiceParams {
     double noiseBurstAttack = 0.0; // 0.57.0: 0..0.8 fraction of total burst time
     double noiseBurstCurve = 0.0;  // 0.57.0: -1 fast, 0 linear, +1 slow tail
     double noiseBurstVelocity = 0.0; // 0.63.0: 0 legacy/static; 1 scales burst noise by note velocity
+    double noiseBurstVelTime = 0.0; // 0.64.0: 0 legacy duration; 1 shortens soft-note burst to velocity fraction
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
@@ -368,6 +369,11 @@ public:
         dcL_.reset(); dcR_.reset(); dcOn_ = false;
         noiseBurstPos_ = 0; // the burst retriggers with each played note
         noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_); // latch for this note
+        if (noiseBurstLength_ && params_.noiseBurstVelTime > 0.0) {
+            const double factor = 1.0 - std::clamp(params_.noiseBurstVelTime, 0.0, 1.0) *
+                                  (1.0 - std::clamp((double)velocity_, 0.0, 1.0));
+            noiseBurstLength_ = std::max<uint64_t>(1, (uint64_t)std::ceil(noiseBurstLength_ * factor));
+        }
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
         noiseR_.reset(0x6c8e9cf5u ^ (uint32_t)(note * 2246822519u));
     }
