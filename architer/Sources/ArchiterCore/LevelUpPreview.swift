@@ -40,16 +40,19 @@ public struct LevelUpPreview: Equatable, Sendable {
         hitDiceTo = "\(toLevel)d\(c.hitDiceType)"
         averageHPGain = c.averageLevelUpHP
         rollExpression = c.levelUpRollExpression
+        // A plain loop, not compactMap: a closure would capture self before
+        // slotDeltas is initialized (the nested SlotDelta init is a member).
+        var deltas: [SlotDelta] = []
         if let sc = c.spellcasting {
-            slotDeltas = (1...9).compactMap { sl in
+            for sl in 1...9 {
                 let from = sc.slotsMax(spellLevel: sl, casterLevel: c.level)
                 let to = sc.slotsMax(spellLevel: sl, casterLevel: toLevel)
-                return (from > 0 || to > 0) && from != to
-                    ? SlotDelta(spellLevel: sl, from: from, to: to) : nil
+                if (from > 0 || to > 0) && from != to {
+                    deltas.append(SlotDelta(spellLevel: sl, from: from, to: to))
+                }
             }
-        } else {
-            slotDeltas = []
         }
+        slotDeltas = deltas
     }
 
     /// The milestone line `levelUp(hpGain:)` appends to notes, shown verbatim.
