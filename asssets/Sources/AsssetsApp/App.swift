@@ -125,6 +125,7 @@ final class StudioLibrary: ObservableObject {
     @Published var licenseCleanupReview: LicenseCleanupReview?
     @Published var licenseCleanupNotice: String?
     private var cleanupDemoFault: String?
+    private var reportDemoFault: String?
     @Published var selectedSmart: UUID?
     /// Moodboard shown in place of the grid (1.16), its selected card, and the note being edited.
     @Published var selectedBoard: UUID?
@@ -3279,7 +3280,7 @@ final class StudioLibrary: ObservableObject {
                 show(board: id)
                 boardSelection = []
             }
-        case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
+        case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-report-snapshot", "rights-report-stale", "rights-report-missing", "rights-report-partial", "rights-alerts",
              "license-files", "rights-presets", "export-guard", "rights-recheck-warning", "rights-recheck-stale", "health-incomplete", "health-recovered", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-cleanup-review", "license-cleanup-apply", "license-cleanup-stale", "license-cleanup-stage", "license-cleanup-save", "license-cleanup-purge", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
@@ -3616,6 +3617,30 @@ final class StudioLibrary: ObservableObject {
                 show(collection: StudioCatalog.inboxCollection)
                 let pair = ["Northlight Lobby.png", "Atrium Cork Wall.png"].compactMap { find($0)?.id }
                 selection = Set(pair); focusID = pair.first
+            case "rights-report-snapshot", "rights-report-stale", "rights-report-missing", "rights-report-partial":
+                show(collection: StudioCatalog.inboxCollection)
+                let ids = filtered.map(\.id)
+                let title = "Hotel Pitch · verified export"
+                let ticket = RightsReportExport(catalog: catalog, ids: ids, title: title, day: UsageRights.today())!
+                let reviewedFiles = reportFiles(ticket.documents) ?? []
+                let output = supportRoot.appendingPathComponent("demo-rights-snapshot.pdf")
+                let csv = output.deletingPathExtension().appendingPathExtension("csv")
+                let folder = output.deletingLastPathComponent().appendingPathComponent(output.deletingPathExtension().lastPathComponent + " license files", isDirectory: true)
+                try? fm.removeItem(at: output); try? fm.removeItem(at: csv); try? fm.removeItem(at: folder)
+                if demo == "rights-report-stale", let first = ids.first {
+                    mutate { c in c.assets[c.assets.firstIndex(where: { $0.id == first })!].rights?.credit = "Changed after report intent" }
+                }
+                if demo == "rights-report-missing", let doc = ticket.documents.first { try? fm.removeItem(at: licenseURL(doc)) }
+                if demo == "rights-report-partial" { reportDemoFault = "publish" }
+                Task { @MainActor in
+                    let result = await self.exportReport(ticket, pdf: output, scope: { ids }, liveTitle: { title }, reviewedFiles: reviewedFiles)
+                    let pdfExists = fm.fileExists(atPath: output.path)
+                    let csvExists = fm.fileExists(atPath: csv.path)
+                    let folderExists = fm.fileExists(atPath: folder.path)
+                    let copies = (try? fm.contentsOfDirectory(atPath: folder.path))?.count ?? 0
+                    let report = "done complete=\(result != nil) pdf=\(pdfExists) csv=\(csvExists) folder=\(folderExists) copies=\(copies)"
+                    try? report.write(to: self.supportRoot.appendingPathComponent("demo-rights-snapshot.txt"), atomically: true, encoding: .utf8)
+                }
             case "rights-report":
                 show(collection: StudioCatalog.inboxCollection)
                 let ids = filtered.map(\.id)
@@ -3914,25 +3939,118 @@ extension StudioLibrary {
         flash("Marked \(n) renewed today, ending in a year · ⌘Z to undo")
     }
 
-    /// Asks where to save, then writes "<title> rights report.pdf" and ".csv" side by side.
-    func exportRightsReport(_ ids: [UUID], title: String) {
-        guard !ids.isEmpty else { flash("Nothing to report on"); return }
-        let report = catalog.rightsReport(ids, title: title)
+    /// A report is a catalog-and-paperwork snapshot, not a best-effort bundle.
+    private struct ReportFile: Equatable {
+        let document: LicenseDoc
+        let identity: LicenseCleanupReview.File
+    }
+
+    private func reportFiles(_ docs: [LicenseDoc]) -> [ReportFile]? {
+        var result: [ReportFile] = []
+        for doc in docs {
+            guard let identity = fileIdentity(licenseURL(doc)), identity.bytes > 0 else { return nil }
+            result.append(ReportFile(document: doc, identity: identity))
+        }
+        return result
+    }
+
+    /// Entries are checked again after a save panel and just before publication.
+    private func validReport(_ ticket: RightsReportExport, scope: () -> [UUID], liveTitle: () -> String, files: [ReportFile]) -> Bool {
+        guard catalogMatchesDisk(), ticket.stillMatches(catalog, ids: scope(), title: liveTitle(), day: UsageRights.today()) else { return false }
+        return files.allSatisfy { fileIdentity(licenseURL($0.document)) == $0.identity }
+    }
+
+    private func exportReport(_ ticket: RightsReportExport, pdf url: URL, scope: () -> [UUID], liveTitle: () -> String,
+                              reviewedFiles: [ReportFile], png: URL? = nil) async -> (pages: Int, copied: Int)? {
+        let fm = FileManager.default
+        let files = reviewedFiles
+        guard validReport(ticket, scope: scope, liveTitle: liveTitle, files: files) else {
+            flash("Report or license paperwork changed. Nothing saved; review and export again."); return nil
+        }
+        let csv = url.deletingPathExtension().appendingPathExtension("csv")
+        let folder = url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent + " license files", isDirectory: true)
+        let destinations = [url, csv] + (files.isEmpty ? [] : [folder])
+        guard destinations.allSatisfy({ !cleanupEntryExists($0) }) else {
+            flash("A report, CSV or license folder already exists. Choose a new report name; nothing overwritten."); return nil
+        }
+        let stage = url.deletingLastPathComponent().appendingPathComponent(".ASSSETS-report-\(UUID().uuidString)", isDirectory: true)
+        let stagedPDF = stage.appendingPathComponent(url.lastPathComponent)
+        let stagedCSV = stage.appendingPathComponent(csv.lastPathComponent)
+        let stagedFolder = stage.appendingPathComponent(folder.lastPathComponent, isDirectory: true)
+        let expectedPDFPages = max(1, (ticket.report.rows.count + RightsReportPage.rowsPerPage - 1) / RightsReportPage.rowsPerPage)
+        var published: [URL] = []
+        do {
+            try fm.createDirectory(at: stage, withIntermediateDirectories: false)
+            if !files.isEmpty { try fm.createDirectory(at: stagedFolder, withIntermediateDirectories: false) }
+            var names = Set<String>()
+            for file in files {
+                let base = DragOut.safeName((file.document.name as NSString).deletingPathExtension)
+                let ext = (file.document.name as NSString).pathExtension
+                let name = DragOut.uniqueName(ext.isEmpty ? base : base + "." + ext, taken: names)
+                names.insert(name)
+                let target = stagedFolder.appendingPathComponent(name)
+                guard fileIdentity(licenseURL(file.document)) == file.identity else { throw NSError(domain: "ASSSETS.Report", code: 4) }
+                try fm.copyItem(at: licenseURL(file.document), to: target)
+                guard let copied = fileIdentity(target), copied.digest == file.identity.digest,
+                      copied.bytes == file.identity.bytes else { throw NSError(domain: "ASSSETS.Report", code: 1) }
+            }
+            guard files.isEmpty || (try? fm.contentsOfDirectory(atPath: stagedFolder.path))?.count == files.count else { throw NSError(domain: "ASSSETS.Report", code: 5) }
+            try ticket.report.csv.write(to: stagedCSV, atomically: true, encoding: .utf8)
+            guard (try String(contentsOf: stagedCSV, encoding: .utf8)) == ticket.report.csv else { throw NSError(domain: "ASSSETS.Report", code: 2) }
+            let pages = await writeRightsReport(ticket.report, pdf: stagedPDF, csv: nil, png: png)
+            guard pages == expectedPDFPages, let pdf = PDFDocument(url: stagedPDF), pdf.pageCount == expectedPDFPages,
+                  let attrs = try? fm.attributesOfItem(atPath: stagedPDF.path),
+                  (attrs[.size] as? NSNumber)?.intValue ?? 0 > 0,
+                  validReport(ticket, scope: scope, liveTitle: liveTitle, files: files) else { throw NSError(domain: "ASSSETS.Report", code: 3) }
+            // Publish the folder before PDF and CSV. Exclusive rename never silently replaces a destination.
+            let publishPairs: [(URL, URL)] = (files.isEmpty ? [] : [(stagedFolder, folder)]) + [(stagedCSV, csv), (stagedPDF, url)]
+            for (index, pair) in publishPairs.enumerated() {
+                let (source, target) = pair
+                if isDemo && reportDemoFault == "publish" && index == 1 { throw NSError(domain: "ASSSETS.Demo", code: 10) }
+                try moveCleanupFile(source, target)
+                published.append(target)
+            }
+            try? fm.removeItem(at: stage) // empty after successful publication; never retract published output
+            return (pages, files.count)
+        } catch {
+            // Never erase files that already landed. A partial bundle remains visible for manual inspection.
+            if published.isEmpty {
+                if !cleanupEntryExists(stage) { flash("Could not complete the rights report. Nothing saved.") }
+                else {
+                    do { try fm.removeItem(at: stage); flash("Could not complete the rights report. Nothing saved.") }
+                    catch { flash("Report incomplete: staged files remain at \(stage.path). Check them before trying again.") }
+                }
+            } else { flash("Report incomplete: \(published.count) of \(destinations.count) parts saved. Check \(stage.path) and the destination; nothing overwritten.") }
+            return nil
+        }
+    }
+
+    /// Asks where to save, then validates the same exact report and physical files before writing.
+    func exportRightsReport(_ ids: [UUID], title: String, scope: (() -> [UUID])? = nil, liveTitle: (() -> String)? = nil) {
+        guard let ticket = RightsReportExport(catalog: catalog, ids: ids, title: title, day: UsageRights.today()) else {
+            flash("Nothing to report on"); return
+        }
+        guard let reviewedFiles = reportFiles(ticket.documents) else {
+            flash("A license file is missing or unreadable. Nothing exported; repair the paperwork first."); return
+        }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = DragOut.safeName(title + " rights report") + ".pdf"
-        panel.message = report.docs.isEmpty ? "A CSV with the same rows is saved next to the PDF."
-                                            : "A CSV with the same rows and a folder with the \(report.docs.count) license file\(report.docs.count == 1 ? "" : "s") are saved next to the PDF."
+        panel.message = ticket.documents.isEmpty
+            ? "Saves a PDF and CSV side by side. Choose a new name if either already exists."
+            : "Saves a PDF, CSV and \(ticket.documents.count) verified license file\(ticket.documents.count == 1 ? "" : "s") next to them. Choose a new name if related files already exist."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let csv = url.deletingPathExtension().appendingPathExtension("csv")
+        let liveScope = scope ?? { ids }
+        let currentTitle = liveTitle ?? { title }
+        guard validReport(ticket, scope: liveScope, liveTitle: currentTitle, files: reviewedFiles) else {
+            flash("Report or license paperwork changed. Nothing saved; review and export again."); return
+        }
         Task { @MainActor in
-            let pages = await self.writeRightsReport(report, pdf: url, csv: csv)
-            let folder = self.copyLicenseFiles(report.docs, nextTo: url)
-            if pages > 0 {
-                self.flash("Saved rights report: \(report.rows.count) assets, \(pages) page\(pages == 1 ? "" : "s") + CSV\(folder != nil ? " + \(report.docs.count) license file\(report.docs.count == 1 ? "" : "s")" : "")")
-                NSWorkspace.shared.activateFileViewerSelecting([url, csv] + (folder.map { [$0] } ?? []))
-            }
-            else { self.flash("Couldn't write the rights report") }
+            guard let outcome = await self.exportReport(ticket, pdf: url, scope: liveScope, liveTitle: currentTitle, reviewedFiles: reviewedFiles) else { return }
+            let csv = url.deletingPathExtension().appendingPathExtension("csv")
+            let folder = url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent + " license files", isDirectory: true)
+            self.flash("Saved rights report: \(ticket.report.rows.count) assets, \(outcome.pages) page\(outcome.pages == 1 ? "" : "s") + CSV\(outcome.copied > 0 ? " + \(outcome.copied) license file\(outcome.copied == 1 ? "" : "s")" : "")")
+            NSWorkspace.shared.activateFileViewerSelecting([url, csv] + (outcome.copied > 0 ? [folder] : []))
         }
     }
 
@@ -4183,25 +4301,6 @@ extension StudioLibrary {
         let mail = "From: orders@northlight.example\r\nTo: studio@example.com\r\nSubject: Your Northlight receipt NL-20417\r\nDate: Mon, 7 Sep 2026 10:12:00 +0000\r\n\r\nThanks for your order. Receipt for NL-20417: 2 images, $420.00 paid by card.\r\n"
         if (try? mail.write(to: eml, atomically: true, encoding: .utf8)) != nil { out["receipt"] = eml }
         return out
-    }
-
-    /// "<report> license files" folder next to a rights report; nil when there is nothing to copy.
-    func copyLicenseFiles(_ docs: [LicenseDoc], nextTo report: URL) -> URL? {
-        let fm = FileManager.default
-        let present = docs.filter { fm.fileExists(atPath: licenseURL($0).path) }
-        guard !present.isEmpty else { return nil }
-        let parent = report.deletingLastPathComponent()
-        let taken = Set((try? fm.contentsOfDirectory(atPath: parent.path)) ?? [])
-        let folder = parent.appendingPathComponent(DragOut.uniqueName(report.deletingPathExtension().lastPathComponent + " license files", taken: taken), isDirectory: true)
-        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        var names = Set<String>()
-        for d in present {
-            let n = DragOut.uniqueName(DragOut.safeName((d.name as NSString).deletingPathExtension), taken: names)
-            names.insert(n)
-            let ext = (d.name as NSString).pathExtension
-            try? fm.copyItem(at: licenseURL(d), to: folder.appendingPathComponent(ext.isEmpty ? n : n + "." + ext))
-        }
-        return folder
     }
 
     /// Opens "Save as Preset" with what the selection shares: every field that matches, files attached to all of them.
@@ -5087,7 +5186,9 @@ struct BoardCanvas: View {
             Button("Export Round Summary PDF…") { model.exportRoundSummary(board.id) }
             Toggle("Include Credits Page", isOn: $model.includeCredits)
             Toggle("Include License Files in Galleries", isOn: $model.includeLicenseFiles).disabled(!model.includeCredits)
-            Button("Rights Report (PDF + CSV)…") { model.exportRightsReport(board.items.compactMap(\.assetID), title: board.name) }
+            Button("Rights Report (PDF + CSV)…") { model.exportRightsReport(board.items.compactMap(\.assetID), title: board.name,
+                scope: { model.catalog.boards.first(where: { $0.id == board.id })?.items.compactMap(\.assetID) ?? [] },
+                liveTitle: { model.catalog.boards.first(where: { $0.id == board.id })?.name ?? "" }) }
             let newer = model.catalog.outdatedCards(on: board.id).count
             if newer > 0 { Button("Update All to Newest (\(newer))") { model.updateToNewest(board.id) } }
             Button("Share Round (Gallery + Summary)…") { model.shareRound(board.id) }
@@ -6762,7 +6863,8 @@ struct Sidebar: View {
                             .contextMenu {
                                 Button("Rename…") { renameText = name; model.renamingCollection = name }
                                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name) }
-                                Button("Rights Report…") { model.exportRightsReport(model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name) }
+                                Button("Rights Report…") { model.exportRightsReport(model.catalog.assets.filter { $0.collection == name }.map(\.id), title: name,
+                                    scope: { model.catalog.assets.filter { $0.collection == name }.map(\.id) }) }
                                 Button("New Board from Collection") { model.newBoard(named: name, assets: model.catalog.assets.filter { $0.collection == name }.map(\.id)) }
                                 Button("Show") { model.show(collection: name) }
                             }
@@ -6805,7 +6907,9 @@ struct Sidebar: View {
                         SidebarRow(title: smart.name, symbol: smart.symbol, count: n, selected: model.selectedSmart == smart.id, accent: .smart, badge: badge) { model.show(smart: smart.id) }
                             .contextMenu {
                                 Button("Edit Rules…") { model.beginEdit(smart: smart.id) }
-                                Button("Rights Report…") { model.exportRightsReport(model.catalog.smartAssets(smart.id).map(\.id), title: smart.name) }
+                                Button("Rights Report…") { model.exportRightsReport(model.catalog.smartAssets(smart.id).map(\.id), title: smart.name,
+                                    scope: { model.catalog.smartAssets(smart.id).map(\.id) },
+                                    liveTitle: { model.catalog.smartCollections.first(where: { $0.id == smart.id })?.name ?? "" }) }
                                 Button("Contact Sheet & Brand Kit…") { model.openContactSheet(ids: model.catalog.smartAssets(smart.id).map(\.id), title: smart.name) }
                                 Button("New Board from Smart Collection") { model.newBoard(named: smart.name, assets: model.catalog.smartAssets(smart.id).map(\.id)) }
                                 Button("Delete Smart Collection", role: .destructive) { model.deleteSmart(smart.id) }
@@ -10537,7 +10641,8 @@ struct BatchInspector: View {
                 }
                 HStack(spacing: 8) {
                     Button { model.copyKeywords(ids) } label: { Label("Keywords", systemImage: "doc.on.doc") }.buttonStyle(.bordered)
-                    Button { model.exportRightsReport(assets.map(\.id), title: "\(assets.count) Selected Assets") } label: { Label("Rights Report…", systemImage: "list.bullet.rectangle") }.buttonStyle(.bordered)
+                    Button { model.exportRightsReport(assets.map(\.id), title: "\(assets.count) Selected Assets",
+                        scope: { model.catalog.assets.filter { model.selection.contains($0.id) }.map(\.id) }) } label: { Label("Rights Report…", systemImage: "list.bullet.rectangle") }.buttonStyle(.bordered)
                 }
                 Button(role: .destructive) { model.pendingRemoval = ids } label: { Label("Remove from Library…", systemImage: "trash") }.buttonStyle(.borderless).padding(.top, 4)
             }
@@ -12043,7 +12148,7 @@ struct RightsReportPage: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Text("Made with ASSSETS · CSV with the same rows saved alongside" + (report.docs.isEmpty ? "" : " · \(report.docs.count) license file\(report.docs.count == 1 ? "" : "s") on record")).font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
+                Text("Made with ASSSETS · report snapshot" + (report.docs.isEmpty ? "" : " · \(report.docs.count) license file\(report.docs.count == 1 ? "" : "s") on record")).font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
                 Spacer()
                 Text("\(page) of \(pages)").font(.system(size: 7.5, weight: .semibold)).foregroundStyle(Self.muted)
             }

@@ -237,6 +237,16 @@ jobs:
           cp "$SUP/demo-rights-report.png" "ASSSETS-$ASSSETS_VERSION-rights-report.png"; cp "$SUP/demo-rights-report.pdf" "ASSSETS-$ASSSETS_VERSION-rights-report.pdf"
           cp "$SUP/demo-rights-report.csv" "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt"; head -3 "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt"
           grep -q 'Harbor Night' "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt" || { echo "rights report CSV is missing rows"; exit 1; }
+          DELAY=18 shoot rights-report-snapshot 1024x768 rights-report-snapshot demo-rights-snapshot.txt
+          grep -q '^done complete=true pdf=true csv=true folder=true copies=3$' "$SUP/demo-rights-snapshot.txt"
+          cp "$SUP/demo-rights-snapshot.txt" "ASSSETS-$ASSSETS_VERSION-rights-snapshot.txt"
+          DELAY=18 shoot rights-report-stale 1024x768 rights-report-stale demo-rights-snapshot.txt
+          grep -q '^done complete=false pdf=false csv=false folder=false copies=0$' "$SUP/demo-rights-snapshot.txt"
+          DELAY=18 shoot rights-report-missing 1024x768 rights-report-missing demo-rights-snapshot.txt
+          grep -q '^done complete=false pdf=false csv=false folder=false copies=0$' "$SUP/demo-rights-snapshot.txt"
+          DELAY=18 shoot rights-report-partial 1024x768 rights-report-partial demo-rights-snapshot.txt
+          grep -q '^done complete=false pdf=false csv=false folder=true copies=3$' "$SUP/demo-rights-snapshot.txt"
+          cp "$SUP/demo-rights-snapshot.txt" "ASSSETS-$ASSSETS_VERSION-rights-snapshot-partial.txt"
           shoot rights-alerts 1920x1200 rights-alerts
           grep -q 'License files' "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt" && grep -q 'NL-20417 order confirmation.pdf' "ASSSETS-$ASSSETS_VERSION-rights-report.csv.txt" || { echo "rights report CSV does not list license files"; exit 1; }
           grep -q '"files":\[' "$SC/index.html" || { echo "gallery credits do not name license files"; exit 1; }
@@ -393,6 +403,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-color-search.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.csv.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-snapshot*.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt
