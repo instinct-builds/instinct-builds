@@ -475,3 +475,16 @@ block; the editor retains roughly half a second of recent extremes. The thin
 live indicator, short held peak pip, and bright depth handle remain separate.
 The trace is display-only, clears on route or preset changes, and adds no sound
 state, factory presets, or AU parameter IDs.
+
+## 0.60.0 Noise burst tempo sync
+
+The optional noise-only burst duration can use the shared tempo divisions
+(1/1, 1/2, 1/4, 1/8, 1/16, triplets, dotted quarter or two bars). TIME in
+the larger BURST SHAPE panel steps through FREE and those divisions. FREE
+remains the default 5-500 ms control in FILTER 2 + SUB; touching that bar
+returns to FREE without changing attack or curve. A synced burst follows
+valid host tempo, whether or not transport is playing. If no usable host
+clock exists, it uses 120 BPM deterministically, including after a previously
+valid clock disappears. The optional `noisebsync <division>` preset line
+preserves the FREE duration for switching back; old preset sound and the
+40 AU parameter IDs remain unchanged.

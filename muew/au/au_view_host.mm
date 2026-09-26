@@ -1803,6 +1803,16 @@ int main() {
                   shaped.serialize().find("\nnoiseenv 0.25 -0.5\n")!=std::string::npos,
                   "noise BURST shape panel edits ATTACK/CURVE without altering duration or width");
             Snapshot(view,"MUEW_NOISE57_PNG","noise BURST shape panel snapshot written");
+            // 0.60.0: sync is in the existing large shape panel, not
+            // another chip crowded into FILTER 2. One click steps FREE to 1/1;
+            // six clicks select 1/4T while keeping the free 240 ms value.
+            for(int k=0;k<6;++k) Click(view,w,NSMakePoint(150,99));
+            muew::Preset synced;bool syncedOk=State(synced);
+            Check(syncedOk && synced.voice.noiseBurstSync==6 && synced.voice.noiseBurst==shaped.voice.noiseBurst &&
+                  synced.voice.noiseBurstAttack==shaped.voice.noiseBurstAttack && synced.voice.noiseBurstCurve==shaped.voice.noiseBurstCurve &&
+                  synced.serialize().find("\nnoisebsync 6\n")!=std::string::npos,
+                  "noise BURST 1/4T tempo sync retains free duration and shape in AU state");
+            Snapshot(view,"MUEW_NOISE60_PNG","noise BURST tempo-sync shape panel snapshot written");
             Click(view,w,NSMakePoint(440,232)); // close shape panel before matrix proof
 
             // 0.54.0: the matrix meter follows signed, curved/AUX-scaled

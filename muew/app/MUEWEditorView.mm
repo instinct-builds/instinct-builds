@@ -920,6 +920,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)burstClose { NSRect r = [self burstPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)burstBar:(int)i { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 22, NSMaxY(r) - 76 - i * 34, 176, 15); }
 - (NSRect)burstPlot { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 218, r.origin.y + 38, 186, 114); }
+- (NSRect)burstSyncRect { NSRect r = [self burstPanel]; return NSMakeRect(r.origin.x + 22, r.origin.y + 42, 176, 17); }
 - (NSRect)wtPanel { return NSMakeRect(24, [self top] - 306, 440, 306); }
 - (NSRect)wtCanvas { return NSMakeRect(40, [self top] - 184, 408, 138); }
 - (NSRect)wtThumb:(int)i { return NSMakeRect(40 + i * 25.5, [self top] - 220, 23, 28); }
@@ -1964,10 +1965,11 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextA(@"SHAPE", NSInsetRect(detail, 2, 1), 6.5, burstDetail ? C(0xf5cc78) : C(0xcbd4df), NSFontWeightBold, NSTextAlignmentCenter);
         NSRect burst = [self noiseBurstRect];
         FillRound(burst, 3, C(0x1c232d));
-        if (v.noiseBurst > 0) FillRound(NSMakeRect(burst.origin.x, burst.origin.y, burst.size.width * v.noiseBurst / .5, burst.size.height), 3, C(0xf5cc78, .62));
-        TextA(@"BURST", NSMakeRect(burst.origin.x + 3, burst.origin.y + 1.5, 30, 10), 6.5, v.noiseBurst > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
-        TextA(v.noiseBurst > 0 ? [NSString stringWithFormat:@"%.0f", v.noiseBurst * 1000] : @"OFF", NSMakeRect(burst.origin.x + 34, burst.origin.y + 1.5, 25, 10), 6.5,
-              v.noiseBurst > 0 ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
+        if (v.noiseBurstSync > 0) FillRound(NSMakeRect(burst.origin.x, burst.origin.y, burst.size.width, burst.size.height), 3, C(0xf5cc78, .38));
+        else if (v.noiseBurst > 0) FillRound(NSMakeRect(burst.origin.x, burst.origin.y, burst.size.width * v.noiseBurst / .5, burst.size.height), 3, C(0xf5cc78, .62));
+        TextA(@"BURST", NSMakeRect(burst.origin.x + 3, burst.origin.y + 1.5, 30, 10), 6.5, (v.noiseBurst > 0 || v.noiseBurstSync > 0) ? C(0xe8edf3) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
+        TextA(v.noiseBurstSync > 0 ? S(ui::syncName(v.noiseBurstSync)) : v.noiseBurst > 0 ? [NSString stringWithFormat:@"%.0f", v.noiseBurst * 1000] : @"OFF", NSMakeRect(burst.origin.x + 34, burst.origin.y + 1.5, 25, 10), 6.5,
+              (v.noiseBurst > 0 || v.noiseBurstSync > 0) ? C(0xe8edf3) : C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentRight);
         NSString* pills[2] = {v.subOctave >= 2 ? @"-2 OCT" : @"-1 OCT", S(ui::subShapeName(v.subShape))};
         for (int i = 0; i < 2; ++i) {
             NSRect r = [self subPill:i];
@@ -2182,8 +2184,9 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     NSBezierPath* outline = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(P, .5, .5) xRadius:10 yRadius:10];
     [C(0xf5cc78, .5) setStroke]; outline.lineWidth = 1; [outline stroke];
     Text(@"NOISE BURST SHAPE", NSMakeRect(P.origin.x + 20, NSMaxY(P) - 25, 220, 16), 11, C(0xf5cc78), NSFontWeightBold);
-    Text(current.voice.noiseBurst > 0 ? [NSString stringWithFormat:@"%.0f ms total", current.voice.noiseBurst * 1000] : @"OFF - sustained noise",
-         NSMakeRect(P.origin.x + 20, NSMaxY(P) - 44, 180, 13), 8, C(0x9ca6b4), NSFontWeightMedium);
+    Text(current.voice.noiseBurstSync > 0 ? [NSString stringWithFormat:@"%@ total - 120 BPM without host tempo", S(ui::syncName(current.voice.noiseBurstSync))] :
+         current.voice.noiseBurst > 0 ? [NSString stringWithFormat:@"%.0f ms total", current.voice.noiseBurst * 1000] : @"OFF - sustained noise",
+         NSMakeRect(P.origin.x + 20, NSMaxY(P) - 44, P.size.width - 40, 13), 8, C(0x9ca6b4), NSFontWeightMedium);
     NSRect cl = [self burstClose];
     TextA(@"×", cl, 16, C(0xc3cbd6), NSFontWeightRegular, NSTextAlignmentCenter);
     for (int i = 0; i < 2; ++i) {
@@ -2196,8 +2199,11 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         TextA(name, NSMakeRect(r.origin.x + 6, r.origin.y + 3, 100, 10), 8, C(0xe8edf3), NSFontWeightBold, NSTextAlignmentLeft);
         TextA(value, NSMakeRect(NSMaxX(r) - 48, r.origin.y + 3, 42, 10), 8, C(0xe8edf3), NSFontWeightSemibold, NSTextAlignmentRight);
     }
-    Text(@"fast tail", NSMakeRect(P.origin.x + 22, P.origin.y + 53, 76, 11), 7, C(0x758192));
-    TextA(@"slow tail", NSMakeRect(P.origin.x + 122, P.origin.y + 53, 76, 11), 7, C(0x758192), NSFontWeightRegular, NSTextAlignmentRight);
+    NSRect sy = [self burstSyncRect]; FillRound(sy, 4, C(0x10161d));
+    TextA(@"TIME", NSMakeRect(sy.origin.x + 6, sy.origin.y + 3, 37, 10), 7, C(0x8793a3), NSFontWeightBold, NSTextAlignmentLeft);
+    TextA(current.voice.noiseBurstSync > 0 ? S(ui::syncName(current.voice.noiseBurstSync)) : @"FREE", NSMakeRect(sy.origin.x + 48, sy.origin.y + 3, 118, 10), 8,
+          current.voice.noiseBurstSync > 0 ? C(0xf5cc78) : C(0xe8edf3), NSFontWeightSemibold, NSTextAlignmentRight);
+    Text(@"Click TIME to step divisions", NSMakeRect(P.origin.x + 22, P.origin.y + 27, 174, 11), 7, C(0x758192));
     NSRect plot = [self burstPlot]; FillRound(plot, 5, C(0x0e141b));
     Text(@"AMP", NSMakeRect(plot.origin.x + 5, NSMaxY(plot) - 14, 40, 10), 7, C(0x758192), NSFontWeightBold);
     TextA(@"TIME →", NSMakeRect(NSMaxX(plot) - 54, plot.origin.y + 3, 48, 10), 7, C(0x758192), NSFontWeightBold, NSTextAlignmentRight);
@@ -2208,13 +2214,18 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         NSPoint pt = NSMakePoint(x, plot.origin.y + 17 + y * (plot.size.height - 30));
         if (k) [path lineToPoint:pt]; else [path moveToPoint:pt];
     }
-    [C(current.voice.noiseBurst > 0 ? 0xf5cc78 : 0x657181) setStroke]; path.lineWidth = 2; [path stroke];
-    Text(@"Duration remains in FILTER 2 + SUB. Double-click a bar to reset.",
+    [C((current.voice.noiseBurst > 0 || current.voice.noiseBurstSync > 0) ? 0xf5cc78 : 0x657181) setStroke]; path.lineWidth = 2; [path stroke];
+    Text(@"FREE duration: FILTER 2 + SUB. Double-click bars to reset.",
          NSMakeRect(P.origin.x + 20, P.origin.y + 15, P.size.width - 40, 12), 8, C(0x8793a3));
 }
 - (BOOL)burstDetailMouseDown:(NSPoint)p event:(NSEvent*)e {
     if (!burstDetail || !NSPointInRect(p, [self burstPanel])) return NO;
     if (NSPointInRect(p, NSInsetRect([self burstClose], -4, -4))) { burstDetail = false; [self setNeedsDisplay:YES]; return YES; }
+    if (NSPointInRect(p, NSInsetRect([self burstSyncRect], -2, -2))) {
+        int& sync = current.voice.noiseBurstSync;
+        sync = (sync + 1) % kSyncCount;
+        edited = true; [self applySound]; [self setNeedsDisplay:YES]; return YES;
+    }
     for (int i = 0; i < 2; ++i) if (NSPointInRect(p, NSInsetRect([self burstBar:i], -3, -3))) {
         NSRect r = [self burstBar:i];
         const double x = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
@@ -3897,6 +3908,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         NSRect r = [self noiseBurstRect];
         const double norm = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
         v.noiseBurst = norm < .025 ? 0.0 : std::round(std::max(.005, norm * .5) * 1000) / 1000.0;
+        v.noiseBurstSync = 0; // touching the duration bar explicitly returns to FREE
         hit = true;
     }
     if (!hit && NSPointInRect(p, [self noiseWidthRect])) { NSRect r = [self noiseWidthRect]; v.noiseWidth = std::round(std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0) * 100) / 100.0; hit = true; }

@@ -121,6 +121,29 @@ int main() {
     std::fill(l.begin(),l.end(),0); std::fill(r.begin(),r.end(),0);
     if(!render(unit,l,r)){printf("FAIL: note-off render\n");return 1;}
 
+    // 0.60.0: a synced noise burst follows callback tempo, and an absent or
+    // invalid callback falls back to 120 BPM rather than a stale previous BPM.
+    {
+        AudioUnit t=openUnit();
+        muew::Preset p; p.voice.noiseBurst=.24; p.voice.noiseBurstSync=5;
+        bool ok=t && setState(t,p);
+        HostCallbackInfo hc{};
+        static Float64 burstHostTempo=60.0;
+        hc.beatAndTempoProc=[](void*,Float64* beat,Float64* tempo)->OSStatus {
+            if(beat)*beat=0;if(tempo)*tempo=burstHostTempo;return noErr;
+        };
+        ok=ok && AudioUnitSetProperty(t,kAudioUnitProperty_HostCallbacks,kAudioUnitScope_Global,0,&hc,sizeof(hc))==noErr;
+        if(ok)ok=render(t,l,r);
+        // Voice-length proof also runs in portable C++ tests. This AU proof
+        // checks the actual host callback path and preset serialization.
+        muew::Preset back;ok=ok&&getState(t,back)&&back.voice.noiseBurstSync==5;
+        burstHostTempo=0;ok=ok&&render(t,l,r);
+        burstHostTempo=60;ok=ok&&render(t,l,r);
+        if(t){AudioUnitUninitialize(t);AudioComponentInstanceDispose(t);}
+        if(!ok){printf("FAIL: synced burst host callback and fallback\n");return 1;}
+        printf("synced noise BURST host tempo and absent-clock fallback path rendered\n");
+    }
+
     // Every factory preset selects and sounds through the host path.
     for(SInt32 n=0;n<kExpectedPresets;++n){
         AUPreset sel{n,nullptr};

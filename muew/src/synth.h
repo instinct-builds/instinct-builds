@@ -139,6 +139,10 @@ public:
     // Host tempo (BPM) for tempo-synced LFOs; 120 until a host reports one.
     void setTempo(double bpm) { tempo_ = bpm > 0 ? bpm : 120.0; for (auto& v : voices_) v.setTempo(bpm); fx_.setTempo(bpm); }
 
+    // Call when the AU has no usable host tempo. A previously seen BPM must
+    // not leak into a synced burst on later notes with no clock available.
+    void clearBurstHostTempo() { for (auto& v : voices_) v.clearBurstHostTempo(); }
+
     // 0.26.0 host transport, called before each render block with the host's
     // beat position (quarter notes) at the block's first sample. With clock
     // sync on and the transport playing, the arp steps on the host's bar grid

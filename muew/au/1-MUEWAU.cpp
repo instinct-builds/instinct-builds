@@ -719,7 +719,7 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
     u->applyPendingState(false);
     if (u->hostCallbacks.beatAndTempoProc) {
         Float64 beat = 0, tempo = 0;
-        if (u->hostCallbacks.beatAndTempoProc(u->hostCallbacks.hostUserData, &beat, &tempo) == noErr && tempo > 0) {
+        if (u->hostCallbacks.beatAndTempoProc(u->hostCallbacks.hostUserData, &beat, &tempo) == noErr && std::isfinite(tempo) && tempo >= 20 && tempo < 999) {
             u->synth.setTempo(tempo);
             // 0.26.0 clock sync: the arp grid and synced LFOs follow the host
             // bar while its transport plays. No transport callback = free clock.
@@ -732,8 +732,8 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
                 if (u->hostCallbacks.transportStateProc(u->hostCallbacks.hostUserData, &playing, &changed, &sample, &cycling, &cs, &ce) != noErr) playing = false;
             }
             u->synth.setTransport(beat, playing);
-        } else u->synth.setTransport(0.0, false);
-    } else u->synth.setTransport(0.0, false);
+        } else { u->synth.clearBurstHostTempo(); u->synth.setTransport(0.0, false); }
+    } else { u->synth.clearBurstHostTempo(); u->synth.setTransport(0.0, false); }
     float* left = static_cast<float*>(ioData->mBuffers[0].mData);
     float* right = static_cast<float*>(ioData->mBuffers[1].mData);
     // Never set kAudioUnitRenderAction_OutputIsSilence: hosts may answer that

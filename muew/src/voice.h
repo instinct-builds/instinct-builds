@@ -146,6 +146,7 @@ struct VoiceParams {
     double noiseColor = 0.5;   // new modes only; old NOISE TONE behavior unchanged
     double noiseWidth = 0.0;   // 0.53.0: 0 mono legacy, 1 decorrelated stereo
     double noiseBurst = 0.0;   // 0.55.0: 0 off, 0.005..0.5 s per-note noise-only decay
+    int noiseBurstSync = 0;    // 0.60.0: 0 free, otherwise tempo_sync.h division
     double noiseBurstAttack = 0.0; // 0.57.0: 0..0.8 fraction of total burst time
     double noiseBurstCurve = 0.0;  // 0.57.0: -1 fast, 0 linear, +1 slow tail
     int filter2Type = 0;       // Filter2Type
@@ -240,14 +241,14 @@ public:
         mseg1_.setSampleRate(sr);
         sub_.setSampleRate(hq_ ? 2 * sr : sr); sub_.setTable(table);
         noise_.setSampleRate(sr); noiseR_.setSampleRate(sr);
-        noiseBurstPos_ = 0; noiseBurstLength_ = 0;
+        noiseBurstPos_ = 0; noiseBurstLength_ = 0; burstBpm_ = 120.0;
         dcL_.setSampleRate(sr); dcR_.setSampleRate(sr);
         f2L_.setSampleRate(sr); f2R_.setSampleRate(sr);
     }
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
         params_ = p; routes_ = routes;
-        noiseBurstLength_ = p.noiseBurst > 0.0 ? (uint64_t)std::ceil(std::clamp(p.noiseBurst, 0.005, 0.5) * sr_) : 0;
+        noiseBurstLength_ = noiseBurstSamples(p.noiseBurst, p.noiseBurstSync, burstBpm_, sr_);
         for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setShape(std::clamp(p.osc1Shape, 0, 4)); osc2_[i].setShape(std::clamp(p.osc2Shape, 0, 4)); }
         applyCustom();
         filter_.setMode(p.filterMode);
@@ -311,10 +312,22 @@ public:
 
     // Host tempo for synced LFOs.
     void setTempo(double bpm) {
-        if (!(bpm > 1.0 && bpm < 1000.0) || bpm == bpm_) return;
+        if (!(bpm > 1.0 && bpm < 1000.0)) return;
+        if (bpm >= 20.0 && bpm < 999.0 && burstBpm_ != bpm) {
+            burstBpm_ = bpm;
+            noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_);
+        }
+        if (bpm == bpm_) return;
         bpm_ = bpm;
         applyRates();
         applyMsegRates();
+    }
+
+    // A missing/invalid host clock must not leave a synced burst at stale BPM.
+    // Other synced modulation keeps its existing independent host behavior.
+    void clearBurstHostTempo() {
+        burstBpm_ = 120.0;
+        noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_);
     }
 
     // 0.26.0: synced FREE LFOs take their phase from the host beat. The fade
@@ -411,6 +424,7 @@ public:
     bool isActive() const { return ampEnv_.isActive(); }
     // Peak signed contribution this voice actually applied since its last meter reset.
     void resetRouteMeters() { routePeak_.fill(0.0f); routeMin_.fill(0.0f); routeMax_.fill(0.0f); }
+    uint64_t noiseBurstLength() const { return noiseBurstLength_; } // test and host diagnostics
     float routeMin(int slot) const { return slot >= 0 && slot < kMaxRoutes ? routeMin_[slot] : 0.0f; }
     float routeMax(int slot) const { return slot >= 0 && slot < kMaxRoutes ? routeMax_[slot] : 0.0f; }
     float routePeak(int slot) const { return slot >= 0 && slot < kMaxRoutes ? routePeak_[slot] : 0.0f; }
@@ -821,7 +835,7 @@ private:
     bool usesLfo3_ = false, usesLfo4_ = false;
     const CustomTable* custom1_ = nullptr; const CustomTable* custom2_ = nullptr;
     bool active1_ = false, active2_ = false;
-    double bpm_ = 120.0;
+    double bpm_ = 120.0, burstBpm_ = 120.0;
     Oscillator osc1_[kMaxUnison], osc2_[kMaxUnison];
     Filter1 filter_, filterR_; // 0.21.0 (SVF modes run exactly as the old SVFilter)
     Envelope ampEnv_, modEnv_;
