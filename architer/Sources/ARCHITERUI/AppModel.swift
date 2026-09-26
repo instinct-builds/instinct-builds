@@ -255,13 +255,18 @@ public final class AppModel: ObservableObject {
     /// ignored. Passing a character name binds the macro to that character,
     /// so a table macro and a character macro can share a name.
     public func saveMacro(name: String, expression: String, forCharacter characterName: String? = nil,
-                          damageType: String? = nil, targetDC: Int? = nil) {
+                          damageType: String? = nil, targetDC: Int? = nil,
+                          parts: [ComboPart]? = nil) {
+        // A combo's stored expression is the derived summary; the parts
+        // are the source of truth.
         let macro = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
-            expression: expression.trimmingCharacters(in: .whitespaces),
+            expression: parts.map(comboSummary)
+                ?? expression.trimmingCharacters(in: .whitespaces),
             characterName: characterName,
             damageType: damageType,
-            targetDC: targetDC)
+            targetDC: parts == nil ? targetDC : nil,
+            parts: parts)
         guard macro.isValid else { return }
         macros.removeAll { $0.id == macro.id }
         macros.append(macro)
@@ -273,20 +278,23 @@ public final class AppModel: ObservableObject {
     /// removes the old scoped id, then upserts under the new one. The owner
     /// binding (table-wide vs character) is preserved.
     public func updateMacro(_ macro: DiceMacro, name: String, expression: String,
-                            damageType: String? = nil, targetDC: Int? = nil) {
+                            damageType: String? = nil, targetDC: Int? = nil,
+                            parts: [ComboPart]? = nil) {
         var updated = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
-            expression: expression.trimmingCharacters(in: .whitespaces),
+            expression: parts.map(comboSummary)
+                ?? expression.trimmingCharacters(in: .whitespaces),
             characterName: macro.characterName,
             damageType: damageType,
-            targetDC: targetDC)
+            targetDC: parts == nil ? targetDC : nil,
+            parts: parts)
         // 3.15.0: an edit keeps the pin.
         updated.pinned = macro.pinned
         guard updated.isValid else { return }
         macros.removeAll { $0.id == macro.id }
         saveMacro(name: updated.name, expression: updated.expression,
                   forCharacter: updated.characterName, damageType: updated.damageType,
-                  targetDC: updated.targetDC)
+                  targetDC: updated.targetDC, parts: updated.parts)
     }
 
     /// Clones a macro in place as "<name> copy" (bumped when taken); the
@@ -295,7 +303,7 @@ public final class AppModel: ObservableObject {
         let copy = ArchiterCore.duplicatedMacro(macro, existing: macros)
         saveMacro(name: copy.name, expression: copy.expression,
                   forCharacter: copy.characterName, damageType: copy.damageType,
-                  targetDC: copy.targetDC)
+                  targetDC: copy.targetDC, parts: copy.parts)
     }
 
     /// Pins a macro to the top of its group, or lifts the pin (3.15.0).
@@ -626,6 +634,20 @@ public final class AppModel: ObservableObject {
     /// rolls and attack damage; an unknown stored tag falls back to a plain
     /// labeled roll (fail-safe on a renamed case, like 2.33.0).
     public func rollMacro(_ macro: DiceMacro) {
+        // 3.21.0 combo: each part rolls in order as its own history
+        // entry through the existing paths - reroll, star, apply-to-HP,
+        // journal auto-log, and session stats all work per part.
+        if let parts = macro.parts {
+            for part in parts {
+                let partType = part.damageType.flatMap { DamageType(rawValue: $0) }
+                if let partType {
+                    recordDamageRoll(part.label, part.expression, type: partType)
+                } else {
+                    rollLabeled(part.label, part.expression)
+                }
+            }
+            return
+        }
         let type = macro.damageType.flatMap { DamageType(rawValue: $0) }
         if let type {
             recordDamageRoll(macro.name, macro.expression, type: type,

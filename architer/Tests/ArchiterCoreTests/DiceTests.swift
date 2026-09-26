@@ -1000,6 +1000,38 @@ struct SessionSegmentTests {
         #expect(macro.targetDC == nil)
     }
 
+    @Test func comboMacroValidation() throws {
+        let good = DiceMacro(name: "Routine", expression: "",
+                             parts: [ComboPart(label: "Attack", expression: "1d20+6"),
+                                     ComboPart(label: "Damage", expression: "2d10+3",
+                                               damageType: "fire")])
+        #expect(good.isValid)
+        #expect(comboSummary(good.parts ?? []) == "1d20+6 \u{00B7} 2d10+3")
+        // A combo needs 2+ parts; one part stays a single-expression macro.
+        let onePart = DiceMacro(name: "Routine", expression: "",
+                                parts: [ComboPart(label: "Attack", expression: "1d20+6")])
+        #expect(!onePart.isValid)
+        let blankLabel = DiceMacro(name: "Routine", expression: "",
+                                   parts: [ComboPart(label: "Attack", expression: "1d20+6"),
+                                           ComboPart(label: "", expression: "2d10+3")])
+        #expect(!blankLabel.isValid)
+        let badExpression = DiceMacro(name: "Routine", expression: "",
+                                      parts: [ComboPart(label: "Attack", expression: "1d20+6"),
+                                              ComboPart(label: "Damage", expression: "nonsense")])
+        #expect(!badExpression.isValid)
+        // A macro with no parts still validates on its expression alone.
+        let single = DiceMacro(name: "Fireball", expression: "8d6")
+        #expect(single.isValid)
+    }
+
+    @Test func macroFilesWithoutPartsDecode() throws {
+        // Pre-3.21.0 macro files carry no parts key; it decodes to nil.
+        let json = #"{"name":"Fireball","expression":"8d6","damageType":"fire"}"#
+        let macro = try JSONDecoder().decode(DiceMacro.self, from: Data(json.utf8))
+        #expect(macro.parts == nil)
+        #expect(macro.isValid)
+    }
+
     @Test func sessionStatsLineCarriesTheSpan() throws {
         let cal = utc
         let t0 = at(cal, 24, 16)

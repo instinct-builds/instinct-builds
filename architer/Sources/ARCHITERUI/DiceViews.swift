@@ -819,6 +819,18 @@ public struct MacroRowView: View {
     @State private var typeDraft: DamageType?
     /// Target DC draft (3.20.0): blank means the macro rolls untargeted.
     @State private var dcDraft: String
+    /// Combo editing (3.21.0): true while the edit form shows part rows.
+    @State private var editingCombo: Bool
+    @State private var partDrafts: [ComboPartDraft]
+
+    /// Editable form of a combo part: Identifiable so the parts list
+    /// can bind rows.
+    private struct ComboPartDraft: Identifiable {
+        let id = UUID()
+        var label: String
+        var expression: String
+        var type: DamageType?
+    }
 
     public init(macro: DiceMacro, startEditing: Bool = false) {
         self.macro = macro
@@ -827,18 +839,107 @@ public struct MacroRowView: View {
         _expressionDraft = State(initialValue: macro.expression)
         _typeDraft = State(initialValue: macro.damageType.flatMap { DamageType(rawValue: $0) })
         _dcDraft = State(initialValue: macro.targetDC.map(String.init) ?? "")
+        _editingCombo = State(initialValue: macro.parts != nil)
+        _partDrafts = State(initialValue: macro.parts?.map {
+            ComboPartDraft(label: $0.label, expression: $0.expression,
+                           type: $0.damageType.flatMap { DamageType(rawValue: $0) })
+        } ?? [])
     }
 
     private var draftsValid: Bool {
+        guard !nameDraft.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        if editingCombo {
+            return partDrafts.count >= 2 && partDrafts.allSatisfy {
+                !$0.label.trimmingCharacters(in: .whitespaces).isEmpty
+                    && (try? DiceExpression.parse($0.expression)) != nil
+            }
+        }
         let dcText = dcDraft.trimmingCharacters(in: .whitespaces)
-        return !nameDraft.trimmingCharacters(in: .whitespaces).isEmpty
-            && (try? DiceExpression.parse(expressionDraft)) != nil
+        return (try? DiceExpression.parse(expressionDraft)) != nil
             && (dcText.isEmpty || Int(dcText) != nil)
+    }
+
+    /// Converts the single-expression draft into the first combo part
+    /// and opens the parts editor with a blank second part.
+    private func startCombo() {
+        partDrafts = [ComboPartDraft(label: nameDraft, expression: expressionDraft, type: typeDraft),
+                      ComboPartDraft(label: "", expression: "")]
+        editingCombo = true
+    }
+
+    /// Collapses back to a single-expression macro, keeping part one's
+    /// expression and type.
+    private func collapseCombo() {
+        if let first = partDrafts.first {
+            expressionDraft = first.expression
+            typeDraft = first.type
+        }
+        partDrafts = []
+        editingCombo = false
+    }
+
+    private func saveCombo() {
+        let parts = partDrafts.map {
+            ComboPart(label: $0.label.trimmingCharacters(in: .whitespaces),
+                      expression: $0.expression.trimmingCharacters(in: .whitespaces),
+                      damageType: $0.type?.rawValue)
+        }
+        // Per-part types carry the tags; a leftover single-form type
+        // would sit on the row ignored, so combo saves clear it.
+        model.updateMacro(macro, name: nameDraft, expression: expressionDraft,
+                          damageType: nil, parts: parts)
+        editing = false
+    }
+
+    /// The combo edit form (3.21.0): one row per part plus add/save.
+    private var comboEditor: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.sm) {
+            HStack {
+                TextField("Name", text: $nameDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 140)
+                Text("combo")
+                    .font(Theme.Typeface.captionSmall)
+                    .foregroundStyle(Theme.accent)
+                Button { collapseCombo() } label: { Image(systemName: "doc") }
+                    .help("Back to a single-expression macro (keeps the first part)")
+            }
+            ForEach($partDrafts) { $part in
+                HStack {
+                    TextField("Part label", text: $part.label)
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(width: 130)
+                    TextField("Expression", text: $part.expression)
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(maxWidth: 160)
+                    Picker("", selection: $part.type) {
+                        Text("No type").tag(DamageType?.none)
+                        ForEach(DamageType.allCases, id: \.self) { Text($0.displayName).tag(DamageType?.some($0)) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 100)
+                    Button { partDrafts.removeAll { $0.id == part.id } } label: { Image(systemName: "minus.circle") }
+                        .help("Remove this part")
+                }
+            }
+            HStack {
+                Button { partDrafts.append(ComboPartDraft(label: "", expression: "")) } label: { Image(systemName: "plus.circle") }
+                    .help("Add a part")
+                Button { saveCombo() } label: { Image(systemName: "checkmark") }
+                    .disabled(!draftsValid)
+                    .help("Save macro")
+                Button { editing = false } label: { Image(systemName: "xmark") }
+                    .help("Discard edits")
+            }
+        }
     }
 
     public var body: some View {
         HStack {
             if editing {
+                if editingCombo {
+                    comboEditor
+                } else {
                 TextField("Name", text: $nameDraft)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 140)
@@ -856,6 +957,9 @@ public struct MacroRowView: View {
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 48)
                     .help("Target DC: history cards show whether rolls from this macro met it. Blank means no target.")
+                Button { startCombo() } label: { Image(systemName: "square.stack.3d.up") }
+                    .disabled((try? DiceExpression.parse(expressionDraft)) == nil)
+                    .help("Make this a combo macro: one tap rolls each part in order")
                 Button {
                     model.updateMacro(macro, name: nameDraft, expression: expressionDraft,
                                       damageType: typeDraft?.rawValue,
@@ -866,6 +970,7 @@ public struct MacroRowView: View {
                     .help("Save macro")
                 Button { editing = false } label: { Image(systemName: "xmark") }
                     .help("Discard edits")
+                }
             } else {
                 Text(macro.name)
                     .font(Theme.Typeface.headline)
@@ -901,6 +1006,11 @@ public struct MacroRowView: View {
                     expressionDraft = macro.expression
                     typeDraft = macro.damageType.flatMap { DamageType(rawValue: $0) }
                     dcDraft = macro.targetDC.map(String.init) ?? ""
+                    editingCombo = macro.parts != nil
+                    partDrafts = macro.parts?.map {
+                        ComboPartDraft(label: $0.label, expression: $0.expression,
+                                       type: $0.damageType.flatMap { DamageType(rawValue: $0) })
+                    } ?? []
                     editing = true
                 } label: { Image(systemName: "pencil") }
                     .help("Edit macro")

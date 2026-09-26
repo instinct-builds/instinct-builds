@@ -1,5 +1,35 @@
 import Foundation
 
+/// One step of a combo macro (3.21.0): a labeled notation roll with an
+/// optional damage-type tag - the same inputs rollLabeled and
+/// recordDamageRoll already take, so a part rolls through the existing
+/// paths and inherits reroll, star, apply-to-HP, and the DC badge free.
+public struct ComboPart: Codable, Equatable, Sendable {
+    public var label: String
+    public var expression: String
+    /// DamageType raw value; unknown stored values fail safe to an
+    /// untyped part on roll (the 2.33.0 / 2.36.0 pattern).
+    public var damageType: String?
+
+    public init(label: String, expression: String, damageType: String? = nil) {
+        self.label = label
+        self.expression = expression
+        self.damageType = damageType
+    }
+
+    /// Trimmed label and an expression the dice parser accepts.
+    public var isValid: Bool {
+        !label.trimmingCharacters(in: .whitespaces).isEmpty
+            && (try? DiceExpression.parse(expression)) != nil
+    }
+}
+
+/// The summary a combo macro carries in its `expression` field - what
+/// the row shows and old readers see: the part expressions joined.
+public func comboSummary(_ parts: [ComboPart]) -> String {
+    parts.map(\.expression).joined(separator: " \u{00B7} ")
+}
+
 /// A saved dice shortcut: a name bound to a dice expression, so a table's
 /// usual rolls ("Fireball", "Sneak attack") are one tap away.
 public struct DiceMacro: Codable, Equatable, Sendable, Identifiable {
@@ -26,21 +56,32 @@ public struct DiceMacro: Codable, Equatable, Sendable, Identifiable {
     /// shows whether the roll met it. Optional, so macro files written
     /// before 3.20.0 decode unchanged; nil stays unencoded.
     public var targetDC: Int?
+    /// Combo parts (3.21.0): when present, one tap rolls each part in
+    /// order as its own history entry (the rollAttack attack+damage
+    /// precedent), and `expression` carries the summary. Optional, so
+    /// macro files written before 3.21.0 decode unchanged; nil stays
+    /// unencoded. Parts are self-contained - never references to other
+    /// macros, so editing one macro can't drift another.
+    public var parts: [ComboPart]?
 
     public init(name: String, expression: String, characterName: String? = nil,
-                damageType: String? = nil, pinned: Bool? = nil, targetDC: Int? = nil) {
+                damageType: String? = nil, pinned: Bool? = nil, targetDC: Int? = nil,
+                parts: [ComboPart]? = nil) {
         self.name = name
         self.expression = expression
         self.characterName = characterName
         self.damageType = damageType
         self.pinned = pinned
         self.targetDC = targetDC
+        self.parts = parts
     }
 
-    /// Trimmed, non-empty name and an expression the dice parser accepts.
+    /// Trimmed, non-empty name plus either a parseable expression or a
+    /// combo of 2+ valid parts.
     public var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
-            && (try? DiceExpression.parse(expression)) != nil
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { return false }
+        if let parts { return parts.count >= 2 && parts.allSatisfy(\.isValid) }
+        return (try? DiceExpression.parse(expression)) != nil
     }
 }
 
@@ -111,5 +152,5 @@ public func duplicatedMacro(_ macro: DiceMacro, existing: [DiceMacro]) -> DiceMa
     }
     return DiceMacro(name: candidate, expression: macro.expression,
                      characterName: macro.characterName, damageType: macro.damageType,
-                     targetDC: macro.targetDC)
+                     targetDC: macro.targetDC, parts: macro.parts)
 }

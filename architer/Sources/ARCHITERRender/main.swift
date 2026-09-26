@@ -1215,6 +1215,40 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/dc-check.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.21.0 proof: combo macros - one tap rolls each part in order
+    // as its own history entry. Runs last, after every sheet render
+    // and PDF, so the byte-diffs hold.
+    do {
+        model.saveMacro(name: "Fire Bolt routine", expression: "",
+                        forCharacter: model.selected?.wrappedValue.name,
+                        parts: [ComboPart(label: "Fire Bolt attack", expression: "1d20+6"),
+                                ComboPart(label: "Fire Bolt damage", expression: "2d10+3",
+                                          damageType: "fire")])
+        var proofLines = ["Combo macros (3.21.0)",
+                          "one tap rolls each part in order as its own history entry"]
+        if let routine = model.macros.first(where: { $0.name == "Fire Bolt routine" }) {
+            proofLines.append("row summary: \(routine.expression)")
+            let countBefore = model.rollHistory.count
+            model.rollMacro(routine)
+            let recorded = Array(model.rollHistory.prefix(model.rollHistory.count - countBefore))
+            // History is newest-first; reverse to the table's tap order.
+            for roll in recorded.reversed() {
+                proofLines.append("part: \(roll.label ?? roll.expression), total \(roll.total), reroll kind: \(roll.reroll?.kind.rawValue ?? "none")")
+            }
+        }
+        let onePart = DiceMacro(name: "x", expression: "",
+                                parts: [ComboPart(label: "a", expression: "1d6")])
+        proofLines.append("single-part combo rejected: \(!onePart.isValid)")
+        renderPNG(
+            DiceRollerView()
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "dice-combo", outDir: outDir, minHeight: 420, maxHeight: 1100)
+        try? proofLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/combo-roll.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
