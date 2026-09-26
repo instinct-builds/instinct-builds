@@ -1,7 +1,7 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
 
-all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-matrix-meter54 build/muew-tests-noiseburst55 build/muew-tests-noiseenv57 build/muew-tests-noiseburst60 build/muew-tests-output58 build/muew-tests-meterhold56 build/muew-tests-route-range59 build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-filterroute build/muew-tests-voicex build/muew-tests-perf build/muew-tests-arp
+all: build/muew-demo build/muew-tests build/muew-tests-fx build/muew-tests-license build/muew-tests-bank build/muew-tests-wt build/muew-license build/muew-render-preset build/muew-demo-wt build/muew-tests-mod-depth build/muew-demo-mod-depth build/muew-tests-ui build/muew-tests-params build/muew-tests-user build/muew-tests-unison build/muew-tests-matrix build/muew-tests-matrix-meter54 build/muew-tests-noiseburst55 build/muew-tests-noiseenv57 build/muew-tests-noiseburst60 build/muew-tests-output58 build/muew-tests-output-detail61 build/muew-tests-meterhold56 build/muew-tests-route-range59 build/muew-tests-usertable build/muew-tests-layers build/muew-tests-browser build/muew-tests-dc build/muew-tests-fxrack build/muew-tests-fxdetail build/muew-tests-racklfo build/muew-tests-routecurve build/muew-tests-mseg2 build/muew-tests-lfox build/muew-tests-warpx build/muew-tests-import build/muew-tests-filter1 build/muew-tests-filterroute build/muew-tests-voicex build/muew-tests-perf build/muew-tests-arp
 
 build:
 	mkdir -p build out
@@ -59,6 +59,9 @@ build/muew-tests-noiseburst60: tests/tests_noiseburst60.cpp src/noise_burst_enve
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 build/muew-tests-noiseenv57: tests/tests_noiseenv57.cpp src/noise_burst_envelope.h src/voice.h src/preset.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+build/muew-tests-output-detail61: tests/tests_output_detail61.cpp src/output_detail_display.h src/au_params.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 build/muew-tests-output58: tests/tests_output58.cpp src/output_meter.h src/output_meter_display.h src/synth.h | build

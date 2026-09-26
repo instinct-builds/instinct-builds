@@ -79,7 +79,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; outputDisplay.clear(); outputMeterClock = 0;
+        std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; outputDisplay.clear(); outputDetail.clear(); outputDetailOpen = false; outputMeterClock = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
@@ -606,11 +606,43 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     const float oldL = outputDisplay.left, oldR = outputDisplay.right;
     const bool oldSat = outputDisplay.saturated();
     outputDisplay.update(left, right, drive, dt);
+    outputDetail.update(left, right, dt);
+    if (outputDetailOpen) [self setNeedsDisplayInRect:NSInsetRect([self outputDetailPanel], -2, -2)];
     if (std::fabs(oldL - outputDisplay.left) > .006f || std::fabs(oldR - outputDisplay.right) > .006f || oldSat != outputDisplay.saturated())
         [self setNeedsDisplayInRect:NSInsetRect([self engineBox], -2, -2)];
 }
 - (NSString*)muewOutputText {
     return [NSString stringWithFormat:@"left=%.3f right=%.3f drive=%.3f sat=%d", outputDisplay.left, outputDisplay.right, outputDisplay.drive, outputDisplay.saturated() ? 1 : 0];
+}
+- (NSString*)muewOutputDetailText {
+    return [NSString stringWithFormat:@"L=%.3f/%.3f R=%.3f/%.3f", outputDetail.current[0],outputDetail.held[0],outputDetail.current[1],outputDetail.held[1]];
+}
+- (NSRect)outputDetailPanel { return NSMakeRect(268, 389, 340, 188); }
+- (NSRect)outputDetailClose { NSRect p = [self outputDetailPanel]; return NSMakeRect(NSMaxX(p)-29, NSMaxY(p)-29, 20, 20); }
+- (void)drawOutputDetail {
+    const NSRect p = [self outputDetailPanel];
+    FillRound(p, 10, C(0x19202a));
+    NSBezierPath* border = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(p,.5,.5) xRadius:10 yRadius:10];
+    [C(0x5adac8,.55) setStroke];border.lineWidth=1;[border stroke];
+    Text(@"MUEW OUTPUT", NSMakeRect(p.origin.x+18,NSMaxY(p)-27,210,15),11,C(0x5adac8),NSFontWeightBold);
+    TextA(@"×",[self outputDetailClose],16,C(0xc3cbd6),NSFontWeightRegular,NSTextAlignmentCenter);
+    Text(@"After MUEW's soft master · dBFS",NSMakeRect(p.origin.x+18,NSMaxY(p)-47,270,13),8,C(0xa8b2c1));
+    for(int i=0;i<2;++i) {
+        const CGFloat y=NSMaxY(p)-85-i*44;
+        Text(i ? @"RIGHT" : @"LEFT",NSMakeRect(p.origin.x+18,y,55,12),8,C(0x8793a3),NSFontWeightBold);
+        const NSRect track=NSMakeRect(p.origin.x+76,y+4,135,6);FillRound(track,3,C(0x10161d));
+        if(outputDetail.current[i]>.002f) FillRound(NSMakeRect(track.origin.x,track.origin.y,track.size.width*outputDetail.current[i],6),3,C(0x5adac8));
+        if(outputDetail.held[i]>.002f) FillRound(NSMakeRect(track.origin.x+track.size.width*outputDetail.held[i]-1,track.origin.y-2,2,10),1,C(0xeaf1f8));
+        const double live=OutputDetailDisplay::dbfs(outputDetail.current[i]);
+        const double held=OutputDetailDisplay::dbfs(outputDetail.held[i]);
+        NSString* label=[NSString stringWithFormat:@"%@  /  %@",std::isfinite(live)?[NSString stringWithFormat:@"%.1f",live]:@"-∞",std::isfinite(held)?[NSString stringWithFormat:@"%.1f",held]:@"-∞"];
+        TextA(label,NSMakeRect(p.origin.x+218,y,103,13),8,C(0xeaf1f8),NSFontWeightSemibold,NSTextAlignmentRight);
+    }
+    Text(@"CURRENT / HELD (1 s)",NSMakeRect(p.origin.x+18,p.origin.y+35,182,11),7,C(0x8793a3),NSFontWeightBold);
+    Text(@"SAT = MUEW soft saturation before the soft master.",
+         NSMakeRect(p.origin.x+18,p.origin.y+18,p.size.width-36,12),7.5,C(0xf5cc78));
+    Text(@"Not a downstream DAW or interface clip warning.",
+         NSMakeRect(p.origin.x+18,p.origin.y+7,p.size.width-36,11),7,C(0x8793a3));
 }
 - (NSString*)muewEngineText {
     return [NSString stringWithFormat:@"hq=%d voices=%d/%d cpu=%.4f render=%d", current.voice.oscQuality, engVoices, engLimit, engCpu, engRender ? 1 : 0];
@@ -2174,6 +2206,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [self drawTableEditor];
     [self drawDragBadge];
     if (browserOpen) [self drawBrowser];
+    if (outputDetailOpen) [self drawOutputDetail];
 }
 
 // A dedicated editor keeps the duration, attack, and decay curve legible.
@@ -4251,7 +4284,14 @@ static int SortForColumn(int c) {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     dragStart = p;
     dragKnob = -1;
+    if (outputDetailOpen) {
+        if (NSPointInRect(p,NSInsetRect([self outputDetailClose],-4,-4))) { outputDetailOpen=false; [self setNeedsDisplay:YES]; }
+        return; // modal readout: no underlying instrument edits while open
+    }
     if (browserOpen) { [self browserMouseDown:p]; return; }
+    if (NSPointInRect(p,[self engineBox]) && !NSPointInRect(p,NSInsetRect([self engineHQPill],-4,-4))) {
+        outputDetailOpen = !outputDetailOpen; [self setNeedsDisplay:YES]; return;
+    }
     if (NSPointInRect(p, NSInsetRect([self engineHQPill], -4, -4))) { // 0.30.0 global QUALITY
         current.voice.oscQuality = current.voice.oscQuality ? 0 : 1;
         edited = true; [self applySound]; [self setNeedsDisplay:YES]; return;

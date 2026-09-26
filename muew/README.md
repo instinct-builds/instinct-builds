@@ -488,3 +488,13 @@ clock exists, it uses 120 BPM deterministically, including after a previously
 valid clock disappears. The optional `noisebsync <division>` preset line
 preserves the FREE duration for switching back; old preset sound and the
 40 AU parameter IDs remain unchanged.
+
+## 0.61.0 Output detail
+
+Click the Engine meter (outside its HQ switch) to open a read-only output
+panel. LEFT and RIGHT show the actual latest post-master block peaks in
+dBFS, plus a one-second held peak per channel. Silence reads -∞. SAT is
+explained as MUEW's pre-master soft saturation, never a downstream DAW
+clip warning. The separate panel avoids crowding the header, and it cannot
+change the sound or add an AU parameter. Factory sounds and all 40 AU IDs
+remain unchanged.

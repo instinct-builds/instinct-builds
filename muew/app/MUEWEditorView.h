@@ -8,6 +8,7 @@
 #include "route_meter_hold.h"
 #include "route_range_trace.h"
 #include "output_meter_display.h"
+#include "output_detail_display.h"
 #include "spectral_process.h"
 #include "table_history.h"
 #include "frame_range.h"
@@ -96,7 +97,9 @@ struct MUEWEditorHost {
     float engCpu;
     bool engRender;
     muew::OutputMeterDisplay outputDisplay;
+    muew::OutputDetailDisplay outputDetail;
     double outputMeterClock;
+    bool outputDetailOpen;
     int voiceDrag;   // 0.23.0 voice strip: GLIDE (0) or BLEND (1) bar being dragged, -1 none
     int lfoXDrag;    // 0.18.0 LFO editor: PHASE/DELAY/RISE pill being dragged (0-2), -1 none
     float routeMeters[muew::kMaxRoutes]; // 0.54.0 signed current route activity

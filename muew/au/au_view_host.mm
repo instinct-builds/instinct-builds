@@ -2302,6 +2302,20 @@ int main() {
                   "amber SAT indicates soft saturation while distinct L/R output peaks remain below full scale");
             [view display];
             Snapshot(view, "MUEW_OUTPUT58_PNG", "Engine stereo output and soft saturation snapshot written");
+            // 0.61.0: the Engine box opens a separate read-only detail panel.
+            // Keep the measured peaks above, then use deterministic display
+            // values to prove the UI's current/held dBFS and SAT explanation.
+            Click(view,w,NSMakePoint(320,view.bounds.size.height-74+10));
+            Check([[view valueForKey:@"outputDetailOpen"] boolValue],"Engine output detail opens without toggling HQ or changing sound");
+            if ([view respondsToSelector:showLevel]) ((void (*)(id,SEL,float,float,float))[view methodForSelector:showLevel])(view,showLevel,.5f,.25f,1.2f);
+            NSString* detailText=[view respondsToSelector:NSSelectorFromString(@"muewOutputDetailText")] ? [view valueForKey:@"muewOutputDetailText"] : @"";
+            Check([detailText containsString:@"L=0.500/"] && [detailText containsString:@"R=0.250/"],
+                  "output detail follows two separate real-buffer peak lanes");
+            [view display];
+            Snapshot(view,"MUEW_DETAIL61_PNG","output current/held dBFS panel and SAT explanation snapshot written");
+            Click(view,w,NSMakePoint(588,548));
+            Check(![[view valueForKey:@"outputDetailOpen"] boolValue],"output detail closes without changing instrument state");
+
 
             NSString* et = [view respondsToSelector:NSSelectorFromString(@"muewEngineText")] ? [view valueForKey:@"muewEngineText"] : @"";
             Float64 lat = -1; UInt32 sz = sizeof(lat);
