@@ -714,8 +714,27 @@ public final class AppModel: ObservableObject {
     }
 
     public func advanceInitiative() {
+        let roundBefore = initiative.round
         initiative.advance()
         initiativeStore.save(initiative)
+        // 3.30.0: the round wrap ticks every roster character's condition
+        // timers; a timer at 0 ends the condition with a notes milestone.
+        // Writes ride the same per-character undo snapshot path as any edit.
+        guard initiative.round > roundBefore else { return }
+        for idx in characters.indices {
+            var c = characters[idx]
+            let ended = c.tickConditionDurations()
+            for name in ended {
+                let line = "\(name) ended (duration)."
+                c.notes = c.notes.isEmpty ? line : c.notes + "\n" + line
+            }
+            guard c != characters[idx] else { continue }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+        }
     }
 
     public func endCombat() {

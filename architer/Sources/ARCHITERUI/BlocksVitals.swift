@@ -220,6 +220,71 @@ struct ConditionGrid: View {
             character.customConditions.append(CustomCondition(name: ""))
         }
         .controlSize(.small)
+        ConditionTimerRows(character: $character)
+    }
+}
+
+/// One active condition that can carry a timer: key is the built-in
+/// rawValue or the custom condition's UUID string (3.30.0).
+struct ConditionTimerEntry {
+    let key: String
+    let name: String
+}
+
+/// Condition timers (3.30.0): start a rounds countdown on any active
+/// condition; it ticks on the initiative round wrap and ends the condition
+/// at 0 with a notes milestone. Untimed conditions stay indefinite.
+struct ConditionTimerRows: View {
+    @Binding var character: Character
+
+    private var entries: [ConditionTimerEntry] {
+        character.conditions
+            .map { ConditionTimerEntry(key: $0.rawValue, name: $0.displayName) }
+            .sorted { $0.name < $1.name }
+        + character.customConditions
+            .map { ConditionTimerEntry(key: $0.id.uuidString, name: $0.name) }
+            .sorted { $0.name < $1.name }
+    }
+
+    var body: some View {
+        let timed = entries.filter { character.conditionDurations[$0.key] != nil }
+        let untimed = entries.filter { character.conditionDurations[$0.key] == nil }
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+                HStack(spacing: Theme.Gap.sm) {
+                    Text("Timers")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                    Menu("Start timer") {
+                        ForEach(untimed, id: \.key) { entry in
+                            Button(entry.name) {
+                                character.conditionDurations[entry.key] = 1
+                            }
+                        }
+                    }
+                    .controlSize(.small)
+                    .disabled(untimed.isEmpty)
+                    .help("Count a condition down in rounds - it ends automatically at 0 on the initiative round wrap")
+                }
+                ForEach(timed, id: \.key) { entry in
+                    HStack(spacing: Theme.Gap.sm) {
+                        Text(entry.name)
+                        Stepper("", value: Binding(
+                            get: { character.conditionDurations[entry.key] ?? 1 },
+                            set: { character.conditionDurations[entry.key] = max(1, min(99, $0)) }
+                        ), in: 1...99)
+                        .labelsHidden()
+                        Text("rounds")
+                            .foregroundStyle(Theme.inkMuted)
+                        Button(role: .destructive) {
+                            character.conditionDurations.removeValue(forKey: entry.key)
+                        } label: { Image(systemName: "minus.circle") }
+                        .help("Remove the timer - the condition stays")
+                    }
+                    .font(.caption)
+                }
+            }
+        }
     }
 }
 

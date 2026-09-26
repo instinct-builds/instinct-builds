@@ -1467,6 +1467,43 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? partyLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party.txt"),
                atomically: true, encoding: .utf8)
+    // Condition timers proof (3.30.0): Wren Prone for 2 rounds, Sera
+    // Poisoned for 1; the initiative wraps once - Sera's ends with a
+    // milestone, Wren's drops to 1. Runs at END.
+    var durationLines = ["Condition timers (3.30.0)",
+                         "rounds tick on the initiative round wrap; a timer at 0 ends the condition"]
+    if let wIdx = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
+        model.characters[wIdx].conditionDurations[Condition.prone.rawValue] = 2
+    }
+    if let sIdx = model.characters.firstIndex(where: { $0.name == "Sera Vint" }) {
+        model.characters[sIdx].conditions.insert(.poisoned)
+        model.characters[sIdx].conditionDurations[Condition.poisoned.rawValue] = 1
+    }
+    durationLines.append("before wrap: Wren Prone (2), Sera Poisoned (1)")
+    model.addInitiativeEntry(name: "Wren Halloway", bonus: 3)
+    model.addInitiativeEntry(name: "Bram Oakfel", bonus: 1)
+    model.addInitiativeEntry(name: "Sera Vint", bonus: 2)
+    model.rollInitiative()
+    for _ in 0..<3 { model.advanceInitiative() }
+    for c in model.characters {
+        let chips = c.conditionChipNames.isEmpty ? "-" : c.conditionChipNames.joined(separator: ", ")
+        durationLines.append("after wrap \(model.initiative.round): \(c.name) chips: \(chips)")
+        if c.name == "Sera Vint" {
+            let milestone = c.notes.contains("Poisoned ended (duration).") ? "present" : "MISSING"
+            durationLines.append("Sera notes milestone: \(milestone)")
+        }
+    }
+    if let selBinding = model.selected {
+        renderPNG(
+            VitalsBlock(character: selBinding)
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 520, name: "vitals-timers", outDir: outDir, minHeight: 300, maxHeight: 900)
+    }
+    try? durationLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/durations.txt"),
+               atomically: true, encoding: .utf8)
     try? groupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
                atomically: true, encoding: .utf8)

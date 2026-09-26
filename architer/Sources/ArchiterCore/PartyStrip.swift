@@ -24,7 +24,7 @@ public struct PartyCardSummary: Equatable, Sendable {
         currentHP = c.currentHP
         maxHP = c.maxHP
         tempHP = c.tempHP
-        var chips = c.activeConditionNames
+        var chips = c.conditionChipNames
         if let spell = c.concentratingOn {
             chips.append("Concentrating: \(spell)")
         }

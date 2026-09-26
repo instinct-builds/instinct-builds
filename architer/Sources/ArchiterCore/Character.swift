@@ -671,6 +671,10 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var conditions: Set<Condition>
     /// User-defined conditions active on the sheet, alongside the built-ins.
     public var customConditions: [CustomCondition]
+    /// Condition timers (3.30.0): remaining rounds per condition, keyed by
+    /// built-in rawValue or custom-condition UUID string. Timers tick once
+    /// per initiative round; a timer reaching 0 ends the condition.
+    public var conditionDurations: [String: Int] = [:]
     public var resistances: Set<DamageType>
     public var immunities: Set<DamageType>
     public var vulnerabilities: Set<DamageType>
@@ -802,6 +806,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         speed: Int = 30,
         conditions: Set<Condition> = [],
         customConditions: [CustomCondition] = [],
+        conditionDurations: [String: Int] = [:],
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
@@ -852,6 +857,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.speed = speed
         self.conditions = conditions
         self.customConditions = customConditions
+        self.conditionDurations = conditionDurations
         self.resistances = resistances
         self.immunities = immunities
         self.vulnerabilities = vulnerabilities
@@ -907,6 +913,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         speed = try c.decode(Int.self, forKey: .speed)
         conditions = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditions) ?? []
         customConditions = try c.decodeIfPresent([CustomCondition].self, forKey: .customConditions) ?? []
+        conditionDurations = try c.decodeIfPresent([String: Int].self, forKey: .conditionDurations) ?? [:]
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
@@ -1196,6 +1203,46 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
             case .save: return false
             }
         }.sorted { $0.name < $1.name }
+    }
+
+    /// One initiative round has passed: decrement every timer; a timer at 0
+    /// removes the condition and its entry. Returns the display names of the
+    /// conditions that ended, for notes milestones. The snapshot loop keeps
+    /// the mutation off the collection being iterated.
+    @discardableResult
+    public mutating func tickConditionDurations() -> [String] {
+        var ended: [String] = []
+        let snapshot = conditionDurations.sorted { $0.key < $1.key }
+        for (key, rounds) in snapshot {
+            if rounds > 1 {
+                conditionDurations[key] = rounds - 1
+            } else {
+                conditionDurations.removeValue(forKey: key)
+                if let builtIn = Condition(rawValue: key) {
+                    conditions.remove(builtIn)
+                    ended.append(builtIn.displayName)
+                } else if let idx = customConditions.firstIndex(where: { $0.id.uuidString == key }) {
+                    ended.append(customConditions[idx].name)
+                    customConditions.remove(at: idx)
+                }
+            }
+        }
+        return ended
+    }
+
+    /// Condition chips with remaining rounds appended for timed conditions -
+    /// built-ins sorted by display name, then customs sorted by name. The
+    /// party strip renders these; untimed conditions read exactly as before.
+    public var conditionChipNames: [String] {
+        let builtIns = conditions.map { c -> (name: String, label: String) in
+            let label = conditionDurations[c.rawValue].map { "\(c.displayName) (\($0))" } ?? c.displayName
+            return (c.displayName, label)
+        }.sorted { $0.name < $1.name }.map(\.label)
+        let customs = customConditions.map { cc -> (name: String, label: String) in
+            let label = conditionDurations[cc.id.uuidString].map { "\(cc.name) (\($0))" } ?? cc.name
+            return (cc.name, label)
+        }.sorted { $0.name < $1.name }.map(\.label)
+        return builtIns + customs
     }
 
     /// Display names of every active disadvantage source, built-ins first.
