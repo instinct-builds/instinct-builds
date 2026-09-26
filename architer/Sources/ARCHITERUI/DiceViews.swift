@@ -149,6 +149,17 @@ public struct DiceRollerView: View {
                 Button("Roll d20") { model.rollCheck("d20 roll", bonus: d20Modifier, mode: d20Mode, targetDC: barTargetDC) }
                     .buttonStyle(RollButtonStyle(prominent: true))
             }
+            // 3.24.0: pre-roll visibility for side effects rollCheck already
+            // enforces - advisory only, the roll-time downgrade + history tag
+            // stays the single source of enforcement. Hidden when clean.
+            if let sel = model.selected?.wrappedValue {
+                let advisory = ConditionAdvisory.lines(for: sel)
+                if !advisory.isEmpty {
+                    Text(advisory.joined(separator: " \u{00B7} "))
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                }
+            }
             VStack(alignment: .leading, spacing: Theme.Gap.sm) {
                 Text("Macros").font(.headline)
                 // 3.15.0: pinned macros float to the top of their

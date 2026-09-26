@@ -1328,6 +1328,33 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/bridge.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // Condition advisory proof (3.24.0): the demo character ships clean, so
+    // existing renders stay byte-identical; hindrances are set at the END of
+    // the run, then the banner renders and enforcement fires on real rolls.
+    if var hindered = model.selected?.wrappedValue {
+        hindered.conditions = [.prone, .poisoned]
+        hindered.exhaustion = 2
+        model.selected?.wrappedValue = hindered
+    }
+    var advisoryLines = ["Condition advisory (3.24.0)",
+                         "banner mirrors roll-time enforcement; advisory only, hidden when clean"]
+    if let sel = model.selected?.wrappedValue {
+        for line in ConditionAdvisory.lines(for: sel) { advisoryLines.append("  \(line)") }
+    }
+    renderPNG(
+        DiceRollerView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "dice-conditions", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    model.rollCheck("Warhammer attack", bonus: 14, mode: .normal)
+    model.rollCheck("Stealth check", bonus: 4, mode: .advantage)
+    for r in model.rollHistory.prefix(2).reversed() {
+        advisoryLines.append("rolled: \(r.label ?? "?")")
+    }
+    try? advisoryLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/conditions.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
