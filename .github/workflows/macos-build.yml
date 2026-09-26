@@ -249,7 +249,7 @@ jobs:
           DELAY=11 shoot health-status-quick 1920x1200 health-status-quick demo-health-status.txt
           cat "$SUP/demo-health-status.txt"
           grep -q '^done full=false accurate=true$' "$SUP/demo-health-status.txt"
-          DELAY=13 shoot health-status-full 1920x1200 health-status-full demo-health-status.txt
+          DELAY=16 shoot health-status-full 1920x1200 health-status-full demo-health-status.txt
           cat "$SUP/demo-health-status.txt"
           grep -q '^done full=true accurate=true$' "$SUP/demo-health-status.txt"
           cp "$SUP/demo-health-status.txt" "ASSSETS-$ASSSETS_VERSION-health-status.txt"

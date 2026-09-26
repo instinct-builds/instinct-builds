@@ -8542,16 +8542,23 @@ struct LibraryHealthSheet: View {
                     }
                 }
                 if ProcessInfo.processInfo.arguments.contains("health-status-quick") || ProcessInfo.processInfo.arguments.contains("health-status-full") {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
+                    // Wait for the observed scan result, not a fixed seven-second guess on a busy CI runner.
+                    // A bounded failure still writes the same diagnostic file for the workflow gate.
+                    @MainActor func recordWhenSettled(_ attempts: Int) {
                         let status = model.healthScanStatus
                         let expectedFull = ProcessInfo.processInfo.arguments.contains("health-status-full")
                         let scopeOK = status?.full == expectedFull
                         let duplicatesOK = status?.duplicateFreshForThisScan == expectedFull
                         let resultOK = expectedFull ? model.health?.duplicateSets != nil : model.health?.duplicateSets == nil
                         let ok = scopeOK && duplicatesOK && resultOK && !model.healthScanning
+                        if !ok && attempts > 0 {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { recordWhenSettled(attempts - 1) }
+                            return
+                        }
                         try? "done full=\(expectedFull) accurate=\(ok)".write(
                             to: model.supportRoot.appendingPathComponent("demo-health-status.txt"), atomically: true, encoding: .utf8)
                     }
+                    recordWhenSettled(90)
                 }
                 if ProcessInfo.processInfo.arguments.contains("health-rows") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
