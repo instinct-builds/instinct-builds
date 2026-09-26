@@ -369,7 +369,10 @@ public struct DiceRollerView: View {
                            ? "Undo delete (1 roll)"
                            : "Undo delete (\(deletion.removedCount) rolls)") { model.undoDelete() }
                         .controlSize(.small)
-                        .help("Restore the last deleted roll or session")
+                        // 3.18.0: the hover names what the restore
+                        // brings back - session title when known.
+                        .help(undoDeleteLabel(removedCount: deletion.removedCount,
+                                              sessionName: deletion.sessionName))
                 }
                 // 3.0.1: while the preset naming form is open the
                 // Copy/Digest/star cluster collapses so the bar never

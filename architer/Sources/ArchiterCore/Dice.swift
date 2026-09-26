@@ -237,6 +237,20 @@ public func deleteFilteredMenuLabel(count: Int) -> String {
     count == 1 ? "Delete 1 filtered roll…" : "Delete \(count) filtered rolls…"
 }
 
+/// 3.18.0: the Undo hover names what the restore brings back - a named
+/// session by title and count, otherwise just the count. The button
+/// already carries the count (3.5.0); the hover is the target's
+/// identity.
+public func undoDeleteLabel(removedCount: Int, sessionName: String?) -> String {
+    let rolls = removedCount == 1 ? "1 roll" : "\(removedCount) rolls"
+    if let name = sessionName,
+       !name.trimmingCharacters(in: .whitespaces).isEmpty {
+        return "Restore session \"\(name)\" (\(rolls))"
+    }
+    return removedCount == 1 ? "Restore the deleted roll"
+                             : "Restore the \(removedCount) deleted rolls"
+}
+
 /// 3.17.0: the session trash's hover label names its target. The delete
 /// fires without a confirm (one undo step restores), so the label is the
 /// only pre-click signal of which session - and how many rolls - goes.

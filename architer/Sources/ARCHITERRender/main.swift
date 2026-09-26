@@ -526,6 +526,21 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/session-delete-label.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.18.0 proof: the Undo hover names what the restore brings back.
+    // Recorded while lastDeletion is live from the 2.80.0 session
+    // delete (unnamed, so count-only), plus the named-session case
+    // from the same builder.
+    do {
+        var lines = ["Undo hover label (3.18.0)",
+                     "the hover names what the restore brings back (the button keeps its count):"]
+        if let deletion = model.lastDeletion {
+            lines.append("  live: \"\(undoDeleteLabel(removedCount: deletion.removedCount, sessionName: deletion.sessionName))\"")
+        }
+        lines.append("  named session: \"\(undoDeleteLabel(removedCount: 9, sessionName: "Ember Warrens delve"))\"")
+        try? lines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/undo-delete-label.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     // 2.81.0 proof: undo delete - the session deleted for the 2.80.0
     // proof comes back, name and note included; the txt records the
     // after-delete and after-undo states. (The 2.79.0/2.80.0 renders

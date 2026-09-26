@@ -832,6 +832,19 @@ struct CharacterTests {
                 == "Delete session \"Session 2 - Yesterday\" (1 roll) from history")
     }
 
+    @Test func undoDeleteLabelNamesTheRestore() throws {
+        // 3.18.0: named session by title and count; otherwise the
+        // count alone, singular "roll" at 1.
+        #expect(undoDeleteLabel(removedCount: 9, sessionName: "Ember Warrens delve")
+                == "Restore session \"Ember Warrens delve\" (9 rolls)")
+        #expect(undoDeleteLabel(removedCount: 1, sessionName: nil)
+                == "Restore the deleted roll")
+        #expect(undoDeleteLabel(removedCount: 6, sessionName: nil)
+                == "Restore the 6 deleted rolls")
+        #expect(undoDeleteLabel(removedCount: 3, sessionName: "  ")
+                == "Restore the 3 deleted rolls")
+    }
+
     @Test func freeRollerTypeMemoryResolvesPerCharacter() throws {
         // Missing entry falls back to the table-wide selection.
         #expect(resolveFreeRollerType(map: [:], characterID: "A", tableDefault: .fire) == .fire)
