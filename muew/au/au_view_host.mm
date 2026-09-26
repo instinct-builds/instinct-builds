@@ -2386,7 +2386,7 @@ int main() {
             Check(readOnly.voice.arpPatGate[1]==0 && readOnly.voice.arpPatGate[2]==0,
                   "REST and TIE step inspectors are read-only");
             Click(view,w,cell(0));
-            Click(view,w,NSMakePoint(492 + 96 + .737 * (276 - 152), top - 148)); // 75% gate
+            Click(view,w,NSMakePoint(492 + 104 + .737 * 116, top - 148)); // 75% gate
             RenderBlock(); Snapshot(view, "MUEW_GATE70_PNG", "ARP selected-step gate snapshot written");
             muew::Preset state; const bool read = State(state);
             NSString* stateDebug=[view valueForKey:@"muewArpText"];
@@ -2406,6 +2406,57 @@ int main() {
             if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
             Click(view,w,NSMakePoint(730, top - 126)); // exit STEP EDIT for the next test
             Click(view,w,NSMakePoint(492 + 30, top - 29 + 8.5)); // FILTER 1
+            fflush(stdout);
+        });
+        After(7.0895, ^{ // 0.71.0: two-row STEP EDIT pitch, reset and AU state
+            muew::Preset before; State(before);
+            muew::Preset setup=before;
+            setup.voice.arpOn=true; setup.voice.arpPatOn=true; setup.voice.arpPatLen=8;
+            setup.voice.arpPatKind[1]=muew::arp::StepRest;
+            setup.voice.arpPatKind[2]=muew::arp::StepTie;
+            NSString* setupText=[NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef setupRef=(__bridge CFStringRef)setupText;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&setupRef,sizeof(setupRef));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            const CGFloat top=view.bounds.size.height-100;
+            NSString* priorPage=[view valueForKey:@"muewArpText"];
+            if(std::string(priorPage.UTF8String ?: "").find("page=2 ")!=0)
+                Click(view,w,NSMakePoint(638+17,top-29+8.5));
+            Click(view,w,NSMakePoint(730,top-126));
+            auto cell=[&](int i){return NSMakePoint(492+(i+.5)*276.0/16,top-224);};
+            for(int i : {1,2}) {
+                Click(view,w,cell(i));
+                Click(view,w,NSMakePoint(492+104+116,top-184+20)); // right of pitch bar
+            }
+            muew::Preset noPitch;State(noPitch);
+            Check(noPitch.voice.arpPatPitch[1]==0&&noPitch.voice.arpPatPitch[2]==0,
+                  "REST and TIE pitch sliders are read-only");
+            Click(view,w,cell(0));
+            Click(view,w,NSMakePoint(492+104+116*17.0/24.0,top-184+20)); // +5 st
+            RenderBlock();Snapshot(view,"MUEW_PITCH71_PNG","ARP two-row semitone editor snapshot written");
+            muew::Preset pitched;const bool ok=State(pitched);
+            NSString* debug=[view valueForKey:@"muewArpText"];
+            printf("pitch71: read=%d offset=%d arps=%d gate=%d edit=%s\n",ok?1:0,
+                   pitched.voice.arpPatPitch[0],pitched.serialize().find("\narps ")!=std::string::npos,
+                   pitched.voice.arpPatGate[0],debug.UTF8String ?: "");
+            Check(ok&&pitched.voice.arpPatPitch[0]==5&&pitched.voice.arpPatGate[0]==0
+                  &&pitched.serialize().find("\narps 5 0 0 ")!=std::string::npos
+                  &&std::string(debug.UTF8String ?: "").find("pitches=+5,+0,+0,")!=std::string::npos,
+                  "selected ON step +5 semitones reached AU without changing inherited gate");
+            Click(view,w,NSMakePoint(492+104+116*8.0/24.0,top-184+20)); // -4 st
+            muew::Preset lowered;State(lowered);
+            Check(lowered.voice.arpPatPitch[0]==-4,"negative semitone offset reached AU");
+            Click(view,w,NSMakePoint(492+40,top-184+20)); // RESET 0
+            muew::Preset neutral;State(neutral);
+            Check(neutral.voice.arpPatPitch[0]==0&&neutral.serialize().find("\narps ")==std::string::npos,
+                  "RESET 0 removes the optional pitch state");
+            NSString* original=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)original;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            Click(view,w,NSMakePoint(730,top-126));
+            Click(view,w,NSMakePoint(492+30,top-29+8.5));
             fflush(stdout);
         });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill

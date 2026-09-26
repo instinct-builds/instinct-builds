@@ -437,7 +437,7 @@ private:
         if (!clockSync_ && locked_) { locked_ = false; arpGridLast_ = kNoGrid; }
         patOn_ = p.arpPatOn;
         patLen_ = std::clamp(p.arpPatLen, 1, arp::kPatSteps);
-        for (int i = 0; i < arp::kPatSteps; ++i) { patVel_[i] = std::clamp(p.arpPatVel[i], 1, 127); patKind_[i] = std::clamp(p.arpPatKind[i], 0, arp::kStepKinds - 1); patRatchet_[i] = std::clamp(p.arpPatRatchet[i], 1, 4); patOctave_[i] = std::clamp(p.arpPatOctave[i], -1, 1); patGate_[i] = p.arpPatGate[i] == 0 ? 0 : std::clamp(p.arpPatGate[i], 5, 100); }
+        for (int i = 0; i < arp::kPatSteps; ++i) { patVel_[i] = std::clamp(p.arpPatVel[i], 1, 127); patKind_[i] = std::clamp(p.arpPatKind[i], 0, arp::kStepKinds - 1); patRatchet_[i] = std::clamp(p.arpPatRatchet[i], 1, 4); patOctave_[i] = std::clamp(p.arpPatOctave[i], -1, 1); patGate_[i] = p.arpPatGate[i] == 0 ? 0 : std::clamp(p.arpPatGate[i], 5, 100); patPitch_[i] = std::clamp(p.arpPatPitch[i], -12, 12); }
         chanceLive_ = p.arpChanceLive;
         for (int i = 0; i < arp::kPatSteps; ++i) patChance_[i] = std::clamp(p.arpPatChance[i], 25, 100);
         const bool latch = p.arpLatch;
@@ -514,10 +514,10 @@ private:
     // pattern. Returns the gate as a fraction of the step (>= 1 holds through).
     double arpBeginStep() {
         ratchetCount_ = 1; ratchetIndex_ = 0;
-        int kind = arp::StepOn, octaveShift = 0; float vel = 1.0f; bool nextTie = false;
+        int kind = arp::StepOn, octaveShift = 0, semitoneShift = 0; float vel = 1.0f; bool nextTie = false;
         if (patOn_) {
             const int k = arp::wrapStep(arpStep_, patLen_);
-            kind = patKind_[k]; vel = patVel_[k] / 127.0f; octaveShift = patOctave_[k];
+            kind = patKind_[k]; vel = patVel_[k] / 127.0f; octaveShift = patOctave_[k]; semitoneShift = patPitch_[k];
             if (kind == arp::StepOn && !chancePass(k)) kind = arp::StepRest;
             if (kind == arp::StepOn && patKind_[arp::wrapStep(arpStep_ + 1, patLen_)] != arp::StepTie)
                 ratchetCount_ = patRatchet_[k];
@@ -546,10 +546,10 @@ private:
         // Keep each selected key's velocity before octave clamping can make
         // its pitch coincide with another held key.
         for (int i = 0; i < arpSounding_; ++i) ratchetKeyVel_[i] = poolVelocity(arpNotes_[i]);
-        // Shift only a newly selected ON step. TIE returned above with the
-        // previous sounding note; ratchet repeats these shifted pitches.
-        if (octaveShift) for (int i = 0; i < arpSounding_; ++i)
-            arpNotes_[i] = std::clamp(arpNotes_[i] + 12 * octaveShift, 0, 127);
+        // Shift only a newly selected ON step after capturing the original
+        // key velocity. TIE holds that pitch; ratchets repeat it.
+        if (octaveShift || semitoneShift) for (int i = 0; i < arpSounding_; ++i)
+            arpNotes_[i] = std::clamp(arpNotes_[i] + 12 * octaveShift + semitoneShift, 0, 127);
         activeStepGate_ = patOn_ && patGate_[arpPatIdx_] != 0 ? patGate_[arpPatIdx_] / 100.0 : arpGate_;
         ratchetVelocity_ = vel;
         ratchetNotesCount_ = arpSounding_;
@@ -624,7 +624,7 @@ private:
     bool clockSync_ = false, locked_ = false, patOn_ = false;
     double beat_ = 0.0, beatInc_ = 0.0, arpGateEnd_ = 0.0;
     long long arpGridLast_ = kNoGrid;
-    int patLen_ = 16, patVel_[arp::kPatSteps] = {}, patKind_[arp::kPatSteps] = {}, patRatchet_[arp::kPatSteps] = {}, patOctave_[arp::kPatSteps] = {}, patGate_[arp::kPatSteps] = {}, arpPatIdx_ = -1;
+    int patLen_ = 16, patVel_[arp::kPatSteps] = {}, patKind_[arp::kPatSteps] = {}, patRatchet_[arp::kPatSteps] = {}, patOctave_[arp::kPatSteps] = {}, patGate_[arp::kPatSteps] = {}, patPitch_[arp::kPatSteps] = {}, arpPatIdx_ = -1;
     int patChance_[arp::kPatSteps] = {};
     bool chanceLive_ = false;
     uint64_t chanceStep_ = 0;

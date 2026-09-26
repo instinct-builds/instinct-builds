@@ -94,7 +94,7 @@ struct MUEWEditorHost {
     bool arpLiveLocked;
     bool arpStepEdit; // 0.70.0: select-only pattern lane + enlarged gate inspector
     int arpSelectedStep;
-    bool arpStepGateDrag;
+    bool arpStepGateDrag, arpStepPitchDrag;
     // 0.30.0 Engine HQ header meter (fed by the host at ~30 Hz).
     int engVoices, engLimit;
     float engCpu;

@@ -587,3 +587,13 @@ controls ratchet subhits and the terminal release after a TIE; a TIE never
 replaces that gate with its own value. `arpg` is optional and absent in old
 patches, which continue to inherit global GATE. The AU parameter set stays at
 40, and old factory sounds remain unchanged.
+
+## 0.71.0 ARP per-step semitone offset
+
+STEP EDIT pairs the existing GATE row with a PITCH row. ON steps can offset
+the selected note by -12 to +12 semitones, with a centered slider and RESET 0;
+REST and TIE stay read-only. The semitone shift combines with the existing
+octave shift after source-key velocity selection, then clamps to MIDI 0-127.
+Ratchets repeat the resulting pitch and TIE holds it. The optional `arps` line
+is omitted for neutral patterns, keeping older patches and factory audio
+unchanged. No new AU parameter ID is published.

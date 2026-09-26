@@ -190,6 +190,7 @@ struct VoiceParams {
     int arpPatOctave[16] = {}; // 0.49.0 ON-step octave shift, -1..+1; TIE retains sounding pitch
     int arpPatChance[16] = {100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100}; // 0.50.0 ON-step chance
     int arpPatGate[16] = {}; // 0.70.0: 0 inherits global GATE; 5..100 overrides an ON step
+    int arpPatPitch[16] = {}; // 0.71.0: neutral 0; -12..+12 semitones on each ON step
     bool arpChanceLive = false; // opt-in evolving chance; fixed mode follows absolute pattern cycle
     bool arpPatDefault() const {
         for (int i = 0; i < 16; ++i) if (arpPatVel[i] != 127 || arpPatKind[i] != 0) return false;
