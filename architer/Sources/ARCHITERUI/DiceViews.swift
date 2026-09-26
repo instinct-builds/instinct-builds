@@ -1050,6 +1050,7 @@ public struct MacroRowView: View {
 public struct EncounterSectionView: View {
     @EnvironmentObject var model: AppModel
     @State private var startArmed = false
+    @State private var awardArmed = false
 
     public init() {}
 
@@ -1091,9 +1092,19 @@ public struct EncounterSectionView: View {
                     .disabled(model.initiative.entries.isEmpty
                               || !model.encounterLines.contains { $0.count > 0 && EncounterMath.xp(forCR: $0.cr) != nil })
                     .help("Append these enemies to the current fight - reinforcements roll in at the bottom (with an empty tracker, use Start fight)")
+                // Award XP (3.41.0): the fight's return edge - pay the
+                // tracker's base XP to the roster. Arms a preview; the
+                // award fires only from Apply inside the panel.
+                Button("Award XP") { awardArmed.toggle() }
+                    .controlSize(.small)
+                    .disabled(!model.initiative.entries.contains { $0.cr != nil } || model.characters.isEmpty)
+                    .help("Pay the fight's base XP to the roster - a preview lists every member's share; Apply is the second tap")
                 Button("Add enemies") { model.addEncounterLine() }
                     .controlSize(.small)
                     .help("Add a row: how many enemies at what challenge rating")
+            }
+            if awardArmed {
+                XPAwardPanelView(onClose: { awardArmed = false })
             }
             if model.characters.isEmpty {
                 Text("Add characters to the roster for party thresholds.")
@@ -1633,4 +1644,74 @@ private func presetNameIssueMessage(_ issue: FilterPresetNameIssue) -> String {
         return "\"\(name)\" is already saved."
     }
 }
+/// Award XP preview panel (3.41.0): every roster member listed, all
+/// checked by default; unchecking re-splits among the rest live. The pool
+/// derives from the tracker's challenge ratings - base pays, adjusted
+/// stays the budgeting yardstick, and the header names both. Apply is the
+/// second tap; the award never fires on arm.
+public struct XPAwardPanelView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var mode: XPAwardPlan.Mode = .equalSplit
+    @State private var excluded: Set<UUID> = []
+    public var onClose: () -> Void
+
+    public init(onClose: @escaping () -> Void = {}) { self.onClose = onClose }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+            if let plan = model.xpAwardPlan(mode: mode, excluded: excluded) {
+                Text("Award \(plan.baseXP.formatted()) XP base (adjusted \(Int(plan.adjustedXP.rounded()).formatted()))")
+                    .font(Theme.Typeface.body.bold())
+                    .help("Raw XP is the payout; the count multiplier budgets difficulty and is not paid")
+                Picker("Split", selection: $mode) {
+                    Text("Split evenly").tag(XPAwardPlan.Mode.equalSplit)
+                    Text("Full pool each").tag(XPAwardPlan.Mode.fullPool)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 280)
+                ForEach(plan.shares) { share in
+                    HStack(spacing: Theme.Gap.sm) {
+                        Toggle(isOn: Binding(
+                            get: { !excluded.contains(share.id) },
+                            set: { on in
+                                if on { excluded.remove(share.id) } else { excluded.insert(share.id) }
+                            }
+                        )) {
+                            Text("\(share.name): \(share.currentXP.formatted()) + \(share.amount.formatted()) = \(share.newXP.formatted())")
+                                .font(Theme.Typeface.caption.monospacedDigit())
+                        }
+                        .toggleStyle(.checkbox)
+                        if share.included && share.levelsUp {
+                            Text("LEVEL UP -> L\(share.newLevel)")
+                                .font(Theme.Typeface.caption.bold())
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                }
+                if model.initiative.entriesWithoutCR > 0 {
+                    Text("\(model.initiative.entriesWithoutCR) tracker entries carry no challenge rating and pay nothing.")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                }
+                HStack(spacing: Theme.Gap.sm) {
+                    Button("Apply") {
+                        model.awardFightXP(mode: mode, excluded: excluded)
+                        onClose()
+                    }
+                    .buttonStyle(RollButtonStyle())
+                    .help("Pay each checked member - one undo step per character, like any sheet edit; applying again pays again")
+                    Button("Cancel") { onClose() }
+                        .controlSize(.small)
+                }
+            } else {
+                Text("Nothing to pay - check at least one member and line up a fight with challenge ratings.")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+                Button("Cancel") { onClose() }
+                    .controlSize(.small)
+            }
+        }
+    }
+}
+
 #endif

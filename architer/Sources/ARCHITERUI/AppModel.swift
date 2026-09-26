@@ -1055,6 +1055,45 @@ public final class AppModel: ObservableObject {
                                lines: initiative.encounterLinesFromCRs)
     }
 
+    /// Fight XP award plan (3.41.0): derived from the tracker's CRs and
+    /// the roster, never stored. Nil when nothing pays or nobody is
+    /// checked. The whole roster is listed - excluded members carry a
+    /// zero share so unchecking re-splits among the rest.
+    public func xpAwardPlan(mode: XPAwardPlan.Mode, excluded: Set<UUID>) -> XPAwardPlan? {
+        let crs = initiative.entries.compactMap(\.cr)
+        let members = characters.map {
+            (id: $0.id, name: $0.name, xp: $0.experience, included: !excluded.contains($0.id))
+        }
+        return XPAwardPlan(crs: crs, members: members, mode: mode)
+    }
+
+    /// Award fight XP (3.41.0): pays each checked member their share.
+    /// Every award rides the character's own undo stack exactly like a
+    /// sheet edit, and a level-up appends a note line (the
+    /// concentration-timer precedent). Deliberately not idempotent - a
+    /// second tap pays again; undo is the ride. Returns who leveled up.
+    @discardableResult
+    public func awardFightXP(mode: XPAwardPlan.Mode, excluded: Set<UUID>) -> [String] {
+        guard let plan = xpAwardPlan(mode: mode, excluded: excluded) else { return [] }
+        var leveled: [String] = []
+        for share in plan.shares where share.included && share.amount > 0 {
+            guard let idx = characters.firstIndex(where: { $0.id == share.id }) else { continue }
+            var c = characters[idx]
+            if c.addXP(share.amount) {
+                leveled.append(c.name)
+                let line = "\(c.name) reached level \(c.level)."
+                c.notes = c.notes.isEmpty ? line : c.notes + "\n" + line
+            }
+            guard c != characters[idx] else { continue }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+        }
+        return leveled
+    }
+
     /// Group save (3.31.0): the same saving throw for the whole roster.
     /// Saves are never condition-hindered (save-kind semantics), exhaustion
     /// still subtracts under the 2024 track; entries, identity stamps, and

@@ -167,3 +167,52 @@ struct AddToFightTests {
         #expect(updated.ordered.last?.total == nil)
     }
 }
+
+
+@Suite struct XPAwardPlanTests {
+    private func members() -> [(id: UUID, name: String, xp: Int, included: Bool)] {
+        [(UUID(), "A", 0, true), (UUID(), "B", 7200, true), (UUID(), "C", 200, true)]
+    }
+
+    @Test func equalSplitFloorsEvenly() {
+        let p = XPAwardPlan(crs: [3, 3, 0.5], members: members(), mode: .equalSplit)
+        #expect(p?.baseXP == 1500)
+        #expect(p?.adjustedXP == 3000)
+        #expect(p?.shares.map(\.amount) == [500, 500, 500])
+    }
+
+    @Test func remainderDropsNothingInvented() {
+        let p = XPAwardPlan(crs: [3], members: members(), mode: .equalSplit)
+        #expect(p?.baseXP == 700)
+        #expect(p?.shares.map(\.amount) == [233, 233, 233])
+    }
+
+    @Test func fullPoolPaysEachTheWhole() {
+        let p = XPAwardPlan(crs: [3, 3, 0.5], members: members(), mode: .fullPool)
+        #expect(p?.shares.map(\.amount) == [1500, 1500, 1500])
+    }
+
+    @Test func excludedMemberKeepsZeroShareAndReSplits() {
+        var m = members()
+        m[0].included = false
+        let p = XPAwardPlan(crs: [3, 3, 0.5], members: m, mode: .equalSplit)
+        #expect(p?.shares.map(\.amount) == [0, 750, 750])
+        #expect(p?.shares.first?.included == false)
+    }
+
+    @Test func nilWhenNoCRorNoneChecked() {
+        #expect(XPAwardPlan(crs: [], members: members(), mode: .equalSplit) == nil)
+        #expect(XPAwardPlan(crs: [3], members: members().map { ($0.id, $0.name, $0.xp, false) }, mode: .equalSplit) == nil)
+    }
+
+    @Test func levelUpBadgeReadsTheXPTrack() {
+        var m = members()
+        m[0].included = false
+        let p = XPAwardPlan(crs: [3, 3, 0.5], members: m, mode: .equalSplit)
+        let b = p?.shares.first { $0.name == "B" }
+        let c = p?.shares.first { $0.name == "C" }
+        #expect(b?.levelsUp == false)   // 7200 + 750 = 7950 stays level 5
+        #expect(c?.levelsUp == true)    // 200 + 750 = 950 reaches level 3
+        #expect(c?.newLevel == 3)
+    }
+}

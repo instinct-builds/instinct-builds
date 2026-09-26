@@ -1737,6 +1737,49 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? bpLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/initiative-bonus-party.txt"),
                atomically: true, encoding: .utf8)
+    // Award-XP proofs (3.41.0): the fight pays its base XP back to the
+    // roster - pool derivation, even split, live re-split on uncheck,
+    // level-up note, undo ride. Runs at END on the party-laden tracker.
+    var axLines = ["Award XP from the fight (3.41.0)",
+                   "pool derives from tracker CRs (base pays, adjusted budgets); apply rides each character's undo stack"]
+    // Park Bram one step below his next threshold so the preview badge shows.
+    if let bidx = model.characters.firstIndex(where: { $0.name == "Bram Oakfel" }),
+       let next = RulesMath.xpForNextLevel(RulesMath.level(forXP: model.characters[bidx].experience)) {
+        model.characters[bidx].experience = next - 100
+    }
+    renderPNG(
+        XPAwardPanelView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "award-xp", outDir: outDir, minHeight: 160, maxHeight: 480)
+    if let plan = model.xpAwardPlan(mode: .equalSplit, excluded: []) {
+        axLines.append("pool: \(plan.baseXP) base (adjusted \(Int(plan.adjustedXP.rounded()))) from \(model.initiative.entries.compactMap(\.cr).count) CR'd entries; \(model.initiative.entriesWithoutCR) without CR pay nothing")
+        axLines.append("split: " + plan.shares.map { "\($0.name) \($0.currentXP) + \($0.amount) = \($0.newXP)\($0.levelsUp ? " LEVEL UP -> L\($0.newLevel)" : "")" }.joined(separator: ", "))
+    } else {
+        axLines.append("plan MISSING")
+    }
+    if let full = model.xpAwardPlan(mode: .fullPool, excluded: []) {
+        axLines.append("full pool each: " + full.shares.map { "\($0.name) +\($0.amount)" }.joined(separator: ", "))
+    }
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }),
+       let re = model.xpAwardPlan(mode: .equalSplit, excluded: [bram.id]) {
+        axLines.append("re-split without Bram: " + re.shares.filter { $0.included }.map { "\($0.name) +\($0.amount)" }.joined(separator: ", "))
+    }
+    let leveled = model.awardFightXP(mode: .equalSplit, excluded: [])
+    axLines.append("applied: level-ups \(leveled.isEmpty ? "none" : leveled.joined(separator: ", "))")
+    axLines.append("after: " + model.characters.map { "\($0.name) \($0.experience) XP L\($0.level)" }.joined(separator: ", "))
+    let nobody = model.awardFightXP(mode: .equalSplit, excluded: Set(model.characters.map(\.id)))
+    axLines.append("award with nobody checked: \(nobody.isEmpty ? "paid nothing" : "PAID - WRONG")")
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) {
+        model.selectedID = bram.id
+        model.undo()
+        let back = model.characters.first(where: { $0.id == bram.id })
+        axLines.append("undo: Bram back to \(back?.experience ?? -1) XP L\(back?.level ?? -1) (one step on his own stack)")
+    }
+    try? axLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/award-xp.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",
