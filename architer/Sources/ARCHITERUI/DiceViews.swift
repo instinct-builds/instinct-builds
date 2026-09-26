@@ -461,15 +461,17 @@ public struct DiceRollerView: View {
                             Button("Digest starred") { model.addStarredToJournal() }
                                 .disabled(model.selected == nil)
                         } label: {
-                            // 3.14.1: the menu label keeps its full
-                            // width too - with the chips fixed the
-                            // bar pressure lands here next; the field
-                            // yields instead.
                             Label("Starred", systemImage: "star")
                                 .lineLimit(1)
-                                .fixedSize()
                         }
                         .controlSize(.small)
+                        // 3.14.1: the menu keeps its full label - the
+                        // 3.14.0 chip fix moved bar pressure here and
+                        // fixedSize on the label alone lost to the
+                        // menu chrome's own compression, so the menu
+                        // itself out-prioritizes the filter field,
+                        // which is the element designed to yield.
+                        .layoutPriority(1)
                         .help("Starred-roll actions - copy, unstar, export, digest")
                     } else {
                         Button("Copy starred") { model.copyStarredToPasteboard() }
