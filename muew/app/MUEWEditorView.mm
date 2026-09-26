@@ -83,7 +83,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
-        arpStepEdit = false; arpSelectedStep = 0; arpStepGateDrag = false; arpStepPitchDrag = false;
+        arpStepEdit = false; arpSelectedStep = 0; arpStepGateDrag = false; arpStepPitchDrag = false; arpActionsPage = false; arpActionMutation = false;
         wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1; wtProfileBlend = 1; wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; wtProfileSpanAnchor = -1;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
@@ -140,6 +140,11 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
     if (index != currentIndex || p.info.name != current.info.name) { matrixPage = 0; wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; } // a different sound starts on page 1, with no table history
+    // Local PASTE/ROTATE/UNDO can echo back through the AU's generation timer.
+    // Keep that history only for our exact state; external changes invalidate it.
+    if (index != currentIndex || p.info.name != current.info.name || !(p == current)) {
+        arpActions.clear(); arpActionsPage = false; arpSelectedStep = 0;
+    }
     bool routeChanged = current.routes.size() != p.routes.size();
     for (size_t i = 0; !routeChanged && i < p.routes.size(); ++i) {
         const auto& a = current.routes[i]; const auto& b = p.routes[i];
@@ -169,7 +174,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     current = lib.at(i);
     routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0;
     matrixPage = 0;
-    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; // 0.32.0: undo never crosses into another preset
+    wtHistory[0].clear(); wtHistory[1].clear(); arpActions.clear(); arpActionsPage = false; arpSelectedStep = 0; wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; // 0.32.0: undo never crosses into another preset
     wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
     wtCmpSnap[0] = wtCmpSnap[1] = false; // 0.36.0: a new sound drops any SNAP
     for (int o = 0; o < 2; ++o) {
@@ -298,11 +303,18 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
           held ? pink : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
     ValuePill([self arpGateRect], @"GATE", v.arpGate >= 1 ? @"TIE" : [NSString stringWithFormat:@"%.0f%%", v.arpGate * 100], (v.arpGate - 0.05) / 0.95, pink, on);
     ValuePill([self arpSwingRect], @"SWING", ArpSwingValue(v.arpSwing), v.arpSwing / 0.5, pink, on && v.arpSwing > 0);
-    if (arpStepEdit) [self drawArpStepInspector]; else [self drawArpGrid];
+    if (arpStepEdit) { if (arpActionsPage) [self drawArpActions]; else [self drawArpStepInspector]; }
+    else [self drawArpGrid];
     [self drawArpPattern];
     NSRect se = [self arpStepEditToggle];
     FillRound(se, 4, arpStepEdit ? C(0x523047) : C(0x242c37));
     TextA(@"STEP EDIT", NSInsetRect(se, 2, 3), 6.5, arpStepEdit ? C(0xf06fb0) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    if (arpStepEdit) {
+        NSRect a = [self arpActionsTab];
+        FillRound(a, 4, arpActionsPage ? C(0x523047) : C(0x242c37));
+        TextA(arpActionsPage ? @"ACTIONS" : @"ACTIONS >", NSInsetRect(a, 2, 3), 6.5,
+              arpActionsPage ? C(0xf06fb0) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    }
 }
 // 0.26.0 step pattern: ON cells are velocity bars, REST cells are empty, TIE
 // cells bridge from the step before; a strip under each cell names its kind.
@@ -373,6 +385,28 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
             [pink setStroke]; outline.lineWidth = 1; [outline stroke];
         }
     }
+}
+- (NSRect)arpActionsTab { NSRect g = [self arpGrid]; return NSMakeRect(g.origin.x + 132, NSMaxY(g) - 16, 67, 14); }
+- (NSRect)arpActionButton:(int)i { NSRect g = [self arpGrid]; return NSMakeRect(g.origin.x + 8 + i * 65, g.origin.y + 29, 61, 18); }
+- (NSRect)arpUndoButton { NSRect g = [self arpGrid]; return NSMakeRect(g.origin.x + 8, g.origin.y + 7, 61, 17); }
+- (void)drawArpActions {
+    NSRect g = [self arpGrid]; FillRound(g, 5, C(0x0f141b));
+    const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
+    const int len = std::clamp(current.voice.arpPatLen, 1, arp::kPatSteps);
+    Text([NSString stringWithFormat:@"STEP %d / %d", i + 1, len],
+         NSMakeRect(g.origin.x + 9, NSMaxY(g) - 15, 105, 11), 8, C(0xf06fb0), NSFontWeightBold);
+    NSArray<NSString*>* labels = @[@"COPY", @"PASTE", @"ROTATE <", @"ROTATE >"];
+    for (int b = 0; b < 4; ++b) {
+        bool ready = b == 1 ? arpActions.canPaste() && i < len : b >= 2 ? len > 1 : i < len;
+        NSRect r = [self arpActionButton:b];
+        FillRound(r, 4, ready ? C(0x35273a) : C(0x1b202a));
+        TextA(labels[b], NSInsetRect(r, 2, 4), 6.5, ready ? C(0xf06fb0) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+    }
+    NSRect u = [self arpUndoButton]; const int depth = arpActions.undoDepth();
+    FillRound(u, 4, depth ? C(0x35273a) : C(0x1b202a));
+    TextA(@"UNDO", NSInsetRect(u, 2, 3), 6.5, depth ? C(0xf06fb0) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
+    Text([NSString stringWithFormat:@"%d STEP%@ TO UNDO", depth, depth == 1 ? @"" : @"S"],
+         NSMakeRect(g.origin.x + 78, g.origin.y + 10, 160, 10), 7, C(0x8793a3), NSFontWeightSemibold);
 }
 - (NSRect)arpStepEditToggle { NSRect g = [self arpGrid]; return NSMakeRect(NSMaxX(g) - 76, NSMaxY(g) - 16, 72, 14); }
 - (NSRect)arpStepInherit { NSRect g = [self arpGrid]; return NSMakeRect(g.origin.x + 8, g.origin.y + 33, 65, 16); }
@@ -509,6 +543,22 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     if (NSPointInRect(p, [self arpSyncRect])) { v.clockSync = !v.clockSync; [self voiceParamEdited:-1]; return YES; }
     if (NSPointInRect(p, [self arpChanceLiveRect])) { v.arpChanceLive = !v.arpChanceLive; [self voiceParamEdited:-1]; return YES; }
     if (NSPointInRect(p, [self arpStepEditToggle])) { arpStepEdit = !arpStepEdit; arpStepGateDrag = false; arpStepPitchDrag = false; [self setNeedsDisplay:YES]; return YES; }
+    if (arpStepEdit && NSPointInRect(p, [self arpActionsTab])) { arpActionsPage = !arpActionsPage; [self setNeedsDisplay:YES]; return YES; }
+    if (arpStepEdit && arpActionsPage && NSPointInRect(p, [self arpGrid])) {
+        for (int b = 0; b < 4; ++b) if (NSPointInRect(p, [self arpActionButton:b])) {
+            bool changed = b == 0 ? arpActions.copy(v,arpSelectedStep)
+                         : b == 1 ? arpActions.paste(v,arpSelectedStep)
+                         : arpActions.rotate(v,b == 2 ? -1 : 1);
+            if (changed && b != 0) { arpActionMutation = true; [self voiceParamEdited:-1]; arpActionMutation = false; }
+            else [self setNeedsDisplay:YES];
+            return YES;
+        }
+        if (NSPointInRect(p, [self arpUndoButton])) {
+            if (arpActions.undo(v)) { arpActionMutation = true; [self voiceParamEdited:-1]; arpActionMutation = false; }
+            return YES;
+        }
+        return YES;
+    }
     if (arpStepEdit && NSPointInRect(p, [self arpGrid])) {
         const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
         if (current.voice.arpPatKind[i] != arp::StepOn) return YES;
@@ -784,7 +834,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     [s appendFormat:@" index=%d note=%d", arpLiveIndex, arpLiveNote];
     [s appendFormat:@" sync=%d locked=%d pat=%d len=%d cell=%d steps=", v.clockSync ? 1 : 0, arpLiveLocked ? 1 : 0, v.arpPatOn ? 1 : 0, v.arpPatLen, arpLivePatCell]; // 0.26.0
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%c%d/x%d/o%+d", i ? "," : "", "ORT"[std::clamp(v.arpPatKind[i], 0, 2)], v.arpPatVel[i], v.arpPatRatchet[i], v.arpPatOctave[i]];
-    [s appendFormat:@" stepEdit=%d selected=%d gates=", arpStepEdit ? 1 : 0, arpSelectedStep + 1];
+    [s appendFormat:@" stepEdit=%d actions=%d selected=%d undo=%d copied=%d gates=", arpStepEdit ? 1 : 0,
+        arpActionsPage ? 1 : 0, arpSelectedStep + 1, arpActions.undoDepth(), arpActions.canPaste() ? 1 : 0];
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%d", i ? "," : "", v.arpPatGate[i]];
     [s appendFormat:@" pitches="];
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%+d", i ? "," : "", v.arpPatPitch[i]];
@@ -823,6 +874,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     ValuePill([self blendBar], @"BLND", [NSString stringWithFormat:@"%.0f", bl * 100], bl, C(0xc3cbd6), true);
 }
 - (void)voiceParamEdited:(int)id {
+    if (!arpActionMutation) arpActions.clearHistory(); // stale undo must not overwrite a later manual edit
     edited = true;
     if (id < 0 || !host || !host->editParameter(id, current)) [self applySound];
     [self setNeedsDisplay:YES];

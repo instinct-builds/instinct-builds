@@ -11,6 +11,7 @@
 #include "output_detail_display.h"
 #include "spectral_process.h"
 #include "table_history.h"
+#include "arp_pattern_actions.h"
 #include "frame_range.h"
 #include "partial_edit.h"
 #include "partial_view.h"
@@ -95,6 +96,8 @@ struct MUEWEditorHost {
     bool arpStepEdit; // 0.70.0: select-only pattern lane + enlarged gate inspector
     int arpSelectedStep;
     bool arpStepGateDrag, arpStepPitchDrag;
+    bool arpActionsPage, arpActionMutation;
+    muew::arp::Actions arpActions;
     // 0.30.0 Engine HQ header meter (fed by the host at ~30 Hz).
     int engVoices, engLimit;
     float engCpu;

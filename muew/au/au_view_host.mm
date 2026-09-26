@@ -2459,6 +2459,70 @@ int main() {
             Click(view,w,NSMakePoint(492+30,top-29+8.5));
             fflush(stdout);
         });
+        After(7.0897, ^{ // 0.72.0: tuple-complete ARP pattern actions and undo
+            muew::Preset before;State(before);
+            muew::Preset setup=before;
+            setup.voice.arpOn=true;setup.voice.arpPatOn=true;setup.voice.arpPatLen=4;
+            for(int i=0;i<16;++i){
+                setup.voice.arpPatKind[i]=i%3;
+                setup.voice.arpPatVel[i]=60+i;
+                setup.voice.arpPatRatchet[i]=i%4+1;
+                setup.voice.arpPatOctave[i]=i%3-1;
+                setup.voice.arpPatChance[i]=25*(i%4+1);
+                setup.voice.arpPatGate[i]=20+i;
+                setup.voice.arpPatPitch[i]=i-8;
+            }
+            NSString* setupText=[NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef setupRef=(__bridge CFStringRef)setupText;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&setupRef,sizeof(setupRef));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            CGFloat top=view.bounds.size.height-100;
+            NSString* prior=[view valueForKey:@"muewArpText"];
+            if(std::string(prior.UTF8String ?: "").find("page=2 ")!=0)Click(view,w,NSMakePoint(655,top-20.5));
+            Click(view,w,NSMakePoint(730,top-126)); // STEP EDIT
+            Click(view,w,NSMakePoint(655,top-126)); // ACTIONS
+            auto cell=[&](int i){return NSMakePoint(492+(i+.5)*276.0/16,top-224);};
+            auto button=[&](int b){return NSMakePoint(492+8+b*65+30,top-184+38);};
+            Click(view,w,cell(1));Click(view,w,button(0)); // COPY a REST including hidden values
+            Click(view,w,cell(2));Click(view,w,button(1)); // PASTE over TIE
+            muew::Preset pasted;bool okp=State(pasted);
+            auto src=muew::arp::readStep(setup.voice,1),dst=muew::arp::readStep(pasted.voice,2);
+            Check(okp&&src==dst&&pasted.voice.arpPatLen==4,
+                  "COPY/PASTE carries all seven REST fields through AU state");
+            Click(view,w,button(3)); // ROTATE >
+            RenderBlock();Snapshot(view,"MUEW_ACTIONS72_PNG","ARP pattern actions snapshot written");
+            muew::Preset rotated;bool okr=State(rotated);
+            bool outside=true;for(int i=4;i<16;++i)
+                outside &= muew::arp::readStep(rotated.voice,i)==muew::arp::readStep(setup.voice,i);
+            NSString* debug=[view valueForKey:@"muewArpText"];
+            printf("actions72: read=%d len=%d outside=%d editor=%s\n",okr?1:0,rotated.voice.arpPatLen,
+                   outside?1:0,debug.UTF8String ?: "");
+            Check(okr&&outside&&muew::arp::readStep(rotated.voice,0)==muew::arp::readStep(pasted.voice,3)
+                  &&std::string(debug.UTF8String ?: "").find("actions=1 selected=3 undo=2 copied=1")!=std::string::npos,
+                  "ROTATE > wraps whole tuples inside LEN without touching dormant cells");
+            Click(view,w,NSMakePoint(492+38,top-184+15)); // UNDO rotation
+            muew::Preset unrotated;State(unrotated);
+            Check(unrotated==pasted,"one UNDO reverses the rotate atomically");
+            Click(view,w,NSMakePoint(492+38,top-184+15)); // UNDO paste
+            muew::Preset original;State(original);
+            Check(original==setup,"second UNDO restores the original pattern");
+            // A manual edit after an action invalidates that action's undo.
+            Click(view,w,button(3));
+            Click(view,w,NSMakePoint(560+60,top-205+9)); // LEN grows by one
+            NSString* manual=[view valueForKey:@"muewArpText"];
+            Check(std::string(manual.UTF8String ?: "").find("undo=0 copied=1")!=std::string::npos,
+                  "manual pattern edit invalidates stale action undo without losing clipboard");
+            NSString* reset=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)reset;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            NSString* cleared=[view valueForKey:@"muewArpText"];
+            Check(std::string(cleared.UTF8String ?: "").find("undo=0 copied=0")!=std::string::npos,
+                  "external preset switch clears action clipboard and history");
+            Click(view,w,NSMakePoint(730,top-126));Click(view,w,NSMakePoint(492+30,top-20.5));
+            fflush(stdout);
+        });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;

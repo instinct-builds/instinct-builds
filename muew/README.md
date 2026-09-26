@@ -597,3 +597,13 @@ octave shift after source-key velocity selection, then clamps to MIDI 0-127.
 Ratchets repeat the resulting pitch and TIE holds it. The optional `arps` line
 is omitted for neutral patterns, keeping older patches and factory audio
 unchanged. No new AU parameter ID is published.
+
+## 0.72.0 ARP pattern actions
+
+The STEP EDIT preview has an ACTIONS subview with COPY, PASTE, ROTATE left,
+ROTATE right and UNDO. Each action handles the complete seven-field step tuple
+(kind, velocity, ratchet, octave, chance, gate, pitch), even on REST/TIE cells.
+Only the active LEN steps rotate; dormant cells do not move. PASTE and ROTATE
+are atomic undo actions, while COPY changes only the editor clipboard. A preset
+switch or external state change clears clipboard/history. This editor-only
+feature adds no preset key or AU parameter, and does not restart the arp clock.
