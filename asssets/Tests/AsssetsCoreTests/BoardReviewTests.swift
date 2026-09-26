@@ -16,7 +16,8 @@ struct BoardReviewTests {
             guard it.kind == .asset, let asset = it.assetID else { return nil }
             return .init(id: it.id, asset: asset)
         }
-        #expect(c.recordGallery(GalleryRoster(gallery: "G1", title: "Pitch", created: "2026-09-26", assets: [a, b], board: board, cards: cards)!))
+        let recordedGallery0 = c.recordGallery(GalleryRoster(gallery: "G1", title: "Pitch", created: "2026-09-26", assets: [a, b], board: board, cards: cards)!)
+        #expect(recordedGallery0)
         #expect(c.board(forGallery: "G1") == board)
         let f = FB(gallery: "G1", title: "Pitch", reviewer: "Mara", items: [
             .init(id: a.uuidString, favorite: true, note: "Love this"),

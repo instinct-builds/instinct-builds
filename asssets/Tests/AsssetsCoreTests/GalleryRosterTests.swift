@@ -14,8 +14,10 @@ struct GalleryRosterTests {
         #expect(c.previewFeedback(f).rosterIssue != nil)
         #expect(c.applyFeedback(f).favorites == 0)
         let roster = GalleryRoster(gallery: gallery, title: "Pitch", created: "2026-09-26", assets: [inside])!
-        #expect(c.recordGallery(roster))
-        #expect(!c.recordGallery(GalleryRoster(gallery: gallery, title: "Pitch", created: "2026-09-26", assets: [outside])!))
+        let recordedGallery0 = c.recordGallery(roster)
+        #expect(recordedGallery0)
+        let conflictingGallery1 = c.recordGallery(GalleryRoster(gallery: gallery, title: "Pitch", created: "2026-09-26", assets: [outside])!)
+        #expect(!conflictingGallery1)
         let p = c.previewFeedback(f)
         #expect(p.picks == 1 && p.skippedCount == 1 && p.rows[1].skipped == "Not in this gallery")
         let result = c.applyFeedback(f)

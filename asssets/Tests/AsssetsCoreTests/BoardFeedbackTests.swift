@@ -16,7 +16,8 @@ struct BoardFeedbackTests {
             guard it.kind == .asset, let asset = it.assetID else { return nil }
             return .init(id: it.id, asset: asset)
         }
-        #expect(c.recordGallery(GalleryRoster(gallery: "G", title: "Lobby", created: "2026-09-26", assets: a, board: board, cards: boardCards)!))
+        let recordedGallery0 = c.recordGallery(GalleryRoster(gallery: "G", title: "Lobby", created: "2026-09-26", assets: a, board: board, cards: boardCards)!)
+        #expect(recordedGallery0)
         let cards = a.map { id in c.board(board)!.items.first { $0.assetID == id }!.id }
         return (c, board, a, cards)
     }
