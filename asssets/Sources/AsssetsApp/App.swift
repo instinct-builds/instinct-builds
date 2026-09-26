@@ -2768,17 +2768,29 @@ final class StudioLibrary: ObservableObject {
         }
         guard let ticket, validRights(ticket), ticket.ids == picked.map(\.id) else { return }
         if picked.count == 1, let a = picked.first {
-            // One asset: a save panel with the planned name, same rules as the folder export.
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-export/\(UUID().uuidString)", isDirectory: true)
-            try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: tmp) }
+            do { try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true) }
+            catch { flash("Could not prepare the export"); return }
             guard let made = write(a, mode: mode, into: tmp, taken: [], copy: true) else { flash("Nothing to export for \(a.title)"); return }
             let s = NSSavePanel(); s.nameFieldStringValue = made.lastPathComponent; s.canCreateDirectories = true
             if let t = UTType(filenameExtension: made.pathExtension) { s.allowedContentTypes = [t] }
             guard s.runModal() == .OK, let dst = s.url, validRights(ticket) else { return }
-            try? FileManager.default.removeItem(at: dst)
-            let ok = (try? FileManager.default.moveItem(at: made, to: dst)) != nil
-            flash(ok ? "Exported \(dst.lastPathComponent)" : "Export failed")
-            if ok { NSWorkspace.shared.activateFileViewerSelecting([dst]) }
+            var reviewed: LicenseCleanupReview.File?
+            if cleanupEntryExists(dst) {
+                guard let current = fileIdentity(dst) else { flash("Destination is not a regular file. Choose a different name."); return }
+                let alert = NSAlert()
+                alert.messageText = "Replace \(dst.lastPathComponent)?"
+                alert.informativeText = "This replaces the existing file with the exported asset. Cancel leaves it untouched."
+                alert.addButton(withTitle: "Replace File"); alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                reviewed = current
+            }
+            guard validRights(ticket) else { return }
+            let outcome = installSingleExport(made, at: dst, replacing: reviewed)
+            if outcome { flash("Exported \(dst.lastPathComponent)") }
+            else { flash("Export failed. The existing file was not overwritten; check the destination and try again.") }
+            if outcome { NSWorkspace.shared.activateFileViewerSelecting([dst]) }
             return
         }
         let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
@@ -2793,6 +2805,40 @@ final class StudioLibrary: ObservableObject {
         }
         flash(written.count == picked.count ? "Exported \(written.count) files" : "Exported \(written.count) of \(picked.count) files")
         if !written.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(written) }
+    }
+
+    /// Stage beside the destination, then exclusively install or atomically exchange an approved existing file.
+    @discardableResult
+    private func installSingleExport(_ source: URL, at target: URL, replacing reviewed: LicenseCleanupReview.File? = nil) -> Bool {
+        let fm = FileManager.default
+        let stage = target.deletingLastPathComponent().appendingPathComponent(".ASSSETS-export-\(UUID().uuidString)")
+        guard let digest = Self.sha256(path: source.path),
+              (((try? fm.attributesOfItem(atPath: source.path)[.size]) as? NSNumber)?.intValue ?? 0) > 0 else { return false }
+        var safeToRemoveStage = true
+        defer { if safeToRemoveStage { try? fm.removeItem(at: stage) } }
+        do {
+            try fm.copyItem(at: source, to: stage)
+            guard Self.sha256(path: stage.path) == digest else { return false }
+            if let reviewed {
+                guard fileIdentity(target) == reviewed else { return false }
+                // The old bytes move to `stage` in one filesystem operation. An interrupted export
+                // cannot leave the target absent, and a changed target is rolled back before cleanup.
+                guard renamex_np(stage.path, target.path, UInt32(RENAME_SWAP)) == 0 else { return false }
+                guard fileIdentity(stage) == reviewed, Self.sha256(path: target.path) == digest else {
+                    // If the exchange exposed an unreviewed old file, restore it; never silently delete it.
+                    if renamex_np(stage.path, target.path, UInt32(RENAME_SWAP)) != 0 { safeToRemoveStage = false }
+                    return false
+                }
+                do { try fm.removeItem(at: stage); return true }
+                catch {
+                    safeToRemoveStage = false
+                    flash("Exported, but the replaced file remains at \(stage.path); remove it when safe.")
+                    return true
+                }
+            }
+            try moveCleanupFile(stage, target)
+            return Self.sha256(path: target.path) == digest
+        } catch { return false }
     }
 
     var canReveal: Bool { selectedAssets.contains { $0.importedPath != nil } }
@@ -3195,6 +3241,29 @@ final class StudioLibrary: ObservableObject {
             if let data = try? JSONEncoder().encode(fb) { try? data.write(to: url) }
             importFeedback([url])
             if let a = mocks.first { selection = [a.id]; focusID = a.id; scrollInspectorToTags = true }
+        case "single-export-proof":
+            show(collection: "Material Textures")
+            let root = supportRoot.appendingPathComponent("demo-single-export", isDirectory: true)
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let source = root.appendingPathComponent("source.txt")
+            let fresh = root.appendingPathComponent("fresh.txt"), existing = root.appendingPathComponent("existing.txt")
+            let changed = root.appendingPathComponent("changed.txt"), blocked = root.appendingPathComponent("blocked.txt")
+            try? Data("NEW".utf8).write(to: source)
+            try? Data("OLD".utf8).write(to: existing)
+            try? Data("OLD".utf8).write(to: changed)
+            try? Data("SENTINEL".utf8).write(to: blocked)
+            let old = fileIdentity(existing), beforeChanged = fileIdentity(changed)
+            // A changed destination after review must not be replaced.
+            try? Data("CHANGED".utf8).write(to: changed)
+            let a = installSingleExport(source, at: fresh)
+            let b = old.map { installSingleExport(source, at: existing, replacing: $0) } ?? false
+            let c = beforeChanged.map { installSingleExport(source, at: changed, replacing: $0) } ?? true
+            let d = installSingleExport(source, at: blocked)
+            let read = { (u: URL) in (try? String(contentsOf: u, encoding: .utf8)) ?? "missing" }
+            let report = "done fresh=\(a && read(fresh) == "NEW") replace=\(b && read(existing) == "NEW") stale=\(!c && read(changed) == "CHANGED") collision=\(!d && read(blocked) == "SENTINEL")"
+            try? report.write(to: root.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
+            flash("Single export checks: fresh, replace, stale and collision")
         case "export-presets":
             // Wide 3:2 mockups, so the square and story crops have somewhere to slide.
             let files = ["cosmetic-plinth-mockup.png", "device-stage-mockup.png", "album-gatefold-mockup.png"]
