@@ -1705,30 +1705,103 @@ final class StudioLibrary: ObservableObject {
         else { flash("Could not save the PDF") }
     }
 
-    /// One zip: the contact sheet, the files, and the combined palette as .ase and .json swatches.
+    private var brandKitDemoFault: String?
+    private(set) var brandKitResult = ""
+
+    /// A brand kit is ready only when the exact reviewed selection, PDF, files and palettes are inside a verified ZIP.
     @discardableResult
     func buildBrandKit(_ p: SheetPreview, mode: DragOut.ExportMode, to zip: URL) -> Bool {
-        if let ticket = p.rightsTicket, !validRights(ticket) { return false }
         let fm = FileManager.default
+        let expected = p.ids.count
+        var prepared = 0
+        func status(_ ok: Bool, _ reason: String) -> Bool {
+            self.brandKitResult = "complete=\(ok) prepared=\(prepared) expected=\(expected) failed=\(ok ? 0 : max(1, expected - prepared)) published=\(ok) existing=\(!ok && fm.fileExists(atPath: zip.path))"
+            if !ok { self.flash("Brand kit incomplete: \(prepared) of \(expected) prepared, \(max(1, expected - prepared)) failed. \(reason)") }
+            return ok
+        }
+        guard expected > 0, Set(p.ids).count == expected,
+              let ticket = p.rightsTicket, ticket.ids == p.ids, validRights(ticket) else { return status(false, "Selection or rights changed; review again.") }
+        let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
+        let assets = p.ids.map { byID[$0] }
+        guard assets.allSatisfy({ $0 != nil }) else { return status(false, "An asset is missing.") }
+        let selected = assets.compactMap { $0 }
+        guard !cleanupEntryExists(zip) else { return status(false, "Destination already exists. Choose a new name.") }
+        guard let sheetDigest = Self.sha256(path: p.pdf.path),
+              (((try? fm.attributesOfItem(atPath: p.pdf.path)[.size]) as? NSNumber)?.intValue ?? 0) > 0,
+              PDFDocument(url: p.pdf)?.pageCount ?? 0 > 0 else { return status(false, "Contact sheet is missing or unreadable.") }
         let name = BrandKit.kitName(p.title)
-        let stage = fm.temporaryDirectory.appendingPathComponent("ASSSETS-kit/\(UUID().uuidString)/\(name)", isDirectory: true)
-        let files = stage.appendingPathComponent("Files", isDirectory: true)
-        try? fm.createDirectory(at: files, withIntermediateDirectories: true)
-        try? fm.copyItem(at: p.pdf, to: stage.appendingPathComponent("Contact Sheet.pdf"))
-        let assets = p.ids.compactMap { id in catalog.assets.first { $0.id == id } }
-        var taken = Set<String>()
-        for a in assets { if let u = write(a, mode: mode, into: files, taken: taken, copy: true) { taken.insert(u.lastPathComponent) } }
-        let palette = BrandKit.combinedPalette(assets.map(\.palette))
-        let swatches = palette.enumerated().map { BrandKit.Swatch(name: "\(p.title) \($0.offset + 1)", hex: $0.element) }
-        try? BrandKit.ase(swatches).write(to: stage.appendingPathComponent("Palette.ase"))
-        try? BrandKit.swatchJSON(title: p.title, swatches).write(to: stage.appendingPathComponent("Palette.json"))
-        try? fm.removeItem(at: zip)
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        task.arguments = ["-c", "-k", "--norsrc", "--keepParent", stage.path, zip.path]
-        do { try task.run(); task.waitUntilExit() } catch { return false }
-        try? fm.removeItem(at: stage.deletingLastPathComponent())
-        return task.terminationStatus == 0 && fm.fileExists(atPath: zip.path)
+        let root = zip.deletingLastPathComponent().appendingPathComponent(".ASSSETS-kit-\(UUID().uuidString)", isDirectory: true)
+        let stage = root.appendingPathComponent(name, isDirectory: true)
+        let stagedZip = root.appendingPathComponent("kit.zip")
+        defer { try? fm.removeItem(at: root) }
+        do {
+            let files = stage.appendingPathComponent("Files", isDirectory: true)
+            try fm.createDirectory(at: files, withIntermediateDirectories: true)
+            let sheet = stage.appendingPathComponent("Contact Sheet.pdf")
+            try fm.copyItem(at: p.pdf, to: sheet)
+            guard Self.sha256(path: sheet.path) == sheetDigest else { return status(false, "Contact sheet changed during copying.") }
+            var taken = Set<String>(), fileNames: [String] = [], digests: [String: String] = [:], sourceDigests: [String: String] = [:]
+            for a in selected {
+                guard validRights(ticket) else { return status(false, "Rights changed; review again.") }
+                let sourceDigest = a.importedPath.flatMap { Self.sha256(path: $0) }
+                if a.importedPath != nil && sourceDigest == nil { return status(false, "A source file is unavailable.") }
+                if let path = a.importedPath, let sourceDigest { sourceDigests[path] = sourceDigest }
+                guard brandKitDemoFault != "file" || prepared != 1,
+                      let u = write(a, mode: mode, into: files, taken: taken, copy: true),
+                      let digest = Self.sha256(path: u.path),
+                      sourceDigest == a.importedPath.flatMap({ Self.sha256(path: $0) }),
+                      (((try? fm.attributesOfItem(atPath: u.path)[.size]) as? NSNumber)?.intValue ?? 0) > 0 else { return status(false, "An asset could not be copied or rendered.") }
+                let original = DragOut.exportPlan(mode: mode, title: a.title, importedPath: a.importedPath,
+                                                  fileExists: sourceDigest != nil, look: look(for: a))
+                if case .file = original, digest != sourceDigest { return status(false, "A source file changed while copying.") }
+                guard u.deletingLastPathComponent() == files, !taken.contains(u.lastPathComponent) else { return status(false, "An asset file was not staged safely.") }
+                taken.insert(u.lastPathComponent)
+                let relative = "Files/" + u.lastPathComponent
+                fileNames.append(relative); digests[relative] = digest; prepared += 1
+            }
+            let palette = BrandKit.combinedPalette(selected.map(\.palette))
+            let swatches = palette.enumerated().map { BrandKit.Swatch(name: "\(p.title) \($0.offset + 1)", hex: $0.element) }
+            let ase = BrandKit.ase(swatches), json = BrandKit.swatchJSON(title: p.title, swatches)
+            guard !ase.isEmpty, !json.isEmpty else { return status(false, "Palette could not be built.") }
+            try ase.write(to: stage.appendingPathComponent("Palette.ase"))
+            try json.write(to: stage.appendingPathComponent("Palette.json"))
+            digests["Contact Sheet.pdf"] = sheetDigest
+            digests["Palette.ase"] = Self.sha256(path: stage.appendingPathComponent("Palette.ase").path)
+            digests["Palette.json"] = Self.sha256(path: stage.appendingPathComponent("Palette.json").path)
+            let expectedFiles = Set(fileNames + ["Contact Sheet.pdf", "Palette.ase", "Palette.json"])
+            guard Set(try fm.subpathsOfDirectory(atPath: stage.path).filter { $0 != "Files" }) == expectedFiles,
+                  expectedFiles.allSatisfy({ relative in
+                      Self.sha256(path: stage.appendingPathComponent(relative).path) == digests[relative] && digests[relative] != nil
+                  }),
+                  Self.sha256(path: p.pdf.path) == sheetDigest,
+                  validRights(ticket), sourceDigests.allSatisfy({ Self.sha256(path: $0.key) == $0.value }),
+                  p.ids.allSatisfy({ id in catalog.assets.first(where: { $0.id == id }) == byID[id] }) else { return status(false, "Staged kit differs from the reviewed selection.") }
+            let task = Process(); task.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            task.arguments = ["-c", "-k", "--norsrc", "--keepParent", stage.path, stagedZip.path]
+            try task.run(); task.waitUntilExit()
+            guard task.terminationStatus == 0 else { return status(false, "ZIP creation failed.") }
+            let check = Process(); check.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+            check.arguments = ["-tq", stagedZip.path]
+            try check.run(); check.waitUntilExit()
+            let listing = Process(); listing.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+            listing.arguments = ["-Z", "-1", stagedZip.path]
+            let pipe = Pipe(); listing.standardOutput = pipe
+            try listing.run()
+            let listedData = pipe.fileHandleForReading.readDataToEndOfFile()
+            listing.waitUntilExit()
+            let entries = String(data: listedData, encoding: .utf8)?.split(separator: "\n").map(String.init) ?? []
+            let expectedEntries = Set(expectedFiles.map { name + "/" + $0 })
+            guard check.terminationStatus == 0, listing.terminationStatus == 0,
+                  Set(entries.filter { !$0.hasSuffix("/") }) == expectedEntries,
+                  entries.filter({ $0.hasSuffix("/") }).allSatisfy({ $0 == name + "/" || $0 == name + "/Files/" }),
+                  Self.sha256(path: stagedZip.path) != nil,
+                  Self.sha256(path: p.pdf.path) == sheetDigest, validRights(ticket),
+                  sourceDigests.allSatisfy({ Self.sha256(path: $0.key) == $0.value }),
+                  p.ids.allSatisfy({ id in catalog.assets.first(where: { $0.id == id }) == byID[id] }) else { return status(false, "ZIP or rights failed final verification.") }
+            if brandKitDemoFault == "publish" { return status(false, "ZIP publication failed.") }
+            try moveCleanupFile(stagedZip, zip)
+            return status(true, "")
+        } catch { return status(false, "Nothing shareable was published; an item or destination changed.") }
     }
 
     func saveBrandKit(_ p: SheetPreview, mode: DragOut.ExportMode) {
@@ -1736,7 +1809,7 @@ final class StudioLibrary: ObservableObject {
         let s = NSSavePanel(); s.nameFieldStringValue = BrandKit.kitName(p.title) + ".zip"; s.allowedContentTypes = [.zip]; s.canCreateDirectories = true
         guard s.runModal() == .OK, let dst = s.url, validRights(ticket) else { return }
         if buildBrandKit(p, mode: mode, to: dst) { flash("Saved \(dst.lastPathComponent)"); NSWorkspace.shared.activateFileViewerSelecting([dst]) }
-        else { flash("Could not build the brand kit") }
+        // buildBrandKit already names the failed count and preserves any existing ZIP.
     }
 
     // MARK: Find similar (1.4)
@@ -3049,8 +3122,29 @@ final class StudioLibrary: ObservableObject {
                 let fm = FileManager.default
                 try? fm.removeItem(at: self.supportRoot.appendingPathComponent("demo-contact-sheet.pdf"))
                 try? fm.copyItem(at: p.pdf, to: self.supportRoot.appendingPathComponent("demo-contact-sheet.pdf"))
-                let small = SheetPreview(title: p.title, ids: Array(p.ids.prefix(4)), pdf: p.pdf, rightsTicket: p.rightsTicket)
-                self.buildBrandKit(small, mode: .originals, to: self.supportRoot.appendingPathComponent("demo-brand-kit.zip"))
+                let kitIDs = Array(p.ids.prefix(4))
+                let kitAssets = kitIDs.compactMap { id in self.catalog.assets.first { $0.id == id } }
+                let kitPDF = self.supportRoot.appendingPathComponent("demo-brand-kit-contact-sheet.pdf")
+                if await ContactSheetRenderer.render(title: p.title, assets: kitAssets, to: kitPDF),
+                   let ticket = RightsExportTicket(catalog: self.catalog, ids: kitIDs, day: UsageRights.today(), decision: .cleared) {
+                    let small = SheetPreview(title: p.title, ids: kitIDs, pdf: kitPDF, rightsTicket: ticket)
+                    let out = self.supportRoot.appendingPathComponent("demo-brand-kit.zip")
+                    _ = self.buildBrandKit(small, mode: .originals, to: out)
+                    try? self.brandKitResult.write(to: self.supportRoot.appendingPathComponent("demo-brand-kit.txt"), atomically: true, encoding: .utf8)
+                    self.brandKitDemoFault = "file"
+                    let fileOut = self.supportRoot.appendingPathComponent("demo-brand-kit-file-fail.zip")
+                    _ = self.buildBrandKit(small, mode: .originals, to: fileOut)
+                    try? self.brandKitResult.write(to: self.supportRoot.appendingPathComponent("demo-brand-kit-file-fail.txt"), atomically: true, encoding: .utf8)
+                    self.brandKitDemoFault = "publish"
+                    let publishOut = self.supportRoot.appendingPathComponent("demo-brand-kit-publish-fail.zip")
+                    _ = self.buildBrandKit(small, mode: .originals, to: publishOut)
+                    try? self.brandKitResult.write(to: self.supportRoot.appendingPathComponent("demo-brand-kit-publish-fail.txt"), atomically: true, encoding: .utf8)
+                    self.brandKitDemoFault = nil
+                    let collisionOut = self.supportRoot.appendingPathComponent("demo-brand-kit-existing.zip")
+                    try? Data("SENTINEL".utf8).write(to: collisionOut)
+                    _ = self.buildBrandKit(small, mode: .originals, to: collisionOut)
+                    try? self.brandKitResult.write(to: self.supportRoot.appendingPathComponent("demo-brand-kit-existing.txt"), atomically: true, encoding: .utf8)
+                }
                 // Whole-library sheet, so CI can report the size of a 28-asset PDF with JPEG thumbnails.
                 // Written under a temp name and renamed at the end, so CI never measures a half-written file.
                 let tmp = self.supportRoot.appendingPathComponent("demo-contact-sheet-all.partial.pdf")

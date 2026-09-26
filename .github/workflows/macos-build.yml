@@ -396,9 +396,18 @@ jobs:
           test "$all" -lt 6000000
           test "$(mdls -raw -name kMDItemNumberOfPages "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" 2>/dev/null || echo 4)" != "0"
           sips -s format png --resampleWidth 1600 "ASSSETS-$ASSSETS_VERSION-contact-sheet.pdf" --out "ASSSETS-$ASSSETS_VERSION-contact-sheet-cover.png" >/dev/null
+          grep -q '^complete=true prepared=4 expected=4 failed=0 published=true existing=false$' "$SUP/demo-brand-kit.txt"
+          grep -q '^complete=false prepared=1 expected=4 failed=3 published=false existing=false$' "$SUP/demo-brand-kit-file-fail.txt"
+          grep -q '^complete=false prepared=4 expected=4 failed=1 published=false existing=false$' "$SUP/demo-brand-kit-publish-fail.txt"
+          grep -q '^complete=false prepared=0 expected=4 failed=4 published=false existing=true$' "$SUP/demo-brand-kit-existing.txt"
+          test "$(cat "$SUP/demo-brand-kit-existing.zip")" = SENTINEL
+          test ! -e "$SUP/demo-brand-kit-file-fail.zip"; test ! -e "$SUP/demo-brand-kit-publish-fail.zip"
+          unzip -tq "$SUP/demo-brand-kit.zip"
           unzip -l "$SUP/demo-brand-kit.zip" | tee "ASSSETS-$ASSSETS_VERSION-brand-kit-listing.txt"
           grep -q 'Palette.ase' "ASSSETS-$ASSSETS_VERSION-brand-kit-listing.txt"
           grep -q 'Contact Sheet.pdf' "ASSSETS-$ASSSETS_VERSION-brand-kit-listing.txt"
+          test "$(unzip -Z1 "$SUP/demo-brand-kit.zip" | grep '/Files/' | grep -v '/$' | wc -l | tr -d ' ')" -eq 4
+          cp "$SUP"/demo-brand-kit*.txt "./"
           for f in ASSSETS-$ASSSETS_VERSION-*.png; do test -s "$f"; sips -g pixelWidth -g pixelHeight "$f"; done
       - name: Upload ASSSETS release
         if: always()
