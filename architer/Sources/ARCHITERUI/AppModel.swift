@@ -6,6 +6,9 @@ import ArchiterCore
 @MainActor
 public final class AppModel: ObservableObject {
     @Published public var characters: [Character] = []
+    /// Last group check summary (3.26.0): ephemeral panel state - the
+    /// verdict derives from the rolls and is never persisted.
+    @Published public var lastGroupCheck: GroupCheckOutcome?
     /// Session restore: the last-selected character id persists across launches.
     @Published public var selectedID: UUID? {
         didSet {
@@ -531,9 +534,9 @@ public final class AppModel: ObservableObject {
         rollHistoryStore.save(rollHistory)
     }
 
-    private func record(_ r: RollResult) {
+    private func record(_ r: RollResult, characterName: String? = nil) {
         var r = r
-        r.characterName = selected?.wrappedValue.name
+        r.characterName = characterName ?? selected?.wrappedValue.name
         lastDeletion = nil
         rollHistory.insert(r, at: 0)
         if rollHistory.count > 200 { rollHistory.removeLast(rollHistory.count - 200) }
@@ -888,6 +891,28 @@ public final class AppModel: ObservableObject {
         r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode,
                               checkBonus: bonus, targetDC: targetDC)
         record(r)
+    }
+
+    /// Group check (3.26.0): the same skill for the whole roster. Each
+    /// participant's own conditions and exhaustion apply via GroupCheckPlan,
+    /// each roll records as an ordinary (rerollable) history entry labeled
+    /// with the participant's name, and the verdict is derived, never stored.
+    public func rollGroupCheck(skillName: String, targetDC: Int?) {
+        guard let plan = GroupCheckPlan(characters: characters, skillName: skillName) else { return }
+        var lines: [GroupCheckOutcome.Line] = []
+        for p in plan.participants {
+            let base = "\(p.name) - \(skillName) check"
+            let tagged = p.tags.isEmpty ? base : "\(base) (\(p.tags.joined(separator: "; ")))"
+            var r = roller.check(tagged, bonus: p.bonus - p.penalty, mode: p.mode)
+            r.targetDC = targetDC
+            r.reroll = RerollSpec(kind: .check, baseLabel: base, mode: p.mode,
+                                  checkBonus: p.bonus - p.penalty, targetDC: targetDC)
+            record(r, characterName: p.name)
+            lines.append(GroupCheckOutcome.Line(name: p.name, total: r.total,
+                                                passed: targetDC.map { r.total >= $0 },
+                                                tags: p.tags))
+        }
+        lastGroupCheck = GroupCheckOutcome(skillName: skillName, targetDC: targetDC, lines: lines)
     }
 
     /// Attack roll + damage roll as two history entries.

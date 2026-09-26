@@ -1381,6 +1381,43 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? levelLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/levelup.txt"),
                atomically: true, encoding: .utf8)
+    // Group check proof (3.26.0): the whole roster rolls one skill; runs at
+    // END so every earlier render stays byte-identical. Two clean party
+    // members join the demo character (still hindered from the 3.24.0
+    // block), so the proof shows per-participant condition tags.
+    var groupLines = ["Group check (3.26.0)",
+                      "whole roster rolls the same skill; half or more beats the DC"]
+    var bram = SampleContent.demoCharacter()
+    bram.id = UUID()
+    bram.name = "Bram Oakfel"
+    bram.conditions = []
+    bram.customConditions = []
+    bram.exhaustion = 0
+    var sera = SampleContent.demoCharacter()
+    sera.id = UUID()
+    sera.name = "Sera Vint"
+    sera.conditions = []
+    sera.customConditions = []
+    sera.exhaustion = 0
+    model.characters.append(contentsOf: [bram, sera])
+    model.rollGroupCheck(skillName: "Stealth", targetDC: 12)
+    if let outcome = model.lastGroupCheck {
+        for line in outcome.lines {
+            let tagSuffix = line.tags.isEmpty ? "" : " (\(line.tags.joined(separator: "; ")))"
+            let verdict = line.passed.map { $0 ? "met" : "missed" } ?? "-"
+            groupLines.append("\(line.name): total \(line.total) \(verdict)\(tagSuffix)")
+        }
+        if let v = outcome.verdictLine { groupLines.append(v) }
+    }
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 520, name: "group-check", outDir: outDir, minHeight: 200, maxHeight: 480)
+    try? groupLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

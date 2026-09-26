@@ -199,6 +199,7 @@ public struct DiceRollerView: View {
                 }
             }
             InitiativeSectionView()
+            GroupCheckSectionView()
             HStack {
                 Text("History").font(.headline)
                 if let name = model.selected?.wrappedValue.name {
@@ -1033,6 +1034,76 @@ public struct MacroRowView: View {
                 Button(role: .destructive) {
                     model.deleteMacro(macro)
                 } label: { Image(systemName: "minus.circle") }
+            }
+        }
+    }
+}
+
+/// Group checks (3.26.0): the whole roster attempts the same skill; each
+/// participant's own conditions and exhaustion ride the plan, and the
+/// summary panel is ephemeral - history carries the auditable rolls.
+public struct GroupCheckSectionView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var skillPick = "Stealth"
+    @State private var dcDraft = ""
+
+    public init() {}
+
+    /// The selected character's skill names, else the default list.
+    private var skillNames: [String] {
+        let names = model.selected?.wrappedValue.skills.map(\.name) ?? []
+        return names.isEmpty ? Skill.defaultList.map(\.name) : names
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.sm) {
+            HStack {
+                Text("Group check").font(.headline)
+                    .help("Roll the same skill for every roster character - the group succeeds when half or more beat the DC")
+                Spacer()
+                Picker("", selection: $skillPick) {
+                    ForEach(skillNames, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 180)
+                TextField("DC", text: $dcDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 56)
+                    .help("Optional - without one, results list totals with no verdict")
+                Button("Roll") {
+                    model.rollGroupCheck(
+                        skillName: skillPick,
+                        targetDC: Int(dcDraft.trimmingCharacters(in: .whitespaces)))
+                }
+                .buttonStyle(RollButtonStyle())
+                .disabled(model.characters.isEmpty)
+                .help("Roll \(skillPick) for all \(model.characters.count) roster characters")
+            }
+            if let outcome = model.lastGroupCheck {
+                VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+                    ForEach(outcome.lines, id: \.name) { line in
+                        HStack(spacing: Theme.Gap.sm) {
+                            Text(line.name)
+                            Spacer()
+                            if !line.tags.isEmpty {
+                                Text(line.tags.joined(separator: "; "))
+                                    .foregroundStyle(Theme.inkMuted)
+                            }
+                            Text("\(line.total)")
+                                .foregroundStyle(Theme.accent)
+                            if let passed = line.passed {
+                                Text(passed ? "met" : "missed")
+                                    .foregroundStyle(passed ? Theme.accent : Theme.inkMuted)
+                            }
+                        }
+                    }
+                    if let verdict = outcome.verdictLine {
+                        Text(verdict)
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.ink)
             }
         }
     }
