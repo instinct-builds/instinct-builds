@@ -461,7 +461,13 @@ public struct DiceRollerView: View {
                             Button("Digest starred") { model.addStarredToJournal() }
                                 .disabled(model.selected == nil)
                         } label: {
+                            // 3.14.1: the menu label keeps its full
+                            // width too - with the chips fixed the
+                            // bar pressure lands here next; the field
+                            // yields instead.
                             Label("Starred", systemImage: "star")
+                                .lineLimit(1)
+                                .fixedSize()
                         }
                         .controlSize(.small)
                         .help("Starred-roll actions - copy, unstar, export, digest")
