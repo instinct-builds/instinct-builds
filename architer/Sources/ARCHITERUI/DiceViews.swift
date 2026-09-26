@@ -443,7 +443,10 @@ public struct DiceRollerView: View {
                             }
                                 .disabled(visibleHistory.isEmpty)
                             Divider()
-                            Button("Delete filtered…") { confirmingFilteredDelete = true }
+                            // 3.16.0: the item names the count it
+                            // would remove - the only pre-click signal
+                            // since the 3.12.0 collapse.
+                            Button(deleteFilteredMenuLabel(count: visibleHistory.count)) { confirmingFilteredDelete = true }
                                 .disabled(visibleHistory.isEmpty)
                         } label: {
                             Image(systemName: "ellipsis.circle")

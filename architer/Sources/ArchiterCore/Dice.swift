@@ -230,6 +230,13 @@ public func rollDayTitle(_ date: Date?, now: Date = Date(),
     return RollResult.historyDateFormatter.string(from: date)
 }
 
+/// 3.16.0: the Delete item in the filter overflow names its count.
+/// After the 3.12.0 overflow collapsed Delete into the menu, the label
+/// is the only pre-click signal of how many rolls the delete removes.
+public func deleteFilteredMenuLabel(count: Int) -> String {
+    count == 1 ? "Delete 1 filtered roll…" : "Delete \(count) filtered rolls…"
+}
+
 /// Groups a newest-first history list under day headers, preserving the
 /// list's order: a new group starts whenever the title changes, so the
 /// scope and text filters keep working exactly as before.

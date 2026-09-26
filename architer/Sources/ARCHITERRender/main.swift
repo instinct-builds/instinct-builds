@@ -974,7 +974,7 @@ func run(model: AppModel, character: Character, outDir: String) {
         try? (["Filter-bar overflow (3.12.0)",
                "filter set -> Digest/Export/Delete collapse into the ellipsis menu",
                "Copy filtered, Journal, star menu, and Clear stay top-level",
-               "Delete filtered... from the menu still opens the inline confirm (3.3.0)"])
+               "the Delete item names its count (3.16.0) and still opens the inline confirm (3.3.0)"])
             .joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/filter-overflow.txt"),
                    atomically: true, encoding: .utf8)
@@ -985,6 +985,19 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-filter-overflow", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.16.0 proof: the overflow Delete item names the count it would
+    // remove - the only pre-click signal since the 3.12.0 collapse.
+    // The txt records the exact label, built by the same ArchiterCore
+    // function the menu calls; the menu itself renders closed.
+    do {
+        let filtered = model.rollHistory.matching("fire")
+        try? (["Delete count preview (3.16.0)",
+               "menu item with filter \"fire\": \"\(deleteFilteredMenuLabel(count: filtered.count))\"",
+               "the label is the pre-click signal; the confirm still asks \"Delete \(filtered.count) rolls?\""])
+            .joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/filter-delete-label.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     // 3.3.0 render: the confirm state - the bar asks "Delete 6 rolls?"
     // with Delete/Cancel before anything is removed.
     renderPNG(

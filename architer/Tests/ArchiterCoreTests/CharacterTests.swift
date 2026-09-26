@@ -806,6 +806,14 @@ struct CharacterTests {
         #expect(legacy.first?.pinned == nil)
     }
 
+    @Test func deleteFilteredMenuLabelNamesTheCount() throws {
+        // 3.16.0: the overflow Delete item is the only pre-click count
+        // signal; singular gets "roll", everything else "rolls".
+        #expect(deleteFilteredMenuLabel(count: 0) == "Delete 0 filtered rolls…")
+        #expect(deleteFilteredMenuLabel(count: 1) == "Delete 1 filtered roll…")
+        #expect(deleteFilteredMenuLabel(count: 6) == "Delete 6 filtered rolls…")
+    }
+
     @Test func freeRollerTypeMemoryResolvesPerCharacter() throws {
         // Missing entry falls back to the table-wide selection.
         #expect(resolveFreeRollerType(map: [:], characterID: "A", tableDefault: .fire) == .fire)
