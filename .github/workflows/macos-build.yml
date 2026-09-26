@@ -275,6 +275,10 @@ jobs:
           grep -q '^done rows=1 safe=true hash=true noPath=true$' "$SUP/demo-source-receipt-csv.txt"
           cp "$SUP/demo-source-receipts.csv" "ASSSETS-$ASSSETS_VERSION-source-receipts.csv.txt"
           test "$(wc -l < "ASSSETS-$ASSSETS_VERSION-source-receipts.csv.txt")" -eq 2
+          DELAY=18 shoot source-receipt-copy 1920x1200 source-receipt-copy demo-source-receipt-copy.txt
+          cat "$SUP/demo-source-receipt-copy.txt"
+          grep -q '^done before=true after=true unchanged=true$' "$SUP/demo-source-receipt-copy.txt"
+          cp "$SUP/demo-source-receipt-copy.txt" "ASSSETS-$ASSSETS_VERSION-source-receipt-copy.txt"
           DELAY=18 shoot folder-relink 1920x1200 folder-relink
           DELAY=18 shoot folder-relink-collapsed 1920x1200 folder-relink-collapsed
           DELAY=18 shoot folder-relink-apply 1920x1200 folder-relink-apply demo-folder-relink.txt
@@ -335,6 +339,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-licenses-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf

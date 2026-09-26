@@ -950,3 +950,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Library Health's Export CSV writes every currently matched receipt, not just the five visible rows. The save dialog chooses the destination; CSV contains UTC acceptance dates, asset titles, source filenames, before/after sizes and full SHA-256 digests. It carries no original path, image preview or source bytes. The user can filter by filename and dates before exporting.
 - CSV strings are quoted and formula-leading titles or filenames are made safe for spreadsheet opening. CI exports a one-row filtered result and checks the digest is present while the full path is absent.
+
+## 1.53.0: copy receipt digests
+
+- Each visible Library Health source receipt now has a compact Copy hash menu with separate Before SHA-256 and After SHA-256 actions. It copies the complete stored digest as plain text, not the source path, preview or original bytes. The visible short digests remain a quick visual cue, and filtering and Show Recent still decide which rows are shown.
+- The native proof captures the receipt row and checks both clipboard values against the accepted receipt while confirming that the catalog bytes do not change. No background scan or source restoration is added.

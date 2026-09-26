@@ -701,6 +701,14 @@ final class StudioLibrary: ObservableObject {
         }
     }
 
+    /// Copy a complete stored digest, never image bytes or a path. No catalog mutation.
+    func copySourceReceiptHash(_ receipt: SourceRefreshRecord, before: Bool) {
+        let hash = before ? receipt.before.sha256 : receipt.after.sha256
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(hash, forType: .string)
+        flash("Copied \(before ? "before" : "after") SHA-256")
+    }
+
     /// Export exactly the currently matched receipts, including rows hidden by Show Recent.
     func exportSourceReceiptCSV(_ matched: [SourceRefreshRecord], to demoURL: URL? = nil) {
         guard !matched.isEmpty else { flash("No matching receipts to export"); return }
@@ -2889,7 +2897,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3012,7 +3020,7 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
@@ -3066,7 +3074,7 @@ final class StudioLibrary: ObservableObject {
                                 self.selection = [source.id]; self.focusID = source.id
                                 self.inspectorAnchor = "source-changes"
                             }
-                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" || demo == "source-receipt-search" || demo == "source-receipt-csv" {
+                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" || demo == "source-receipt-search" || demo == "source-receipt-csv" || demo == "source-receipt-copy" {
                                 self.reviewChangedSource(source.id)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                     self.reviewedSourceID = nil
@@ -3113,7 +3121,7 @@ final class StudioLibrary: ObservableObject {
                                             }
                                         }
                                     }
-                                    if demo == "source-receipt-search" || demo == "source-receipt-csv" {
+                                    if demo == "source-receipt-search" || demo == "source-receipt-csv" || demo == "source-receipt-copy" {
                                         self.healthOpen = false
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                             self.healthOpen = true
@@ -7732,8 +7740,19 @@ struct LibraryHealthSheet: View {
                                     Text("\((entry.path as NSString).abbreviatingWithTildeInPath) · \(ByteCountFormatter.string(fromByteCount: entry.before.size, countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: entry.after.size, countStyle: .file)) · \(entry.beforeResolution) → \(entry.afterResolution)")
                                         .font(.caption2).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
                                     SourceReceiptThumbnails(entry: entry, height: 64)
-                                    Text("Palette: \(entry.beforePalette.prefix(3).joined(separator: ", ")) → \(entry.afterPalette.prefix(3).joined(separator: ", ")) · SHA-256: \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
-                                        .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                                    HStack(spacing: 8) {
+                                        Text("Palette: \(entry.beforePalette.prefix(3).joined(separator: ", ")) → \(entry.afterPalette.prefix(3).joined(separator: ", ")) · SHA-256: \(entry.before.sha256.prefix(10)) → \(entry.after.sha256.prefix(10))")
+                                            .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                                        Spacer(minLength: 4)
+                                        Menu {
+                                            Button("Before SHA-256") { model.copySourceReceiptHash(entry, before: true) }
+                                            Button("After SHA-256") { model.copySourceReceiptHash(entry, before: false) }
+                                        } label: {
+                                            Label("Copy hash", systemImage: "doc.on.doc")
+                                        }
+                                        .controlSize(.mini).fixedSize()
+                                        .help("Copy the full before or after SHA-256 for this receipt. Does not copy source bytes.")
+                                    }
                                 }.padding(.leading, 42)
                             }
                         }.id("source-receipt-history")
@@ -7743,7 +7762,7 @@ struct LibraryHealthSheet: View {
                 .padding(20)
             }
             .onAppear {
-                if ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv") {
+                if ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv") || ProcessInfo.processInfo.arguments.contains("source-receipt-copy") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                         withAnimation { proxy.scrollTo("source-receipt-history", anchor: .top) }
                     }
@@ -7767,7 +7786,7 @@ struct LibraryHealthSheet: View {
         .background(Theme.panel)
         .sheet(isPresented: $model.folderRelinkOpen) { FolderRelinkSheet().environmentObject(model) }
         .onAppear {
-            if (ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv")),
+            if (ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv") || ProcessInfo.processInfo.arguments.contains("source-receipt-copy")),
                !model.catalog.sourceRefreshHistory.isEmpty {
                 receiptFilename = "Northlight"
                 receiptDateEnabled = false
@@ -7775,6 +7794,17 @@ struct LibraryHealthSheet: View {
                     let results = model.catalog.matchingSourceReceipts(filename: receiptFilename)
                     let ok = results.count == 1 && results[0].path.hasSuffix("Northlight Lobby.png")
                     try? "done found=\(ok) count=\(results.count)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-search.txt"), atomically: true, encoding: .utf8)
+                    if ProcessInfo.processInfo.arguments.contains("source-receipt-copy"), ok {
+                        let entry = results[0]
+                        let catalogBefore = model.catalog.encoded()
+                        model.copySourceReceiptHash(entry, before: true)
+                        let beforeOK = NSPasteboard.general.string(forType: .string) == entry.before.sha256
+                        model.copySourceReceiptHash(entry, before: false)
+                        let afterOK = NSPasteboard.general.string(forType: .string) == entry.after.sha256
+                        let unchanged = catalogBefore == model.catalog.encoded()
+                        try? "done before=\(beforeOK) after=\(afterOK) unchanged=\(unchanged)".write(
+                            to: model.supportRoot.appendingPathComponent("demo-source-receipt-copy.txt"), atomically: true, encoding: .utf8)
+                    }
                     if ProcessInfo.processInfo.arguments.contains("source-receipt-csv"), ok {
                         let output = model.supportRoot.appendingPathComponent("demo-source-receipts.csv")
                         model.exportSourceReceiptCSV(results, to: output)
