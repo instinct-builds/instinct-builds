@@ -1504,6 +1504,29 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? durationLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/durations.txt"),
                atomically: true, encoding: .utf8)
+    // Group save proof (3.31.0): Wren is poisoned + exhausted - her save
+    // line shows the exhaustion tag and NO disadvantage tag (the save-kind
+    // rider made visible). Runs at END.
+    var gsaveLines = ["Group saves (3.31.0)",
+                      "saves are never condition-hindered; exhaustion still subtracts (2024)"]
+    model.rollGroupSave(ability: .wisdom, targetDC: 13)
+    if let outcome = model.lastGroupCheck {
+        for line in outcome.lines {
+            let tagSuffix = line.tags.isEmpty ? "" : " (\(line.tags.joined(separator: "; ")))"
+            let verdict = line.passed.map { $0 ? "met" : "missed" } ?? "-"
+            gsaveLines.append("\(line.name): total \(line.total) \(verdict)\(tagSuffix)")
+        }
+        if let v = outcome.verdictLine { gsaveLines.append(v) }
+    }
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 520, name: "group-save", outDir: outDir, minHeight: 200, maxHeight: 480)
+    try? gsaveLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/groupsave.txt"),
+               atomically: true, encoding: .utf8)
     try? groupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
                atomically: true, encoding: .utf8)

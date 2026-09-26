@@ -915,7 +915,7 @@ public final class AppModel: ObservableObject {
             record(r)
             return r
         }
-        let kind: Character.D20RollKind = label.localizedCaseInsensitiveContains("attack") ? .attack : .check
+        let kind = Character.d20RollKind(forLabel: label)
         let effective = c.effectiveRollMode(mode, for: kind)
         let penalty = c.exhaustionRollPenalty
         var tags: [String] = []
@@ -956,6 +956,30 @@ public final class AppModel: ObservableObject {
                                                 tags: p.tags))
         }
         lastGroupCheck = GroupCheckOutcome(skillName: skillName, targetDC: targetDC, lines: lines)
+    }
+
+    /// Group save (3.31.0): the same saving throw for the whole roster.
+    /// Saves are never condition-hindered (save-kind semantics), exhaustion
+    /// still subtracts under the 2024 track; entries, identity stamps, and
+    /// reroll behave exactly as in 3.26.0's group checks.
+    public func rollGroupSave(ability: Ability, targetDC: Int?) {
+        guard let plan = GroupSavePlan(characters: characters, ability: ability) else { return }
+        var lines: [GroupCheckOutcome.Line] = []
+        for p in plan.participants {
+            let base = "\(p.name) - \(ability.abbreviation) save"
+            let tagged = p.tags.isEmpty ? base : "\(base) (\(p.tags.joined(separator: "; ")))"
+            var r = roller.check(tagged, bonus: p.bonus - p.penalty, mode: p.mode)
+            r.targetDC = targetDC
+            r.reroll = RerollSpec(kind: .check, baseLabel: base, mode: .normal,
+                                  checkBonus: p.bonus, targetDC: targetDC,
+                                  characterID: p.characterID)
+            record(r, characterName: p.name)
+            lines.append(GroupCheckOutcome.Line(name: p.name, total: r.total,
+                                                passed: targetDC.map { r.total >= $0 },
+                                                tags: p.tags))
+        }
+        lastGroupCheck = GroupCheckOutcome(skillName: "\(ability.abbreviation) save",
+                                           targetDC: targetDC, lines: lines)
     }
 
     /// Attack roll + damage roll as two history entries.

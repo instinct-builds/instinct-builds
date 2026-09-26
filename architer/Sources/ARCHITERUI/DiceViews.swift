@@ -1044,7 +1044,9 @@ public struct MacroRowView: View {
 /// summary panel is ephemeral - history carries the auditable rolls.
 public struct GroupCheckSectionView: View {
     @EnvironmentObject var model: AppModel
+    @State private var rollKind = 0 // 0 = skill check, 1 = saving throw (3.31.0)
     @State private var skillPick = "Stealth"
+    @State private var abilityPick: Ability = .wisdom
     @State private var dcDraft = ""
 
     public init() {}
@@ -1058,26 +1060,44 @@ public struct GroupCheckSectionView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: Theme.Gap.sm) {
             HStack {
-                Text("Group check").font(.headline)
-                    .help("Roll the same skill for every roster character - the group succeeds when half or more beat the DC")
+                Text(rollKind == 0 ? "Group check" : "Group save").font(.headline)
+                    .help("Roll the same test for every roster character - the group succeeds when half or more beat the DC")
                 Spacer()
-                Picker("", selection: $skillPick) {
-                    ForEach(skillNames, id: \.self) { Text($0).tag($0) }
+                Picker("", selection: $rollKind) {
+                    Text("Check").tag(0)
+                    Text("Save").tag(1)
                 }
                 .labelsHidden()
-                .frame(maxWidth: 180)
+                .pickerStyle(.segmented)
+                .frame(width: 130)
+                if rollKind == 0 {
+                    Picker("", selection: $skillPick) {
+                        ForEach(skillNames, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 150)
+                } else {
+                    Picker("", selection: $abilityPick) {
+                        ForEach(Ability.allCases, id: \.self) { Text($0.abbreviation).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 90)
+                }
                 TextField("DC", text: $dcDraft)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 56)
                     .help("Optional - without one, results list totals with no verdict")
                 Button("Roll") {
-                    model.rollGroupCheck(
-                        skillName: skillPick,
-                        targetDC: Int(dcDraft.trimmingCharacters(in: .whitespaces)))
+                    let dc = Int(dcDraft.trimmingCharacters(in: .whitespaces))
+                    if rollKind == 0 {
+                        model.rollGroupCheck(skillName: skillPick, targetDC: dc)
+                    } else {
+                        model.rollGroupSave(ability: abilityPick, targetDC: dc)
+                    }
                 }
                 .buttonStyle(RollButtonStyle())
                 .disabled(model.characters.isEmpty)
-                .help("Roll \(skillPick) for all \(model.characters.count) roster characters")
+                .help("Roll for all \(model.characters.count) roster characters")
             }
             if let outcome = model.lastGroupCheck {
                 VStack(alignment: .leading, spacing: Theme.Gap.xs) {

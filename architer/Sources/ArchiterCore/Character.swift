@@ -1179,6 +1179,15 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         case check, attack, save
     }
 
+    /// The d20 roll kind a history label implies (3.31.0): attacks, then
+    /// saves, else checks. Saves are never condition-hindered, so getting
+    /// this right is what keeps enforcement genre-correct.
+    public static func d20RollKind(forLabel label: String) -> D20RollKind {
+        if label.localizedCaseInsensitiveContains("attack") { return .attack }
+        if label.localizedCaseInsensitiveContains("save") { return .save }
+        return .check
+    }
+
     /// Conditions that impose disadvantage on the given roll kind.
     /// Original modeling of the genre-standard side effects: poisoned and
     /// frightened hinder checks; blinded, poisoned, prone, restrained and

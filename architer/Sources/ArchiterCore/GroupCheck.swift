@@ -104,3 +104,33 @@ public struct GroupCheckOutcome: Equatable, Sendable {
         return "Group \(succeeded ? "succeeds" : "fails"): \(passCount) of \(lines.count) met DC \(dc)."
     }
 }
+
+/// Group saves (3.31.0): the whole party attempts the same saving throw.
+/// Same participant shape as group checks; the terms differ - bonus from
+/// the character's own save proficiency, mode always normal (saves are
+/// never condition-hindered), exhaustion the only tag. The verdict reuses
+/// GroupCheckOutcome unchanged.
+public struct GroupSavePlan: Equatable, Sendable {
+    public let ability: Ability
+    public let participants: [GroupCheckPlan.Participant]
+
+    /// nil for an empty roster - there is no group to roll.
+    public init?(characters: [Character], ability: Ability) {
+        guard !characters.isEmpty else { return nil }
+        self.ability = ability
+        // A plain loop, not map: Participant's init is a member of
+        // GroupCheckPlan, so a closure would capture self too early.
+        var built: [GroupCheckPlan.Participant] = []
+        for c in characters {
+            let bonus = c.savingThrow(ability)
+            let mode = c.effectiveRollMode(.normal, for: .save)
+            let penalty = c.exhaustionRollPenalty
+            var tags: [String] = []
+            if penalty > 0 { tags.append("exhaustion -\(penalty)") }
+            built.append(GroupCheckPlan.Participant(characterID: c.id, name: c.name,
+                                                    bonus: bonus, mode: mode,
+                                                    penalty: penalty, tags: tags))
+        }
+        participants = built
+    }
+}
