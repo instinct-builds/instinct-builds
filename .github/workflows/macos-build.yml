@@ -260,10 +260,13 @@ jobs:
           grep -q '^done count=2 older=true$' "$SUP/demo-source-receipt-timeline.txt"
           python3 - "$SUP/studio-catalog.json" <<'PY2'
           import json,sys
-          c=json.load(open(sys.argv[1])); r=c['sourceRefreshHistory']; assert len(r)==1, r
-          entry=r[0]; assert entry['before']['sha256'] != entry['after']['sha256']
-          assert entry['path'].endswith('Northlight Lobby.png')
-          print('source receipt survives catalog reload; no source bytes embedded')
+          c=json.load(open(sys.argv[1])); r=c['sourceRefreshHistory']; assert len(r)==2, r
+          first, second=r
+          assert first['assetID']==second['assetID'] and first['path']==second['path']
+          assert first['after']['sha256']==second['before']['sha256']
+          assert first['before']['sha256'] != first['after']['sha256'] != second['after']['sha256']
+          assert second['path'].endswith('Northlight Lobby.png')
+          print('two linked source receipts survive catalog reload; no source bytes embedded')
           PY2
           DELAY=18 shoot folder-relink 1920x1200 folder-relink
           DELAY=18 shoot folder-relink-collapsed 1920x1200 folder-relink-collapsed
