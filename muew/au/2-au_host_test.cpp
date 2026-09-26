@@ -111,6 +111,11 @@ int main() {
         printf("FAIL: MUEW stereo output meter does not match host render\n");return 1;
     }
     printf("MUEW output L %.4f R %.4f, pre-master drive %.4f: meter matches host render\n",peakL,peakR,output.masterDrive);
+    // 0.59.0 performance ABI also carries both signed extrema.
+    if(output.routeMin[0]>output.routeMax[0]){
+        printf("FAIL: route range is inverted\n");return 1;
+    }
+
 
     MusicDeviceMIDIEvent(unit,0x80,69,0,111);
     std::fill(l.begin(),l.end(),0); std::fill(r.begin(),r.end(),0);

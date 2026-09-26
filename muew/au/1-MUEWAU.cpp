@@ -111,6 +111,7 @@ struct MUEWInstance {
     std::atomic<float> voiceMorph[2][8]{};              // 0.36.0 per-voice ghosts
     std::atomic<UInt32> voiceMorphN[2]{{0u}, {0u}};
     std::atomic<float> routeMeter[muew::kMaxRoutes]{}; // 0.54.0 block peaks
+    std::atomic<float> routeMin[muew::kMaxRoutes]{}, routeMax[muew::kMaxRoutes]{}; // 0.59.0
     std::atomic<float> outputPeak[2]{}; std::atomic<float> masterDrive{0}; // 0.58.0 MUEW output/soft saturation
     double cpuSmooth = 0.0;
     double notifiedLatency = 0.0; // samples, as last announced to the host
@@ -566,7 +567,7 @@ OSStatus MUEWGetProperty(void* self, AudioUnitPropertyID inID, AudioUnitScope in
                     pf.voiceMorphCount[o] = u->voiceMorphN[o].load();
                     for (int i = 0; i < 8; ++i) pf.voiceMorph[o][i] = u->voiceMorph[o][i].load();
                 }
-                for (int i = 0; i < muew::kMaxRoutes; ++i) pf.routeMeter[i] = u->routeMeter[i].load();
+                for (int i = 0; i < muew::kMaxRoutes; ++i) { pf.routeMeter[i] = u->routeMeter[i].load(); pf.routeMin[i] = u->routeMin[i].load(); pf.routeMax[i] = u->routeMax[i].load(); }
                 pf.outputPeak[0] = u->outputPeak[0].load(); pf.outputPeak[1] = u->outputPeak[1].load();
                 pf.masterDrive = u->masterDrive.load();
                 *static_cast<MUEWPerformance*>(outData) = pf;
@@ -749,11 +750,18 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
         return a.offset < b.offset;
     });
     muew::OutputMeter output; // merge segments split by sample-offset MIDI events
+    float rangeMin[muew::kMaxRoutes]{}, rangeMax[muew::kMaxRoutes]{};
+    auto mergeRouteRange = [&] {
+        for (int i = 0; i < muew::kMaxRoutes; ++i) {
+            rangeMin[i] = std::min(rangeMin[i], u->synth.routeMin(i));
+            rangeMax[i] = std::max(rangeMax[i], u->synth.routeMax(i));
+        }
+    };
     UInt32 cursor = 0;
     size_t consumed = 0;
     while (consumed < u->events.size() && u->events[consumed].offset < inNumberFrames) {
         UInt32 at = u->events[consumed].offset;
-        if (at > cursor) { u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(at - cursor)); output.merge(u->synth.outputMeter()); }
+        if (at > cursor) { u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(at - cursor)); output.merge(u->synth.outputMeter()); mergeRouteRange(); }
         do {
             const auto& e = u->events[consumed];
             switch (e.kind) {
@@ -772,7 +780,7 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
     }
     if (cursor < inNumberFrames) {
         u->synth.renderPlanar(left + cursor, right + cursor, static_cast<int>(inNumberFrames - cursor));
-        output.merge(u->synth.outputMeter());
+        output.merge(u->synth.outputMeter()); mergeRouteRange();
     }
     u->outputPeak[0] = output.left; u->outputPeak[1] = output.right; u->masterDrive = output.drive;
     if (consumed > 0) { // 0.24.0 meters
@@ -799,7 +807,7 @@ OSStatus MUEWRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
             for (int i = 0; i < 8; ++i) u->voiceMorph[o][i] = i < n ? vm[i] : -1.0f;
             u->voiceMorphN[o] = (UInt32)n;
         }
-        for (int i = 0; i < muew::kMaxRoutes; ++i) u->routeMeter[i] = u->synth.routeMeter(i);
+        for (int i = 0; i < muew::kMaxRoutes; ++i) { u->routeMeter[i] = u->synth.routeMeter(i); u->routeMin[i] = rangeMin[i]; u->routeMax[i] = rangeMax[i]; }
         u->oscHQ = u->synth.oscHQ() ? 1u : 0u;
     }
     u->events.erase(u->events.begin(), u->events.begin() + static_cast<long>(consumed));

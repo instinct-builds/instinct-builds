@@ -6,6 +6,7 @@
 #import <AppKit/AppKit.h>
 #include "ui_model.h"
 #include "route_meter_hold.h"
+#include "route_range_trace.h"
 #include "output_meter_display.h"
 #include "spectral_process.h"
 #include "table_history.h"
@@ -100,7 +101,10 @@ struct MUEWEditorHost {
     int lfoXDrag;    // 0.18.0 LFO editor: PHASE/DELAY/RISE pill being dragged (0-2), -1 none
     float routeMeters[muew::kMaxRoutes]; // 0.54.0 signed current route activity
     muew::RouteMeterHold routeHold; // 0.56.0 display-only peak ballistics
+    muew::RouteRangeTrace routeTrace; // 0.59.0 signed short-window extrema
+    std::vector<muew::ModRoute> traceRoutes; // detect local route edits before AU roundtrip
     double routeMeterClock; // last UI poll, in seconds
+    double routeTraceClock;
     int routeDrag;
     int modFieldDrag;
     // 0.13.0 FX chain: card slot being dragged to a new place (-1 = none)
@@ -189,6 +193,7 @@ struct MUEWEditorHost {
 - (void)showEngineVoices:(int)active limit:(int)limit cpu:(float)cpu render:(bool)render; // 0.30.0
 - (void)showOutputLeft:(float)left right:(float)right drive:(float)drive; // 0.58.0
 - (void)showRouteMeters:(const float*)values count:(int)n; // 0.54.0
+- (void)showRouteMin:(const float*)minima max:(const float*)maxima count:(int)n; // 0.59.0
 - (void)showLiveMorphA:(float)a b:(float)b; // 0.35.0
 - (void)showVoiceMorph:(const float*)a count:(int)na b:(const float*)b count:(int)nb; // 0.36.0
 - (std::vector<double>)ghostMorphs:(int)o; // 0.36.0

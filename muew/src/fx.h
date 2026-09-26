@@ -952,9 +952,22 @@ public:
     struct LfoRoute { int lfo; int dest; double amount; double curve = 0.0; int auxLfo = -1; double auxScale = 1.0; double value = 0.0; int slot = -1; };
     enum { kDrive, kDelayFb, kRevDecay, kPhDepth, kFlDepth, kChDepth, kHyDetune, kFiCutoff };
     void setRouteBaseMeter(int slot, float level) {
-        if (slot >= 0 && slot < kRouteMeters) routeLevel_[slot] = level;
+        if (slot >= 0 && slot < kRouteMeters) {
+            routeLevel_[slot] = routeBase_[slot] = level;
+            routeMin_[slot] = std::min(0.0f, level);
+            routeMax_[slot] = std::max(0.0f, level);
+        }
     }
-    void clearRouteMeters() { routeLevel_.fill(0.0f); }
+    void clearRouteMeters() { routeLevel_.fill(0.0f); routeBase_.fill(0.0f); routeMin_.fill(0.0f); routeMax_.fill(0.0f); }
+    void resetRouteRange() {
+        routeMin_.fill(0.0f); routeMax_.fill(0.0f);
+        for (int i = 0; i < kRouteMeters; ++i) {
+            routeMin_[i] = std::min(0.0f, routeBase_[i]);
+            routeMax_[i] = std::max(0.0f, routeBase_[i]);
+        }
+    }
+    float routeMin(int slot) const { return slot >= 0 && slot < kRouteMeters ? routeMin_[slot] : 0.0f; }
+    float routeMax(int slot) const { return slot >= 0 && slot < kRouteMeters ? routeMax_[slot] : 0.0f; }
     float routeLevel(int slot) const { return slot >= 0 && slot < kRouteMeters ? routeLevel_[slot] : 0.0f; }
     void setLfoRoutes(const Mod& base, const std::vector<LfoRoute>& routes) {
         base_ = base; lfoRoutes_ = routes;
@@ -1014,6 +1027,7 @@ private:
     Mod base_;
     std::vector<LfoRoute> lfoRoutes_;
     std::array<float, kRouteMeters> routeLevel_{}; // latest rack tick, audio-thread owned
+    std::array<float, kRouteMeters> routeBase_{}, routeMin_{}, routeMax_{}; // 0.59.0
     void updateLfoMod() {
         lfoTick_ = kLfoBlock - 1;
         double v[2];
@@ -1029,8 +1043,12 @@ private:
             if (r.auxScale != 1.0) src *= r.auxScale;
             if (r.auxLfo >= 0) src *= std::clamp(0.5 * (v[r.auxLfo & 1] + 1.0), 0.0, 1.0);
             const double x = src * r.amount;
-            if (r.slot >= 0 && r.slot < kRouteMeters)
-                routeLevel_[r.slot] = (float)std::clamp(x, -1.0, 1.0);
+            if (r.slot >= 0 && r.slot < kRouteMeters) {
+                    const float level = (float)std::clamp(x, -1.0, 1.0);
+                    routeLevel_[r.slot] = level;
+                    routeMin_[r.slot] = std::min(routeMin_[r.slot], level);
+                    routeMax_[r.slot] = std::max(routeMax_[r.slot], level);
+            }
             switch (r.dest) {
             case kDrive: m.drive += x; break;
             case kDelayFb: m.delayFeedback += x; break;

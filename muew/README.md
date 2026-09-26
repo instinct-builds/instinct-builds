@@ -465,3 +465,13 @@ not a clip warning: MUEW's `tanh` master bounds its finite output below
 full scale, and a plugin cannot see clipping later in the DAW or interface.
 No new preset state or AU parameter IDs. The standalone and AU show the
 same actual rendered output, including FX and preset trim.
+
+## 0.59.0 Matrix modulation range
+
+Each active matrix route now shows a short signed min/max trace beneath its
+editable depth bar. The engine measures both extremes of real voice samples
+and rack LFO ticks, including a bipolar LFO crossing zero within one render
+block; the editor retains roughly half a second of recent extremes. The thin
+live indicator, short held peak pip, and bright depth handle remain separate.
+The trace is display-only, clears on route or preset changes, and adds no sound
+state, factory presets, or AU parameter IDs.

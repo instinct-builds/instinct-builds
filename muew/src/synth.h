@@ -252,7 +252,19 @@ public:
 
     // Largest absolute per-voice contribution, sign preserved; FX routes follow
     // the rack's latest block-rate LFO tick. No voice means no voice activity.
-    void resetRouteMeters() { for (auto& v : voices_) v.resetRouteMeters(); }
+    void resetRouteMeters() { for (auto& v : voices_) v.resetRouteMeters(); fx_.resetRouteRange(); }
+    float routeMin(int slot) const {
+        if (slot < 0 || slot >= kMaxRoutes) return 0;
+        float value = fx_.routeMin(slot);
+        for (const auto& v : voices_) if (v.isActive()) value = std::min(value, v.routeMin(slot));
+        return value;
+    }
+    float routeMax(int slot) const {
+        if (slot < 0 || slot >= kMaxRoutes) return 0;
+        float value = fx_.routeMax(slot);
+        for (const auto& v : voices_) if (v.isActive()) value = std::max(value, v.routeMax(slot));
+        return value;
+    }
     float routeMeter(int slot) const {
         if (slot < 0 || slot >= kMaxRoutes) return 0.0f;
         float peak = fx_.routeLevel(slot);

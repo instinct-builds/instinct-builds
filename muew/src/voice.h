@@ -410,7 +410,9 @@ public:
     static constexpr double kHQLatency = Halfband2x::kLatency * 0.5; // 7.5 samples at 1x
     bool isActive() const { return ampEnv_.isActive(); }
     // Peak signed contribution this voice actually applied since its last meter reset.
-    void resetRouteMeters() { routePeak_.fill(0.0f); }
+    void resetRouteMeters() { routePeak_.fill(0.0f); routeMin_.fill(0.0f); routeMax_.fill(0.0f); }
+    float routeMin(int slot) const { return slot >= 0 && slot < kMaxRoutes ? routeMin_[slot] : 0.0f; }
+    float routeMax(int slot) const { return slot >= 0 && slot < kMaxRoutes ? routeMax_[slot] : 0.0f; }
     float routePeak(int slot) const { return slot >= 0 && slot < kMaxRoutes ? routePeak_[slot] : 0.0f; }
     double liveSpecMorph(int o) const { return liveMorph_[o ? 1 : 0]; } // 0.35.0 meter: the morph this voice last played
     bool dcBlockerOn() const { return dcOn_; } // 0.12.0 (tests)
@@ -455,6 +457,8 @@ public:
                 if (slot < kMaxRoutes) {
                     const float level = (float)std::clamp(contribution / routeMeterScale(d), -1.0, 1.0);
                     if (std::fabs(level) > std::fabs(routePeak_[slot])) routePeak_[slot] = level;
+                    routeMin_[slot] = std::min(routeMin_[slot], level);
+                    routeMax_[slot] = std::max(routeMax_[slot], level);
                 }
                 sum += contribution;
             }
@@ -832,6 +836,7 @@ private:
     }
     VoiceParams params_;
     std::array<float, kMaxRoutes> routePeak_{}; // render-block peaks; audio-thread owned
+    std::array<float, kMaxRoutes> routeMin_{}, routeMax_{}; // 0.59.0 signed extrema
     std::vector<ModRoute> routes_;
 };
 

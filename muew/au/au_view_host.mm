@@ -1851,6 +1851,30 @@ int main() {
                   "route peak begins to decay after its short hold");
             Snapshot(view,"MUEW_HOLD56_PNG","matrix peak hold/decay snapshot written");
 
+            // 0.59.0: show both directions of the routed bipolar LFO.
+            // The AU extrema come from render samples, and the UI history
+            // stores them separately from the editable depth and held pip.
+            metered.voice.lfo1Rate=18.0;
+            CFStringRef rangeText=CFStringCreateWithCString(kCFAllocatorDefault,metered.serialize().c_str(),kCFStringEncodingUTF8);
+            if (rangeText) { AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&rangeText,sizeof(rangeText)); CFRelease(rangeText); }
+            if ([view respondsToSelector:colorSync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:colorSync])(view,colorSync,YES);
+            MusicDeviceMIDIEvent(gUnit,0x90,60,110,0);
+            float minSeen=0,maxSeen=0; bool rangeRead=true;
+            for (int k=0;k<12;++k) {
+                rangeRead &= RenderBlock(512);
+                MUEWPerformance q{}; UInt32 qs=sizeof(q);
+                rangeRead &= AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&q,&qs)==noErr && qs==sizeof(q);
+                minSeen=std::min(minSeen,q.routeMin[1]); maxSeen=std::max(maxSeen,q.routeMax[1]);
+                if ([view respondsToSelector:meterFollow]) ((void (*)(id,SEL))[view methodForSelector:meterFollow])(view,meterFollow);
+            }
+            NSString* rangeShown=[view respondsToSelector:NSSelectorFromString(@"muewRouteRangeText")] ? [view valueForKey:@"muewRouteRangeText"] : @"";
+            NSArray<NSString*>* entries=[[rangeShown stringByReplacingOccurrencesOfString:@"range=" withString:@""] componentsSeparatedByString:@","];
+            NSArray<NSString*>* pair=entries.count>1 ? [entries[1] componentsSeparatedByString:@"/"] : @[];
+            Check(rangeRead && minSeen<-.1f && maxSeen>.1f && pair.count==2 &&
+                  pair[0].floatValue<-.1f && pair[1].floatValue>.1f,
+                  "MUEW AU routes carry both LFO polarities into the editor range trace");
+            [view display];
+            Snapshot(view,"MUEW_RANGE59_PNG","matrix signed range with held pip and depth handle snapshot written");
             MusicDeviceMIDIEvent(gUnit,0xB0,123,0,0); for(int k=0;k<80;++k) RenderBlock();
             MUEWPerformance meterOff{}; UInt32 meterOffSize=sizeof(meterOff);
             bool meterCleared=AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&meterOff,&meterOffSize)==noErr;

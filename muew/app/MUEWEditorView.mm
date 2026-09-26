@@ -79,7 +79,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
-        std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeMeterClock = 0; outputDisplay.clear(); outputMeterClock = 0;
+        std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; outputDisplay.clear(); outputMeterClock = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
@@ -144,7 +144,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         const auto& a = current.routes[i]; const auto& b = p.routes[i];
         routeChanged = a.source != b.source || a.dest != b.dest || a.amount != b.amount || a.curve != b.curve || a.aux != b.aux;
     }
-    if (routeChanged) { routeHold.clear(); routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f); }
+    if (routeChanged) { routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f); }
     current = p;
     currentIndex = index;
     edited = wasEdited;
@@ -166,7 +166,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if (i < 0 || i >= lib.count()) return;
     currentIndex = i;
     current = lib.at(i);
-    routeHold.clear(); routeMeterClock = 0;
+    routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0;
     matrixPage = 0;
     wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); wtProfile.clear(); wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; // 0.32.0: undo never crosses into another preset
     wtCmpA = -1; // 0.33.0: A is always this preset's own oscillator
@@ -557,6 +557,31 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         routeMeters[slot] = x;
         if (changed && slot / 4 == matrixPage) [self setNeedsDisplayInRect:NSInsetRect([self routeBar:slot % 4], -2, -2)];
     }
+}
+- (void)showRouteMin:(const float*)minima max:(const float*)maxima count:(int)n {
+    // Edits through the matrix change current before an AU roundtrip returns.
+    // Do not carry a previous route's footprint into a new destination/depth.
+    bool changed = current.routes.size() != traceRoutes.size();
+    for (size_t i = 0; !changed && i < current.routes.size(); ++i) {
+        const auto& a = current.routes[i]; const auto& b = traceRoutes[i];
+        changed = a.source != b.source || a.dest != b.dest || a.amount != b.amount || a.curve != b.curve || a.aux != b.aux;
+    }
+    if (changed) { routeTrace.clear(); routeTraceClock = 0; traceRoutes = current.routes; }
+    const double now = [NSDate timeIntervalSinceReferenceDate];
+    const double dt = routeTraceClock > 0 ? now - routeTraceClock : 0;
+    routeTraceClock = now;
+    routeTrace.update(minima, maxima, n, dt);
+    for (int slot = 0; slot < kMaxRoutes; ++slot)
+        if (slot >= (int)current.routes.size() || !ui::routeActive(current.routes[slot]))
+            routeTrace.low[slot] = routeTrace.high[slot] = 0;
+    for (int row = 0; row < 4; ++row)
+        [self setNeedsDisplayInRect:NSInsetRect([self routeBar:row], -3, -3)];
+}
+- (NSString*)muewRouteRangeText {
+    NSMutableString* text = [NSMutableString stringWithString:@"range="];
+    for (int i = 0; i < kMaxRoutes; ++i)
+        [text appendFormat:@"%@%.3f/%.3f", i ? @"," : @"", routeTrace.low[i], routeTrace.high[i]];
+    return text;
 }
 - (NSString*)muewRouteHoldText {
     NSMutableString* text = [NSMutableString stringWithString:@"hold="];
@@ -2252,6 +2277,14 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         double amt = ui::routeDisplayAmount(rt);
         CGFloat mid = NSMidX(track), w = amt * track.size.width / 2;
         FillRound(NSMakeRect(w >= 0 ? mid : mid + w, track.origin.y, std::fabs(w), 5), 2.5, col);
+        // A low-opacity range is offset below the editable depth track.
+        // White live line, colored held pip and white depth handle stay distinct.
+        if (ui::routeActive(rt) && routeTrace.high[slot] - routeTrace.low[slot] > .008f) {
+            const CGFloat a = mid + routeTrace.low[slot] * track.size.width / 2;
+            const CGFloat b = mid + routeTrace.high[slot] * track.size.width / 2;
+            FillRound(NSMakeRect(a, track.origin.y - 5.5, std::max((CGFloat)1, b - a), 1.5), .75,
+                      [col colorWithAlphaComponent:.60]);
+        }
         // Thin live line sits inside the depth control without replacing its
         // editable amount. A signed position shows polarity as well as energy.
         if (ui::routeActive(rt) && std::fabs(routeMeters[slot]) > 0.006f) {
