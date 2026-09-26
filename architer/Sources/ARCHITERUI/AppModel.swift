@@ -273,11 +273,13 @@ public final class AppModel: ObservableObject {
     /// binding (table-wide vs character) is preserved.
     public func updateMacro(_ macro: DiceMacro, name: String, expression: String,
                             damageType: String? = nil) {
-        let updated = DiceMacro(
+        var updated = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
             expression: expression.trimmingCharacters(in: .whitespaces),
             characterName: macro.characterName,
             damageType: damageType)
+        // 3.15.0: an edit keeps the pin.
+        updated.pinned = macro.pinned
         guard updated.isValid else { return }
         macros.removeAll { $0.id == macro.id }
         saveMacro(name: updated.name, expression: updated.expression,
@@ -290,6 +292,14 @@ public final class AppModel: ObservableObject {
         let copy = ArchiterCore.duplicatedMacro(macro, existing: macros)
         saveMacro(name: copy.name, expression: copy.expression,
                   forCharacter: copy.characterName, damageType: copy.damageType)
+    }
+
+    /// Pins a macro to the top of its group, or lifts the pin (3.15.0).
+    /// Unpinning clears back to nil so the key drops out of the save.
+    public func toggleMacroPin(_ macro: DiceMacro) {
+        guard let index = macros.firstIndex(where: { $0.id == macro.id }) else { return }
+        macros[index].pinned = macros[index].pinned == true ? nil : true
+        macroStore.save(macros)
     }
 
     public func deleteMacro(_ macro: DiceMacro) {

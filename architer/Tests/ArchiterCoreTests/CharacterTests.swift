@@ -787,6 +787,25 @@ struct CharacterTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    @Test func pinnedFirstFloatsPinsKeepingOrder() throws {
+        let a = DiceMacro(name: "A", expression: "1d6")
+        var b = DiceMacro(name: "B", expression: "1d6")
+        b.pinned = true
+        let c = DiceMacro(name: "C", expression: "1d6")
+        // The pin floats above unpinned; relative order is otherwise
+        // kept, and a pin survives the JSON round-trip.
+        #expect(pinnedFirst([a, b, c]) == [b, a, c])
+        #expect(pinnedFirst([a, c]) == [a, c])
+        let data = try JSONEncoder().encode([b])
+        let roundTripped = try JSONDecoder().decode([DiceMacro].self, from: data)
+        #expect(roundTripped == [b])
+        // Files written before 3.15.0 carry no pin key and decode unpinned.
+        let legacy = try JSONDecoder().decode(
+            [DiceMacro].self,
+            from: #"[{"name":"A","expression":"1d6"}]"#.data(using: .utf8)!)
+        #expect(legacy.first?.pinned == nil)
+    }
+
     @Test func freeRollerTypeMemoryResolvesPerCharacter() throws {
         // Missing entry falls back to the table-wide selection.
         #expect(resolveFreeRollerType(map: [:], characterID: "A", tableDefault: .fire) == .fire)

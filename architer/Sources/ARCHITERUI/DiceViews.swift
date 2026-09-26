@@ -138,8 +138,10 @@ public struct DiceRollerView: View {
             }
             VStack(alignment: .leading, spacing: Theme.Gap.sm) {
                 Text("Macros").font(.headline)
-                let characterMacros = model.visibleMacros.filter { $0.characterName != nil }
-                let tableMacros = model.visibleMacros.filter { $0.characterName == nil }
+                // 3.15.0: pinned macros float to the top of their
+                // group; the owner sections themselves stay put.
+                let characterMacros = pinnedFirst(model.visibleMacros.filter { $0.characterName != nil })
+                let tableMacros = pinnedFirst(model.visibleMacros.filter { $0.characterName == nil })
                 if !characterMacros.isEmpty, let name = model.selected?.wrappedValue.name {
                     Text(name)
                         .font(Theme.Typeface.caption)
@@ -851,6 +853,14 @@ public struct MacroRowView: View {
                 Spacer()
                 Button("Roll") { model.rollMacro(macro) }
                     .buttonStyle(RollButtonStyle())
+                // 3.15.0: pin the macro to the top of its group.
+                Button {
+                    model.toggleMacroPin(macro)
+                } label: {
+                    Image(systemName: macro.pinned == true ? "pin.fill" : "pin")
+                }
+                    .foregroundStyle(macro.pinned == true ? Theme.accent : Theme.inkMuted)
+                    .help(macro.pinned == true ? "Unpin macro" : "Pin macro to the top")
                 Button {
                     nameDraft = macro.name
                     expressionDraft = macro.expression

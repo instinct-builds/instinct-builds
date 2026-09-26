@@ -18,13 +18,18 @@ public struct DiceMacro: Codable, Equatable, Sendable, Identifiable {
     /// outgoing-defense note attack damage rolls get. Optional, so macro
     /// files written before 2.36.0 decode unchanged.
     public var damageType: String?
+    /// Pinned to the top of its group (3.15.0): the rolls a fight
+    /// actually needs stay above the fold. Optional, so macro files
+    /// written before 3.15.0 decode unchanged; nil stays unencoded.
+    public var pinned: Bool?
 
     public init(name: String, expression: String, characterName: String? = nil,
-                damageType: String? = nil) {
+                damageType: String? = nil, pinned: Bool? = nil) {
         self.name = name
         self.expression = expression
         self.characterName = characterName
         self.damageType = damageType
+        self.pinned = pinned
     }
 
     /// Trimmed, non-empty name and an expression the dice parser accepts.
@@ -69,6 +74,18 @@ public func visibleMacros(_ macros: [DiceMacro], for characterName: String?) -> 
         guard let characterName else { return false }
         return owner.caseInsensitiveCompare(characterName) == .orderedSame
     }
+}
+
+/// Pinned macros first, the original order otherwise preserved
+/// (3.15.0). Applied per group (character, table) at render, so a pin
+/// never lifts a macro out of its owner section.
+public func pinnedFirst(_ macros: [DiceMacro]) -> [DiceMacro] {
+    macros.enumerated()
+        .sorted {
+            ($0.element.pinned == true ? 0 : 1, $0.offset)
+                < ($1.element.pinned == true ? 0 : 1, $1.offset)
+        }
+        .map(\.element)
 }
 
 /// A clone of `macro` named "<name> copy", bumped to "copy 2", "copy 3",
