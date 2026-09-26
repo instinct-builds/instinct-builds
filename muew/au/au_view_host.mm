@@ -31,6 +31,7 @@
 #endif
 #include "MUEWProperties.h"
 #include "preset.h"
+#include "arp_pattern_actions.h"
 #include "frame_tools.h"
 #include "partial_edit.h"
 #include "partial_view.h"
