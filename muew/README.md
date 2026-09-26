@@ -498,3 +498,11 @@ explained as MUEW's pre-master soft saturation, never a downstream DAW
 clip warning. The separate panel avoids crowding the header, and it cannot
 change the sound or add an AU parameter. Factory sounds and all 40 AU IDs
 remain unchanged.
+
+## 0.62.0 Noise burst note latch
+
+A synced noise BURST takes its duration from the current host BPM at note-on.
+A tempo jump or loss of the host clock cannot retime that hit while it plays;
+the next note picks up the changed BPM or deterministic 120 BPM fallback. The
+FREE duration, existing preset format, 108 factory sounds, and all 40 AU
+parameter IDs stay the same.

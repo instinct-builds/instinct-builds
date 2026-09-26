@@ -144,6 +144,41 @@ int main() {
         printf("synced noise BURST host tempo and absent-clock fallback path rendered\n");
     }
 
+    // 0.62.0: the real AU callback can change BPM between render blocks,
+    // but a playing note keeps its originally latched noise burst.
+    {
+        AudioUnit changed=openUnit(), fixed=openUnit();
+        muew::Preset p; p.voice.noiseLevel=.8; p.voice.noiseWidth=.8;
+        p.voice.noiseBurstSync=5; p.voice.ampA=.001; p.voice.ampS=1;
+        Float64 changedBpm=60, fixedBpm=60;
+        HostCallbackInfo hc{};
+        hc.beatAndTempoProc=[](void* data,Float64* beat,Float64* tempo)->OSStatus {
+            if(beat)*beat=0;if(tempo)*tempo=*static_cast<Float64*>(data);return noErr;
+        };
+        bool ok=changed && fixed && setState(changed,p) && setState(fixed,p);
+        if(ok){hc.hostUserData=&changedBpm;ok=AudioUnitSetProperty(changed,kAudioUnitProperty_HostCallbacks,kAudioUnitScope_Global,0,&hc,sizeof(hc))==noErr;}
+        if(ok){hc.hostUserData=&fixedBpm;ok=AudioUnitSetProperty(fixed,kAudioUnitProperty_HostCallbacks,kAudioUnitScope_Global,0,&hc,sizeof(hc))==noErr;}
+        std::vector<float> cl(512),cr(512),fl(512),fr(512);
+        // Prime the host callback before note-on so the note starts at 60 BPM.
+        if(ok)ok=render(changed,cl,cr) && render(fixed,fl,fr);
+        if(ok)ok=MusicDeviceMIDIEvent(changed,0x90,60,127,0)==noErr && MusicDeviceMIDIEvent(fixed,0x90,60,127,0)==noErr;
+        if(ok)ok=render(changed,cl,cr) && render(fixed,fl,fr) && cl==fl && cr==fr;
+        changedBpm=240;
+        for(int block=0;ok && block<12;++block)
+            ok=render(changed,cl,cr) && render(fixed,fl,fr) && cl==fl && cr==fr;
+        // A retrigger at the new tempo must no longer sound like the old BPM.
+        if(ok)ok=MusicDeviceMIDIEvent(changed,0x90,60,127,0)==noErr && MusicDeviceMIDIEvent(fixed,0x90,60,127,0)==noErr;
+        bool diverged=false;
+        for(int block=0;ok && block<8;++block){
+            ok=render(changed,cl,cr) && render(fixed,fl,fr);
+            diverged |= cl!=fl || cr!=fr;
+        }
+        if(changed){AudioUnitUninitialize(changed);AudioComponentInstanceDispose(changed);}
+        if(fixed){AudioUnitUninitialize(fixed);AudioComponentInstanceDispose(fixed);}
+        if(!ok || !diverged){printf("FAIL: AU note-latched BURST across host BPM jump\n");return 1;}
+        printf("AU BURST note latch survives mid-note tempo jump and retrigger takes new BPM\n");
+    }
+
     // Every factory preset selects and sounds through the host path.
     for(SInt32 n=0;n<kExpectedPresets;++n){
         AUPreset sel{n,nullptr};

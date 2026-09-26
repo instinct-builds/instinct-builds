@@ -248,7 +248,7 @@ public:
 
     void setParams(const VoiceParams& p, const std::vector<ModRoute>& routes) {
         params_ = p; routes_ = routes;
-        noiseBurstLength_ = noiseBurstSamples(p.noiseBurst, p.noiseBurstSync, burstBpm_, sr_);
+        if (!isActive()) noiseBurstLength_ = noiseBurstSamples(p.noiseBurst, p.noiseBurstSync, burstBpm_, sr_);
         for (int i = 0; i < kMaxUnison; ++i) { osc1_[i].setShape(std::clamp(p.osc1Shape, 0, 4)); osc2_[i].setShape(std::clamp(p.osc2Shape, 0, 4)); }
         applyCustom();
         filter_.setMode(p.filterMode);
@@ -315,7 +315,7 @@ public:
         if (!(bpm > 1.0 && bpm < 1000.0)) return;
         if (bpm >= 20.0 && bpm < 999.0 && burstBpm_ != bpm) {
             burstBpm_ = bpm;
-            noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_);
+            if (!isActive()) noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_);
         }
         if (bpm == bpm_) return;
         bpm_ = bpm;
@@ -327,7 +327,7 @@ public:
     // Other synced modulation keeps its existing independent host behavior.
     void clearBurstHostTempo() {
         burstBpm_ = 120.0;
-        noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_);
+        if (!isActive()) noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_);
     }
 
     // 0.26.0: synced FREE LFOs take their phase from the host beat. The fade
@@ -366,6 +366,7 @@ public:
         sub_.setPhase(0.0);
         dcL_.reset(); dcR_.reset(); dcOn_ = false;
         noiseBurstPos_ = 0; // the burst retriggers with each played note
+        noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_); // latch for this note
         noise_.reset(0x9e3779b9u ^ (uint32_t)(note * 2654435761u));
         noiseR_.reset(0x6c8e9cf5u ^ (uint32_t)(note * 2246822519u));
     }
@@ -408,6 +409,7 @@ public:
         glideLeft_ = 0; glideSemi_ = 0.0;
         hbL_.reset(); hbR_.reset(); hbSub_.reset(); hbNoise_.reset(); hbNoiseR_.reset(); // 0.30.0 / 0.31.0 / 0.53.0
         noiseBurstPos_ = 0;
+        noiseBurstLength_ = noiseBurstSamples(params_.noiseBurst, params_.noiseBurstSync, burstBpm_, sr_);
         resetRouteMeters();
     }
     // 0.30.0: oscillator oversampling on/off (the synth passes the effective QUALITY).
@@ -662,7 +664,7 @@ private:
     bool hq_ = false;          // 0.30.0
     Halfband2x hbL_, hbR_;
     Halfband2x hbSub_, hbNoise_, hbNoiseR_; // 0.31.0 sub / noise alignment in HQ
-    uint64_t noiseBurstPos_ = 0, noiseBurstLength_ = 0; // samples since note-on; saturates at end of burst
+    uint64_t noiseBurstPos_ = 0, noiseBurstLength_ = 0; // duration latched at note-on; position saturates at its end
     int note_ = -1;
     float velocity_ = 0.0f;
     double baseFreq_ = 440.0;
