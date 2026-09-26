@@ -118,6 +118,8 @@ jobs:
               cp /tmp/asssets-pristine.json "$SUP/studio-catalog.json"
               rm -rf "$HOME/Pictures/Client Drops" "$SUP/Licenses"
             fi
+            # A previous demo's status must never satisfy the next demo's wait.
+            if [ -n "${4:-}" ]; then rm -f "$SUP/$4"; fi
             open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep "${DELAY:-9}"; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
             # Optional 4th arg: a file the demo writes in the background; keep the app alive until it lands.
             if [ -n "${4:-}" ]; then for i in $(seq 1 90); do [ -s "$SUP/$4" ] && break; sleep 1; done; echo "waited ${i}s for $4"; fi
