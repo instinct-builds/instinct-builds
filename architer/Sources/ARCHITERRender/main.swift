@@ -1058,8 +1058,8 @@ func run(model: AppModel, character: Character, outDir: String) {
                    atomically: true, encoding: .utf8)
     }
     renderPNG(
-        DiceRollerView(initialHistoryFilter: "fire",
-                       initialLatestSession: true)
+        DiceRollerView(initialLatestSession: true,
+                       initialHistoryFilter: "fire")
             .padding()
             .background(Theme.surface)
             .environmentObject(model),
