@@ -258,32 +258,50 @@ public struct JournalBlock: View {
                         .foregroundStyle(Theme.inkFaint)
                 }
                 ForEach(partyHits) { hit in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(hit.characterName)
-                                .font(Theme.Typeface.caption)
-                                .foregroundStyle(Theme.accent)
-                            if !hit.entry.date.isEmpty {
-                                Text(hit.entry.date)
+                    // 3.48.0: a hit jumps - selects its character and
+                    // filters their journal to the entry (leaves party
+                    // scope). The hit carries the character's id.
+                    Button {
+                        model.selectedID = hit.characterID
+                        filter = hit.entry.title.isEmpty
+                            ? (hit.entry.matchingLines(query).first ?? query)
+                            : hit.entry.title
+                        partyScope = false
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(hit.characterName)
+                                    .font(Theme.Typeface.caption)
+                                    .foregroundStyle(Theme.accent)
+                                if !hit.entry.date.isEmpty {
+                                    Text(hit.entry.date)
+                                        .font(Theme.Typeface.caption)
+                                        .foregroundStyle(Theme.inkFaint)
+                                }
+                                Text(hit.entry.title)
+                                    .font(Theme.Typeface.body)
+                                Spacer()
+                                Image(systemName: "arrow.right.circle")
                                     .font(Theme.Typeface.caption)
                                     .foregroundStyle(Theme.inkFaint)
                             }
-                            Text(hit.entry.title)
-                                .font(Theme.Typeface.body)
-                        }
-                        if let firstHit = hit.entry.matchingLines(query).first {
-                            HStack(spacing: 4) {
-                                Image(systemName: "text.magnifyingglass")
-                                    .font(Theme.Typeface.caption)
-                                    .foregroundStyle(Theme.inkFaint)
-                                highlighted(firstHit, query: query)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
+                            if let firstHit = hit.entry.matchingLines(query).first {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "text.magnifyingglass")
+                                        .font(Theme.Typeface.caption)
+                                        .foregroundStyle(Theme.inkFaint)
+                                    highlighted(firstHit, query: query)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
                             }
                         }
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 2)
+                    .buttonStyle(.plain)
+                    .help("Select \(hit.characterName) and open this entry")
                 }
             } else {
             ForEach($character.journal) { $entry in

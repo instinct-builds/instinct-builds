@@ -494,10 +494,13 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
 public struct PartyJournalHit: Equatable, Sendable, Identifiable {
     public var id: UUID { entry.id }
     public let characterName: String
+    /// 3.48.0: which roster member wrote it - the jump-to-entry target.
+    public let characterID: UUID
     public let entry: JournalEntry
 
-    public init(characterName: String, entry: JournalEntry) {
+    public init(characterName: String, characterID: UUID, entry: JournalEntry) {
         self.characterName = characterName
+        self.characterID = characterID
         self.entry = entry
     }
 }
@@ -513,7 +516,7 @@ public enum JournalPartySearch {
         return characters.flatMap { character in
             character.journal
                 .filter { $0.matchesFilter(q) }
-                .map { PartyJournalHit(characterName: character.name, entry: $0) }
+                .map { PartyJournalHit(characterName: character.name, characterID: character.id, entry: $0) }
         }
     }
 }

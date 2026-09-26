@@ -2081,7 +2081,9 @@ func run(model: AppModel, character: Character, outDir: String) {
     phLines.append("party damage 10: adjusted \(damaged.count) (\(damaged.joined(separator: ", ")))")
     phLines.append("after: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) temp \($0.tempHP)" }.joined(separator: ", "))
     phLines.append("temp absorbs then floor: Wren temp \(wrenPre?.tempHP ?? -1)->\(wrenDmg?.tempHP ?? -1), HP \(wrenPre?.currentHP ?? -1)->\(wrenDmg?.currentHP ?? -1) (floored at 0: \(wrenDmg?.currentHP == 0))")
-    phLines.append("no temp: Bram \(bramPre?.currentHP ?? -1)->\(bramDmg?.currentHP ?? -1), Sera \(seraPre?.currentHP ?? -1)->\(seraDmg?.currentHP ?? -1)")
+    // 3.47.0 label fix: report the actual pre-damage temp instead of
+    // assuming none - the roster fixture carries temp on Bram/Sera.
+    phLines.append("Bram temp \(bramPre?.tempHP ?? -1)->\(bramDmg?.tempHP ?? -1), HP \(bramPre?.currentHP ?? -1)->\(bramDmg?.currentHP ?? -1); Sera temp \(seraPre?.tempHP ?? -1)->\(seraDmg?.tempHP ?? -1), HP \(seraPre?.currentHP ?? -1)->\(seraDmg?.currentHP ?? -1)")
     // One member's undo restores just them - own undo stacks.
     if let wren2 = model.characters.first(where: { $0.name == "Wren Halloway" }) {
         model.selectedID = wren2.id
@@ -2122,6 +2124,61 @@ func run(model: AppModel, character: Character, outDir: String) {
         .write(to: URL(fileURLWithPath: "\(outDir)/table-log-export.txt"),
                atomically: true, encoding: .utf8)
     // 3.47.0 hygiene: hand selection back to Bram.
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    // Library band + party-search jump proofs (3.48.0). Runs at END.
+    var lbLines = ["Difficulty band on library rows (3.48.0)",
+                   "a saved encounter's lines vs the CURRENT roster's levels - re-derived, never stored"]
+    let rosterLevels = model.characters.map(\.level)
+    if let den = model.savedEncounters.first(where: { $0.name == "Proof Den" }) {
+        let band = model.savedEncounterBand(den)
+        let est = EncounterMath.estimate(levels: rosterLevels, lines: den.lines)
+        lbLines.append("Proof Den (\(den.summary)) vs roster levels \(rosterLevels): band \(band?.displayName ?? "nil"), adjusted \(est?.adjustedXP ?? -1) XP")
+        let weak = EncounterMath.estimate(levels: [1, 1, 1], lines: den.lines)
+        lbLines.append("same lines vs a level-1 party: \(weak?.band.displayName ?? "nil") - the band re-derives from the roster")
+        lbLines.append("matches the planner's own math: \(band == est?.band)")
+    } else {
+        lbLines.append("SETUP MISS: Proof Den not in the library")
+    }
+    renderPNG(
+        EncounterLibraryView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "library-band", outDir: outDir, minHeight: 120, maxHeight: 400)
+    try? lbLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/library-band.txt"),
+               atomically: true, encoding: .utf8)
+    var pjLines = ["Party search jump-to-entry (3.48.0)",
+                   "a party hit selects its character and filters their journal to the entry"]
+    let jumpHits = model.journalPartySearch("moonlight")
+    let bramID = model.characters.first(where: { $0.name == "Bram Oakfel" })?.id
+    if let hit = jumpHits.first {
+        pjLines.append("hit '\(hit.entry.title)' by \(hit.characterName): carries Bram's characterID \(hit.characterID == bramID)")
+        model.selectedID = hit.characterID
+        let jumpFilter = hit.entry.title.isEmpty
+            ? (hit.entry.matchingLines("moonlight").first ?? "moonlight")
+            : hit.entry.title
+        let shown = model.characters.first(where: { $0.id == hit.characterID })?
+            .journal.filter { $0.matchesFilter(jumpFilter) } ?? []
+        pjLines.append("after jump: selected '\(model.selected?.wrappedValue.name ?? "none")', filter '\(jumpFilter)' -> \(shown.count) entries, first '\(shown.first?.title ?? "none")'")
+        let wrenOwn = model.characters.first(where: { $0.name == "Wren Halloway" })?
+            .journal.filter { $0.matchesFilter("moonlight") }.count ?? -1
+        pjLines.append("the entry stays Bram's: Wren's own journal has \(wrenOwn) matches")
+    } else {
+        pjLines.append("SETUP MISS: no moonlight hit")
+    }
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) {
+        renderPNG(
+            JournalBlock(character: .constant(bram), initialFilter: "Moonlight omen", initialPartyScope: false)
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 560, name: "party-jump", outDir: outDir, minHeight: 120, maxHeight: 400)
+    }
+    try? pjLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-jump.txt"),
+               atomically: true, encoding: .utf8)
+    // 3.48.0 hygiene: hand selection back to Bram (the jump already lands there).
     if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")

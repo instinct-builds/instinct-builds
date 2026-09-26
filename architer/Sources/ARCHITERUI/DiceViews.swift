@@ -1296,7 +1296,7 @@ public struct GroupCheckSectionView: View {
             HStack(spacing: Theme.Gap.sm) {
                 TextField("Amount", text: $partyAmount)
                     .textFieldStyle(InsetFieldStyle())
-                    .frame(width: 56)
+                    .frame(width: 72) // 3.48.0: 56 clipped the placeholder
                 Button("Damage (party)") { model.adjustPartyHP(amount: partyAmountValue, damage: true) }
                     .controlSize(.small)
                     .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
@@ -1935,6 +1935,14 @@ public struct EncounterLibraryView: View {
                     Text(saved.summary)
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkMuted)
+                    // 3.48.0: the band re-derives from the CURRENT roster -
+                    // "is Goblin Ambush still deadly now that we're 6th?"
+                    if let band = model.savedEncounterBand(saved) {
+                        Text(band.displayName)
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                            .help("Difficulty vs the current roster's levels - re-derived, never stored")
+                    }
                     Spacer()
                     // 3.46.0: tactics note - the pencil opens the inline
                     // editor below; a filled note shows a tinted pencil.

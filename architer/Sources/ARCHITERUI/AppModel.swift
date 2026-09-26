@@ -1175,6 +1175,13 @@ public final class AppModel: ObservableObject {
                                lines: initiative.encounterLinesFromCRs)
     }
 
+    /// Library-row band (3.48.0): the saved encounter's lines against the
+    /// CURRENT roster's levels - "is Goblin Ambush still deadly now that
+    /// we're 6th?" Derived, never stored; nil when there is nothing to say.
+    public func savedEncounterBand(_ saved: SavedEncounter) -> EncounterBand? {
+        EncounterMath.estimate(levels: characters.map(\.level), lines: saved.lines)?.band
+    }
+
     /// Fight XP award plan (3.41.0): derived from the tracker's CRs and
     /// the roster, never stored. Nil when nothing pays or nobody is
     /// checked. The whole roster is listed - excluded members carry a

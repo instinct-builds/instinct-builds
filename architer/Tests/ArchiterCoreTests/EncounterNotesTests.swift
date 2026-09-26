@@ -43,6 +43,7 @@ import Testing
         let hits = JournalPartySearch.hits(in: [wren, bram], query: "MOONLIGHT")
         #expect(hits.count == 1)
         #expect(hits.first?.characterName == "Bram Oakfel")
+        #expect(hits.first?.characterID == bram.id)   // 3.48.0: the jump target
         #expect(hits.first?.entry.title == "Moonlight omen")
         #expect(JournalPartySearch.hits(in: [wren, bram], query: "   ").isEmpty)
         #expect(JournalPartySearch.hits(in: [wren, bram], query: "no such thing").isEmpty)
