@@ -1415,6 +1415,18 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: 520, name: "group-check", outDir: outDir, minHeight: 200, maxHeight: 480)
+    // 3.27.0 reroll proof: Roll Again on Wren's entry with BRAM selected must
+    // re-derive WREN's conditions (hindered), not the selection's (clean).
+    model.selectedID = bram.id
+    if let wrenEntry = model.rollHistory.first(where: {
+        $0.label?.hasPrefix("Wren Halloway - Stealth check") == true
+    }) {
+        model.rollAgain(wrenEntry)
+        if let top = model.rollHistory.first {
+            groupLines.append("reroll with Bram selected: \(top.label ?? "?")")
+        }
+    }
+    model.selectedID = character.id
     try? groupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
                atomically: true, encoding: .utf8)

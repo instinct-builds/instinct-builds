@@ -621,7 +621,7 @@ public final class AppModel: ObservableObject {
                 let adjusted = spec.adjusted(for: variant)
                 rollCheck(adjusted.baseLabel ?? source.label ?? "Check",
                           bonus: adjusted.checkBonus ?? 0, mode: adjusted.mode ?? .normal,
-                          targetDC: adjusted.targetDC)
+                          targetDC: adjusted.targetDC, forCharacterID: adjusted.characterID)
             case .outgoingDamage:
                 recordDamageRoll(spec.baseLabel ?? source.label ?? "Damage",
                                  source.expression.withRerollModifier(variant),
@@ -865,8 +865,13 @@ public final class AppModel: ObservableObject {
     /// exhaustion from every d20 test, and hindering conditions (poisoned,
     /// blinded, prone...) fold disadvantage into the mode.
     public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal,
-                          targetDC: Int? = nil) {
-        guard let c = selected?.wrappedValue else {
+                          targetDC: Int? = nil, forCharacterID: UUID? = nil) {
+        // 3.27.0: a reroll carries the character it was rolled with, so Roll
+        // Again on another character's entry re-derives conditions from THAT
+        // character; nil (and a departed roster member) falls back to the
+        // selection, the pre-3.27.0 behavior.
+        let resolved = forCharacterID.flatMap { id in characters.first(where: { $0.id == id }) }
+        guard let c = resolved ?? selected?.wrappedValue else {
             var r = roller.check(label, bonus: bonus, mode: mode)
             r.targetDC = targetDC
             r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode,
@@ -889,8 +894,8 @@ public final class AppModel: ObservableObject {
         var r = roller.check(tagged, bonus: bonus - penalty, mode: effective)
         r.targetDC = targetDC
         r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode,
-                              checkBonus: bonus, targetDC: targetDC)
-        record(r)
+                              checkBonus: bonus, targetDC: targetDC, characterID: c.id)
+        record(r, characterName: resolved?.name)
     }
 
     /// Group check (3.26.0): the same skill for the whole roster. Each
@@ -905,8 +910,9 @@ public final class AppModel: ObservableObject {
             let tagged = p.tags.isEmpty ? base : "\(base) (\(p.tags.joined(separator: "; ")))"
             var r = roller.check(tagged, bonus: p.bonus - p.penalty, mode: p.mode)
             r.targetDC = targetDC
-            r.reroll = RerollSpec(kind: .check, baseLabel: base, mode: p.mode,
-                                  checkBonus: p.bonus - p.penalty, targetDC: targetDC)
+            r.reroll = RerollSpec(kind: .check, baseLabel: base, mode: .normal,
+                                  checkBonus: p.bonus, targetDC: targetDC,
+                                  characterID: p.characterID)
             record(r, characterName: p.name)
             lines.append(GroupCheckOutcome.Line(name: p.name, total: r.total,
                                                 passed: targetDC.map { r.total >= $0 },

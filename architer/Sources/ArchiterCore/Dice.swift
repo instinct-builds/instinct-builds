@@ -121,15 +121,21 @@ public struct RerollSpec: Equatable, Codable, Sendable {
     public var damageType: String?
     /// Target DC (3.20.0): Roll Again preserves the contest.
     public var targetDC: Int?
+    /// Character the check was rolled with (3.27.0): Roll Again re-derives
+    /// conditions from THAT character, not the selected one. Optional so
+    /// pre-3.27.0 saves decode unchanged and nil falls back to the selection.
+    public var characterID: UUID?
 
     public init(kind: RerollKind, baseLabel: String? = nil, mode: RollMode? = nil,
-                checkBonus: Int? = nil, damageType: String? = nil, targetDC: Int? = nil) {
+                checkBonus: Int? = nil, damageType: String? = nil, targetDC: Int? = nil,
+                characterID: UUID? = nil) {
         self.kind = kind
         self.baseLabel = baseLabel
         self.mode = mode
         self.checkBonus = checkBonus
         self.damageType = damageType
         self.targetDC = targetDC
+        self.characterID = characterID
     }
 }
 
