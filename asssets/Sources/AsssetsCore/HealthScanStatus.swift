@@ -5,13 +5,16 @@ public struct HealthScanStatus: Equatable, Sendable {
     public let completedAt: Date
     public let full: Bool
     public let duplicateCheckedAt: Date?
+    public let coverage: HealthCoverage
 
-    public init(completedAt: Date, full: Bool, previous: HealthScanStatus? = nil) {
+    public init(completedAt: Date, full: Bool, previous: HealthScanStatus? = nil, coverage: HealthCoverage = HealthCoverage()) {
         self.completedAt = completedAt
         self.full = full
-        duplicateCheckedAt = full ? completedAt : previous?.duplicateCheckedAt
+        self.coverage = coverage
+        duplicateCheckedAt = full && coverage.covers(.duplicates) ? completedAt : previous?.duplicateCheckedAt
     }
 
-    public var duplicateFreshForThisScan: Bool { full && duplicateCheckedAt == completedAt }
-    public var scopeLabel: String { full ? "Full check" : "Quick check" }
+    public var duplicateFreshForThisScan: Bool { full && coverage.covers(.duplicates) && duplicateCheckedAt == completedAt }
+    public var scopeLabel: String { (full ? "Full check" : "Quick check") + (coverage.complete ? "" : " incomplete") }
+    public var complete: Bool { coverage.complete }
 }

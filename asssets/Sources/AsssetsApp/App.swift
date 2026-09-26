@@ -1934,6 +1934,47 @@ final class StudioLibrary: ObservableObject {
             " Unmatched files stayed untouched.")
     }
 
+    /// Stat a regular file, treating a missing name as absent only after its parent can be listed.
+    nonisolated static func healthFile(_ path: String) -> HealthRead<Int64> {
+        let fm = FileManager.default
+        do {
+            let attributes = try fm.attributesOfItem(atPath: path)
+            guard attributes[.type] as? FileAttributeType == .typeRegular,
+                  let size = attributes[.size] as? NSNumber else { return .unknown }
+            guard let handle = FileHandle(forReadingAtPath: path) else { return .unknown }
+            defer { try? handle.close() }
+            guard (try? handle.read(upToCount: 1)) != nil else { return .unknown }
+            return .present(size.int64Value)
+        } catch {
+            let url = URL(fileURLWithPath: path)
+            let parent = url.deletingLastPathComponent()
+            if let names = try? fm.contentsOfDirectory(atPath: parent.path) {
+                return names.contains(url.lastPathComponent) ? .unknown : .absent
+            }
+            // Walk up only through absent parents. A failed read of an existing parent stays unknown.
+            guard parent.path != path else { return .unknown }
+            switch healthFolder(parent.path) {
+            case .absent: return .absent
+            default: return .unknown
+            }
+        }
+    }
+
+    nonisolated static func healthFolder(_ path: String) -> HealthRead<[String]> {
+        let fm = FileManager.default
+        if let names = try? fm.contentsOfDirectory(atPath: path) { return .present(names) }
+        let url = URL(fileURLWithPath: path)
+        let parent = url.deletingLastPathComponent()
+        if let names = try? fm.contentsOfDirectory(atPath: parent.path) {
+            return names.contains(url.lastPathComponent) ? .unknown : .absent
+        }
+        guard parent.path != path else { return .unknown }
+        switch healthFolder(parent.path) {
+        case .absent: return .absent
+        default: return .unknown
+        }
+    }
+
     /// Checks files, license copies and sizes off the main thread. `full` also hashes same-size files to count identical sets.
     func refreshHealth(full: Bool = false) {
         healthGeneration += 1
@@ -1946,25 +1987,62 @@ final class StudioLibrary: ObservableObject {
         healthScanning = true
         Task.detached(priority: .utility) {
             let fm = FileManager.default
-            var sizes: [UUID: Int64] = [:]
-            for (id, p) in paths { if let n = (try? fm.attributesOfItem(atPath: p))?[.size] as? NSNumber { sizes[id] = n.int64Value } }
-            let folder = (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
-            var sets: Int? = nil
-            if full {
-                var hashes: [UUID: String] = [:]
-                for id in Duplicates.needsHash(sizes: sizes) { if let p = paths[id], let h = Self.sha256(path: p) { hashes[id] = "\(sizes[id] ?? 0)-\(h)" } }
-                sets = Duplicates.groups(hashes: hashes, order: order).count
+            let demoIncomplete = ProcessInfo.processInfo.arguments.contains("health-incomplete")
+            let demoPath = demoIncomplete ? c.assets.first(where: { $0.importedPath?.hasSuffix("Northlight Lobby.png") == true })?.importedPath : nil
+            var assetReads: [String: HealthRead<Int64>] = [:]
+            for path in Set(paths.values) {
+                assetReads[path] = path == demoPath ? .unknown : Self.healthFile(path)
             }
-            var report = c.health(exists: { fm.fileExists(atPath: $0) }, licenseExists: { fm.fileExists(atPath: root.appendingPathComponent($0.stored).path) },
-                                  licenseFolder: folder, sizes: sizes, duplicateSets: sets)
+            let licenseReads = Dictionary(uniqueKeysWithValues: c.licenseDocs.map { doc in
+                let result: HealthRead<Bool>
+                switch Self.healthFile(root.appendingPathComponent(doc.stored).path) {
+                case .present: result = .present(true)
+                case .absent: result = .absent
+                case .unknown: result = .unknown
+                }
+                return (doc.id, result)
+            })
+            let folder = Self.healthFolder(root.path)
+            var coverage = HealthCoverage()
+            var hashes: [UUID: String] = [:]
+            if full {
+                var knownSizes: [UUID: Int64] = [:]
+                for (id, path) in paths {
+                    if case .present(let size) = assetReads[path] { knownSizes[id] = size }
+                }
+                for id in Duplicates.needsHash(sizes: knownSizes) {
+                    guard let path = paths[id], let h = Self.sha256(path: path) else {
+                        coverage.failed(.duplicates, name: c.assets.first(where: { $0.id == id })?.title ?? "Source file")
+                        continue
+                    }
+                    hashes[id] = "\(knownSizes[id] ?? 0)-\(h)"
+                }
+                // An unreadable size may have concealed a matching-size duplicate candidate.
+                if assetReads.values.contains(where: { if case .unknown = $0 { return true }; return false }) {
+                    coverage.failed(.duplicates, name: "Unreadable source")
+                }
+            }
+            let result = HealthReadClassification.make(catalog: c,
+                asset: { assetReads[$0] ?? .unknown },
+                license: { licenseReads[$0.id] ?? .unknown }, folder: folder,
+                duplicateSets: full && coverage.covers(.duplicates) ? Duplicates.groups(hashes: hashes, order: order).count : nil,
+                initial: coverage)
+            var report = result.0
+            coverage = result.1
             // Normal sweeps use the cheap stat gate. Full Library Health checks hash even with unchanged
             // size/time, detecting same-path edits whose tools preserved metadata.
             var baselines: [(UUID, String, SourceFingerprint, Bool)] = []
             for a in c.assets where !a.isStarter && a.placementRecipe == nil {
-                guard let path = a.importedPath, let stat = Self.sourceStat(path) else { continue }
+                guard let path = a.importedPath else { continue }
+                if case .absent = assetReads[path] { continue }
+                guard case .present = assetReads[path], let stat = Self.sourceStat(path) else {
+                    coverage.failed(.sources, name: a.title); continue
+                }
                 if let old = a.sourceFingerprint,
                    !full && old.size == stat.size && old.modified == stat.modified { continue }
-                guard let current = Self.sourceFingerprint(path) else { continue }
+                guard let current = Self.sourceFingerprint(path) else {
+                    coverage.failed(.sources, name: a.title); continue
+                }
                 if let old = a.sourceFingerprint {
                     switch old.status(against: current) {
                     case .changed: report.changedSources.append(a.id)
@@ -1998,7 +2076,7 @@ final class StudioLibrary: ObservableObject {
                     return snapshot.importedPath != live.importedPath || snapshot.sourceFingerprint != live.sourceFingerprint
                 }
                 self.health = r
-                self.healthScanStatus = HealthScanStatus(completedAt: Date(), full: full, previous: self.healthScanStatus)
+                self.healthScanStatus = HealthScanStatus(completedAt: Date(), full: full, previous: self.healthScanStatus, coverage: coverage)
                 self.sourceQueueSelected = SourceReviewQueue(pending: r.changedSources, selected: self.sourceQueueSelected).selected
                 self.healthScanning = false
             }
@@ -2012,7 +2090,10 @@ final class StudioLibrary: ObservableObject {
 
     /// Deletes license records nothing uses and stray files in the Licenses folder.
     func cleanUpLicenseFolder() {
-        guard let h = health else { return }
+        guard let h = health, healthScanStatus?.coverage.covers(.folder) == true else {
+            flash("License folder could not be checked. Check Again before cleaning up.")
+            refreshHealth(full: true); return
+        }
         let n = h.licenseCleanupCount
         pruneLicenseFiles()
         for f in h.strayLicenseFiles { try? FileManager.default.removeItem(at: licensesRoot.appendingPathComponent(f)) }
@@ -2940,7 +3021,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
+             "license-files", "rights-presets", "export-guard", "health-incomplete", "health-recovered", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3196,6 +3277,15 @@ final class StudioLibrary: ObservableObject {
                 }
                 show(collection: StudioCatalog.inboxCollection)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.openLibraryHealth() }
+            case "health-incomplete", "health-recovered":
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    self.healthOpen = true
+                    self.refreshHealth(full: true)
+                    if demo == "health-recovered" {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.refreshHealth(full: true) }
+                    }
+                }
             case "health-status-quick", "health-status-full":
                 show(collection: StudioCatalog.inboxCollection)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -6279,11 +6369,12 @@ struct Sidebar: View {
                         .help("\(alerts.expired) expired · \(alerts.expiring) ending within \(StudioAsset.rightsWarningDays) days")
                     }
                     let issues = model.health?.issueCount ?? 0
-                    SidebarRow(title: "Library Health", symbol: issues > 0 ? "stethoscope" : "checkmark.seal", count: issues > 0 ? issues : nil,
-                               selected: model.healthOpen, accent: issues > 0 ? .warning : .standard, badge: (model.health?.urgentCount ?? 0) > 0 ? Theme.danger : nil) {
+                    let incomplete = model.healthScanStatus?.complete == false
+                    SidebarRow(title: "Library Health", symbol: incomplete ? "exclamationmark.triangle" : issues > 0 ? "stethoscope" : "checkmark.seal", count: issues > 0 ? issues : nil,
+                               selected: model.healthOpen, accent: incomplete || issues > 0 ? .warning : .standard, badge: (model.health?.urgentCount ?? 0) > 0 ? Theme.danger : incomplete ? Theme.warning : nil) {
                         model.openLibraryHealth()
                     }
-                    .help(issues > 0 ? "\(issues) things to look at" : "Check files, license paperwork and duplicates")
+                    .help(incomplete ? "Check incomplete; open Library Health for details" : issues > 0 ? "\(issues) things to look at" : "Check files, license paperwork and duplicates")
                 }
 
                 SidebarSection(title: "COLLECTIONS", trailing: AnyView(
@@ -7835,19 +7926,20 @@ struct LibraryHealthSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    Circle().fill((model.health == nil ? Theme.smart : h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning).opacity(0.16)).frame(width: 46, height: 46)
-                    Image(systemName: model.health == nil ? "clock" : h.isHealthy ? "checkmark.seal.fill" : "stethoscope").font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(model.health == nil ? Theme.smart : h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning)
+                    Circle().fill((model.health == nil ? Theme.smart : model.healthScanStatus?.complete == false ? Theme.warning : h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning).opacity(0.16)).frame(width: 46, height: 46)
+                    Image(systemName: model.health == nil ? "clock" : model.healthScanStatus?.complete == false ? "exclamationmark.triangle.fill" : h.isHealthy ? "checkmark.seal.fill" : "stethoscope").font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(model.health == nil ? Theme.smart : model.healthScanStatus?.complete == false ? Theme.warning : h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Library Health").font(.system(size: 20, weight: .bold))
                     Text(model.healthScanning && model.health == nil ? "Checking files…"
                          : model.health == nil ? "No check results yet."
+                         : model.healthScanStatus?.complete == false ? "Check incomplete. Confirmed findings below; some checks could not finish."
                          : h.isHealthy ? "No issues found in the last check across \(model.catalog.assets.count) assets."
                          : "\(h.issueCount) \(h.issueCount == 1 ? "thing needs" : "things need") a look" + (h.urgentCount > 0 ? ", \(h.urgentCount) of them can't open right now." : "."))
                         .font(.callout).foregroundStyle(.secondary)
                     if let status = model.healthScanStatus {
-                        Text("\(status.scopeLabel) completed \(status.completedAt.formatted(date: .abbreviated, time: .shortened)) · Snapshot, not live")
+                        Text("\(status.scopeLabel) \(status.complete ? "completed" : "stopped") \(status.completedAt.formatted(date: .abbreviated, time: .shortened)) · Snapshot, not live")
                             .font(.caption2).foregroundStyle(.tertiary)
                     } else {
                         Text("No check completed in this session")
@@ -7874,6 +7966,24 @@ struct LibraryHealthSheet: View {
             ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    if let coverage = model.healthScanStatus?.coverage, !coverage.complete {
+                        HealthCard(symbol: "exclamationmark.triangle.fill", tint: Theme.warning,
+                                   title: "Check incomplete · \(coverage.affected.count) \(coverage.affected.count == 1 ? "check" : "checks") affected",
+                                   detail: "Some files could not be read. Confirmed issues remain below; unknown files are not marked missing or safe to remove.",
+                                   action: ("Check Again", { model.refreshHealth(full: true) })) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(coverage.issues.indices, id: \.self) { index in
+                                    let issue = coverage.issues[index]
+                                    Text("\(issue.check.rawValue): \(issue.name)")
+                                        .font(.caption).lineLimit(1).truncationMode(.middle)
+                                }
+                                if coverage.totalFailures > coverage.issues.count {
+                                    Text("+\(coverage.totalFailures - coverage.issues.count) more read failures")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }.padding(.leading, 42)
+                        }
+                    }
                     if !h.missingFiles.isEmpty {
                         HealthCard(symbol: "exclamationmark.triangle.fill", tint: Theme.danger, title: "\(h.missingFiles.count) missing \(h.missingFiles.count == 1 ? "file" : "files")",
                                    detail: "Moved or deleted outside ASSSETS. Relink a moved folder or locate files one by one; tags, rights and boards stay.",
@@ -7929,7 +8039,7 @@ struct LibraryHealthSheet: View {
                     if h.licenseCleanupCount > 0 {
                         HealthCard(symbol: "paperclip.badge.ellipsis", tint: Theme.smart, title: "\(h.licenseCleanupCount) unused license \(h.licenseCleanupCount == 1 ? "file" : "files")",
                                    detail: "In the Licenses folder but not attached to any asset or preset.",
-                                   action: ("Clean Up", { model.cleanUpLicenseFolder() })) {
+                                   action: model.healthScanStatus?.coverage.covers(.folder) == false ? nil : ("Clean Up", { model.cleanUpLicenseFolder() })) {
                             let cleanupNames = h.unusedLicenseFiles.compactMap { model.catalog.licenseDoc($0)?.name } + h.strayLicenseFiles
                             ForEach(Array(cleanupNames.prefix(visibleRows("cleanup", count: cleanupNames.count)).enumerated()), id: \.offset) { index, name in
                                 HealthDocRow(name: name, detail: "Not attached")
@@ -8028,12 +8138,24 @@ struct LibraryHealthSheet: View {
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                     if !model.healthScanning {
-                        HealthAllClear(h: h, scanned: model.healthScanStatus?.duplicateFreshForThisScan == true)
+                        HealthAllClear(h: h, scanned: model.healthScanStatus?.duplicateFreshForThisScan == true,
+                                       coverage: model.healthScanStatus?.coverage ?? HealthCoverage())
                     }
                 }
                 .padding(20)
             }
             .onAppear {
+                if ProcessInfo.processInfo.arguments.contains("health-incomplete") || ProcessInfo.processInfo.arguments.contains("health-recovered") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
+                        let incomplete = ProcessInfo.processInfo.arguments.contains("health-incomplete")
+                        let coverage = model.healthScanStatus?.coverage
+                        let accurate = incomplete ? (coverage?.complete == false && coverage?.covers(.files) == false &&
+                            coverage?.covers(.sources) == false && model.health?.missingFiles.isEmpty == true) :
+                            (coverage?.complete == true && model.healthScanStatus?.duplicateFreshForThisScan == true)
+                        try? "done incomplete=\(incomplete) accurate=\(accurate)".write(
+                            to: model.supportRoot.appendingPathComponent("demo-health-incomplete.txt"), atomically: true, encoding: .utf8)
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("health-status-quick") || ProcessInfo.processInfo.arguments.contains("health-status-full") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
                         let status = model.healthScanStatus
@@ -8567,15 +8689,16 @@ struct HealthDocRow: View {
 struct HealthAllClear: View {
     let h: LibraryHealth
     let scanned: Bool
+    let coverage: HealthCoverage
     var body: some View {
         let passed: [String] = [
-            h.missingFiles.isEmpty ? "Files opened at check" : nil,
-            h.changedSources.isEmpty ? (scanned ? "No changed sources at full check" : "No changes detected in quick check") : nil,
-            h.missingLicenseFiles.isEmpty ? "License files in place" : nil,
-            scanned && h.duplicateSets == 0 ? "No identical files" : nil,
+            coverage.covers(.files) && h.missingFiles.isEmpty ? "Files opened at check" : nil,
+            coverage.covers(.sources) && h.changedSources.isEmpty ? (scanned ? "No changed sources at full check" : "No changes detected in quick check") : nil,
+            coverage.covers(.licenses) && h.missingLicenseFiles.isEmpty ? "License files in place" : nil,
+            scanned && coverage.covers(.duplicates) && h.duplicateSets == 0 ? "No identical files" : nil,
             h.noCredit.isEmpty ? "Licensed assets credited" : nil,
-            h.licenseCleanupCount == 0 ? "No unused license files" : nil,
-            h.bigFiles.isEmpty ? "No oversized files" : nil,
+            coverage.covers(.folder) && h.licenseCleanupCount == 0 ? "No unused license files" : nil,
+            coverage.covers(.sizes) && h.bigFiles.isEmpty ? "No oversized files" : nil,
         ].compactMap { $0 }
         if !passed.isEmpty {
             WrapLayout(spacing: 6) {

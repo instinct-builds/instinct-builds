@@ -248,6 +248,13 @@ jobs:
           cat "$SUP/demo-health-status.txt"
           grep -q '^done full=true accurate=true$' "$SUP/demo-health-status.txt"
           cp "$SUP/demo-health-status.txt" "ASSSETS-$ASSSETS_VERSION-health-status.txt"
+          DELAY=15 shoot health-incomplete 1920x1200 health-incomplete demo-health-incomplete.txt
+          cat "$SUP/demo-health-incomplete.txt"
+          grep -q '^done incomplete=true accurate=true$' "$SUP/demo-health-incomplete.txt"
+          DELAY=15 shoot health-recovered 1920x1200 health-recovered demo-health-incomplete.txt
+          cat "$SUP/demo-health-incomplete.txt"
+          grep -q '^done incomplete=false accurate=true$' "$SUP/demo-health-incomplete.txt"
+          cp "$SUP/demo-health-incomplete.txt" "ASSSETS-$ASSSETS_VERSION-health-incomplete.txt"
           DELAY=8 shoot health-rows-compact 1920x1200 health-rows-compact
           DELAY=9 shoot health-rows 1920x1200 health-rows demo-health-rows.txt
           cat "$SUP/demo-health-rows.txt"
@@ -367,6 +374,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-detach.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-rows.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-status.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-incomplete.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-licenses-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf
