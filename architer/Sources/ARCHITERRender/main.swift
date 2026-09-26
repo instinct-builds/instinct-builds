@@ -1427,6 +1427,26 @@ func run(model: AppModel, character: Character, outDir: String) {
         }
     }
     model.selectedID = character.id
+    // Concentration-check proof (3.28.0): untyped incoming damage (no
+    // defenses, so the harness can derive the same DC) to a concentrating
+    // character forces a CON save; the txt states the outcome either way.
+    var concLines = ["Concentration checks (3.28.0)",
+                     "incoming damage forces a CON save: DC max(10, damage/2); a fail ends the spell"]
+    if var sel = model.selected?.wrappedValue {
+        sel.beginConcentration(on: "Ember Ward")
+        model.selected?.wrappedValue = sel
+        model.rollIncomingDamage("8d6", type: nil)
+        let save = model.rollHistory.first
+        let dmg = model.rollHistory.dropFirst().first
+        if let save, let dmg, let after = model.selected?.wrappedValue {
+            let dc = concentrationDC(forDamage: dmg.total)
+            let outcome = save.total >= dc ? "met" : "missed"
+            concLines.append("concentrating on Ember Ward; damage \(dmg.total) -> DC \(dc); CON save \(save.total) \(outcome); concentration after: \(after.concentratingOn ?? "none")")
+        }
+    }
+    try? concLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/concentrating.txt"),
+               atomically: true, encoding: .utf8)
     try? groupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
                atomically: true, encoding: .utf8)

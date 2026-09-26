@@ -105,3 +105,10 @@ public struct Currency: Codable, Equatable, Sendable {
 public enum Encumbrance: String, Sendable {
     case normal, encumbered, heavilyEncumbered, overCapacity
 }
+
+/// Concentration checks (3.28.0): the DC of the CON save damage forces,
+/// derived from the damage that actually landed (defenses already folded
+/// in). Genre-standard floor: never below 10, half the damage above that.
+public func concentrationDC(forDamage damage: Int) -> Int {
+    max(10, damage / 2)
+}

@@ -575,6 +575,22 @@ public final class AppModel: ObservableObject {
         // Defenses already folded in above; type nil keeps temp-HP absorption.
         c.applyDamage(adjusted, type: nil)
         selected?.wrappedValue = c
+        // 3.28.0: damage to a concentrating character forces a CON save; the
+        // DC derives from what actually landed - a temp-HP-soaked hit still
+        // counts, a fully immune 0 does not. The save rides rollCheck, so
+        // conditions, the character identity stamp, and reroll come free.
+        if adjusted > 0, let spell = selected?.wrappedValue.concentratingOn {
+            let dc = concentrationDC(forDamage: adjusted)
+            let save = rollCheck("CON save (concentration)",
+                                 bonus: selected?.wrappedValue.savingThrow(.constitution) ?? 0,
+                                 targetDC: dc)
+            if save.total < dc, var after = selected?.wrappedValue {
+                after.dropConcentration()
+                let line = "Lost concentration on \(spell)."
+                after.notes = after.notes.isEmpty ? line : after.notes + "\n" + line
+                selected?.wrappedValue = after
+            }
+        }
     }
 
     /// Free-roller roll with an optional damage type: when a type is picked
@@ -864,8 +880,9 @@ public final class AppModel: ObservableObject {
     /// Era- and condition-aware d20 roll: the 2024-style preset subtracts
     /// exhaustion from every d20 test, and hindering conditions (poisoned,
     /// blinded, prone...) fold disadvantage into the mode.
+    @discardableResult
     public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal,
-                          targetDC: Int? = nil, forCharacterID: UUID? = nil) {
+                          targetDC: Int? = nil, forCharacterID: UUID? = nil) -> RollResult {
         // 3.27.0: a reroll carries the character it was rolled with, so Roll
         // Again on another character's entry re-derives conditions from THAT
         // character; nil (and a departed roster member) falls back to the
@@ -877,7 +894,7 @@ public final class AppModel: ObservableObject {
             r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode,
                                   checkBonus: bonus, targetDC: targetDC)
             record(r)
-            return
+            return r
         }
         let kind: Character.D20RollKind = label.localizedCaseInsensitiveContains("attack") ? .attack : .check
         let effective = c.effectiveRollMode(mode, for: kind)
@@ -896,6 +913,7 @@ public final class AppModel: ObservableObject {
         r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode,
                               checkBonus: bonus, targetDC: targetDC, characterID: c.id)
         record(r, characterName: resolved?.name)
+        return r
     }
 
     /// Group check (3.26.0): the same skill for the whole roster. Each
