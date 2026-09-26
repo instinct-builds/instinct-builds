@@ -1542,7 +1542,7 @@ func run(model: AppModel, character: Character, outDir: String) {
     // wrap once, render the row at 9, then wrap on to the expiry milestone.
     var ctLines = ["Concentration duration timers (3.33.0)",
                    "cast sets the timer from the spell's duration; the wrap ticks it; 0 drops concentration"]
-    if let faerie = Spell.all.first(where: { $0.name == "Faerie Fire" }) {
+    if let faerie = SpellLibrary.spell(named: "Faerie Fire") {
         model.castSpell(faerie)
         ctLines.append("cast Faerie Fire (1 minute) -> timer \(model.selected?.wrappedValue.concentrationTimer ?? -1), concentrating")
         for _ in 0..<model.initiative.entries.count { model.advanceInitiative() }
