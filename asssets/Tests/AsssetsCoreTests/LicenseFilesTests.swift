@@ -32,6 +32,37 @@ struct LicenseFilesTests {
         #expect(order.kind == .pdf && mail.kind == .email && order.sizeLabel == "248 KB")
     }
 
+    @Test func missingLicenseRepairPreservesIdentityAndLinks() throws {
+        var (c, ids) = library()
+        let d = LicenseDoc(name: "order.pdf", added: today, bytes: 10)
+        c.addLicenseDoc(d, to: [ids["Lobby"]!, ids["Atrium"]!])
+        let pid = try #require(c.saveRightsPreset(name: "Order", rights: UsageRights(license: .licensed), docs: [d.id]))
+        let review = try #require(MissingLicenseRepair(catalog: c, id: d.id))
+        #expect(review.assetIDs == [ids["Lobby"]!, ids["Atrium"]!] && review.presetIDs == [pid])
+        #expect(!c.recordRepairedLicense(review, name: "new.txt", bytes: 22))
+        #expect(!c.recordRepairedLicense(review, name: "new.pdf", bytes: 0))
+        #expect(c.recordRepairedLicense(review, name: "new.pdf", bytes: 22))
+        let updated = try #require(c.licenseDoc(d.id))
+        #expect(updated.id == d.id && updated.stored == d.stored && updated.added == d.added)
+        #expect(updated.name == "new.pdf" && updated.bytes == 22)
+        #expect(c.assets.filter { $0.licenseDocs.contains(d.id) }.map(\.id) == review.assetIDs)
+        #expect(c.rightsPreset(pid)?.docs == [d.id])
+        let back = try #require(StudioCatalog.decode(c.encoded()))
+        #expect(back.licenseDoc(d.id) == updated && back.rightsPreset(pid)?.docs == [d.id])
+        #expect(!review.stillMatches(c))
+        #expect(!c.recordRepairedLicense(review, name: "stale.pdf", bytes: 9))
+    }
+
+    @Test func missingLicenseRepairRejectsChangedLinks() throws {
+        var (c, ids) = library()
+        let d = LicenseDoc(name: "order.pdf")
+        c.addLicenseDoc(d, to: [ids["Lobby"]!])
+        let review = try #require(MissingLicenseRepair(catalog: c, id: d.id))
+        c.attachLicenseDoc(d.id, to: [ids["Atrium"]!])
+        #expect(!review.stillMatches(c) && !c.recordRepairedLicense(review, name: "order.pdf", bytes: 42))
+        #expect(c.licenseDoc(d.id) == d)
+    }
+
     @Test func storedNamesAreSafe() {
         let id = UUID(uuidString: "ABCDEF12-0000-0000-0000-000000000000")!
         #expect(LicenseDoc.storedName(for: "../a/b:c.pdf", id: id) == "abcdef12-a-b-c.pdf")

@@ -955,3 +955,9 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Each visible Library Health source receipt now has a compact Copy hash menu with separate Before SHA-256 and After SHA-256 actions. It copies the complete stored digest as plain text, not the source path, preview or original bytes. The visible short digests remain a quick visual cue, and filtering and Show Recent still decide which rows are shown.
 - The native proof captures the receipt row and checks both clipboard values against the accepted receipt while confirming that the catalog bytes do not change. No background scan or source restoration is added.
+
+## 1.54.0: repair a missing license copy
+
+- Library Health can replace each missing stored license file with a reviewed local copy of the same file type. The review shows its old/new names, size, linked asset titles and rights presets, and warns that a chosen file is not proof of the same license. Cancel does nothing. The original chosen file stays in place.
+- The repair rechecks the exact document record, asset/preset links, missing stored path and chosen file digest before writing. It stages a verified copy in Licenses, installs only into an absent destination, and writes the catalog or rolls the new copy back on a save failure. The document ID, stored path, added date and all links stay fixed; the display name and size reflect the chosen copy. There is no catalog-only Undo or bulk replacement. A recovered target is never overwritten.
+- Core tests cover unchanged links and stale-review rejection. CI captures the native review and post-repair Health states, and checks copied bytes, linked IDs and preserved identity.

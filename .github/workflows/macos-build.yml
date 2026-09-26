@@ -275,6 +275,11 @@ jobs:
           grep -q '^done rows=1 safe=true hash=true noPath=true$' "$SUP/demo-source-receipt-csv.txt"
           cp "$SUP/demo-source-receipts.csv" "ASSSETS-$ASSSETS_VERSION-source-receipts.csv.txt"
           test "$(wc -l < "ASSSETS-$ASSSETS_VERSION-source-receipts.csv.txt")" -eq 2
+          DELAY=18 shoot license-repair-review 1920x1200 license-repair-review
+          DELAY=18 shoot license-repair-apply 1920x1200 license-repair-apply demo-license-repair.txt
+          cat "$SUP/demo-license-repair.txt"
+          grep -q '^done repaired=true linked=true bytes=true identity=true$' "$SUP/demo-license-repair.txt"
+          cp "$SUP/demo-license-repair.txt" "ASSSETS-$ASSSETS_VERSION-license-repair.txt"
           DELAY=18 shoot source-receipt-copy 1920x1200 source-receipt-copy demo-source-receipt-copy.txt
           cat "$SUP/demo-source-receipt-copy.txt"
           grep -q '^done before=true after=true unchanged=true$' "$SUP/demo-source-receipt-copy.txt"
@@ -340,6 +345,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-licenses-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf

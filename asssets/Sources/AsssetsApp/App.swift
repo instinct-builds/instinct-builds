@@ -1,6 +1,7 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
+import Darwin
 import AVFoundation
 import AVKit
 import CoreImage
@@ -2897,7 +2898,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "license-repair-review", "license-repair-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3136,6 +3137,16 @@ final class StudioLibrary: ObservableObject {
                     }
                     }
                 }
+            case "license-repair-review", "license-repair-apply":
+                // Preserve the original generated order PDF as a local recovery candidate before deleting its stored copy.
+                if let doc = order.first, let source = docs["order"] {
+                    let recovery = fm.temporaryDirectory.appendingPathComponent("ASSSETS-recovery-NL-20417.pdf")
+                    try? fm.removeItem(at: recovery)
+                    try? fm.copyItem(at: source, to: recovery)
+                    try? fm.removeItem(at: licenseURL(doc))
+                }
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.openLibraryHealth() }
             case "library-health":
                 // One file moved away, one license copy deleted, a stray file in the Licenses folder, and a licensed photo with no credit.
                 if let atrium = find("Atrium Cork Wall.png"), let p = atrium.importedPath {
@@ -3453,6 +3464,142 @@ extension StudioLibrary {
 
     var licensesRoot: URL { supportRoot.appendingPathComponent("Licenses", isDirectory: true) }
     func licenseURL(_ d: LicenseDoc) -> URL { licensesRoot.appendingPathComponent(d.stored) }
+
+    struct LicenseRepairSelection: Identifiable {
+        var id: UUID { review.document.id }
+        let review: MissingLicenseRepair
+        let source: URL
+        let size: Int64
+        let digest: String
+    }
+    @Published var licenseRepairReview: LicenseRepairSelection?
+
+    /// Selection is only a proposal: commit checks the source and exact live catalog links again.
+    func chooseMissingLicenseReplacement(_ id: UUID) {
+        guard let review = MissingLicenseRepair(catalog: catalog, id: id),
+              !FileManager.default.fileExists(atPath: licenseURL(review.document).path) else {
+            flash("This missing license record changed. Check Again before replacing."); refreshHealth(); return
+        }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false; panel.canChooseDirectories = false; panel.canChooseFiles = true
+        panel.prompt = "Review File"
+        panel.message = "Choose a local copy of \(review.document.name). Same file type only. Its identity will be reviewed before linking it."
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+        prepareMissingLicenseReplacement(review, source: source)
+    }
+
+    func prepareMissingLicenseReplacement(_ review: MissingLicenseRepair, source: URL) {
+        let fm = FileManager.default
+        let source = source.standardizedFileURL
+        guard source.pathExtension.lowercased() == review.document.ext else {
+            flash("Choose the same file type (.\(review.document.ext))"); return
+        }
+        guard let values = try? source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true,
+              let size = values.fileSize, size > 0,
+              let digest = Self.sha256(path: source.path),
+              review.stillMatches(catalog),
+              !fm.fileExists(atPath: licenseURL(review.document).path) else {
+            flash("The selected file or license record changed. Check Again."); refreshHealth(); return
+        }
+        licenseRepairReview = LicenseRepairSelection(review: review, source: source, size: Int64(size), digest: digest)
+    }
+
+    /// Remove only our own staged inode. A recovered target is never removed on rollback.
+    private func removeStagedTargetIfOurs(_ target: URL, staged: URL) -> Bool {
+        let fm = FileManager.default
+        guard let a = try? fm.attributesOfItem(atPath: target.path),
+              let b = try? fm.attributesOfItem(atPath: staged.path),
+              let inodeA = a[.systemFileNumber] as? NSNumber, let inodeB = b[.systemFileNumber] as? NSNumber,
+              let deviceA = a[.systemNumber] as? NSNumber, let deviceB = b[.systemNumber] as? NSNumber,
+              inodeA == inodeB, deviceA == deviceB else { return false }
+        return (try? fm.removeItem(at: target)) != nil
+    }
+
+    private func catalogMatchesDisk() -> Bool {
+        guard let encoded = try? catalog.encoded(), let disk = try? Data(contentsOf: catalogURL) else { return false }
+        return encoded == disk
+    }
+
+    /// No catalog-only Undo: this transaction changes both a stored file and its record.
+    func commitMissingLicenseReplacement(_ proposal: LicenseRepairSelection) -> Bool {
+        let fm = FileManager.default
+        let review = proposal.review
+        let target = licenseURL(review.document)
+        guard review.stillMatches(catalog), health?.missingLicenseFiles.contains(review.document.id) == true,
+              !fm.fileExists(atPath: target.path),
+              proposal.source.pathExtension.lowercased() == review.document.ext,
+              let values = try? proposal.source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true,
+              let size = values.fileSize, size > 0, Int64(size) == proposal.size,
+              Self.sha256(path: proposal.source.path) == proposal.digest,
+              catalogMatchesDisk() else {
+            flash("The file or license links changed. Check Again and review again."); licenseRepairReview = nil; refreshHealth(); return false
+        }
+        // Copy to this directory first; hard-linking the staged inode to its absent final name
+        // fails if anything reappeared there and never overwrites a recovered copy.
+        let staged = licensesRoot.appendingPathComponent(".repair-\(UUID().uuidString)")
+        do {
+            try fm.createDirectory(at: licensesRoot, withIntermediateDirectories: true)
+            try fm.copyItem(at: proposal.source, to: staged)
+            guard let stagedValues = try? staged.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  stagedValues.isRegularFile == true, stagedValues.fileSize == size,
+                  Self.sha256(path: staged.path) == proposal.digest,
+                  review.stillMatches(catalog), !fm.fileExists(atPath: target.path),
+                  Self.sha256(path: proposal.source.path) == proposal.digest,
+                  catalogMatchesDisk() else {
+                throw NSError(domain: "ASSSETS.Repair", code: 1)
+            }
+            // link(2) creates target only if absent. The staged copy remains until persistence succeeds.
+            guard staged.path.withCString({ from in target.path.withCString { to in link(from, to) } }) == 0 else {
+                throw NSError(domain: "ASSSETS.Repair", code: 2)
+            }
+            // Protect the gap between installing the link and persisting its catalog facts.
+            guard let stagedAttrs = try? fm.attributesOfItem(atPath: staged.path),
+                  let targetAttrs = try? fm.attributesOfItem(atPath: target.path),
+                  stagedAttrs[.systemFileNumber] as? NSNumber == targetAttrs[.systemFileNumber] as? NSNumber,
+                  stagedAttrs[.systemNumber] as? NSNumber == targetAttrs[.systemNumber] as? NSNumber,
+                  review.stillMatches(catalog), catalogMatchesDisk() else {
+                guard removeStagedTargetIfOurs(target, staged: staged) else {
+                    flash("Repair stopped; a file is at the stored location. Review it before continuing.")
+                    licenseRepairReview = nil; refreshHealth(); return false
+                }
+                throw NSError(domain: "ASSSETS.Repair", code: 4)
+            }
+            var updated = catalog
+            guard updated.recordRepairedLicense(review, name: proposal.source.lastPathComponent, bytes: size) else {
+                guard removeStagedTargetIfOurs(target, staged: staged) else {
+                    flash("Repair stopped; a file is at the stored location. Review it before continuing.")
+                    licenseRepairReview = nil; refreshHealth(); return false
+                }
+                throw NSError(domain: "ASSSETS.Repair", code: 3)
+            }
+            do {
+                try updated.encoded().write(to: catalogURL, options: .atomic)
+            } catch {
+                guard removeStagedTargetIfOurs(target, staged: staged) else {
+                    flash("Catalog save failed and a file remains at the stored location. Review it before continuing.")
+                    licenseRepairReview = nil; refreshHealth(); return false
+                }
+                throw error
+            }
+            healthGeneration += 1 // invalidate any in-flight health scan captured before the repair
+            catalog = updated
+            // Do not record this file transaction as a catalog-only Undo.
+            try? fm.removeItem(at: staged)
+            licenseRepairReview = nil
+            refreshHealth(full: true)
+            flash("Replaced \(review.document.name); links and presets kept")
+            return true
+        } catch {
+            try? fm.removeItem(at: staged)
+            // A failed pre-link check must not touch a target that reappeared on its own.
+            licenseRepairReview = nil
+            flash("Could not replace license file. Check Again and review again.")
+            refreshHealth()
+            return false
+        }
+    }
 
     func chooseLicenseFiles(for ids: [UUID]) {
         guard !ids.isEmpty else { return }
@@ -7642,11 +7789,17 @@ struct LibraryHealthSheet: View {
                     if !h.missingLicenseFiles.isEmpty {
                         let docs = h.missingLicenseFiles.compactMap { model.catalog.licenseDoc($0) }
                         HealthCard(symbol: "doc.badge.ellipsis", tint: Theme.danger, title: "\(docs.count) license \(docs.count == 1 ? "file is" : "files are") gone",
-                                   detail: "The record is there but the stored copy was deleted from the Licenses folder. Attach it again, or detach the empty record.",
+                                   detail: "The stored copy is gone. Replace a record with a reviewed local copy to keep its links, or detach missing records.",
                                    action: ("Detach \(docs.count)", { model.forgetMissingLicenseFiles() })) {
                             ForEach(docs) { d in
                                 let on = model.catalog.assets.filter { $0.licenseDocs.contains(d.id) }
-                                HealthDocRow(name: d.name, detail: on.isEmpty ? "On a rights preset" : "On " + on.prefix(2).map(\.title).joined(separator: ", ") + (on.count > 2 ? " +\(on.count - 2)" : ""))
+                                let presets = model.catalog.rightsPresets.filter { $0.docs.contains(d.id) }
+                                HStack(spacing: 8) {
+                                    HealthDocRow(name: d.name, detail: "\(on.count) asset(s) · \(presets.count) preset(s)")
+                                    Spacer(minLength: 4)
+                                    Button("Replace File…") { model.chooseMissingLicenseReplacement(d.id) }
+                                        .controlSize(.small).fixedSize()
+                                }
                             }
                         }
                     }
@@ -7777,7 +7930,7 @@ struct LibraryHealthSheet: View {
             }
             Divider().overlay(Theme.hairline)
             HStack {
-                Text("Files on disk are only changed by Clean Up, which deletes unused copies in the library's Licenses folder.").font(.caption2).foregroundStyle(.tertiary)
+                Text("Replace File copies reviewed paperwork into Licenses. Clean Up deletes only unused license copies.").font(.caption2).foregroundStyle(.tertiary)
                 Spacer()
                 Button("Done") { model.healthOpen = false }.keyboardShortcut(.cancelAction)
             }.padding(16)
@@ -7785,6 +7938,31 @@ struct LibraryHealthSheet: View {
         .frame(minWidth: 720, idealWidth: 780, minHeight: 520, idealHeight: 640)
         .background(Theme.panel)
         .sheet(isPresented: $model.folderRelinkOpen) { FolderRelinkSheet().environmentObject(model) }
+        .sheet(item: $model.licenseRepairReview) { proposal in
+            MissingLicenseRepairSheet(proposal: proposal).environmentObject(model)
+        }
+        .onChange(of: model.health?.missingLicenseFiles) { _, missing in
+            guard (ProcessInfo.processInfo.arguments.contains("license-repair-review") ||
+                   ProcessInfo.processInfo.arguments.contains("license-repair-apply")),
+                  let id = missing?.first,
+                  let review = MissingLicenseRepair(catalog: model.catalog, id: id),
+                  review.presetIDs.count == 1, review.assetIDs.count == 2,
+                  model.licenseRepairReview == nil else { return }
+            let recovery = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-recovery-NL-20417.pdf")
+            model.prepareMissingLicenseReplacement(review, source: recovery)
+            if ProcessInfo.processInfo.arguments.contains("license-repair-apply"), let proposal = model.licenseRepairReview {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    let ok = model.commitMissingLicenseReplacement(proposal)
+                    let current = model.catalog.licenseDoc(id)
+                    let linked = review.assetIDs.allSatisfy { asset in model.catalog.assets.first { $0.id == asset }?.licenseDocs.contains(id) == true } &&
+                        review.presetIDs.allSatisfy { preset in model.catalog.rightsPreset(preset)?.docs.contains(id) == true }
+                    let bytesOK = current.map { model.licenseURL($0) }.flatMap { StudioLibrary.sha256(path: $0.path) } == proposal.digest
+                    let identity = current?.id == review.document.id && current?.stored == review.document.stored && current?.added == review.document.added
+                    try? "done repaired=\(ok) linked=\(linked) bytes=\(bytesOK) identity=\(identity)".write(
+                        to: model.supportRoot.appendingPathComponent("demo-license-repair.txt"), atomically: true, encoding: .utf8)
+                }
+            }
+        }
         .onAppear {
             if (ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv") || ProcessInfo.processInfo.arguments.contains("source-receipt-copy")),
                !model.catalog.sourceRefreshHistory.isEmpty {
@@ -7825,6 +8003,44 @@ struct LibraryHealthSheet: View {
 }
 
 /// Preview exact relative paths before changing any library identity or touching the disk.
+struct MissingLicenseRepairSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let proposal: StudioLibrary.LicenseRepairSelection
+
+    var body: some View {
+        let doc = proposal.review.document
+        let assets = proposal.review.assetIDs.compactMap { id in model.catalog.assets.first { $0.id == id }?.title }
+        let presets = proposal.review.presetIDs.compactMap { id in model.catalog.rightsPreset(id)?.name }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "doc.badge.ellipsis").foregroundStyle(Theme.warning)
+                Text("Replace missing license file").font(.system(size: 18, weight: .bold))
+                Spacer()
+            }
+            Text("This is a new copy, not proof that it is the same license. Check its contents and terms before keeping the existing links.")
+                .font(.callout).foregroundStyle(Theme.warning)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Missing: \(doc.name)")
+                Text("Selected: \(proposal.source.lastPathComponent) · \(ByteCountFormatter.string(fromByteCount: proposal.size, countStyle: .file))")
+                Text("Linked assets: \(assets.isEmpty ? "None" : assets.joined(separator: ", "))")
+                Text("Rights presets: \(presets.isEmpty ? "None" : presets.joined(separator: ", "))")
+            }.font(.caption).textSelection(.enabled)
+            Button("Open selected file for review") { NSWorkspace.shared.open(proposal.source) }
+                .controlSize(.small)
+            Text("The chosen file must still match this review when you replace it. No original file is moved or deleted.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Cancel") { model.licenseRepairReview = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Replace Stored Copy") { _ = model.commitMissingLicenseReplacement(proposal) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(22).frame(width: 590).background(Theme.panel)
+    }
+}
+
 struct FolderRelinkSheet: View {
     @EnvironmentObject var model: StudioLibrary
     @State private var oldRoot = ""
