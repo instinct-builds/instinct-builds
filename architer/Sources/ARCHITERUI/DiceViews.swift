@@ -208,7 +208,10 @@ public struct DiceRollerView: View {
                     .help("Show only rolls the table starred")
                 TextField("Filter rolls", text: $historyFilter)
                     .textFieldStyle(InsetFieldStyle())
-                    .frame(maxWidth: 160)
+                    // 3.14.2: the field is the bar's designated shock
+                    // absorber - 110 still shows long queries, and the
+                    // freed 50px keeps every label right of it whole.
+                    .frame(maxWidth: 110)
                 // 3.10.0: clear the filter with one click instead of
                 // select-all-delete; hidden while the field is empty.
                 if !historyFilter.isEmpty {
@@ -333,10 +336,12 @@ public struct DiceRollerView: View {
                     // the count says how many, so a notes-hunt knows
                     // there is something to find. 3.13.0: the starred
                     // count rides the same line, mirroring the notes.
+                    // 3.14.2: "noted" compacts the copy - with both
+                    // suffixes the longer form overflowed the bar.
                     let noted = visibleHistory.notedCount
                     let starred = visibleHistory.starredCount
                     Text("\(visibleHistory.count) of \(model.rollHistory.forCharacter(historyForCharacter ? model.selected?.wrappedValue.name : nil).count)"
-                         + (noted > 0 ? ", \(noted) with notes" : "")
+                         + (noted > 0 ? ", \(noted) noted" : "")
                          + (starred > 0 ? ", \(starred) starred" : ""))
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkMuted)

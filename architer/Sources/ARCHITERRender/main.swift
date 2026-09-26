@@ -953,8 +953,8 @@ func run(model: AppModel, character: Character, outDir: String) {
     do {
         let filtered = model.rollHistory.matching("fire")
         try? (["Filtered count with notes (3.11.0)",
-               "filter \"fire\" -> \(filtered.count) rolls, \(filtered.notedCount) with notes",
-               "the bar shows the same numbers as \"N of M, K with notes\""])
+               "filter \"fire\" -> \(filtered.count) rolls, \(filtered.notedCount) noted",
+               "the bar shows the same numbers as \"N of M, K noted\""])
             .joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/filter-count-notes.txt"),
                    atomically: true, encoding: .utf8)
@@ -1030,9 +1030,9 @@ func run(model: AppModel, character: Character, outDir: String) {
         }
         let after = model.rollHistory.matching("fire")
         try? (["Filtered count with stars (3.13.0)",
-               "filter \"fire\" -> \(filtered.count) rolls, \(filtered.notedCount) with notes, \(beforeStars) starred",
+               "filter \"fire\" -> \(filtered.count) rolls, \(filtered.notedCount) noted, \(beforeStars) starred",
                "one star toggled off -> \(after.starredCount) starred",
-               "the bar shows the same numbers as \"N of M, K with notes, S starred\""])
+               "the bar shows the same numbers as \"N of M, K noted, S starred\""])
             .joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/filter-count-starred.txt"),
                    atomically: true, encoding: .utf8)
