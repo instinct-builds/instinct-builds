@@ -241,6 +241,11 @@ jobs:
           DELAY=24 shoot batch-license-row 1920x1200 batch-license-row
           shoot duplicates-merge 1920x1200 duplicates-merge
           shoot library-health 1920x1200 library-health
+          DELAY=8 shoot health-rows-compact 1920x1200 health-rows-compact
+          DELAY=9 shoot health-rows 1920x1200 health-rows demo-health-rows.txt
+          cat "$SUP/demo-health-rows.txt"
+          grep -q '^done total=4 first=3 all=4 unchanged=true$' "$SUP/demo-health-rows.txt"
+          cp "$SUP/demo-health-rows.txt" "ASSSETS-$ASSSETS_VERSION-health-rows.txt"
           DELAY=15 shoot source-review-queue 1920x1200 source-review-queue
           DELAY=15 shoot source-review-queue-next 1920x1200 source-review-queue-next demo-source-queue.txt
           grep -q '^done queue-next=true pending=1$' "$SUP/demo-source-queue.txt"
@@ -346,6 +351,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-rows.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-licenses-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf

@@ -961,3 +961,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 - Library Health can replace each missing stored license file with a reviewed local copy of the same file type. The review shows its old/new names, size, linked asset titles and rights presets, and warns that a chosen file is not proof of the same license. Cancel does nothing. The original chosen file stays in place.
 - The repair rechecks the exact document record, asset/preset links, missing stored path and chosen file digest before writing. It stages a verified copy in Licenses, installs only into an absent destination, and writes the catalog or rolls the new copy back on a save failure. The document ID, stored path, added date and all links stay fixed; the display name and size reflect the chosen copy. There is no catalog-only Undo or bulk replacement. A recovered target is never overwritten.
 - Core tests cover unchanged links and stale-review rejection. CI captures the native review and post-repair Health states, and checks copied bytes, linked IDs and preserved identity.
+
+## 1.55.0: navigate Library Health issue rows
+
+- Missing assets, missing license copies, uncredited assets, unused license files and oversized assets start with three rows and now show the count plus Show All/Show Less. Show All reveals small sets, while large sets use Show More in 40-row pages, preserving each scan's order. Each card tracks its own expansion; no scan result or asset metadata changes when browsing.
+- Core tests cover the three-row start, page boundaries and totals. Native CI opens a four-missing-file Health demo, expands to its fourth row and checks the issue count stays four; it also captures the compact sheet for visual inspection.

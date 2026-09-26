@@ -2899,7 +2899,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "license-repair-review", "license-repair-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3146,6 +3146,15 @@ final class StudioLibrary: ObservableObject {
                     try? fm.copyItem(at: source, to: recovery)
                     try? fm.removeItem(at: licenseURL(doc))
                 }
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.openLibraryHealth() }
+            case "health-rows", "health-rows-compact":
+                // Four missing source paths show the fourth row only after pagination, without mutating the catalog.
+                let selected = ["Northlight Lobby.png", "Atrium Cork Wall.png", "Harbor Night.png", "Plinth Campaign.png"]
+                for name in selected {
+                    if let asset = find(name), let path = asset.importedPath { try? fm.removeItem(atPath: path) }
+                }
+                missing = catalog.missingIDs { fm.fileExists(atPath: $0) }
                 show(collection: StudioCatalog.inboxCollection)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.openLibraryHealth() }
             case "library-health":
@@ -7732,6 +7741,31 @@ struct MergeSummary: View {
 /// Library Health (1.28): what needs attention, each with the fix one click away.
 struct LibraryHealthSheet: View {
     @EnvironmentObject var model: StudioLibrary
+    @State private var issueRowLimit: [String: Int] = [:]
+
+    private func visibleRows(_ key: String, count: Int) -> Int {
+        HealthRowWindow.visible(total: count, expanded: issueRowLimit[key] ?? 0)
+    }
+
+    @ViewBuilder private func rowControls(_ key: String, count: Int) -> some View {
+        if count > HealthRowWindow.initial {
+            let shown = visibleRows(key, count: count)
+            HStack(spacing: 12) {
+                Text("Showing \(shown) of \(count)")
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                if shown < count {
+                    Button(issueRowLimit[key] == nil && count <= HealthRowWindow.initial + HealthRowWindow.page ? "Show All" : "Show More") {
+                        issueRowLimit[key] = HealthRowWindow.next(total: count, expanded: issueRowLimit[key] ?? 0)
+                    }.foregroundStyle(Theme.accent)
+                }
+                if issueRowLimit[key] != nil {
+                    Button("Show Less") { issueRowLimit[key] = nil }.foregroundStyle(Theme.accent)
+                }
+            }
+            .font(.caption).buttonStyle(.plain).padding(.leading, 42)
+        }
+    }
+
     @State private var receiptFilename = ""
     @State private var receiptDateEnabled = false
     @State private var receiptStart = Calendar.current.startOfDay(for: Date())
@@ -7773,13 +7807,14 @@ struct LibraryHealthSheet: View {
                         HealthCard(symbol: "exclamationmark.triangle.fill", tint: Theme.danger, title: "\(h.missingFiles.count) missing \(h.missingFiles.count == 1 ? "file" : "files")",
                                    detail: "Moved or deleted outside ASSSETS. Relink a moved folder or locate files one by one; tags, rights and boards stay.",
                                    action: ("Relink Folder…", { model.folderRelinkOpen = true })) {
-                            ForEach(h.missingFiles.prefix(3), id: \.self) { id in
+                            ForEach(h.missingFiles.prefix(visibleRows("missing", count: h.missingFiles.count)), id: \.self) { id in
                                 if let a = byID[id] {
                                     HealthRow(asset: a, detail: a.importedPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "") {
                                         Button("Locate…") { model.locate(id); model.refreshHealth() }.controlSize(.small)
                                     }
                                 }
                             }
+                            rowControls("missing", count: h.missingFiles.count)
                         }
                     }
                     if !h.changedSources.isEmpty {
@@ -7790,7 +7825,7 @@ struct LibraryHealthSheet: View {
                         HealthCard(symbol: "doc.badge.ellipsis", tint: Theme.danger, title: "\(docs.count) license \(docs.count == 1 ? "file is" : "files are") gone",
                                    detail: "The stored copy is gone. Replace a record with a reviewed local copy to keep its links, or detach missing records.",
                                    action: ("Detach \(docs.count)", { model.forgetMissingLicenseFiles() })) {
-                            ForEach(docs) { d in
+                            ForEach(Array(docs.prefix(visibleRows("licenses", count: docs.count)))) { d in
                                 let on = model.catalog.assets.filter { $0.licenseDocs.contains(d.id) }
                                 let presets = model.catalog.rightsPresets.filter { $0.docs.contains(d.id) }
                                 HStack(spacing: 8) {
@@ -7800,6 +7835,7 @@ struct LibraryHealthSheet: View {
                                         .controlSize(.small).fixedSize()
                                 }
                             }
+                            rowControls("licenses", count: docs.count)
                         }
                     }
                     if let sets = h.duplicateSets, sets > 0 {
@@ -7811,31 +7847,35 @@ struct LibraryHealthSheet: View {
                         HealthCard(symbol: "text.badge.xmark", tint: Theme.warning, title: "\(h.noCredit.count) licensed \(h.noCredit.count == 1 ? "asset has" : "assets have") no credit",
                                    detail: "Credits print on galleries, round summaries and contact sheets. Select them to fill the credit in once for all.",
                                    action: ("Select \(h.noCredit.count)", { model.showFromHealth(h.noCredit) })) {
-                            ForEach(h.noCredit.prefix(3), id: \.self) { id in
+                            ForEach(h.noCredit.prefix(visibleRows("credits", count: h.noCredit.count)), id: \.self) { id in
                                 if let a = byID[id] { HealthRow(asset: a, detail: (a.rights?.license.rawValue ?? "") + (a.rights.map { $0.source.isEmpty ? "" : " · " + $0.source } ?? "")) { EmptyView() } }
                             }
+                            rowControls("credits", count: h.noCredit.count)
                         }
                     }
                     if h.licenseCleanupCount > 0 {
                         HealthCard(symbol: "paperclip.badge.ellipsis", tint: Theme.smart, title: "\(h.licenseCleanupCount) unused license \(h.licenseCleanupCount == 1 ? "file" : "files")",
                                    detail: "In the Licenses folder but not attached to any asset or preset.",
                                    action: ("Clean Up", { model.cleanUpLicenseFolder() })) {
-                            ForEach((h.unusedLicenseFiles.compactMap { model.catalog.licenseDoc($0)?.name } + h.strayLicenseFiles).prefix(3), id: \.self) { n in
-                                HealthDocRow(name: n, detail: "Not attached")
+                            let cleanupNames = h.unusedLicenseFiles.compactMap { model.catalog.licenseDoc($0)?.name } + h.strayLicenseFiles
+                            ForEach(Array(cleanupNames.prefix(visibleRows("cleanup", count: cleanupNames.count)).enumerated()), id: \.offset) { index, name in
+                                HealthDocRow(name: name, detail: "Not attached")
                             }
+                            rowControls("cleanup", count: cleanupNames.count)
                         }
                     }
                     if !h.bigFiles.isEmpty {
                         HealthCard(symbol: "externaldrive.badge.exclamationmark", tint: Theme.smart, title: "\(h.bigFiles.count) very large \(h.bigFiles.count == 1 ? "file" : "files")",
                                    detail: "Over \(ByteCountFormatter.string(fromByteCount: LibraryHealth.bigFileBytes, countStyle: .file)). They slow exports and galleries; consider a lighter version for sharing.",
                                    action: nil) {
-                            ForEach(h.bigFiles.prefix(3), id: \.id) { f in
+                            ForEach(h.bigFiles.prefix(visibleRows("big", count: h.bigFiles.count)), id: \.id) { f in
                                 if let a = byID[f.id] {
                                     HealthRow(asset: a, detail: ByteCountFormatter.string(fromByteCount: f.bytes, countStyle: .file)) {
                                         Button { model.reveal([f.id]) } label: { Image(systemName: "folder") }.controlSize(.small).help("Reveal in Finder")
                                     }
                                 }
                             }
+                            rowControls("big", count: h.bigFiles.count)
                         }
                     }
                     if !model.catalog.sourceRefreshHistory.isEmpty {
@@ -7914,6 +7954,17 @@ struct LibraryHealthSheet: View {
                 .padding(20)
             }
             .onAppear {
+                if ProcessInfo.processInfo.arguments.contains("health-rows") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                        let total = model.health?.missingFiles.count ?? 0
+                        let first = visibleRows("missing", count: total)
+                        issueRowLimit["missing"] = HealthRowWindow.next(total: total, expanded: 0)
+                        let all = visibleRows("missing", count: total)
+                        let unchanged = model.health?.missingFiles.count == total
+                        try? "done total=\(total) first=\(first) all=\(all) unchanged=\(unchanged)".write(
+                            to: model.supportRoot.appendingPathComponent("demo-health-rows.txt"), atomically: true, encoding: .utf8)
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv") || ProcessInfo.processInfo.arguments.contains("source-receipt-copy") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                         withAnimation { proxy.scrollTo("source-receipt-history", anchor: .top) }
