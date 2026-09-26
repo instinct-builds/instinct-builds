@@ -317,6 +317,7 @@ final class StudioLibrary: ObservableObject {
     // MARK: Client review gallery
 
     @Published var galleryRunning = false
+    private var galleryDemoFailure: String?
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
     func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
