@@ -512,6 +512,20 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-session-delete", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.17.0 proof: the session trash's hover label names its target -
+    // the only pre-click signal, since the delete fires without a
+    // confirm. The txt records the exact label for the remaining
+    // sessions, built by the same ArchiterCore function the view calls.
+    do {
+        let sessions = model.namedSessions(model.rollHistory)
+        let lines = ["Session delete label (3.17.0)",
+                     "the trash hover names the session and its roll count:"]
+            + sessions.map { "  \"\($0.title)\" -> \"\(sessionDeleteLabel($0))\"" }
+            + ["the delete fires without a confirm; one undo step restores it"]
+        try? lines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/session-delete-label.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     // 2.81.0 proof: undo delete - the session deleted for the 2.80.0
     // proof comes back, name and note included; the txt records the
     // after-delete and after-undo states. (The 2.79.0/2.80.0 renders

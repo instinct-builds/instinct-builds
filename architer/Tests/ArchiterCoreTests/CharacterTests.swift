@@ -814,6 +814,24 @@ struct CharacterTests {
         #expect(deleteFilteredMenuLabel(count: 6) == "Delete 6 filtered rolls…")
     }
 
+    @Test func sessionDeleteLabelNamesTheSession() throws {
+        // 3.17.0: the trash's hover label names its target and count;
+        // singular gets "roll".
+        let die = DieResult(sides: 6, value: 4, kept: true)
+        let r1 = RollResult(expression: "8d6", dice: [die], modifier: 0,
+                            total: 4, alternateTotal: nil)
+        let r2 = RollResult(expression: "d20", dice: [die], modifier: 0,
+                            total: 4, alternateTotal: nil)
+        let two = RollSession(number: 1, title: "Ember Warrens delve", key: nil,
+                              rolls: [r1, r2])
+        #expect(sessionDeleteLabel(two)
+                == "Delete session \"Ember Warrens delve\" (2 rolls) from history")
+        let one = RollSession(number: 2, title: "Session 2 - Yesterday", key: nil,
+                              rolls: [r1])
+        #expect(sessionDeleteLabel(one)
+                == "Delete session \"Session 2 - Yesterday\" (1 roll) from history")
+    }
+
     @Test func freeRollerTypeMemoryResolvesPerCharacter() throws {
         // Missing entry falls back to the table-wide selection.
         #expect(resolveFreeRollerType(map: [:], characterID: "A", tableDefault: .fire) == .fire)

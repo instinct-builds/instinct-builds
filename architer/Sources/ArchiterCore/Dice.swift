@@ -237,6 +237,14 @@ public func deleteFilteredMenuLabel(count: Int) -> String {
     count == 1 ? "Delete 1 filtered roll…" : "Delete \(count) filtered rolls…"
 }
 
+/// 3.17.0: the session trash's hover label names its target. The delete
+/// fires without a confirm (one undo step restores), so the label is the
+/// only pre-click signal of which session - and how many rolls - goes.
+public func sessionDeleteLabel(_ session: RollSession) -> String {
+    let rolls = session.rolls.count == 1 ? "1 roll" : "\(session.rolls.count) rolls"
+    return "Delete session \"\(session.title)\" (\(rolls)) from history"
+}
+
 /// Groups a newest-first history list under day headers, preserving the
 /// list's order: a new group starts whenever the title changes, so the
 /// scope and text filters keep working exactly as before.

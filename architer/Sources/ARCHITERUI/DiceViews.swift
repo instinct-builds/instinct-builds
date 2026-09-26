@@ -778,7 +778,7 @@ public struct HistoryListView: View {
                                     label: { Image(systemName: "trash") }
                                     .buttonStyle(.plain)
                                     .foregroundStyle(Theme.inkFaint)
-                                    .help("Delete this whole session from history")
+                                    .help(sessionDeleteLabel(session))
                             }
                         }
                         .padding(.vertical, 4)
