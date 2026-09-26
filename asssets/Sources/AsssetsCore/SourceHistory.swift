@@ -46,6 +46,18 @@ extension StudioCatalog {
     public func sourceHistoryPreviewIDs(for id: UUID) -> Set<UUID> {
         Set(sourceHistory(for: id).prefix(5).map(\.id))
     }
+
+    /// Read-only catalog search: filename fragment and optional inclusive acceptance dates.
+    public func matchingSourceReceipts(filename query: String, from start: Date? = nil, through end: Date? = nil) -> [SourceRefreshRecord] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return sourceRefreshHistory.reversed().filter { record in
+            let name = URL(fileURLWithPath: record.path).lastPathComponent
+            if !term.isEmpty && !name.localizedCaseInsensitiveContains(term) { return false }
+            if let start, record.refreshedAt < start { return false }
+            if let end, record.refreshedAt > end { return false }
+            return true
+        }
+    }
 }
 
 /// Read-only navigation across one asset's accepted receipts, newest first.

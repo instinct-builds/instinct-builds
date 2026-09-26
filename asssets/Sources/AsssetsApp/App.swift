@@ -2862,7 +2862,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2985,7 +2985,7 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
@@ -3039,7 +3039,7 @@ final class StudioLibrary: ObservableObject {
                                 self.selection = [source.id]; self.focusID = source.id
                                 self.inspectorAnchor = "source-changes"
                             }
-                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" {
+                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" || demo == "source-receipt-search" {
                                 self.reviewChangedSource(source.id)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                     self.reviewedSourceID = nil
@@ -3084,6 +3084,13 @@ final class StudioLibrary: ObservableObject {
                                                     self.receiptFocusID = receipt.id
                                                 }
                                             }
+                                        }
+                                    }
+                                    if demo == "source-receipt-search" {
+                                        self.healthOpen = false
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                            self.healthOpen = true
+                                            self.sourceHistoryExpanded = true
                                         }
                                     }
                                     try? "done changed=\(passed) rights=\(a?.rights != nil) boards=\(self.catalog.boardsUsing(source.id).count)".write(
@@ -7544,6 +7551,11 @@ struct MergeSummary: View {
 /// Library Health (1.28): what needs attention, each with the fix one click away.
 struct LibraryHealthSheet: View {
     @EnvironmentObject var model: StudioLibrary
+    @State private var receiptFilename = ""
+    @State private var receiptDateEnabled = false
+    @State private var receiptStart = Calendar.current.startOfDay(for: Date())
+    @State private var receiptEnd = Calendar.current.startOfDay(for: Date())
+
     var body: some View {
         let h = model.health ?? LibraryHealth()
         let byID = Dictionary(uniqueKeysWithValues: model.catalog.assets.map { ($0.id, $0) })
@@ -7640,12 +7652,49 @@ struct LibraryHealthSheet: View {
                         }
                     }
                     if !model.catalog.sourceRefreshHistory.isEmpty {
+                        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: receiptEnd))?.addingTimeInterval(-0.001)
+                        let matched = model.catalog.matchingSourceReceipts(filename: receiptFilename,
+                            from: receiptDateEnabled ? Calendar.current.startOfDay(for: receiptStart) : nil,
+                            through: receiptDateEnabled ? dayEnd : nil)
+                        let filtered = !receiptFilename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || receiptDateEnabled
                         HealthCard(symbol: "clock.arrow.circlepath", tint: Theme.accent,
                                    title: "Source refresh history · \(model.catalog.sourceRefreshHistory.count)",
                                    detail: "Recent receipts may include small visual snapshots. Original bytes are not saved or recoverable here.",
-                                   action: model.catalog.sourceRefreshHistory.count > 5
+                                   action: matched.count > 5
                                        ? (model.sourceHistoryExpanded ? "Show Recent" : "Show All", { model.sourceHistoryExpanded.toggle() }) : nil) {
-                            ForEach(Array(model.catalog.sourceRefreshHistory.reversed().prefix(model.sourceHistoryExpanded ? model.catalog.sourceRefreshHistory.count : 5))) { entry in
+                            HStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                                TextField("Source filename", text: $receiptFilename)
+                                    .textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                                Toggle("Dates", isOn: $receiptDateEnabled).toggleStyle(.checkbox).controlSize(.small)
+                                    .onChange(of: receiptDateEnabled) { _, enabled in
+                                        if enabled {
+                                            receiptStart = model.catalog.sourceRefreshHistory.map(\.refreshedAt).min() ?? Date()
+                                            receiptEnd = Date()
+                                        }
+                                    }
+                                if filtered {
+                                    Text("\(matched.count) found").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                    Button("Clear") { receiptFilename = ""; receiptDateEnabled = false; model.sourceHistoryExpanded = false }
+                                        .font(.caption).buttonStyle(.plain).foregroundStyle(Theme.accent)
+                                }
+                            }.padding(.leading, 42)
+                            if receiptDateEnabled {
+                                HStack(spacing: 8) {
+                                    Text("From").font(.caption).foregroundStyle(.secondary)
+                                    DatePicker("From", selection: $receiptStart, displayedComponents: .date).labelsHidden().datePickerStyle(.field).controlSize(.small)
+                                    Text("Through").font(.caption).foregroundStyle(.secondary)
+                                    DatePicker("Through", selection: $receiptEnd, displayedComponents: .date).labelsHidden().datePickerStyle(.field).controlSize(.small)
+                                    if Calendar.current.startOfDay(for: receiptStart) > Calendar.current.startOfDay(for: receiptEnd) {
+                                        Text("Start is after end").font(.caption2).foregroundStyle(Theme.warning)
+                                    }
+                                }.padding(.leading, 42)
+                            }
+                            if matched.isEmpty {
+                                Text(Calendar.current.startOfDay(for: receiptStart) > Calendar.current.startOfDay(for: receiptEnd) && receiptDateEnabled ? "Choose a start on or before the end." : "No receipts match this filename and date range.")
+                                    .font(.caption).foregroundStyle(.secondary).padding(.leading, 42)
+                            }
+                            ForEach(Array(matched.prefix(model.sourceHistoryExpanded ? matched.count : 5))) { entry in
                                 VStack(alignment: .leading, spacing: 3) {
                                     let title = byID[entry.assetID]?.title ?? "Removed asset"
                                     Text("\(title) · \(entry.refreshedAt.formatted(date: .abbreviated, time: .shortened))")
@@ -7657,11 +7706,18 @@ struct LibraryHealthSheet: View {
                                         .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
                                 }.padding(.leading, 42)
                             }
-                        }
+                        }.id("source-receipt-history")
                     }
                     HealthAllClear(h: h, scanned: h.duplicateSets != nil)
                 }
                 .padding(20)
+            }
+            .onAppear {
+                if ProcessInfo.processInfo.arguments.contains("source-receipt-search") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                        withAnimation { proxy.scrollTo("source-receipt-history", anchor: .top) }
+                    }
+                }
             }
             .onChange(of: model.sourceQueueAnchor) { _, anchor in
                 if anchor != nil {
@@ -7680,6 +7736,18 @@ struct LibraryHealthSheet: View {
         .frame(minWidth: 720, idealWidth: 780, minHeight: 520, idealHeight: 640)
         .background(Theme.panel)
         .sheet(isPresented: $model.folderRelinkOpen) { FolderRelinkSheet().environmentObject(model) }
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("source-receipt-search"),
+               !model.catalog.sourceRefreshHistory.isEmpty {
+                receiptFilename = "Northlight"
+                receiptDateEnabled = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+                    let results = model.catalog.matchingSourceReceipts(filename: receiptFilename)
+                    let ok = results.count == 1 && results[0].path.hasSuffix("Northlight Lobby.png")
+                    try? "done found=\(ok) count=\(results.count)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-search.txt"), atomically: true, encoding: .utf8)
+                }
+            }
+        }
     }
 }
 

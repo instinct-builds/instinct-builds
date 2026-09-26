@@ -76,6 +76,27 @@ struct SourceHistoryTests {
         #expect(!newest.receipts.contains(where: { $0.assetID == other }))
     }
 
+    @Test func filenameAndInclusiveDateSearchAreReadOnly() throws {
+        var c = StudioCatalog()
+        let lobby = c.importFile(path: "/drops/Northlight Lobby.png")!
+        let cork = c.importFile(path: "/drops/Atrium Cork Wall.png")!
+        let first = Date(timeIntervalSince1970: 86_400)
+        let second = Date(timeIntervalSince1970: 172_800)
+        _ = c.seedSourceFingerprint(SourceFingerprint(size: 1, modified: 1, sha256: "a"), for: lobby, path: "/drops/Northlight Lobby.png")
+        _ = c.seedSourceFingerprint(SourceFingerprint(size: 1, modified: 1, sha256: "b"), for: cork, path: "/drops/Atrium Cork Wall.png")
+        _ = c.acceptChangedSource(SourceFingerprint(size: 2, modified: 2, sha256: "c"), for: lobby,
+            path: "/drops/Northlight Lobby.png", palette: [], resolution: "x", at: first)
+        _ = c.acceptChangedSource(SourceFingerprint(size: 2, modified: 2, sha256: "d"), for: cork,
+            path: "/drops/Atrium Cork Wall.png", palette: [], resolution: "x", at: second)
+        #expect(c.matchingSourceReceipts(filename: " lobby ").map(\.assetID) == [lobby])
+        #expect(c.matchingSourceReceipts(filename: "NORTHLIGHT").map(\.assetID) == [lobby])
+        #expect(c.matchingSourceReceipts(filename: "").map(\.assetID) == [cork, lobby])
+        #expect(c.matchingSourceReceipts(filename: "", from: first, through: first).map(\.assetID) == [lobby])
+        #expect(c.matchingSourceReceipts(filename: "", from: second, through: second).map(\.assetID) == [cork])
+        #expect(c.matchingSourceReceipts(filename: "", from: second, through: first).isEmpty)
+        #expect(c.sourceRefreshHistory.count == 2)
+    }
+
     @Test func legacyCatalogHasEmptyHistory() throws {
         var c = StudioCatalog()
         _ = c.importFile(path: "/old.png")

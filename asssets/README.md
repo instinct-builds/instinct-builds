@@ -940,3 +940,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 ## 1.50.0: keyboard receipt navigation
 
 - In a focused receipt timeline, the left arrow moves to an older accepted receipt and the right arrow moves newer. These are the same disabled-at-the-ends controls as the visible buttons. A shortcut hint sits beside the non-restoration warning, so keyboard use never hides the snapshot-only framing.
+
+## 1.51.0: find source receipts
+
+- Library Health's read-only Source refresh history now searches source filenames without regard to case and can narrow by inclusive acceptance dates. A result count, Clear control and empty state make the filter explicit; Show All applies to matching receipts, not the unfiltered history. The stored catalog remains unchanged.
+- A native demo shows a Northlight filename match after an accepted source refresh, while core tests cover filename, date boundaries and ordering. Receipt images remain bounded and snapshot-only; neither the search nor the history view can restore original bytes.

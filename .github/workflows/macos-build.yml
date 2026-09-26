@@ -268,6 +268,8 @@ jobs:
           assert second['path'].endswith('Northlight Lobby.png')
           print('two linked source receipts survive catalog reload; no source bytes embedded')
           PY2
+          DELAY=18 shoot source-receipt-search 1920x1200 source-receipt-search demo-source-receipt-search.txt
+          grep -q '^done found=true count=1$' "$SUP/demo-source-receipt-search.txt"
           DELAY=18 shoot folder-relink 1920x1200 folder-relink
           DELAY=18 shoot folder-relink-collapsed 1920x1200 folder-relink-collapsed
           DELAY=18 shoot folder-relink-apply 1920x1200 folder-relink-apply demo-folder-relink.txt
