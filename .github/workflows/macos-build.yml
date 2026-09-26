@@ -241,6 +241,13 @@ jobs:
           DELAY=24 shoot batch-license-row 1920x1200 batch-license-row
           shoot duplicates-merge 1920x1200 duplicates-merge
           shoot library-health 1920x1200 library-health
+          DELAY=11 shoot health-status-quick 1920x1200 health-status-quick demo-health-status.txt
+          cat "$SUP/demo-health-status.txt"
+          grep -q '^done full=false accurate=true$' "$SUP/demo-health-status.txt"
+          DELAY=13 shoot health-status-full 1920x1200 health-status-full demo-health-status.txt
+          cat "$SUP/demo-health-status.txt"
+          grep -q '^done full=true accurate=true$' "$SUP/demo-health-status.txt"
+          cp "$SUP/demo-health-status.txt" "ASSSETS-$ASSSETS_VERSION-health-status.txt"
           DELAY=8 shoot health-rows-compact 1920x1200 health-rows-compact
           DELAY=9 shoot health-rows 1920x1200 health-rows demo-health-rows.txt
           cat "$SUP/demo-health-rows.txt"
@@ -352,6 +359,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-rows.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-status.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-licenses-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-board-render.pdf

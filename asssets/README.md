@@ -966,3 +966,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Missing assets, missing license copies, uncredited assets, unused license files and oversized assets start with three rows and now show the count plus Show All/Show Less. Show All reveals small sets, while large sets use Show More in 40-row pages, preserving each scan's order. Each card tracks its own expansion; no scan result or asset metadata changes when browsing.
 - Core tests cover the three-row start, page boundaries and totals. Native CI opens a four-missing-file Health demo, expands to its fourth row and checks the issue count stays four; it also captures the compact sheet for visual inspection.
+
+## 1.56.0: truthful Health scan status
+
+- Library Health shows the last completed Full or Quick check time in the current app session and labels it a snapshot, not live monitoring. While a scan runs, old results are explicitly dated; an initial scan says there are no results yet. Superseded scans do not publish a completion time, and relaunch does not reuse an old timestamp.
+- A quick sweep checks file/license availability, sizes and stat-gated source changes, but never claims to have newly hashed duplicate files. The duplicate count is not carried into its result; the last full duplicate check time remains visible in neutral text. A green "No identical files" chip appears only after the current full check. Native CI captures quick and full states; core tests cover provenance and completion scope. No persistent watcher or new polling is added.

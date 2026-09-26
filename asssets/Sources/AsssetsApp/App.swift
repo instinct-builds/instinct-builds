@@ -1734,6 +1734,7 @@ final class StudioLibrary: ObservableObject {
     }
 
     @Published var health: LibraryHealth?
+    @Published var healthScanStatus: HealthScanStatus?
     @Published var healthOpen = false
     @Published var healthScanning = false
     @Published var sourceRefreshBusy = false
@@ -1941,7 +1942,7 @@ final class StudioLibrary: ObservableObject {
         let paths = Dictionary(uniqueKeysWithValues: c.assets.compactMap { a in a.importedPath.map { (a.id, $0) } })
         let root = licensesRoot
         let order = c.assets.map(\.id)
-        if full { healthScanning = true }
+        healthScanning = true
         Task.detached(priority: .utility) {
             let fm = FileManager.default
             var sizes: [UUID: Int64] = [:]
@@ -1974,7 +1975,8 @@ final class StudioLibrary: ObservableObject {
             await MainActor.run {
                 guard generation == self.healthGeneration else { return }
                 var r = report
-                if !full, let old = self.health?.duplicateSets { r.duplicateSets = old }
+                // Never display an older duplicate count as this quick sweep's result.
+                if !full { r.duplicateSets = nil }
                 // Never overwrite a baseline that was added/accepted while this scan was running.
                 var c = self.catalog, changed = false
                 for (id, path, fingerprint, first) in baselines {
@@ -1995,6 +1997,7 @@ final class StudioLibrary: ObservableObject {
                     return snapshot.importedPath != live.importedPath || snapshot.sourceFingerprint != live.sourceFingerprint
                 }
                 self.health = r
+                self.healthScanStatus = HealthScanStatus(completedAt: Date(), full: full, previous: self.healthScanStatus)
                 self.sourceQueueSelected = SourceReviewQueue(pending: r.changedSources, selected: self.sourceQueueSelected).selected
                 self.healthScanning = false
             }
@@ -2899,7 +2902,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3148,6 +3151,15 @@ final class StudioLibrary: ObservableObject {
                 }
                 show(collection: StudioCatalog.inboxCollection)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.openLibraryHealth() }
+            case "health-status-quick", "health-status-full":
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    self.healthOpen = true
+                    self.refreshHealth(full: false)
+                    if demo == "health-status-full" {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { self.refreshHealth(full: true) }
+                    }
+                }
             case "health-rows", "health-rows-compact":
                 // Four missing source paths show the fourth row only after pagination, without mutating the catalog.
                 let selected = ["Northlight Lobby.png", "Atrium Cork Wall.png", "Harbor Night.png", "Plinth Campaign.png"]
@@ -3592,6 +3604,7 @@ extension StudioLibrary {
                 throw error
             }
             healthGeneration += 1 // invalidate any in-flight health scan captured before the repair
+            healthScanning = false
             catalog = updated
             // Do not record this file transaction as a catalog-only Undo.
             try? fm.removeItem(at: staged)
@@ -7777,16 +7790,29 @@ struct LibraryHealthSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    Circle().fill((h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning).opacity(0.16)).frame(width: 46, height: 46)
-                    Image(systemName: h.isHealthy ? "checkmark.seal.fill" : "stethoscope").font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning)
+                    Circle().fill((model.health == nil ? Theme.smart : h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning).opacity(0.16)).frame(width: 46, height: 46)
+                    Image(systemName: model.health == nil ? "clock" : h.isHealthy ? "checkmark.seal.fill" : "stethoscope").font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(model.health == nil ? Theme.smart : h.isHealthy ? Theme.watch : h.urgentCount > 0 ? Theme.danger : Theme.warning)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Library Health").font(.system(size: 20, weight: .bold))
                     Text(model.healthScanning && model.health == nil ? "Checking files…"
-                         : h.isHealthy ? "Everything checks out across \(model.catalog.assets.count) assets."
+                         : model.health == nil ? "No check results yet."
+                         : h.isHealthy ? "No issues found in the last check across \(model.catalog.assets.count) assets."
                          : "\(h.issueCount) \(h.issueCount == 1 ? "thing needs" : "things need") a look" + (h.urgentCount > 0 ? ", \(h.urgentCount) of them can't open right now." : "."))
                         .font(.callout).foregroundStyle(.secondary)
+                    if let status = model.healthScanStatus {
+                        Text("\(status.scopeLabel) completed \(status.completedAt.formatted(date: .abbreviated, time: .shortened)) · Snapshot, not live")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    } else {
+                        Text("No check completed in this session")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    if model.healthScanning {
+                        Text(model.healthScanStatus.map { "Checking again · results below are from \($0.completedAt.formatted(date: .abbreviated, time: .shortened))" }
+                            ?? "Checking · no results yet")
+                            .font(.caption2).foregroundStyle(Theme.warning)
+                    }
                 }
                 Spacer()
                 if model.healthScanning { ProgressView().controlSize(.small) }
@@ -7949,11 +7975,30 @@ struct LibraryHealthSheet: View {
                             }
                         }.id("source-receipt-history")
                     }
-                    HealthAllClear(h: h, scanned: h.duplicateSets != nil)
+                    if let status = model.healthScanStatus, !status.duplicateFreshForThisScan && !model.healthScanning {
+                        Text(status.duplicateCheckedAt.map { "Identical files last checked \($0.formatted(date: .abbreviated, time: .shortened)); not checked in this quick sweep." }
+                            ?? "Identical files not checked yet. Use Check Again for a full scan.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if !model.healthScanning {
+                        HealthAllClear(h: h, scanned: model.healthScanStatus?.duplicateFreshForThisScan == true)
+                    }
                 }
                 .padding(20)
             }
             .onAppear {
+                if ProcessInfo.processInfo.arguments.contains("health-status-quick") || ProcessInfo.processInfo.arguments.contains("health-status-full") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
+                        let status = model.healthScanStatus
+                        let expectedFull = ProcessInfo.processInfo.arguments.contains("health-status-full")
+                        let scopeOK = status?.full == expectedFull
+                        let duplicatesOK = status?.duplicateFreshForThisScan == expectedFull
+                        let resultOK = expectedFull ? model.health?.duplicateSets != nil : model.health?.duplicateSets == nil
+                        let ok = scopeOK && duplicatesOK && resultOK && !model.healthScanning
+                        try? "done full=\(expectedFull) accurate=\(ok)".write(
+                            to: model.supportRoot.appendingPathComponent("demo-health-status.txt"), atomically: true, encoding: .utf8)
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("health-rows") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                         let total = model.health?.missingFiles.count ?? 0
@@ -8408,8 +8453,8 @@ struct HealthAllClear: View {
     let scanned: Bool
     var body: some View {
         let passed: [String] = [
-            h.missingFiles.isEmpty ? "Every file opens" : nil,
-            h.changedSources.isEmpty ? "No changed sources" : nil,
+            h.missingFiles.isEmpty ? "Files opened at check" : nil,
+            h.changedSources.isEmpty ? (scanned ? "No changed sources at full check" : "No changes detected in quick check") : nil,
             h.missingLicenseFiles.isEmpty ? "License files in place" : nil,
             scanned && h.duplicateSets == 0 ? "No identical files" : nil,
             h.noCredit.isEmpty ? "Licensed assets credited" : nil,
