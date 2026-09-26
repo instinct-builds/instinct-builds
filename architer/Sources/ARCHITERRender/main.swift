@@ -1710,6 +1710,33 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? afLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/add-to-fight.txt"),
                atomically: true, encoding: .utf8)
+    // Bonus-edit + add-party proofs (3.40.0). Runs at END on the wave tracker.
+    var bpLines = ["Initiative bonus edit + add party (3.40.0)",
+                   "bonus edits in place like CR and total; add party skips names already on the tracker"]
+    if let target = model.initiative.entries.first(where: { $0.name == "CR 3 #1" }) {
+        model.setInitiativeBonus(target, bonus: 4)
+        model.setInitiativeBonus(target, bonus: Int("abc"))
+        let after = model.initiative.entries.first(where: { $0.id == target.id })
+        bpLines.append("bonus edit: CR 3 #1 bonus 0 -> \(after?.bonus ?? -99) (an invalid submit kept it)")
+    } else {
+        bpLines.append("bonus edit target MISSING")
+    }
+    let before = model.initiative.entries.count
+    model.addRosterToInitiative()
+    let mid = model.initiative.entries.count
+    model.addRosterToInitiative()
+    bpLines.append("add party: entries \(before) -> \(mid); re-tap: \(model.initiative.entries.count) (dedup held)")
+    bpLines.append("party linked: " + model.initiative.entries.filter { $0.characterName != nil }
+        .map { $0.name }.joined(separator: ", "))
+    renderPNG(
+        InitiativeSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "initiative-bonus-party", outDir: outDir, minHeight: 320, maxHeight: 900)
+    try? bpLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/initiative-bonus-party.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

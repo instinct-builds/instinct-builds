@@ -1321,6 +1321,12 @@ public struct InitiativeSectionView: View {
                         .buttonStyle(RollButtonStyle())
                         .help("Link the selected character - pulls the sheet's live initiative bonus")
                 }
+                // Add party (3.40.0): the whole roster in one click, live
+                // bonuses and links; names already on the tracker skip.
+                Button("Add party") { model.addRosterToInitiative() }
+                    .buttonStyle(RollButtonStyle())
+                    .disabled(model.characters.isEmpty)
+                    .help("Add every roster character with their live bonus - skips ones already on the tracker")
             }
         }
     }
@@ -1335,6 +1341,7 @@ public struct InitiativeRowView: View {
     @State private var crDraft: String
     @State private var renaming = false
     @State private var nameDraft: String
+    @State private var bonusDraft: String
 
     public init(entry: InitiativeEntry, active: Bool) {
         self.entry = entry
@@ -1342,6 +1349,7 @@ public struct InitiativeRowView: View {
         _totalDraft = State(initialValue: entry.total.map(String.init) ?? "")
         _crDraft = State(initialValue: entry.cr.map { EncounterMath.crText($0) } ?? "")
         _nameDraft = State(initialValue: entry.name)
+        _bonusDraft = State(initialValue: signed(entry.bonus))
     }
 
     public var body: some View {
@@ -1362,10 +1370,14 @@ public struct InitiativeRowView: View {
                     .font(Theme.Typeface.headline)
                     .foregroundStyle(Theme.ink)
             }
-            Text(signed(entry.bonus))
-                .font(Theme.Typeface.captionSmall)
-                .foregroundStyle(Theme.inkMuted)
-                .help("Initiative bonus - ties break on the higher bonus")
+            TextField("", text: $bonusDraft)
+                .textFieldStyle(InsetFieldStyle())
+                .frame(width: 44)
+                .onSubmit {
+                    let trimmed = bonusDraft.trimmingCharacters(in: .whitespaces)
+                    model.setInitiativeBonus(entry, bonus: Int(trimmed))
+                }
+                .help("Initiative bonus - drives Roll all and tie-breaks; blank or invalid keeps the current value")
             TextField("CR", text: $crDraft)
                 .textFieldStyle(InsetFieldStyle())
                 .frame(width: 44)

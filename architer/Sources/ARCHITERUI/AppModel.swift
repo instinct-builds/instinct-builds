@@ -737,6 +737,27 @@ public final class AppModel: ObservableObject {
         initiativeStore.save(initiative)
     }
 
+    /// Edit an entry's initiative bonus (3.40.0) - drives Roll all and
+    /// tie-breaks; nil (blank or invalid) keeps the current bonus.
+    public func setInitiativeBonus(_ entry: InitiativeEntry, bonus: Int?) {
+        guard let bonus else { return }
+        guard let i = initiative.entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        initiative.entries[i].bonus = bonus
+        initiativeStore.save(initiative)
+    }
+
+    /// Add the whole roster to the tracker (3.40.0): each character pulls
+    /// the sheet's live bonus and link; names already on the tracker are
+    /// skipped - a re-tap never duplicates.
+    public func addRosterToInitiative() {
+        let existing = Set(initiative.entries.map(\.name))
+        for c in characters where !existing.contains(c.name) {
+            initiative.entries.append(InitiativeEntry(name: c.name, bonus: c.initiative,
+                                                      characterName: c.name))
+        }
+        initiativeStore.save(initiative)
+    }
+
     public func advanceInitiative() {
         let roundBefore = initiative.round
         initiative.advance()
