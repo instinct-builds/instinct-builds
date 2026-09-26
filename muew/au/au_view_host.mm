@@ -2353,6 +2353,61 @@ int main() {
             if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
             fflush(stdout);
         });
+        After(7.089, ^{ // 0.70.0: selected-step GATE editor, AU state and select-only lane
+            muew::Preset before; State(before);
+            muew::Preset setup = before;
+            setup.voice.arpOn = true; setup.voice.arpPatOn = true; setup.voice.arpPatLen = 8;
+            setup.voice.arpPatKind[1] = muew::arp::StepRest;
+            setup.voice.arpPatKind[2] = muew::arp::StepTie;
+            NSString* setupText=[NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef setupRef=(__bridge CFStringRef)setupText;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&setupRef,sizeof(setupRef));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            const CGFloat top = view.bounds.size.height - 100;
+            NSString* priorPage=[view valueForKey:@"muewArpText"];
+            if(std::string(priorPage.UTF8String ?: "").find("page=2 ") != 0)
+                Click(view, w, NSMakePoint(638 + 17, top - 29 + 8.5)); // ARP tab
+            Click(view, w, NSMakePoint(730, top - 126)); // STEP EDIT
+            auto cell=[&](int i){return NSMakePoint(492 + (i+.5)*276.0/16, top - 224);};
+            Click(view,w,cell(7)); // select a cell without changing velocity or other badges
+            muew::Preset selected; State(selected);
+            NSString* debug=[view valueForKey:@"muewArpText"];
+            Check(selected.voice.arpPatGate[7] == 0 && selected.voice.arpPatLen == 8
+                  && selected.voice.arpPatVel[7] == setup.voice.arpPatVel[7]
+                  && selected.voice.arpPatKind[7] == setup.voice.arpPatKind[7]
+                  && std::string(debug.UTF8String ?: "").find("stepEdit=1 selected=8")!=std::string::npos,
+                  "STEP EDIT pattern selection does not mutate the selected cell");
+            for(int i : {1,2}) { // REST and TIE are shown but cannot take gate overrides
+                Click(view,w,cell(i));
+                Click(view,w,NSMakePoint(492 + 96 + .7 * (276 - 152), top - 148));
+            }
+            muew::Preset readOnly; State(readOnly);
+            Check(readOnly.voice.arpPatGate[1]==0 && readOnly.voice.arpPatGate[2]==0,
+                  "REST and TIE step inspectors are read-only");
+            Click(view,w,cell(0));
+            Click(view,w,NSMakePoint(492 + 96 + .737 * (276 - 152), top - 148)); // 75% gate
+            RenderBlock(); Snapshot(view, "MUEW_GATE70_PNG", "ARP selected-step gate snapshot written");
+            muew::Preset state; const bool read = State(state);
+            NSString* stateDebug=[view valueForKey:@"muewArpText"];
+            printf("gate70: read=%d gate=%d serialized=%d edit=%s\n", read?1:0,
+                   state.voice.arpPatGate[0], state.serialize().find("\narpg ")!=std::string::npos,
+                   stateDebug.UTF8String ?: "");
+            Check(read && state.voice.arpPatGate[0] >= 73 && state.voice.arpPatGate[0] <= 77
+                  && state.serialize().find("\narpg ") != std::string::npos,
+                  "selected ON step GATE override reached AU and saved");
+            Click(view, w, NSMakePoint(492 + 42, top - 148)); // INHERIT
+            muew::Preset inherited; State(inherited);
+            Check(inherited.voice.arpPatGate[0] == 0 && inherited.serialize().find("\narpg ") == std::string::npos,
+                  "INHERIT restores legacy state serialization");
+            NSString* text=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            Click(view,w,NSMakePoint(730, top - 126)); // exit STEP EDIT for the next test
+            Click(view,w,NSMakePoint(492 + 30, top - 29 + 8.5)); // FILTER 1
+            fflush(stdout);
+        });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;

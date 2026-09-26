@@ -437,7 +437,7 @@ private:
         if (!clockSync_ && locked_) { locked_ = false; arpGridLast_ = kNoGrid; }
         patOn_ = p.arpPatOn;
         patLen_ = std::clamp(p.arpPatLen, 1, arp::kPatSteps);
-        for (int i = 0; i < arp::kPatSteps; ++i) { patVel_[i] = std::clamp(p.arpPatVel[i], 1, 127); patKind_[i] = std::clamp(p.arpPatKind[i], 0, arp::kStepKinds - 1); patRatchet_[i] = std::clamp(p.arpPatRatchet[i], 1, 4); patOctave_[i] = std::clamp(p.arpPatOctave[i], -1, 1); }
+        for (int i = 0; i < arp::kPatSteps; ++i) { patVel_[i] = std::clamp(p.arpPatVel[i], 1, 127); patKind_[i] = std::clamp(p.arpPatKind[i], 0, arp::kStepKinds - 1); patRatchet_[i] = std::clamp(p.arpPatRatchet[i], 1, 4); patOctave_[i] = std::clamp(p.arpPatOctave[i], -1, 1); patGate_[i] = p.arpPatGate[i] == 0 ? 0 : std::clamp(p.arpPatGate[i], 5, 100); }
         chanceLive_ = p.arpChanceLive;
         for (int i = 0; i < arp::kPatSteps; ++i) patChance_[i] = std::clamp(p.arpPatChance[i], 25, 100);
         const bool latch = p.arpLatch;
@@ -526,7 +526,7 @@ private:
         }
         if (kind == arp::StepTie && arpSounding_ == 0) kind = arp::StepRest;
         if (kind == arp::StepRest) { arpRelease(); return 0.0; }
-        if (kind == arp::StepTie) return nextTie ? 1.0 : arpGate_;
+        if (kind == arp::StepTie) return nextTie ? 1.0 : activeStepGate_;
         arpRelease();
         if (arpMode_ == arp::Chord) {
             const int o = arpStep_ % arpOct_;
@@ -550,11 +550,12 @@ private:
         // previous sounding note; ratchet repeats these shifted pitches.
         if (octaveShift) for (int i = 0; i < arpSounding_; ++i)
             arpNotes_[i] = std::clamp(arpNotes_[i] + 12 * octaveShift, 0, 127);
+        activeStepGate_ = patOn_ && patGate_[arpPatIdx_] != 0 ? patGate_[arpPatIdx_] / 100.0 : arpGate_;
         ratchetVelocity_ = vel;
         ratchetNotesCount_ = arpSounding_;
         for (int i = 0; i < ratchetNotesCount_; ++i) ratchetNotes_[i] = arpNotes_[i];
         for (int i = 0; i < arpSounding_; ++i) noteOnImpl(arpNotes_[i], patOn_ ? ratchetKeyVel_[i] * vel : ratchetKeyVel_[i]);
-        return nextTie ? 1.0 : arpGate_;
+        return nextTie ? 1.0 : activeStepGate_;
     }
     void arpRetrigger() {
         arpRelease();
@@ -585,7 +586,7 @@ private:
             const int next = std::min(ratchetCount_ - 1,
                 std::max(0, (int)std::floor((beat_ - ratchetStartBeat_) / (ratchetStepBeats_ / ratchetCount_) + 1e-9)));
             if (next > ratchetIndex_) { ratchetIndex_ = next; arpRetrigger(); }
-            const double end = ratchetStartBeat_ + (ratchetIndex_ + arpGate_) * ratchetStepBeats_ / ratchetCount_;
+            const double end = ratchetStartBeat_ + (ratchetIndex_ + activeStepGate_) * ratchetStepBeats_ / ratchetCount_;
             if (arpSounding_ && beat_ + beatInc_ > end && end < ratchetStartBeat_ + ratchetStepBeats_) arpRelease();
         } else if (arpSounding_ && beat_ + beatInc_ > arpGateEnd_) arpRelease();
         ++arpPos_;
@@ -608,7 +609,7 @@ private:
             const int next = std::min(ratchetCount_ - 1,
                 (int)((long long)arpPos_ * ratchetCount_ / arpLen_));
             if (next > ratchetIndex_) { ratchetIndex_ = next; arpRetrigger(); }
-            const int end = (int)std::lround((ratchetIndex_ + arpGate_) * arpLen_ / ratchetCount_);
+            const int end = (int)std::lround((ratchetIndex_ + activeStepGate_) * arpLen_ / ratchetCount_);
             if (arpSounding_ && arpPos_ + 1 >= end && end < arpLen_) arpRelease();
         }
         ++arpPos_;
@@ -617,13 +618,13 @@ private:
     }
     bool arpOn_ = false, arpLatch_ = false;
     int arpMode_ = 0, arpOct_ = 1, arpRate_ = 3;
-    double arpGate_ = 0.5, arpSwing_ = 0.0, tempo_ = 120.0, arpClock_ = 0.0;
+    double arpGate_ = 0.5, activeStepGate_ = 0.5, arpSwing_ = 0.0, tempo_ = 120.0, arpClock_ = 0.0;
     // 0.26.0 clock sync + step pattern
     static constexpr long long kNoGrid = -(1LL << 62);
     bool clockSync_ = false, locked_ = false, patOn_ = false;
     double beat_ = 0.0, beatInc_ = 0.0, arpGateEnd_ = 0.0;
     long long arpGridLast_ = kNoGrid;
-    int patLen_ = 16, patVel_[arp::kPatSteps] = {}, patKind_[arp::kPatSteps] = {}, patRatchet_[arp::kPatSteps] = {}, patOctave_[arp::kPatSteps] = {}, arpPatIdx_ = -1;
+    int patLen_ = 16, patVel_[arp::kPatSteps] = {}, patKind_[arp::kPatSteps] = {}, patRatchet_[arp::kPatSteps] = {}, patOctave_[arp::kPatSteps] = {}, patGate_[arp::kPatSteps] = {}, arpPatIdx_ = -1;
     int patChance_[arp::kPatSteps] = {};
     bool chanceLive_ = false;
     uint64_t chanceStep_ = 0;

@@ -577,3 +577,13 @@ taps move together; 50% is the original 90-degree quadrature stereo phase;
 the right tap's phase, not its gain, delay range or rate. Old sounds use the
 50% default and retain their audio bytes. A non-default value saves as an
 optional `chorusspread <0..1>` preset line with no new AU parameter ID.
+
+## 0.70.0 ARP per-step gate
+
+STEP EDIT switches the 16-cell pattern lane to select-only. A selected ON cell
+can follow the global GATE or store a 5-100% override with the larger inspector
+slider. REST and TIE are read-only. The gate of the originating ON note also
+controls ratchet subhits and the terminal release after a TIE; a TIE never
+replaces that gate with its own value. `arpg` is optional and absent in old
+patches, which continue to inherit global GATE. The AU parameter set stays at
+40, and old factory sounds remain unchanged.

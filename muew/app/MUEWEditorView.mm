@@ -83,6 +83,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
         patDrag = -1; arpLivePatCell = -1; arpLiveLocked = false;
+        arpStepEdit = false; arpSelectedStep = 0; arpStepGateDrag = false;
         wtEdit = -1; wtFrame = 0; wtRange.clear(); wtMode = 0; wtLastIdx = 0; wtLastVal = 0; wtDrawing = false; wtPosDrag = -1; wtSpec = SpectralProcess{}; wtSpecDrag = -1; wtPartial = 1; wtPartialPage = 0; wtPartialLarge = false; wtBrushActive = false; wtBrushChanged = false; wtBrushLastH = -1; wtBrushLastDb = 0; wtBrushTaper = 0; wtTaperDrag = -1; wtProfileBlend = 1; wtProfilePreview = false; wtProfileCreate = false; wtProfileSpanSelecting = false; wtProfileSpanAnchor = -1;
         wtCmpA = -1; wtCmpHas[0] = wtCmpHas[1] = false; liveMorph[0] = liveMorph[1] = -1; voiceMorphN[0] = voiceMorphN[1] = 0; wtCmpSnap[0] = wtCmpSnap[1] = false; wtCmpRefAmt[0] = wtCmpRefAmt[1] = wtCmpHoldAmt[0] = wtCmpHoldAmt[1] = 0;
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
@@ -297,8 +298,11 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
           held ? pink : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
     ValuePill([self arpGateRect], @"GATE", v.arpGate >= 1 ? @"TIE" : [NSString stringWithFormat:@"%.0f%%", v.arpGate * 100], (v.arpGate - 0.05) / 0.95, pink, on);
     ValuePill([self arpSwingRect], @"SWING", ArpSwingValue(v.arpSwing), v.arpSwing / 0.5, pink, on && v.arpSwing > 0);
-    [self drawArpGrid];
+    if (arpStepEdit) [self drawArpStepInspector]; else [self drawArpGrid];
     [self drawArpPattern];
+    NSRect se = [self arpStepEditToggle];
+    FillRound(se, 4, arpStepEdit ? C(0x523047) : C(0x242c37));
+    TextA(@"STEP EDIT", NSInsetRect(se, 2, 3), 6.5, arpStepEdit ? C(0xf06fb0) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
 }
 // 0.26.0 step pattern: ON cells are velocity bars, REST cells are empty, TIE
 // cells bridge from the step before; a strip under each cell names its kind.
@@ -364,7 +368,46 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         NSString* tag = kind == arp::StepOn ? @"" : kind == arp::StepRest ? @"R" : @"T";
         FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 1.5, c.size.width - 4, 6), 1.5, used && kind != arp::StepOn ? C(0x232b36) : C(0x151b23));
         if (tag.length) TextA(tag, NSMakeRect(c.origin.x, c.origin.y + 1, c.size.width, 7), 5, used ? C(0x8793a3) : C(0x3a4452), NSFontWeightBold, NSTextAlignmentCenter);
+        if (arpStepEdit && i == arpSelectedStep) {
+            NSBezierPath* outline = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(c, 0.7, 0.7) xRadius:3 yRadius:3];
+            [pink setStroke]; outline.lineWidth = 1; [outline stroke];
+        }
     }
+}
+- (NSRect)arpStepEditToggle { NSRect g = [self arpGrid]; return NSMakeRect(NSMaxX(g) - 76, NSMaxY(g) - 16, 72, 14); }
+- (NSRect)arpStepInherit { NSRect g = [self arpGrid]; return NSMakeRect(g.origin.x + 9, g.origin.y + 27, 78, 17); }
+- (NSRect)arpStepGateBar { NSRect g = [self arpGrid]; return NSMakeRect(g.origin.x + 96, g.origin.y + 29, g.size.width - 152, 14); }
+- (void)setArpStepGateAt:(NSPoint)p {
+    const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
+    if (current.voice.arpPatKind[i] != arp::StepOn) return;
+    NSRect r = [self arpStepGateBar];
+    const double x = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
+    current.voice.arpPatGate[i] = 5 + (int)std::lround(x * 95);
+    [self voiceParamEdited:-1];
+}
+- (void)drawArpStepInspector {
+    const VoiceParams& v = current.voice;
+    NSRect g = [self arpGrid];
+    FillRound(g, 5, C(0x0f141b));
+    const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
+    const bool note = v.arpPatKind[i] == arp::StepOn;
+    const int effective = v.arpPatGate[i] ? v.arpPatGate[i] : (int)std::lround(v.arpGate * 100);
+    Text([NSString stringWithFormat:@"STEP %d / %d", i + 1, std::clamp(v.arpPatLen, 1, arp::kPatSteps)],
+         NSMakeRect(g.origin.x + 9, NSMaxY(g) - 15, 126, 11), 8, C(0xf06fb0), NSFontWeightBold);
+    NSRect inh = [self arpStepInherit];
+    FillRound(inh, 4, v.arpPatGate[i] == 0 && note ? C(0x413044) : C(0x1b202a));
+    TextA(@"INHERIT", NSInsetRect(inh, 3, 3), 7, v.arpPatGate[i] == 0 && note ? C(0xf06fb0) : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    NSRect b = [self arpStepGateBar];
+    Text(@"GATE", NSMakeRect(b.origin.x, b.origin.y + 18, 58, 9), 7, C(0x8793a3), NSFontWeightSemibold);
+    FillRound(NSMakeRect(b.origin.x, NSMidY(b) - 2, b.size.width, 4), 2, C(0x303947));
+    CGFloat width = b.size.width * (std::clamp(effective, 5, 100) - 5) / 95.0;
+    FillRound(NSMakeRect(b.origin.x, NSMidY(b) - 2, width, 4), 2, note ? C(0xf06fb0) : C(0x4a5462));
+    FillRound(NSMakeRect(b.origin.x + width - 4, NSMidY(b) - 4, 8, 8), 4, note ? C(0xe5e8ee) : C(0x697683));
+    TextA(note ? (effective == 100 ? @"TIE" : [NSString stringWithFormat:@"%d%%", effective]) : @"-",
+          NSMakeRect(NSMaxX(b) + 6, b.origin.y + 2, 41, 11), 8, note ? C(0xf06fb0) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentRight);
+    Text(note ? (v.arpPatGate[i] == 0 ? @"FOLLOWS GLOBAL GATE" : @"STEP OVERRIDE")
+              : v.arpPatKind[i] == arp::StepRest ? @"REST - NO GATE" : @"TIE - HOLDS PREVIOUS",
+         NSMakeRect(g.origin.x + 9, g.origin.y + 5, 158, 11), 7, C(0x8793a3), NSFontWeightSemibold);
 }
 - (void)drawArpGrid {
     const VoiceParams& v = current.voice;
@@ -444,9 +487,22 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     if (NSPointInRect(p, pl)) { v.arpPatLen = std::clamp(v.arpPatLen + (p.x < NSMidX(pl) ? -1 : 1), 1, arp::kPatSteps); [self voiceParamEdited:-1]; return YES; }
     if (NSPointInRect(p, [self arpSyncRect])) { v.clockSync = !v.clockSync; [self voiceParamEdited:-1]; return YES; }
     if (NSPointInRect(p, [self arpChanceLiveRect])) { v.arpChanceLive = !v.arpChanceLive; [self voiceParamEdited:-1]; return YES; }
+    if (NSPointInRect(p, [self arpStepEditToggle])) { arpStepEdit = !arpStepEdit; arpStepGateDrag = false; [self setNeedsDisplay:YES]; return YES; }
+    if (arpStepEdit && NSPointInRect(p, [self arpGrid])) {
+        const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
+        if (current.voice.arpPatKind[i] != arp::StepOn) return YES;
+        if (NSPointInRect(p, NSInsetRect([self arpStepInherit], -3, -3))) {
+            current.voice.arpPatGate[i] = 0; [self voiceParamEdited:-1]; return YES;
+        }
+        if (NSPointInRect(p, NSInsetRect([self arpStepGateBar], -6, -4))) {
+            arpStepGateDrag = true; [self setArpStepGateAt:p]; return YES;
+        }
+        return YES;
+    }
     if (NSPointInRect(p, [self arpPatLane])) {
         const int i = std::clamp((int)((p.x - [self arpPatLane].origin.x) / [self arpPatCell:0].size.width), 0, arp::kPatSteps - 1);
         const NSRect c = [self arpPatCell:i];
+        if (arpStepEdit) { arpSelectedStep = i; [self setNeedsDisplay:YES]; return YES; }
         v.arpPatOn = true;
         if (i >= v.arpPatLen) v.arpPatLen = i + 1; // clicking past the end grows the pattern
         if (v.arpPatKind[i] == arp::StepOn && p.y >= NSMaxY(c) - 10) // top badge cycles retriggers
@@ -701,6 +757,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     [s appendFormat:@" index=%d note=%d", arpLiveIndex, arpLiveNote];
     [s appendFormat:@" sync=%d locked=%d pat=%d len=%d cell=%d steps=", v.clockSync ? 1 : 0, arpLiveLocked ? 1 : 0, v.arpPatOn ? 1 : 0, v.arpPatLen, arpLivePatCell]; // 0.26.0
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%c%d/x%d/o%+d", i ? "," : "", "ORT"[std::clamp(v.arpPatKind[i], 0, 2)], v.arpPatVel[i], v.arpPatRatchet[i], v.arpPatOctave[i]];
+    [s appendFormat:@" stepEdit=%d selected=%d gates=", arpStepEdit ? 1 : 0, arpSelectedStep + 1];
+    for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%d", i ? "," : "", v.arpPatGate[i]];
     [s appendFormat:@" chanceLive=%d chances=", v.arpChanceLive ? 1 : 0];
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%d", i ? "," : "", v.arpPatChance[i]];
     return s;
@@ -4473,6 +4531,7 @@ static int SortForColumn(int c) {
         return;
     }
     if (msegEdit >= 0 && (msegPt >= 0 || msegSeg >= 0 || msegLoopEdge >= 0)) { [self msegDragTo:p shift:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return; }
+    if (arpStepGateDrag) { [self setArpStepGateAt:p]; return; }
     if (patDrag >= 0) { // 0.26.0 pattern lane: drag paints velocity across cells
         const NSRect l = [self arpPatLane];
         const int i = std::clamp((int)((p.x - l.origin.x) / [self arpPatCell:0].size.width), 0, arp::kPatSteps - 1);
@@ -4612,7 +4671,7 @@ static int SortForColumn(int c) {
     if (voiceDrag >= 0 && host) host->parameterGesture(voiceDrag ? params::UnisonBlend : params::GlideTime, false);
     voiceDrag = -1;
     if (arpDrag >= 0 && host) host->parameterGesture(arpDrag ? params::ArpSwing : params::ArpGate, false);
-    arpDrag = -1; patDrag = -1;
+    arpDrag = -1; patDrag = -1; arpStepGateDrag = false;
     dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1;
     msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1;
     if (dragKnob >= 0 && host) host->parameterGesture([self paramForDrag:dragKnob], false);
