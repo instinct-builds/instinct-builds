@@ -789,7 +789,7 @@ static const int kFxAccent[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 
 // 0.27.0: HYPER and FILTER FX pages put a live picture beside compact rows.
 // 0.28.0: COMP and REVERB join them (static curve per band, decay envelope).
 static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter || u == FxComp || u == FxReverb; }
-- (NSRect)fxDetailPanel { return NSMakeRect(36, 38, 424, 210); }
+- (NSRect)fxDetailPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)fxDetailClose { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)fxDetailToggle { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 25, 46, 16); }
 - (NSRect)fxDetailRow:(int)i {
@@ -881,7 +881,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 - (NSRect)bendChip { return NSMakeRect(384, 180, 68, 15); } // 0.24.0 pitch bend RANGE stepper
 - (NSRect)bendArrow:(int)d { NSRect c = [self bendChip]; return d < 0 ? NSMakeRect(c.origin.x, c.origin.y, 14, 15) : NSMakeRect(NSMaxX(c) - 14, c.origin.y, 14, 15); }
 // 0.17.0 MSEG editor: opens over the matrix like the FX detail panel.
-- (NSRect)msegPanel { return NSMakeRect(36, 38, 424, 210); }
+- (NSRect)msegPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)msegClose { NSRect r = [self msegPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)msegTab:(int)k { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 150 + k * 56, NSMaxY(r) - 25, 52, 16); }
 - (NSRect)msegCanvas { NSRect r = [self msegPanel]; return NSMakeRect(r.origin.x + 14, r.origin.y + 46, r.size.width - 28, r.size.height - 46 - 38); } // hint line sits below it (0.18.0)
