@@ -788,7 +788,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 static const int kFxAccent[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff, 0x75ead8, 0xff7fb0};
 // 0.27.0: HYPER and FILTER FX pages put a live picture beside compact rows.
 // 0.28.0: COMP and REVERB join them (static curve per band, decay envelope).
-static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter || u == FxComp || u == FxReverb; }
+static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter || u == FxComp || u == FxReverb || u == FxDelay; }
 - (NSRect)fxDetailPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)fxDetailClose { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)fxDetailToggle { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 25, 46, 16); }
@@ -2832,6 +2832,43 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     default: return 1.0 / den;              // low
     }
 }
+// 0.67.0: dry trigger and wet recovery, shown beside the compact DELAY rows.
+// This is a response guide, not a live meter: the envelope follows audio in the engine.
+- (void)drawDelayDuckVisual:(bool)on {
+    NSRect V = [self fxDetailVisual];
+    FillRound(V, 6, C(0x10151c));
+    NSRect G = NSInsetRect(V, 10, 26);
+    const double depth = std::clamp(current.fx.delay.duckDepth, 0.0, 1.0);
+    const double release = std::clamp(current.fx.delay.duckReleaseMs, 20.0, 1200.0);
+    const CGFloat dip = G.size.height * 0.70 * depth;
+    const CGFloat x0 = G.origin.x + 11, hit = x0 + 21;
+    const CGFloat end = NSMaxX(G) - 4;
+    [C(0x29313d) setStroke];
+    NSBezierPath* guide = [NSBezierPath bezierPath];
+    [guide moveToPoint:NSMakePoint(G.origin.x, NSMaxY(G))];
+    [guide lineToPoint:NSMakePoint(NSMaxX(G), NSMaxY(G))];
+    CGFloat dash[2] = {2, 3}; [guide setLineDash:dash count:2 phase:0]; [guide stroke];
+    FillRound(NSMakeRect(hit - 1, G.origin.y + 1, 2, G.size.height - 2), 1, C(0xf2ab55, on ? 0.65 : 0.25));
+    NSBezierPath* curve = [NSBezierPath bezierPath];
+    [curve moveToPoint:NSMakePoint(x0, NSMaxY(G))];
+    [curve lineToPoint:NSMakePoint(hit + 4, NSMaxY(G) - dip)];
+    for (int i = 1; i <= 48; ++i) {
+        const double u = i / 48.0;
+        // Smaller release values return sooner; the real detector uses ms/sample.
+        const double span = 0.17 + 0.77 * (release - 20.0) / 1180.0;
+        [curve lineToPoint:NSMakePoint(hit + 4 + (end - hit - 4) * u,
+                        NSMaxY(G) - dip * std::exp(-3.0 * u / span))];
+    }
+    NSBezierPath* shade = [curve copy];
+    [shade lineToPoint:NSMakePoint(end, G.origin.y)];
+    [shade lineToPoint:NSMakePoint(x0, G.origin.y)]; [shade closePath];
+    [C(0xf2ab55, on ? 0.12 : 0.04) setFill]; [shade fill];
+    [(on ? C(0xf2ab55) : C(0x5f6b7b)) setStroke]; curve.lineWidth = 1.8; [curve stroke];
+    Text(@"DRY HIT", NSMakeRect(V.origin.x + 8, NSMaxY(V) - 16, 58, 10), 7, C(0xa8b2c1), NSFontWeightBold);
+    TextA(depth == 0.0 ? @"OFF" : @"WET RETURNS", NSMakeRect(V.origin.x + 8, V.origin.y + 7, V.size.width - 16, 10), 7,
+          on && depth > 0 ? C(0xf2ab55) : C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentRight);
+}
+
 - (void)drawFilterFxVisual:(bool)on {
     const FilterFxParams& fp = current.fx.filter;
     NSColor* acc = C(kFxAccent[FxFilter]);
@@ -3138,8 +3175,9 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
             if (sync > 0) snprintf(t, sizeof t, "%s", ui::syncName(sync)); else snprintf(t, sizeof t, "%.0f ms", sec * 1000);
             return std::string(t);
         };
-        snprintf(foot, sizeof foot, "L %s  \u2022  R %s  \u2022  SYNCED SIDES FOLLOW THE HOST TEMPO",
-                 side(f.delay.syncL, f.delay.timeLSec).c_str(), side(f.delay.syncR, f.delay.timeRSec).c_str());
+        snprintf(foot, sizeof foot, "L %s  \u2022  R %s  \u2022  DUCK %s",
+                 side(f.delay.syncL, f.delay.timeLSec).c_str(), side(f.delay.syncR, f.delay.timeRSec).c_str(),
+                 f.delay.duckDepth > 0 ? "WET ONLY" : "OFF");
         break;
     }
     case FxComp: {
@@ -3175,7 +3213,8 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     }
     default: break;
     }
-    if (u == FxHyper) [self drawHyperVisual:on];
+    if (u == FxDelay) [self drawDelayDuckVisual:on];
+    else if (u == FxHyper) [self drawHyperVisual:on];
     else if (u == FxFilter) [self drawFilterFxVisual:on];
     else if (u == FxComp) [self drawCompVisual:on];
     else if (u == FxReverb) [self drawReverbVisual:on];

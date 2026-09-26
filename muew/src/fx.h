@@ -82,6 +82,8 @@ struct DelayParams {
     double mix = 0.25;
     // 0.14.0: tempo sync per side (index into syncBeats, 0 = free time).
     int syncL = 0, syncR = 0;
+    double duckDepth = 0.0;   // 0.67.0: wet-tap attenuation from dry input, zero preserves old processing
+    double duckReleaseMs = 250.0; // detector recovery after dry input fades
 };
 
 // Stereo delay with independent L/R times and feedback.
@@ -91,8 +93,14 @@ public:
         sr_ = sr;
         dl_.resize((int)(sr * 2.0) + 4);
         dr_.resize((int)(sr * 2.0) + 4);
+        duckEnvelope_ = 0.0;
+        set(p_);
     }
-    void set(const DelayParams& p) { p_ = p; retime(); }
+    void set(const DelayParams& p) {
+        p_ = p; retime();
+        attackCoeff_ = std::exp(-1.0 / (0.003 * sr_));
+        releaseCoeff_ = std::exp(-1.0 / (std::clamp(p_.duckReleaseMs, 20.0, 1200.0) * 0.001 * sr_));
+    }
     void setTempo(double bpm) { if (bpm > 20.0 && bpm < 999.0 && bpm != bpm_) { bpm_ = bpm; retime(); } }
     // Macro routes into the feedback (Dest::FxDelayFeedback). 0 = untouched.
     void setFeedbackOffset(double d) { fbOff_ = d; }
@@ -105,6 +113,17 @@ public:
         const float fb = (float)feedback();
         dl_.push(l + fbR * fb);   // cross-feedback for a wider tail
         dr_.push(r + fbL * fb);
+        if (p_.duckDepth > 0.0) {
+            // Stereo-linked dry detector, before the wet return. Fast attack catches
+            // the transient; release lets repeats bloom in the gaps. The delay
+            // feedback above is never attenuated, so its decay stays unchanged.
+            const float level = std::max(std::fabs(l), std::fabs(r));
+            const double coeff = level > duckEnvelope_ ? attackCoeff_ : releaseCoeff_;
+            duckEnvelope_ = level + coeff * (duckEnvelope_ - level);
+            const float gain = (float)(1.0 - std::clamp(p_.duckDepth, 0.0, 1.0)
+                                             * std::clamp(duckEnvelope_ * 2.0, 0.0, 1.0));
+            fbL *= gain; fbR *= gain;
+        }
         l = (float)((1.0 - p_.mix) * l + p_.mix * fbL);
         r = (float)((1.0 - p_.mix) * r + p_.mix * fbR);
     }
@@ -116,6 +135,7 @@ private:
         tL_ = t(p_.syncL, p_.timeLSec); tR_ = t(p_.syncR, p_.timeRSec);
     }
     double sr_ = 44100.0, bpm_ = 120.0, fbOff_ = 0.0, tL_ = 0.28, tR_ = 0.42;
+    double duckEnvelope_ = 0.0, attackCoeff_ = 0.0, releaseCoeff_ = 0.0;
     DelayParams p_;
     DelayLine dl_, dr_;
 };

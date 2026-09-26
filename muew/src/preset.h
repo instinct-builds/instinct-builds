@@ -68,6 +68,7 @@ struct PresetInfo {
 //                  0.64.0 adds optional `noisebvtime <depth>`; zero preserves the old burst duration.
 //                  0.65.0 adds optional `noisebkey <depth>`; zero preserves prior note-on time.
 //                  0.66.0 adds optional `noisebvcolor <depth>`; zero preserves prior noise color.
+//                  0.67.0 adds optional `delayduck <depth> <release ms>`; zero skips the wet-tap detector.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
@@ -206,6 +207,8 @@ struct Preset {
               << ff.lfoRateHz << " " << ff.lfoSync << " " << ff.lfoDepth << " " << ff.mix << "\n";
         if (fx.delay.syncL != d.delay.syncL || fx.delay.syncR != d.delay.syncR)
             o << "delaysync " << fx.delay.syncL << " " << fx.delay.syncR << "\n";
+        if (fx.delay.duckDepth != d.delay.duckDepth || fx.delay.duckReleaseMs != d.delay.duckReleaseMs)
+            o << "delayduck " << fx.delay.duckDepth << " " << fx.delay.duckReleaseMs << "\n";
         if (fx.lfo[0] != d.lfo[0] || fx.lfo[1] != d.lfo[1]) {
             o << "fxlfo";
             for (const auto& l : fx.lfo) o << " " << l.rateHz << " " << l.shape << " " << l.sync;
@@ -588,6 +591,13 @@ struct Preset {
                 int a = 0, b = 0;
                 if (ls >> a >> b) { fx.delay.syncL = std::clamp(a, 0, kSyncCount - 1); fx.delay.syncR = std::clamp(b, 0, kSyncCount - 1); }
             }
+            else if (key == "delayduck") {
+                double depth, release;
+                if (ls >> depth >> release && std::isfinite(depth) && std::isfinite(release)) {
+                    fx.delay.duckDepth = std::clamp(depth, 0.0, 1.0);
+                    fx.delay.duckReleaseMs = std::clamp(release, 20.0, 1200.0);
+                }
+            }
             else if (key == "fxorder") { // unit names; anything but a full permutation keeps the default
                 int v[kFxUnits]; int n = 0; std::string w;
                 while (ls >> w) {
@@ -748,6 +758,7 @@ struct Preset {
             && fa.flanger.enabled == fb.flanger.enabled && fa.flanger.rateHz == fb.flanger.rateHz
             && fa.flanger.depth == fb.flanger.depth && fa.flanger.feedback == fb.flanger.feedback && fa.flanger.mix == fb.flanger.mix
             && fa.delay.syncL == fb.delay.syncL && fa.delay.syncR == fb.delay.syncR
+            && fa.delay.duckDepth == fb.delay.duckDepth && fa.delay.duckReleaseMs == fb.delay.duckReleaseMs
             && fa.lfo[0] == fb.lfo[0] && fa.lfo[1] == fb.lfo[1]
             && fa.hyper.enabled == fb.hyper.enabled && fa.hyper.rateHz == fb.hyper.rateHz && fa.hyper.detune == fb.hyper.detune
             && fa.hyper.dimension == fb.hyper.dimension && fa.hyper.mix == fb.hyper.mix

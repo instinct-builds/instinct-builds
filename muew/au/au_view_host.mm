@@ -448,12 +448,13 @@ int main() {
             Click(view, w, card(1));                      // PHASER (moved to slot 2 above)
             Click(view, w, bar(1, 0.9));                  // DEPTH -> 90%
             Click(view, w, card(3));                      // DELAY
-            for (int i = 0; i < 4; ++i) Click(view, w, bar(1, 0.75)); // SYNC L: FREE -> 1/1 -> 1/2 -> 1/4 -> 1/8
-            NSPoint fb = bar(4, 0.3);                     // FEEDBACK: press at 28%, drag to 63%
+            auto narrow = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 52 - 17 * row + 8); };
+            for (int i = 0; i < 4; ++i) Click(view, w, narrow(1, 0.75)); // SYNC L: FREE -> 1/1 -> 1/2 -> 1/4 -> 1/8
+            NSPoint fb = narrow(4, 0.3);                     // FEEDBACK: press at 28%, drag to 63%
             [view mouseDown:Mouse(NSEventTypeLeftMouseDown, fb, w)];
-            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, bar(4, 0.5), w)];
-            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, bar(4, 0.6 / 0.95), w)];
-            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, bar(4, 0.6 / 0.95), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, narrow(4, 0.5), w)];
+            [view mouseDragged:Mouse(NSEventTypeLeftMouseDragged, narrow(4, 0.6 / 0.95), w)];
+            [view mouseUp:Mouse(NSEventTypeLeftMouseUp, narrow(4, 0.6 / 0.95), w)];
             muew::Preset st;
             bool ok = State(st);
             printf("fx detail: phaser depth %.2f, delay sync L %d (%s), feedback %.2f\n", st.fx.phaser.depth, st.fx.delay.syncL,
@@ -2259,6 +2260,31 @@ int main() {
             Check(State(back) && back.fx.reverb.mode == 0 && back.fx.comp.mode == 0 && back.fx.reverb.enabled == st0.fx.reverb.enabled
                   && back.fx.comp.enabled == st0.fx.comp.enabled && back.fx.reverb.size == rv.size,
                   "REVERB and COMP return to CLASSIC / ONE-KNOB from their pages and keep their settings");
+            fflush(stdout);
+        });
+        After(7.085, ^{ // 0.67.0: compact DELAY duck controls and live AU state
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); };
+            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 52 - 17 * row + 8); };
+            muew::Preset before; State(before);
+            Click(view, w, card(before.fx.order.slotOf(muew::FxDelay)));
+            Click(view, w, bar(6, .72)); // DUCK depth
+            Click(view, w, bar(7, 380.0 / 1180.0)); // RELEASE = 400 ms
+            RenderBlock();
+            Snapshot(view, "MUEW_DUCK67_PNG", "DELAY duck page snapshot written");
+            muew::Preset state;
+            const bool read = State(state);
+            Check(read && std::fabs(state.fx.delay.duckDepth - .72) < .01
+                  && std::fabs(state.fx.delay.duckReleaseMs - 400) < 2
+                  && state.serialize().find("delayduck 0.72 400") != std::string::npos,
+                  "DELAY compact DUCK and RELEASE reached AU state and saved");
+            // Restore the sound for later host snapshots and checks.
+            NSString* text = [NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf = (__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit, kMUEWProperty_PresetState, kAudioUnitScope_Global, 0, &cf, sizeof(cf));
+            SEL sync = NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
             fflush(stdout);
         });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill

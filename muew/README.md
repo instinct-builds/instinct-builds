@@ -547,3 +547,14 @@ combines with the existing matrix NOISE COLOR route before clamping to the
 0-100% range. At zero depth, old renders remain byte-identical. CLASSIC and
 BURST OFF ignore the new depth. The optional `noisebvcolor <depth>` preset
 line defaults to zero, without adding an AU parameter ID.
+
+## 0.67.0 Stereo delay wet ducking
+
+DELAY now has DUCK depth and RELEASE below its existing six controls in the
+compact eight-row FX detail layout. A linked detector follows the input at
+the delay's current rack position. A 3 ms attack pushes only the wet taps
+down during a dry hit; the adjustable 20-1200 ms release brings echoes back
+between hits. The feedback write occurs before the wet gain, preserving the
+delay's tail. At zero depth, the detector is skipped and the old audio path
+is byte-identical. The optional `delayduck <depth> <release ms>` preset line
+is absent for old sounds and needs no new AU parameter ID.

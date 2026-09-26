@@ -466,7 +466,8 @@ inline const std::vector<FxControl>& fxControls(int unit) {
          {"MIX", FmtPercent, 0, 1, false, -1}},
         {{"TIME L", FmtSec, 0.01, 1.99, true, -1}, {"SYNC L", FmtChoice, 0, kSyncCount - 1, false, -1},
          {"TIME R", FmtSec, 0.01, 1.99, true, -1}, {"SYNC R", FmtChoice, 0, kSyncCount - 1, false, -1},
-         {"FEEDBACK", FmtPercent, 0, 0.95, false, (int)D::FxDelayFeedback}, {"MIX", FmtPercent, 0, 1, false, -1}},
+         {"FEEDBACK", FmtPercent, 0, 0.95, false, (int)D::FxDelayFeedback}, {"MIX", FmtPercent, 0, 1, false, -1},
+         {"DUCK", FmtPercent, 0, 1, false, -1}, {"RELEASE", FmtMs, 20, 1200, false, -1}},
         // 0.28.0: MODE first; MULTIBAND rows are inactive in ONE-KNOB
         {{"MODE", FmtChoice, 0, 1, false, -1}, {"AMOUNT", FmtPercent, 0, 1, false, -1}, {"UPWARD", FmtPercent, 0, 1, false, -1},
          {"SPEED", FmtPercent, 0, 1, false, -1}, {"LOW", FmtDb, -12, 12, false, -1}, {"MID", FmtDb, -12, 12, false, -1},
@@ -503,7 +504,7 @@ inline double fxGet(const FXParams& f, int unit, int i) {
     case FxDist: return i == 0 ? f.dist.mode : i == 1 ? f.dist.drive : i == 3 ? f.dist.quality : f.dist.mix;
     case FxChorus: return i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix;
     case FxDelay: return i == 0 ? f.delay.timeLSec : i == 1 ? f.delay.syncL : i == 2 ? f.delay.timeRSec : i == 3 ? f.delay.syncR
-                       : i == 4 ? f.delay.feedback : f.delay.mix;
+                       : i == 4 ? f.delay.feedback : i == 5 ? f.delay.mix : i == 6 ? f.delay.duckDepth : f.delay.duckReleaseMs;
     case FxComp: return i == 0 ? f.comp.mode : i == 1 ? f.comp.amount : i == 2 ? f.comp.upward : i == 3 ? f.comp.speed
                       : i == 4 ? f.comp.lowDb : i == 5 ? f.comp.midDb : i == 6 ? f.comp.highDb : f.comp.mix;
     case FxReverb: return i == 0 ? f.reverb.mode : i == 1 ? f.reverb.decay : i == 2 ? f.reverb.damping : i == 3 ? f.reverb.preDelayMs
@@ -529,7 +530,8 @@ inline void fxSet(FXParams& f, int unit, int i, double v) {
     case FxChorus: (i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix) = v; break;
     case FxDelay:
         if (i == 1) f.delay.syncL = k; else if (i == 3) f.delay.syncR = k;
-        else (i == 0 ? f.delay.timeLSec : i == 2 ? f.delay.timeRSec : i == 4 ? f.delay.feedback : f.delay.mix) = v;
+        else (i == 0 ? f.delay.timeLSec : i == 2 ? f.delay.timeRSec : i == 4 ? f.delay.feedback : i == 5 ? f.delay.mix
+               : i == 6 ? f.delay.duckDepth : f.delay.duckReleaseMs) = v;
         break;
     case FxComp:
         if (i == 0) f.comp.mode = k;
