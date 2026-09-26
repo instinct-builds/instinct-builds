@@ -2173,7 +2173,7 @@ final class StudioLibrary: ObservableObject {
 
     /// Open without following links, then hash and stat the same descriptor twice.
     private func fileIdentity(_ url: URL) -> LicenseCleanupReview.File? {
-        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+        let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         var before = stat(), after = stat()
