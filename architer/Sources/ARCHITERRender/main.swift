@@ -1934,22 +1934,39 @@ func run(model: AppModel, character: Character, outDir: String) {
     model.endCombat()
     tlLines.append("idle end combat: journal \(jBefore) -> \(model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.count ?? -1), log \(lBefore) -> \(model.tableLog.count)")
     // Party rest: rough the roster up first so the rest has something to do.
+    // The rough-up goes through the tracked `selected` binding so each
+    // member's undo stack stays in sync with the live character - a direct
+    // array mutation would leave the stack stale and the undo step below
+    // would restore a pre-rough-up frame instead of the true pre-rest state
+    // (the 3.45.0 fixed build read 'back to 0' for exactly that reason).
     if let w = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
-        model.characters[w].currentHP = max(1, model.characters[w].currentHP - 7)
+        model.selectedID = model.characters[w].id
+        if var sel = model.selected?.wrappedValue {
+            sel.currentHP = max(1, sel.currentHP - 7)
+            model.selected?.wrappedValue = sel
+        }
     }
     if let b = model.characters.firstIndex(where: { $0.name == "Bram Oakfel" }) {
-        model.characters[b].exhaustion = 2
+        model.selectedID = model.characters[b].id
+        if var sel = model.selected?.wrappedValue {
+            sel.exhaustion = 2
+            model.selected?.wrappedValue = sel
+        }
     }
     tlLines.append("before rest: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) ex \($0.exhaustion)" }.joined(separator: ", "))
+    let wrenPreRestHP = model.characters.first(where: { $0.name == "Wren Halloway" })?.currentHP ?? -1
     let rested = model.restParty(long: true)
     tlLines.append("party long rest: rested \(rested.count) (\(rested.joined(separator: ", ")))")
     tlLines.append("after rest: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) ex \($0.exhaustion)" }.joined(separator: ", "))
-    // The undo ride: one member's undo restores just them.
+    // The undo ride: one member's undo restores just them, to exactly their
+    // pre-rest state; the others stay rested. Both checks print as booleans.
+    let bramRestedHP = model.characters.first(where: { $0.name == "Bram Oakfel" })?.currentHP ?? -1
     if let wren2 = model.characters.first(where: { $0.name == "Wren Halloway" }) {
         model.selectedID = wren2.id
         model.undo()
         let back = model.characters.first(where: { $0.name == "Wren Halloway" })
-        tlLines.append("undo: Wren HP back to \(back?.currentHP ?? -1) (one step on her own stack; Bram stays rested)")
+        let bramAfter = model.characters.first(where: { $0.name == "Bram Oakfel" })
+        tlLines.append("undo: Wren HP back to \(back?.currentHP ?? -1) (pre-rest \(wrenPreRestHP): \(back?.currentHP == wrenPreRestHP)); Bram untouched: \(bramAfter?.currentHP == bramRestedHP)")
     }
     try? tlLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/table-log.txt"),
