@@ -3060,13 +3060,13 @@ final class StudioLibrary: ObservableObject {
                                                     let currentPath = receipt.path
                                                     let replacement = self.starterRoot.appendingPathComponent("blueprint-4k.png")
                                                     // The first accepted miniature must finish before disk changes again.
-                                                    func replaceWhenCaptured(_ tries: Int) {
+                                                    @MainActor func replaceWhenCaptured(_ tries: Int) {
                                                         guard self.receiptPreview(receipt, side: "after") != nil || tries == 0 else {
                                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { replaceWhenCaptured(tries - 1) }
                                                             return
                                                         }
-                                                        try? fm.removeItem(atPath: currentPath)
-                                                        try? fm.copyItem(at: replacement, to: URL(fileURLWithPath: currentPath))
+                                                        try? FileManager.default.removeItem(atPath: currentPath)
+                                                        try? FileManager.default.copyItem(at: replacement, to: URL(fileURLWithPath: currentPath))
                                                         self.refreshHealth(full: true)
                                                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                                             self.reviewChangedSource(source.id)
