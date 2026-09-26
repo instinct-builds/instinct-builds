@@ -110,7 +110,14 @@ jobs:
           SUP="$HOME/Library/Application Support/ASSSETS"
           # Every shot after the first starts from the same fresh catalog, so one demo's files never leak into the next.
           shoot() {
-            if [ -f /tmp/asssets-pristine.json ]; then cp /tmp/asssets-pristine.json "$SUP/studio-catalog.json"; rm -rf "$HOME/Pictures/Client Drops" "$SUP/Licenses"; fi
+            if [ -f /tmp/asssets-pristine.json ]; then
+              # Each screenshot demo is isolated. In particular, the deliberate purge-failure demo
+              # leaves a pending journal that must not govern the next demo's restored catalog.
+              rm -f "$SUP/license-cleanup-journal.json"
+              find "$SUP" -maxdepth 1 -type d -name 'LicenseCleanup-*' -exec rm -rf {} +
+              cp /tmp/asssets-pristine.json "$SUP/studio-catalog.json"
+              rm -rf "$HOME/Pictures/Client Drops" "$SUP/Licenses"
+            fi
             open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep "${DELAY:-9}"; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
             # Optional 4th arg: a file the demo writes in the background; keep the app alive until it lands.
             if [ -n "${4:-}" ]; then for i in $(seq 1 90); do [ -s "$SUP/$4" ] && break; sleep 1; done; echo "waited ${i}s for $4"; fi
