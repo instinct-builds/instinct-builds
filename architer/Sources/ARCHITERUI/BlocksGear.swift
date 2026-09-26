@@ -210,10 +210,14 @@ public struct JournalBlock: View {
     @EnvironmentObject var model: AppModel
     /// 2.54.0: header filter text; display-only, never persisted.
     @State private var filter: String
+    /// 3.46.0: party scope turns the filter into one query across every
+    /// party member's journal - a read-only search lens with attribution.
+    @State private var partyScope: Bool
 
-    public init(character: Binding<Character>, initialFilter: String = "") {
+    public init(character: Binding<Character>, initialFilter: String = "", initialPartyScope: Bool = false) {
         _character = character
         _filter = State(initialValue: initialFilter)
+        _partyScope = State(initialValue: initialPartyScope)
     }
 
     /// 2.60.0: the query rendered with a brass wash behind each hit,
@@ -239,7 +243,49 @@ public struct JournalBlock: View {
 
     public var body: some View {
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        let partyHits = partyScope ? model.journalPartySearch(query) : []
         BlockCard(title: "Journal") {
+            if partyScope {
+                // 3.46.0: the party lens is read-only - hits show who
+                // wrote what, with the same highlighted snippets.
+                if query.isEmpty {
+                    Text("Type to search every party member's journal.")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                } else if partyHits.isEmpty {
+                    Text("No party journal entries match.")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                }
+                ForEach(partyHits) { hit in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(hit.characterName)
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.accent)
+                            if !hit.entry.date.isEmpty {
+                                Text(hit.entry.date)
+                                    .font(Theme.Typeface.caption)
+                                    .foregroundStyle(Theme.inkFaint)
+                            }
+                            Text(hit.entry.title)
+                                .font(Theme.Typeface.body)
+                        }
+                        if let firstHit = hit.entry.matchingLines(query).first {
+                            HStack(spacing: 4) {
+                                Image(systemName: "text.magnifyingglass")
+                                    .font(Theme.Typeface.caption)
+                                    .foregroundStyle(Theme.inkFaint)
+                                highlighted(firstHit, query: query)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            } else {
             ForEach($character.journal) { $entry in
                 if entry.matchesFilter(query) {
                 let long = entry.isLong
@@ -383,6 +429,7 @@ public struct JournalBlock: View {
                     .help("Copy the filter-visible entries (head + body) as one text block")
                 }
             }
+            }
             // 2.65.0: one line of context prepended to every Copy
             // today recap; clearing it drops the line again.
             TextField("Recap intro (prepended to Copy today)", text: Binding(
@@ -391,17 +438,30 @@ public struct JournalBlock: View {
                 .textFieldStyle(InsetFieldStyle())
         } trailing: {
             HStack(spacing: Theme.Gap.sm) {
+                // 3.46.0: widen the filter to the whole party's journals.
+                Button { partyScope.toggle() } label: {
+                    Image(systemName: partyScope ? "person.3.fill" : "person.3")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(partyScope ? Theme.accent : Theme.inkFaint)
+                .help(partyScope ? "Back to this character's journal" : "Search every party member's journal")
                 // 2.54.0: filter the journal by date/title/body;
                 // display-only, pairs with collapse-all for scanning.
-                if !query.isEmpty {
+                if partyScope, !query.isEmpty {
+                    Text("\(partyHits.count) party")
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkFaint)
+                }
+                if !partyScope, !query.isEmpty {
                     let shown = character.journal.filter { $0.matchesFilter(query) }.count
                     Text("\(shown)/\(character.journal.count)")
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkFaint)
                 }
                 // 2.64.0: live bulk totals over the visible entries -
-                // follows the filter when one is active.
-                if let summary = JournalEntry.bulkSummary(
+                // follows the filter when one is active. Character-bound,
+                // so it hides while the party lens (3.46.0) is on.
+                if !partyScope, let summary = JournalEntry.bulkSummary(
                     entries: character.journal.filter { $0.matchesFilter(query) }) {
                     Text(summary)
                         .font(Theme.Typeface.caption)

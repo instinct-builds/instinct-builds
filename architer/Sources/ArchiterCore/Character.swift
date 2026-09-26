@@ -489,6 +489,35 @@ public struct JournalEntry: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// A party-wide journal hit (3.46.0): one entry from one character's
+/// journal, carrying the attribution the per-character filter cannot.
+public struct PartyJournalHit: Equatable, Sendable, Identifiable {
+    public var id: UUID { entry.id }
+    public let characterName: String
+    public let entry: JournalEntry
+
+    public init(characterName: String, entry: JournalEntry) {
+        self.characterName = characterName
+        self.entry = entry
+    }
+}
+
+/// Cross-character journal search (3.46.0): one query across the whole
+/// party's journals - derived from the roster, never persisted. Roster
+/// order, then each journal's stored order; the match rule is the
+/// per-character filter's own, so a hit here is a hit there.
+public enum JournalPartySearch {
+    public static func hits(in characters: [Character], query: String) -> [PartyJournalHit] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return [] }
+        return characters.flatMap { character in
+            character.journal
+                .filter { $0.matchesFilter(q) }
+                .map { PartyJournalHit(characterName: character.name, entry: $0) }
+        }
+    }
+}
+
 public extension JournalEntry {
     /// Export head line (2.47.0): the free-form date and title joined,
     /// with the creation time appended for stamped entries

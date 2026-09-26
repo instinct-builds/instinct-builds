@@ -1985,6 +1985,80 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? groupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
                atomically: true, encoding: .utf8)
+    // Encounter notes + party journal search proofs (3.46.0). Runs at END.
+    var enLines = ["Encounter notes (3.46.0)",
+                   "a tactics note rides the saved encounter through save/load/overwrite"]
+    // Make sure the planner has a row, then save and give it a note.
+    if model.encounterLines.isEmpty {
+        model.addEncounterLine()
+        model.encounterLines[model.encounterLines.count - 1].count = 2
+        model.encounterLines[model.encounterLines.count - 1].label = "Gnolls"
+        model.saveEncounterLines()
+    }
+    model.saveEncounterAs(name: "Proof Den")
+    guard let den = model.savedEncounters.first(where: { $0.name == "Proof Den" }) else {
+        enLines.append("SETUP MISS: Proof Den did not save")
+        try? enLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/encounter-notes.txt"),
+                   atomically: true, encoding: .utf8)
+        return
+    }
+    let denID = den.id
+    model.setSavedEncounterNotes(id: denID, notes: "focus the casters")
+    let persistedNote = model.encounterLibraryStore.load()
+        .first(where: { $0.name == "Proof Den" })?.notes ?? "MISSING"
+    enLines.append("note set + persistence: library reload keeps '\(persistedNote)'")
+    // Same-name overwrite replaces the rows but must keep note and identity.
+    model.addEncounterLine()
+    model.encounterLines[model.encounterLines.count - 1].count = 1
+    model.encounterLines[model.encounterLines.count - 1].label = "Shaman"
+    model.saveEncounterLines()
+    model.saveEncounterAs(name: "Proof Den")
+    let afterOverwrite = model.savedEncounters.first(where: { $0.name == "Proof Den" })
+    enLines.append("overwrite: note kept \(afterOverwrite?.notes == "focus the casters"), id stable \(afterOverwrite?.id == denID), summary now '\(afterOverwrite?.summary ?? "MISSING")'")
+    // Edit path: the note updates in place.
+    model.setSavedEncounterNotes(id: denID, notes: "river is difficult terrain")
+    enLines.append("edit: note now '\(model.savedEncounters.first(where: { $0.id == denID })?.notes ?? "MISSING")'")
+    renderPNG(
+        EncounterLibraryView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "encounter-notes", outDir: outDir, minHeight: 120, maxHeight: 400)
+    try? enLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/encounter-notes.txt"),
+               atomically: true, encoding: .utf8)
+    // Party journal search: plant a distinctive entry in Bram's journal,
+    // then prove the party lens finds it with attribution while Wren's
+    // per-character filter cannot.
+    var psLines = ["Party journal search (3.46.0)",
+                   "one query across every party member's journal, with attribution"]
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) {
+        model.selectedID = bram.id
+        if var sel = model.selected?.wrappedValue {
+            sel.journal.append(JournalEntry(date: "Session 9", title: "Moonlight omen",
+                                            text: "The Vault sigil flared under moonlight.",
+                                            createdAt: Date()))
+            model.selected?.wrappedValue = sel
+        }
+    }
+    let hits = model.journalPartySearch("moonlight")
+    psLines.append("party search 'moonlight': \(hits.count) hit - \(hits.first.map { "\($0.characterName): '\($0.entry.title)'" } ?? "none")")
+    psLines.append("case-insensitive: 'MOONLIGHT' hits \(model.journalPartySearch("MOONLIGHT").count)")
+    let wrenOwn = model.characters.first(where: { $0.name == "Wren Halloway" })?
+        .journal.filter { $0.matchesFilter("moonlight") }.count ?? -1
+    psLines.append("per-character scope: Wren's own filter finds \(wrenOwn) (the entry is Bram's)")
+    psLines.append("empty query: \(model.journalPartySearch("   ").count) hits")
+    renderPNG(
+        JournalBlock(character: .constant(model.characters.first(where: { $0.name == "Wren Halloway" }) ?? character),
+                     initialFilter: "moonlight", initialPartyScope: true)
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "journal-party-search", outDir: outDir, minHeight: 120, maxHeight: 400)
+    try? psLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/journal-party-search.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

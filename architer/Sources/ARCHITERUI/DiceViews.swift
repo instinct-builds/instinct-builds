@@ -1861,6 +1861,9 @@ public struct EncounterLibraryView: View {
     @State private var saveArmed = false
     @State private var loadArmedID: UUID?
     @State private var deleteArmedID: UUID?
+    /// 3.46.0: which row's tactics note is being edited, plus its draft.
+    @State private var notesEditingID: UUID?
+    @State private var notesDraft = ""
 
     public init() {}
 
@@ -1896,6 +1899,7 @@ public struct EncounterLibraryView: View {
                 }
             }
             ForEach(model.savedEncounters) { saved in
+                VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Theme.Gap.sm) {
                     Text(saved.name)
                         .font(Theme.Typeface.body)
@@ -1903,6 +1907,21 @@ public struct EncounterLibraryView: View {
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkMuted)
                     Spacer()
+                    // 3.46.0: tactics note - the pencil opens the inline
+                    // editor below; a filled note shows a tinted pencil.
+                    Button {
+                        if notesEditingID == saved.id {
+                            notesEditingID = nil
+                        } else {
+                            notesDraft = saved.notes
+                            notesEditingID = saved.id
+                        }
+                    } label: {
+                        Image(systemName: saved.notes.isEmpty ? "pencil" : "pencil.and.scribble")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(saved.notes.isEmpty ? Theme.inkFaint : Theme.accent)
+                    .help("Edit tactics note")
                     if loadArmedID == saved.id {
                         Button("Replace \(model.encounterLines.count) rows") {
                             model.loadSavedEncounter(saved)
@@ -1933,6 +1952,20 @@ public struct EncounterLibraryView: View {
                             label: { Image(systemName: "minus.circle") }
                             .controlSize(.small)
                     }
+                }
+                if notesEditingID == saved.id {
+                    TextField("Tactics note (optional)", text: $notesDraft, onCommit: {
+                        model.setSavedEncounterNotes(id: saved.id, notes: notesDraft)
+                        notesEditingID = nil
+                    })
+                    .textFieldStyle(InsetFieldStyle())
+                } else if !saved.notes.isEmpty {
+                    Text(saved.notes)
+                        .font(Theme.Typeface.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
                 }
             }
             if model.savedEncounters.isEmpty {

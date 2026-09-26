@@ -1095,7 +1095,7 @@ public final class AppModel: ObservableObject {
     /// upserts by name - the name is the identity; the UI arms an
     /// overwrite confirm before calling with a duplicate.
     @Published public var savedEncounters: [SavedEncounter] = []
-    var encounterLibraryStore: EncounterLibraryStore { EncounterLibraryStore(directory: store.directory) }
+    public var encounterLibraryStore: EncounterLibraryStore { EncounterLibraryStore(directory: store.directory) }
 
     public func savedEncounterExists(named name: String) -> Bool {
         savedEncounters.contains { $0.name == name }
@@ -1104,11 +1104,15 @@ public final class AppModel: ObservableObject {
     public func saveEncounterAs(name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, !encounterLines.isEmpty else { return }
-        let saved = SavedEncounter(name: trimmed, lines: encounterLines)
+        // Same-name overwrite replaces the rows but keeps the encounter's
+        // identity and its tactics note (3.46.0) - the note is about the
+        // encounter, not this set of lines.
         if let idx = savedEncounters.firstIndex(where: { $0.name == trimmed }) {
-            savedEncounters[idx] = saved
+            savedEncounters[idx] = SavedEncounter(id: savedEncounters[idx].id,
+                                                  name: trimmed, lines: encounterLines,
+                                                  notes: savedEncounters[idx].notes)
         } else {
-            savedEncounters.append(saved)
+            savedEncounters.append(SavedEncounter(name: trimmed, lines: encounterLines))
         }
         encounterLibraryStore.save(savedEncounters)
     }
@@ -1118,6 +1122,20 @@ public final class AppModel: ObservableObject {
     public func loadSavedEncounter(_ saved: SavedEncounter) {
         encounterLines = saved.lines
         saveEncounterLines()
+    }
+
+    /// Set or clear a saved encounter's tactics note (3.46.0); the library
+    /// row shows it muted, and it survives same-name overwrites.
+    public func setSavedEncounterNotes(id: UUID, notes: String) {
+        guard let idx = savedEncounters.firstIndex(where: { $0.id == id }) else { return }
+        savedEncounters[idx].notes = notes
+        encounterLibraryStore.save(savedEncounters)
+    }
+
+    /// Cross-character journal search (3.46.0): one query across the whole
+    /// party's journals, with per-hit attribution. Derived, never stored.
+    public func journalPartySearch(_ query: String) -> [PartyJournalHit] {
+        JournalPartySearch.hits(in: characters, query: query)
     }
 
     public func deleteSavedEncounter(_ saved: SavedEncounter) {

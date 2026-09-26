@@ -213,11 +213,26 @@ public struct SavedEncounter: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
     public var name: String
     public var lines: [EncounterLine]
+    /// A tactics reminder (3.46.0) - "focus the casters". Carried through
+    /// save/load/overwrite; decoded leniently so pre-3.46.0 libraries
+    /// load unchanged.
+    public var notes: String
 
-    public init(id: UUID = UUID(), name: String, lines: [EncounterLine]) {
+    public init(id: UUID = UUID(), name: String, lines: [EncounterLine], notes: String = "") {
         self.id = id
         self.name = name
         self.lines = lines
+        self.notes = notes
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, lines, notes }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        lines = try c.decode([EncounterLine].self, forKey: .lines)
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
     }
 
     /// "2x Gnolls · 1x CR 1/2" - per row, labels first-class.
