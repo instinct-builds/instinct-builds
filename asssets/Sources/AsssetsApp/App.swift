@@ -120,6 +120,7 @@ final class StudioLibrary: ObservableObject {
     @Published var pendingRemoval: Set<UUID> = []
     @Published var renamingCollection: String?
     @Published var toast: String?
+    @Published var licenseRepairReview: LicenseRepairSelection?
     @Published var selectedSmart: UUID?
     /// Moodboard shown in place of the grid (1.16), its selected card, and the note being edited.
     @Published var selectedBoard: UUID?
@@ -3472,8 +3473,6 @@ extension StudioLibrary {
         let size: Int64
         let digest: String
     }
-    @Published var licenseRepairReview: LicenseRepairSelection?
-
     /// Selection is only a proposal: commit checks the source and exact live catalog links again.
     func chooseMissingLicenseReplacement(_ id: UUID) {
         guard let review = MissingLicenseRepair(catalog: catalog, id: id),

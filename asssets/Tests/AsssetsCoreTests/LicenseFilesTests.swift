@@ -39,9 +39,10 @@ struct LicenseFilesTests {
         let pid = try #require(c.saveRightsPreset(name: "Order", rights: UsageRights(license: .licensed), docs: [d.id]))
         let review = try #require(MissingLicenseRepair(catalog: c, id: d.id))
         #expect(review.assetIDs == [ids["Lobby"]!, ids["Atrium"]!] && review.presetIDs == [pid])
-        #expect(!c.recordRepairedLicense(review, name: "new.txt", bytes: 22))
-        #expect(!c.recordRepairedLicense(review, name: "new.pdf", bytes: 0))
-        #expect(c.recordRepairedLicense(review, name: "new.pdf", bytes: 22))
+        let wrongType = c.recordRepairedLicense(review, name: "new.txt", bytes: 22)
+        let empty = c.recordRepairedLicense(review, name: "new.pdf", bytes: 0)
+        let repaired = c.recordRepairedLicense(review, name: "new.pdf", bytes: 22)
+        #expect(!wrongType && !empty && repaired)
         let updated = try #require(c.licenseDoc(d.id))
         #expect(updated.id == d.id && updated.stored == d.stored && updated.added == d.added)
         #expect(updated.name == "new.pdf" && updated.bytes == 22)
@@ -50,7 +51,8 @@ struct LicenseFilesTests {
         let back = try #require(StudioCatalog.decode(c.encoded()))
         #expect(back.licenseDoc(d.id) == updated && back.rightsPreset(pid)?.docs == [d.id])
         #expect(!review.stillMatches(c))
-        #expect(!c.recordRepairedLicense(review, name: "stale.pdf", bytes: 9))
+        let stale = c.recordRepairedLicense(review, name: "stale.pdf", bytes: 9)
+        #expect(!stale)
     }
 
     @Test func missingLicenseRepairRejectsChangedLinks() throws {
@@ -59,7 +61,8 @@ struct LicenseFilesTests {
         c.addLicenseDoc(d, to: [ids["Lobby"]!])
         let review = try #require(MissingLicenseRepair(catalog: c, id: d.id))
         c.attachLicenseDoc(d.id, to: [ids["Atrium"]!])
-        #expect(!review.stillMatches(c) && !c.recordRepairedLicense(review, name: "order.pdf", bytes: 42))
+        let stale = c.recordRepairedLicense(review, name: "order.pdf", bytes: 42)
+        #expect(!review.stillMatches(c) && !stale)
         #expect(c.licenseDoc(d.id) == d)
     }
 
