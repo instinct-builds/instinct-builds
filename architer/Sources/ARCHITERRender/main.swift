@@ -1566,6 +1566,32 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? ctLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/concentration-timer.txt"),
                atomically: true, encoding: .utf8)
+    // Encounter estimate proof (3.34.0): party derived from the roster,
+    // two entered enemy rows, verdict with the derivation shown. Runs at
+    // END; the rows persist to the scratch store only.
+    model.encounterLines = [
+        EncounterLine(count: 2, cr: 3),
+        EncounterLine(count: 1, cr: 0.5),
+    ]
+    model.saveEncounterLines()
+    var encLines = ["Encounter estimate (3.34.0)",
+                    "party thresholds derive from roster levels; enemy rows are entered, never inferred"]
+    encLines.append("party: " + model.characters.map { "\($0.name) L\($0.level)" }.joined(separator: ", "))
+    if let est = model.encounterEstimate {
+        encLines.append("enemies: 2x CR 3 + 1x CR 1/2 -> base \(est.baseXP) XP x\(est.multiplier) = adjusted \(est.adjustedXP)")
+        let t = est.thresholds
+        encLines.append("thresholds: Easy \(t.easy) - Medium \(t.medium) - Hard \(t.hard) - Deadly \(t.deadly)")
+        encLines.append("verdict: \(est.band.displayName)")
+    }
+    renderPNG(
+        EncounterSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 520, name: "encounter", outDir: outDir, minHeight: 140, maxHeight: 800)
+    try? encLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/encounter.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

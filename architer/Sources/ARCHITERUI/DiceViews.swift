@@ -200,6 +200,7 @@ public struct DiceRollerView: View {
             }
             InitiativeSectionView()
             GroupCheckSectionView()
+            EncounterSectionView()
             HStack {
                 Text("History").font(.headline)
                 if let name = model.selected?.wrappedValue.name {
@@ -1042,6 +1043,87 @@ public struct MacroRowView: View {
 /// Group checks (3.26.0): the whole roster attempts the same skill; each
 /// participant's own conditions and exhaustion ride the plan, and the
 /// summary panel is ephemeral - history carries the auditable rolls.
+/// Encounter estimate (3.34.0): party thresholds derive from the roster's
+/// levels; enemy strength is entered row by row, never inferred. The
+/// verdict is a word plus the raw derivation - an estimate, not
+/// adjudication.
+public struct EncounterSectionView: View {
+    @EnvironmentObject var model: AppModel
+
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.sm) {
+            HStack {
+                Text("Encounter estimate").font(.headline)
+                    .help("Genre-standard difficulty estimate: party thresholds from roster levels, enemy XP from entered rows")
+                Spacer()
+                Button("Add enemies") { model.addEncounterLine() }
+                    .controlSize(.small)
+                    .help("Add a row: how many enemies at what challenge rating")
+            }
+            if model.characters.isEmpty {
+                Text("Add characters to the roster for party thresholds.")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+            } else {
+                Text("Party: " + model.characters.map { "\($0.name) L\($0.level)" }.joined(separator: ", "))
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+            }
+            ForEach($model.encounterLines) { $line in
+                HStack(spacing: Theme.Gap.sm) {
+                    Stepper("x\(line.count)", value: Binding(
+                        get: { line.count },
+                        set: { line.count = $0; model.saveEncounterLines() }
+                    ), in: 0...40)
+                    .frame(maxWidth: 140)
+                    TextField("CR", text: Binding(
+                        get: { EncounterMath.crText(line.cr) },
+                        set: {
+                            if let v = EncounterMath.parseCR($0) {
+                                line.cr = v
+                                model.saveEncounterLines()
+                            }
+                        }
+                    ))
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 56)
+                    .help("Challenge rating: 0-30, or 1/8, 1/4, 1/2")
+                    if let xp = EncounterMath.xp(forCR: line.cr) {
+                        Text("\(xp * line.count) XP")
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                    } else {
+                        Text("unknown CR")
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.danger)
+                    }
+                    Spacer()
+                    Button(role: .destructive) { model.removeEncounterLine(line) }
+                        label: { Image(systemName: "minus.circle") }
+                        .controlSize(.small)
+                }
+            }
+            if let est = model.encounterEstimate {
+                let t = est.thresholds
+                Text("\(est.band.displayName) - adjusted \(est.adjustedXP.formatted()) XP (base \(est.baseXP.formatted()) x \(est.multiplier.formatted()))")
+                    .font(Theme.Typeface.body.bold())
+                Text("Thresholds: Easy \(t.easy.formatted()) - Medium \(t.medium.formatted()) - Hard \(t.hard.formatted()) - Deadly \(t.deadly.formatted())")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+                Text("Estimate from levels and ratings only - terrain, synergy, magic items, and table feel aren't in it.")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+            } else if !model.encounterLines.isEmpty {
+                Text("No valid enemy rows yet - set a count and a known CR.")
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+            }
+        }
+    }
+}
+
 public struct GroupCheckSectionView: View {
     @EnvironmentObject var model: AppModel
     @State private var rollKind = 0 // 0 = skill check, 1 = saving throw (3.31.0)

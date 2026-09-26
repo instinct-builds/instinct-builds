@@ -183,6 +183,10 @@ public final class AppModel: ObservableObject {
     /// Saved dice shortcuts (app-wide, persisted next to the character files).
     @Published public var macros: [DiceMacro] = []
     public var macroStore: MacroStore { MacroStore(directory: store.directory) }
+    /// Encounter estimate rows (3.34.0): enemy strength is entered, never
+    /// inferred; the party side derives from the roster's levels.
+    @Published public var encounterLines: [EncounterLine] = []
+    public var encounterStore: EncounterStore { EncounterStore(directory: store.directory) }
     public var initiativeStore: InitiativeStore { InitiativeStore(directory: store.directory) }
     public var rulesetStore: RulesetStore { RulesetStore(directory: store.directory) }
     /// User-defined ruleset library (persisted).
@@ -216,6 +220,7 @@ public final class AppModel: ObservableObject {
         favorites = favoritesStore.load()
         rollHistory = rollHistoryStore.load()
         macros = macroStore.load()
+        encounterLines = encounterStore.load()
         initiative = initiativeStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
@@ -962,6 +967,24 @@ public final class AppModel: ObservableObject {
                                                 tags: p.tags))
         }
         lastGroupCheck = GroupCheckOutcome(skillName: skillName, targetDC: targetDC, lines: lines)
+    }
+
+    public func saveEncounterLines() { encounterStore.save(encounterLines) }
+
+    public func addEncounterLine() {
+        encounterLines.append(EncounterLine())
+        saveEncounterLines()
+    }
+
+    public func removeEncounterLine(_ line: EncounterLine) {
+        encounterLines.removeAll { $0.id == line.id }
+        saveEncounterLines()
+    }
+
+    /// The live estimate: party thresholds from roster levels, enemy XP
+    /// from the entered rows; nil when either side is empty.
+    public var encounterEstimate: EncounterEstimate? {
+        EncounterMath.estimate(levels: characters.map(\.level), lines: encounterLines)
     }
 
     /// Group save (3.31.0): the same saving throw for the whole roster.
