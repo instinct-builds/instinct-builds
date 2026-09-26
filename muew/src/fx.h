@@ -420,6 +420,13 @@ public:
         }
         b0_ = b0 / a0; b1_ = b1 / a0; b2_ = b2 / a0; a1_ = a1 / a0; a2_ = a2 / a0;
     }
+    // Frequency response of these exact coefficients, for the EQ detail plot.
+    double magnitude(double sr, double hz) const {
+        const double w = 2.0 * M_PI * hz / sr, c = std::cos(w), si = std::sin(w);
+        const double nr = b0_ + b1_ * c + b2_ * std::cos(2*w), ni = -b1_ * si - b2_ * std::sin(2*w);
+        const double dr = 1.0 + a1_ * c + a2_ * std::cos(2*w), di = -a1_ * si - a2_ * std::sin(2*w);
+        return std::sqrt((nr*nr + ni*ni) / std::max(1e-24, dr*dr + di*di));
+    }
     void reset() { z1_ = z2_ = 0.0; } // 0.29.0
     inline float process(float x) {
         const double y = b0_ * x + z1_;
@@ -434,6 +441,7 @@ private:
 struct EQParams {
     bool enabled = false;
     double lowDb = 0.0, midDb = 0.0, highDb = 0.0; // -12..12: 180 Hz shelf, 1.2 kHz bell, 6 kHz shelf
+    double midHz = 1200.0, midQ = 0.9; // 0.68.0: sweepable bell, legacy defaults
 };
 
 class EQ3 {
@@ -443,7 +451,8 @@ public:
         p_ = p;
         for (int ch = 0; ch < 2; ++ch) {
             band_[ch][0].design(Biquad::LowShelf, sr_, 180.0, 0.707, std::clamp(p.lowDb, -12.0, 12.0));
-            band_[ch][1].design(Biquad::Peak, sr_, 1200.0, 0.9, std::clamp(p.midDb, -12.0, 12.0));
+            band_[ch][1].design(Biquad::Peak, sr_, std::min(std::clamp(p.midHz, 200.0, 8000.0), sr_ * 0.45),
+                                std::clamp(p.midQ, 0.3, 8.0), std::clamp(p.midDb, -12.0, 12.0));
             band_[ch][2].design(Biquad::HighShelf, sr_, 6000.0, 0.707, std::clamp(p.highDb, -12.0, 12.0));
         }
     }
@@ -452,6 +461,11 @@ public:
         for (auto& b : band_[1]) r = b.process(r);
     }
     const EQParams& params() const { return p_; }
+    double responseDb(double hz) const {
+        double mag = 1.0;
+        for (const auto& b : band_[0]) mag *= b.magnitude(sr_, hz);
+        return 20.0 * std::log10(std::max(mag, 1e-12));
+    }
 private:
     double sr_ = 44100.0;
     EQParams p_;

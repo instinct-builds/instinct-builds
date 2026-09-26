@@ -69,6 +69,7 @@ struct PresetInfo {
 //                  0.65.0 adds optional `noisebkey <depth>`; zero preserves prior note-on time.
 //                  0.66.0 adds optional `noisebvcolor <depth>`; zero preserves prior noise color.
 //                  0.67.0 adds optional `delayduck <depth> <release ms>`; zero skips the wet-tap detector.
+//                  0.68.0 adds optional `eqmid <hz> <Q>`; 1200 Hz / 0.9 retain old response.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
@@ -178,6 +179,8 @@ struct Preset {
         if (fx.dist.quality != d.dist.quality) o << "distx " << fx.dist.quality << "\n"; // 0.29.0
         if (fx.eq.enabled != d.eq.enabled || fx.eq.lowDb != d.eq.lowDb || fx.eq.midDb != d.eq.midDb || fx.eq.highDb != d.eq.highDb)
             o << "eq " << (fx.eq.enabled ? 1 : 0) << " " << fx.eq.lowDb << " " << fx.eq.midDb << " " << fx.eq.highDb << "\n";
+        if (fx.eq.midHz != d.eq.midHz || fx.eq.midQ != d.eq.midQ)
+            o << "eqmid " << fx.eq.midHz << " " << fx.eq.midQ << "\n";
         if (fx.comp.enabled != d.comp.enabled || fx.comp.amount != d.comp.amount)
             o << "comp " << (fx.comp.enabled ? 1 : 0) << " " << fx.comp.amount << "\n";
         auto fxLine = [&](const char* k, bool en, double a, double b, double c, double m) {
@@ -527,6 +530,13 @@ struct Preset {
                 fx.eq.midDb = std::clamp(fx.eq.midDb, -12.0, 12.0);
                 fx.eq.highDb = std::clamp(fx.eq.highDb, -12.0, 12.0);
             }
+            else if (key == "eqmid") {
+                double hz, q;
+                if (ls >> hz >> q && std::isfinite(hz) && std::isfinite(q)) {
+                    fx.eq.midHz = std::clamp(hz, 200.0, 8000.0);
+                    fx.eq.midQ = std::clamp(q, 0.3, 8.0);
+                }
+            }
             else if (key == "comp") {
                 int e = 0; ls >> e >> fx.comp.amount;
                 fx.comp.enabled = e != 0;
@@ -752,6 +762,7 @@ struct Preset {
             && fa.dist.drive == fb.dist.drive && fa.dist.mix == fb.dist.mix
             && fa.eq.enabled == fb.eq.enabled && fa.eq.lowDb == fb.eq.lowDb
             && fa.eq.midDb == fb.eq.midDb && fa.eq.highDb == fb.eq.highDb
+            && fa.eq.midHz == fb.eq.midHz && fa.eq.midQ == fb.eq.midQ
             && fa.comp.enabled == fb.comp.enabled && fa.comp.amount == fb.comp.amount
             && fa.phaser.enabled == fb.phaser.enabled && fa.phaser.rateHz == fb.phaser.rateHz
             && fa.phaser.depth == fb.phaser.depth && fa.phaser.feedback == fb.phaser.feedback && fa.phaser.mix == fb.phaser.mix

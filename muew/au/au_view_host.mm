@@ -2295,6 +2295,38 @@ int main() {
             if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view, sync, YES);
             fflush(stdout);
         });
+        After(7.087, ^{ // 0.68.0: swept EQ middle bell, host editor and preset state
+            CGFloat t = view.bounds.size.height - 100;
+            CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
+            auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); };
+            auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 52 - 17 * row + 8); };
+            muew::Preset before; State(before);
+            const int slot=before.fx.order.slotOf(muew::FxEQ);
+            NSNumber* open = [view valueForKey:@"fxDetail"];
+            if (!open || open.intValue != muew::FxEQ) Click(view, w, card(slot));
+            const NSPoint toggle=NSMakePoint(36 + 424 - 84 + 23, 48 + 200 - 25 + 8);
+            if (!before.fx.eq.enabled) Click(view, w, toggle);
+            Click(view, w, bar(1, .75)); // MID GAIN +6 dB
+            Click(view, w, bar(3, std::log(3500.0 / 200.0) / std::log(40.0))); // 3.5 kHz
+            Click(view, w, bar(4, (2.4 - .3) / 7.7)); // Q 2.4
+            RenderBlock();
+            Snapshot(view, "MUEW_EQ68_PNG", "EQ swept-middle response snapshot written");
+            muew::Preset st; const bool read=State(st);
+            printf("eq68: open=%d read=%d enabled=%d gain=%.2f hz=%.2f Q=%.3f line=%d\n",
+                   [[view valueForKey:@"fxDetail"] intValue], read?1:0, st.fx.eq.enabled?1:0,
+                   st.fx.eq.midDb, st.fx.eq.midHz, st.fx.eq.midQ,
+                   st.serialize().find("eqmid ") != std::string::npos);
+            Check(read && st.fx.eq.enabled && std::fabs(st.fx.eq.midDb-6.0)<.2
+                  && std::fabs(st.fx.eq.midHz-3500.0)<20 && std::fabs(st.fx.eq.midQ-2.4)<.03
+                  && st.serialize().find("eqmid ")!=std::string::npos,
+                  "EQ MID GAIN, FREQ and Q reached AU state and saved");
+            NSString* text=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if ([view respondsToSelector:sync]) ((void (*)(id, SEL, BOOL))[view methodForSelector:sync])(view,sync,YES);
+            fflush(stdout);
+        });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;

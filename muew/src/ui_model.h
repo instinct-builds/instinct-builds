@@ -476,7 +476,8 @@ inline const std::vector<FxControl>& fxControls(int unit) {
         {{"MODE", FmtChoice, 0, 2, false, -1}, {"DECAY", FmtPercent, 0, 0.97, false, (int)D::FxReverbDecay},
          {"DAMPING", FmtPercent, 0, 1, false, -1}, {"PRE-DELAY", FmtMs, 0, 250, false, -1}, {"SIZE", FmtPercent, 0, 1, false, -1},
          {"WIDTH", FmtPercent, 0, 1, false, -1}, {"LOW CUT", FmtHz, 20, 1000, true, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
-        {{"LOW 180 Hz", FmtDb, -12, 12, false, -1}, {"MID 1.2 kHz", FmtDb, -12, 12, false, -1}, {"HIGH 6 kHz", FmtDb, -12, 12, false, -1}},
+        {{"LOW", FmtDb, -12, 12, false, -1}, {"MID GAIN", FmtDb, -12, 12, false, -1}, {"HIGH", FmtDb, -12, 12, false, -1},
+         {"MID FREQ", FmtHz, 200, 8000, true, -1}, {"MID Q", FmtRatio, 0.3, 8, false, -1}},
         {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxPhaserDepth},
          {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
         {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxFlangerDepth},
@@ -509,7 +510,7 @@ inline double fxGet(const FXParams& f, int unit, int i) {
                       : i == 4 ? f.comp.lowDb : i == 5 ? f.comp.midDb : i == 6 ? f.comp.highDb : f.comp.mix;
     case FxReverb: return i == 0 ? f.reverb.mode : i == 1 ? f.reverb.decay : i == 2 ? f.reverb.damping : i == 3 ? f.reverb.preDelayMs
                         : i == 4 ? f.reverb.size : i == 5 ? f.reverb.width : i == 6 ? f.reverb.lowCutHz : f.reverb.mix;
-    case FxEQ: return i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb;
+    case FxEQ: return i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : i == 2 ? f.eq.highDb : i == 3 ? f.eq.midHz : f.eq.midQ;
     case FxPhaser: return i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix;
     case FxFlanger: return i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix;
     case FxHyper: return i == 0 ? f.hyper.rateHz : i == 1 ? f.hyper.detune : i == 2 ? f.hyper.dimension : f.hyper.mix;
@@ -543,7 +544,7 @@ inline void fxSet(FXParams& f, int unit, int i, double v) {
         else (i == 1 ? f.reverb.decay : i == 2 ? f.reverb.damping : i == 3 ? f.reverb.preDelayMs : i == 4 ? f.reverb.size
               : i == 5 ? f.reverb.width : i == 6 ? f.reverb.lowCutHz : f.reverb.mix) = v;
         break;
-    case FxEQ: (i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : f.eq.highDb) = v; break;
+    case FxEQ: (i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : i == 2 ? f.eq.highDb : i == 3 ? f.eq.midHz : f.eq.midQ) = v; break;
     case FxPhaser: (i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix) = v; break;
     case FxFlanger: (i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix) = v; break;
     case FxHyper: (i == 0 ? f.hyper.rateHz : i == 1 ? f.hyper.detune : i == 2 ? f.hyper.dimension : f.hyper.mix) = v; break;
@@ -594,7 +595,7 @@ inline std::string fxValueText(const FXParams& f, int unit, int i) {
         if (fxRowInactive(f, unit, i)) return "TEMPO";
         snprintf(b, sizeof b, "%.0f ms", v * 1000); break;
     case FmtDb: snprintf(b, sizeof b, "%+.1f dB", v); break;
-    case FmtRatio: snprintf(b, sizeof b, "%.1f:1", v); break;
+    case FmtRatio: snprintf(b, sizeof b, unit == FxEQ ? "%.2f" : "%.1f:1", v); break;
     }
     return b;
 }

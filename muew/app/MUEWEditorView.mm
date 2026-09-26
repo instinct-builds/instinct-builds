@@ -788,7 +788,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 static const int kFxAccent[kFxUnits] = {0xf27a55, 0xf2ab55, 0xf2ab55, 0x6cb6ff, 0xf2ab55, 0x5adac8, 0xb68cff, 0xb68cff, 0x75ead8, 0xff7fb0};
 // 0.27.0: HYPER and FILTER FX pages put a live picture beside compact rows.
 // 0.28.0: COMP and REVERB join them (static curve per band, decay envelope).
-static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter || u == FxComp || u == FxReverb || u == FxDelay; }
+static bool FxVisualPage(int u) { return u == FxHyper || u == FxFilter || u == FxComp || u == FxReverb || u == FxDelay || u == FxEQ; }
 - (NSRect)fxDetailPanel { return NSMakeRect(36, 48, 424, 200); }
 - (NSRect)fxDetailClose { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 30, NSMaxY(r) - 26, 20, 18); }
 - (NSRect)fxDetailToggle { NSRect r = [self fxDetailPanel]; return NSMakeRect(NSMaxX(r) - 84, NSMaxY(r) - 25, 46, 16); }
@@ -3218,26 +3218,36 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     else if (u == FxFilter) [self drawFilterFxVisual:on];
     else if (u == FxComp) [self drawCompVisual:on];
     else if (u == FxReverb) [self drawReverbVisual:on];
-    if (u == FxEQ) { // response curve under the three bands
-        NSRect plot = NSMakeRect(P.origin.x + 104, P.origin.y + 14, 196, 66);
-        FillRound(plot, 6, C(0x10151c));
-        [C(0x232b36) setStroke];
-        for (int g = -1; g <= 1; ++g) {
-            NSBezierPath* l = [NSBezierPath bezierPath];
-            CGFloat y = NSMidY(plot) + g * (plot.size.height / 2 - 8) * 0.5;
-            [l moveToPoint:NSMakePoint(plot.origin.x + 6, y)]; [l lineToPoint:NSMakePoint(NSMaxX(plot) - 6, y)]; [l stroke];
+    if (u == FxEQ) { // exact three-biquad response in the compact page
+        NSRect V = [self fxDetailVisual];
+        FillRound(V, 6, C(0x10151c));
+        NSRect plot = NSInsetRect(V, 8, 20);
+        EQ3 eq; eq.init(44100); eq.set(f.eq);
+        auto xOf = [&](double hz) { return plot.origin.x + plot.size.width * std::log(hz / 20.0) / std::log(1000.0); };
+        auto yOf = [&](double db) { return NSMidY(plot) + plot.size.height * 0.47 * std::clamp(db / 18.0, -1.0, 1.0); };
+        [C(0x29313d) setStroke];
+        for (double db : {-12.0, 0.0, 12.0}) {
+            NSBezierPath* guide = [NSBezierPath bezierPath];
+            [guide moveToPoint:NSMakePoint(plot.origin.x, yOf(db))];
+            [guide lineToPoint:NSMakePoint(NSMaxX(plot), yOf(db))];
+            CGFloat dash[2] = {2, 3}; [guide setLineDash:dash count:2 phase:0]; [guide stroke];
         }
         NSBezierPath* curve = [NSBezierPath bezierPath];
         for (int k = 0; k <= 96; ++k) {
-            double hz = 20.0 * std::pow(1000.0, k / 96.0), lo = hz / 180.0, hi = hz / 6000.0, oct = std::log2(hz / 1200.0);
-            double db = f.eq.lowDb / (1 + lo * lo) + f.eq.highDb * hi * hi / (1 + hi * hi) + f.eq.midDb * std::exp(-oct * oct * 1.5);
-            NSPoint q = NSMakePoint(plot.origin.x + 6 + (plot.size.width - 12) * k / 96.0,
-                                    NSMidY(plot) + std::clamp(db, -12.0, 12.0) / 12.0 * (plot.size.height / 2 - 8));
+            double hz = 20.0 * std::pow(1000.0, k / 96.0);
+            NSPoint q = NSMakePoint(xOf(hz), yOf(eq.responseDb(hz)));
             k ? [curve lineToPoint:q] : [curve moveToPoint:q];
         }
+        NSBezierPath* fill = [curve copy];
+        [fill lineToPoint:NSMakePoint(NSMaxX(plot), plot.origin.y)];
+        [fill lineToPoint:NSMakePoint(plot.origin.x, plot.origin.y)]; [fill closePath];
+        [C(kFxAccent[FxEQ], on ? 0.12 : 0.04) setFill]; [fill fill];
         [(on ? acc : C(0x4a5462)) setStroke]; curve.lineWidth = 1.8; [curve stroke];
-        Text(@"20 Hz", NSMakeRect(plot.origin.x + 6, plot.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
-        TextA(@"20 kHz", NSMakeRect(NSMaxX(plot) - 46, plot.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
+        const CGFloat mx = xOf(std::clamp(f.eq.midHz, 200.0, 8000.0));
+        FillRound(NSMakeRect(mx - 0.75, plot.origin.y, 1.5, plot.size.height), 0.75, C(kFxAccent[FxEQ], on ? 0.5 : 0.2));
+        Text(@"EQ RESPONSE", NSMakeRect(V.origin.x + 7, NSMaxY(V) - 15, 85, 10), 7, C(0x8793a3), NSFontWeightBold);
+        Text(@"20 Hz", NSMakeRect(V.origin.x + 6, V.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold);
+        TextA(@"20 kHz", NSMakeRect(NSMaxX(V) - 46, V.origin.y + 3, 40, 10), 6.5, C(0x4a5462), NSFontWeightSemibold, NSTextAlignmentRight);
     } else if (*foot) {
         Text(S(foot), NSMakeRect(P.origin.x + 14, P.origin.y + 10, P.size.width - 28, 11), 7.5, C(0x4f5a69), NSFontWeightSemibold);
     }

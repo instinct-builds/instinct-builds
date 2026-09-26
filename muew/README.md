@@ -558,3 +558,13 @@ between hits. The feedback write occurs before the wet gain, preserving the
 delay's tail. At zero depth, the detector is skipped and the old audio path
 is byte-identical. The optional `delayduck <depth> <release ms>` preset line
 is absent for old sounds and needs no new AU parameter ID.
+
+## 0.68.0 Sweepable EQ middle bell
+
+The three-band EQ keeps its low 180 Hz shelf and high 6 kHz shelf fixed, but
+the middle bell can now move between 200 Hz and 8 kHz with Q from 0.3 to 8.
+The five-row compact detail shows LOW, MID GAIN, HIGH, MID FREQ and MID Q
+beside a response plot calculated from the same biquad coefficients used by
+the audio engine. Defaults remain 1.2 kHz / Q 0.9, so existing factory
+sounds and old preset audio keep their bytes. An optional `eqmid <hz> <Q>`
+line saves non-default values; no new AU parameter ID is published.
