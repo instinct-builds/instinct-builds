@@ -7796,12 +7796,13 @@ struct LibraryHealthSheet: View {
                     try? "done found=\(ok) count=\(results.count)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-search.txt"), atomically: true, encoding: .utf8)
                     if ProcessInfo.processInfo.arguments.contains("source-receipt-copy"), ok {
                         let entry = results[0]
-                        let catalogBefore = model.catalog.encoded()
+                        let catalogBefore = try? model.catalog.encoded()
                         model.copySourceReceiptHash(entry, before: true)
                         let beforeOK = NSPasteboard.general.string(forType: .string) == entry.before.sha256
                         model.copySourceReceiptHash(entry, before: false)
                         let afterOK = NSPasteboard.general.string(forType: .string) == entry.after.sha256
-                        let unchanged = catalogBefore == model.catalog.encoded()
+                        let catalogAfter = try? model.catalog.encoded()
+                        let unchanged = catalogBefore != nil && catalogBefore == catalogAfter
                         try? "done before=\(beforeOK) after=\(afterOK) unchanged=\(unchanged)".write(
                             to: model.supportRoot.appendingPathComponent("demo-source-receipt-copy.txt"), atomically: true, encoding: .utf8)
                     }
