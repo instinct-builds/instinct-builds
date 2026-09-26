@@ -237,6 +237,11 @@ jobs:
           shoot license-files 1920x1200 license-files
           shoot rights-presets 1920x1200 rights-presets
           shoot export-guard 1920x1200 export-guard
+          DELAY=10 shoot rights-recheck-warning 1920x1200 rights-recheck-warning
+          DELAY=10 shoot rights-recheck-stale 1920x1200 rights-recheck-stale demo-rights-recheck.txt
+          grep -q '^done blocked=true fresh=true output=false$' "$SUP/demo-rights-recheck.txt"
+          test ! -e "$SUP/demo-rights-recheck-output.txt"
+          cp "$SUP/demo-rights-recheck.txt" "ASSSETS-$ASSSETS_VERSION-rights-recheck.txt"
           # Wait for the watch-folder import and thumbnails to settle before the capture (1.28 fix1 caught it mid-load).
           DELAY=24 shoot batch-license-row 1920x1200 batch-license-row
           shoot duplicates-merge 1920x1200 duplicates-merge
@@ -372,6 +377,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-detach.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-recheck.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-rows.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-status.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-incomplete.txt

@@ -225,22 +225,28 @@ final class StudioLibrary: ObservableObject {
     }
     @Published var presetExport: PresetExportState?
     @Published var presetExportRunning = false
+    private var presetRightsTicket: RightsExportTicket?
 
     var pickIDs: [UUID] { catalog.assets.filter { $0.tags.contains(StudioCatalog.pickTag) }.map(\.id) }
 
-    func openPresetExport(_ ids: [UUID]? = nil, title: String? = nil, checked: Bool = false) {
+    func openPresetExport(_ ids: [UUID]? = nil, title: String? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         let list = ids ?? (selection.isEmpty ? [] : filtered.map(\.id).filter(selection.contains))
         let usable = list.filter { id in catalog.assets.first { $0.id == id }?.kind != .audio }
         guard !usable.isEmpty else { flash("Select images, textures, vectors or mockups to export"); return }
         if !checked {
-            guardRights(usable, action: "Export", skip: { self.openPresetExport($0, title: title, checked: true) }) { self.openPresetExport(usable, title: title, checked: true) }
+            guardRights(usable, action: "Export", skip: { self.openPresetExport($0, title: title, checked: true, ticket: $1) }) { self.openPresetExport(usable, title: title, checked: true, ticket: $0) }
             return
         }
+        guard let ticket, validRights(ticket), ticket.ids == usable else { return }
+        presetRightsTicket = ticket
         presetExport = PresetExportState(ids: usable, title: title ?? (usable.count == 1 ? "1 asset" : "\(usable.count) assets"))
     }
 
     /// Asks for a folder, then renders every preset off the main thread. Never overwrites existing files.
     func runPresetExport(_ st: PresetExportState, to fixedDir: URL? = nil) {
+        if fixedDir == nil {
+            guard let ticket = presetRightsTicket, ticket.ids == st.ids, validRights(ticket) else { presetExport = nil; return }
+        }
         var dir = fixedDir
         if dir == nil {
             let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
@@ -249,6 +255,11 @@ final class StudioLibrary: ObservableObject {
             dir = u
         }
         guard let dir else { return }
+        if fixedDir == nil {
+            guard let ticket = presetRightsTicket, validRights(ticket), ticket.ids == st.ids else { presetExport = nil; return }
+        }
+        let ticketForExport = presetRightsTicket
+        presetRightsTicket = nil
         presetExport = nil
         UserDefaults.standard.set(st.embedMetadata, forKey: "exportEmbedMetadata")
         UserDefaults.standard.set(st.folders, forKey: "exportFolderPattern")
@@ -265,6 +276,10 @@ final class StudioLibrary: ObservableObject {
             var takenIn: [String: Set<String>] = [:]
             var written: [URL] = [], failed = 0
             for (n, job) in jobs.enumerated() {
+                if fixedDir == nil {
+                    let stillValid = await MainActor.run { ticketForExport.map { self.validRights($0) } ?? false }
+                    guard stillValid else { await MainActor.run { self.presetExportRunning = false }; return }
+                }
                 let (a, fx, amt, psd, tiles, fix) = job
                 guard let img = MediaRenderer.exportBase(a, effect: fx, amount: amt, psdToggled: psd, tiles: tiles, fixSeams: fix) else { failed += 1; continue }
                 var focus: [Double: ExportRect] = [:]
@@ -300,7 +315,7 @@ final class StudioLibrary: ObservableObject {
     @Published var galleryRunning = false
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
-    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil, checked: Bool = false) {
+    func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         let galleryID = UUID().uuidString, boardID = board?.layout.id
         let list = ids ?? filtered.map(\.id).filter(selection.contains)
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
@@ -308,10 +323,16 @@ final class StudioLibrary: ObservableObject {
         guard !assets.isEmpty else { flash("Select images, textures, vectors, mockups or clips for a gallery"); return }
         if fixedDir == nil, !checked {
             let fixedList = assets.map(\.id)
-            guardRights(fixedList, action: "Share gallery", skip: board == nil ? { self.exportGallery($0, title: title, to: nil, board: nil, summaryPDF: summaryPDF, checked: true) } : nil) {
-                self.exportGallery(fixedList, title: title, to: nil, board: board, summaryPDF: summaryPDF, checked: true)
+            guardRights(fixedList, action: "Share gallery", skip: board == nil ? { self.exportGallery($0, title: title, to: nil, board: nil, summaryPDF: summaryPDF, checked: true, ticket: $1) } : nil) {
+                self.exportGallery(fixedList, title: title, to: nil, board: board, summaryPDF: summaryPDF, checked: true, ticket: $0)
             }
             return
+        }
+        if fixedDir == nil {
+            guard let ticket, ticket.ids == assets.map(\.id), validRights(ticket) else { return }
+            if let boardID, let board = catalog.board(boardID) {
+                guard validRights(ticket, boardItems: board.items.map(\.id)) else { return }
+            } else if boardID != nil { flash("Board changed. Nothing exported; review rights again."); return }
         }
         var creditLines = credits(assets.map(\.id))
         // License files travel with the gallery only when the user opted in (1.27).
@@ -334,6 +355,13 @@ final class StudioLibrary: ObservableObject {
             parent = u
         }
         guard let parent else { return }
+        if fixedDir == nil {
+            guard let ticket, validRights(ticket) else { return }
+            if let boardID {
+                guard let live = catalog.board(boardID),
+                      validRights(ticket, boardItems: live.items.map(\.id)) else { return }
+            }
+        }
         let taken = Set((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
         let folderName = DragOut.uniqueName(DragOut.safeName(name + " Review"), taken: taken)
         let folder = parent.appendingPathComponent(folderName, isDirectory: true)
@@ -347,6 +375,14 @@ final class StudioLibrary: ObservableObject {
             try? fm.createDirectory(at: folder.appendingPathComponent("thumbs"), withIntermediateDirectories: true)
             var items: [ReviewGallery.Item] = []
             for (i, job) in jobs.enumerated() {
+                if fixedDir == nil {
+                    let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
+                    guard stillValid else {
+                    try? fm.removeItem(at: folder)
+                    await MainActor.run { self.galleryRunning = false }
+                    return
+                }
+                }
                 let (a, fx, amt, psd, tiles, fix) = job
                 guard let img = MediaRenderer.exportBase(a, effect: fx, amount: amt, psdToggled: psd, tiles: tiles, fixSeams: fix) else { continue }
                 let stem = ReviewGallery.stem(i, count: jobs.count)
@@ -362,10 +398,26 @@ final class StudioLibrary: ObservableObject {
                 if let c = a.rights?.credit.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { item.credit = c }
                 items.append(item)
             }
+            if fixedDir == nil {
+                let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
+                guard stillValid else {
+                    try? fm.removeItem(at: folder)
+                    await MainActor.run { self.galleryRunning = false }
+                    return
+                }
+            }
             var boardView: ReviewGallery.Board?
             if let board, (try? board.png.write(to: folder.appendingPathComponent("board.png"))) != nil {
                 let spots = ReviewGallery.spots(for: board.layout, including: Set(items.compactMap { UUID(uuidString: $0.id) }))
                 boardView = .init(image: "board.png", width: board.width, height: board.height, spots: spots)
+            }
+            if fixedDir == nil {
+                let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
+                guard stillValid else {
+                    try? fm.removeItem(at: folder)
+                    await MainActor.run { self.galleryRunning = false }
+                    return
+                }
             }
             if !galleryLicenses.isEmpty {
                 try? fm.createDirectory(at: folder.appendingPathComponent("licenses"), withIntermediateDirectories: true)
@@ -373,6 +425,14 @@ final class StudioLibrary: ObservableObject {
             }
             var summaryName: String?
             if let summaryPDF, (try? fm.copyItem(at: summaryPDF, to: folder.appendingPathComponent("round-summary.pdf"))) != nil { summaryName = "round-summary.pdf" }
+            if fixedDir == nil {
+                let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
+                guard stillValid else {
+                    try? fm.removeItem(at: folder)
+                    await MainActor.run { self.galleryRunning = false }
+                    return
+                }
+            }
             var manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView, summary: summaryName)
             if !galleryCredits.isEmpty { manifest.credits = galleryCredits }
             let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
@@ -1551,29 +1611,36 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// Renders the PDF to a temp file and opens the preview sheet; saving happens from there.
-    func openContactSheet(ids: [UUID], title: String, checked: Bool = false) {
+    func openContactSheet(ids: [UUID], title: String, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
         let assets = ids.compactMap { byID[$0] }
         guard !assets.isEmpty else { flash("Nothing to put on a contact sheet"); return }
         if !checked {
-            guardRights(ids, action: "Contact sheet", skip: { self.openContactSheet(ids: $0, title: title, checked: true) }) { self.openContactSheet(ids: ids, title: title, checked: true) }
+            guardRights(ids, action: "Contact sheet", skip: { self.openContactSheet(ids: $0, title: title, checked: true, ticket: $1) }) { self.openContactSheet(ids: ids, title: title, checked: true, ticket: $0) }
+            return
+        }
+        guard let ticket, ticket.ids == assets.map(\.id), validRights(ticket) else {
+            if checked && ticket == nil { openContactSheet(ids: ids, title: title) }
             return
         }
         let creditLines = credits(assets.map(\.id))
         flash("Laying out \(assets.count) assets…")
         Task { @MainActor in
+            guard self.validRights(ticket) else { return }
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-sheet/\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let url = dir.appendingPathComponent(DragOut.safeName(title + " Contact Sheet") + ".pdf")
             let ok = await ContactSheetRenderer.render(title: title, assets: assets, to: url, credits: creditLines)
             guard ok else { flash("Could not render the contact sheet"); return }
-            sheetPreview = SheetPreview(title: title, ids: assets.map(\.id), pdf: url)
+            guard self.validRights(ticket) else { try? FileManager.default.removeItem(at: url); return }
+            sheetPreview = SheetPreview(title: title, ids: assets.map(\.id), pdf: url, rightsTicket: ticket)
         }
     }
 
     func saveContactSheet(_ p: SheetPreview) {
+        guard let ticket = p.rightsTicket, validRights(ticket) else { return }
         let s = NSSavePanel(); s.nameFieldStringValue = p.pdf.lastPathComponent; s.allowedContentTypes = [.pdf]; s.canCreateDirectories = true
-        guard s.runModal() == .OK, let dst = s.url else { return }
+        guard s.runModal() == .OK, let dst = s.url, validRights(ticket) else { return }
         try? FileManager.default.removeItem(at: dst)
         if (try? FileManager.default.copyItem(at: p.pdf, to: dst)) != nil { flash("Saved \(dst.lastPathComponent)"); NSWorkspace.shared.activateFileViewerSelecting([dst]) }
         else { flash("Could not save the PDF") }
@@ -1582,6 +1649,7 @@ final class StudioLibrary: ObservableObject {
     /// One zip: the contact sheet, the files, and the combined palette as .ase and .json swatches.
     @discardableResult
     func buildBrandKit(_ p: SheetPreview, mode: DragOut.ExportMode, to zip: URL) -> Bool {
+        if let ticket = p.rightsTicket, !validRights(ticket) { return false }
         let fm = FileManager.default
         let name = BrandKit.kitName(p.title)
         let stage = fm.temporaryDirectory.appendingPathComponent("ASSSETS-kit/\(UUID().uuidString)/\(name)", isDirectory: true)
@@ -1605,8 +1673,9 @@ final class StudioLibrary: ObservableObject {
     }
 
     func saveBrandKit(_ p: SheetPreview, mode: DragOut.ExportMode) {
+        guard let ticket = p.rightsTicket, validRights(ticket) else { return }
         let s = NSSavePanel(); s.nameFieldStringValue = BrandKit.kitName(p.title) + ".zip"; s.allowedContentTypes = [.zip]; s.canCreateDirectories = true
-        guard s.runModal() == .OK, let dst = s.url else { return }
+        guard s.runModal() == .OK, let dst = s.url, validRights(ticket) else { return }
         if buildBrandKit(p, mode: mode, to: dst) { flash("Saved \(dst.lastPathComponent)"); NSWorkspace.shared.activateFileViewerSelecting([dst]) }
         else { flash("Could not build the brand kit") }
     }
@@ -2159,14 +2228,15 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// System share menu (AirDrop, Mail, Messages, Notes...) with the same files a drag-out would give.
-    func share(_ ids: Set<UUID>, anchor: NSView? = nil, checked: Bool = false) {
+    func share(_ ids: Set<UUID>, anchor: NSView? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         if !checked {
             let order = filtered.map(\.id).filter(ids.contains) + ids.filter { id in !filtered.contains { $0.id == id } }
-            guardRights(order, action: "Share", skip: { self.share(Set($0), anchor: nil, checked: true) }) { self.share(ids, anchor: anchor, checked: true) }
+            guardRights(order, action: "Share", skip: { self.share(Set($0), anchor: nil, checked: true, ticket: $1) }) { self.share(ids, anchor: anchor, checked: true, ticket: $0) }
             return
         }
+        guard let ticket, Set(ticket.ids) == ids, validRights(ticket) else { return }
         let urls = dragFiles(for: ids)
-        guard !urls.isEmpty else { flash("Nothing to share"); return }
+        guard validRights(ticket), !urls.isEmpty else { flash("Nothing to share"); return }
         let picker = NSSharingServicePicker(items: urls)
         if let anchor {
             picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
@@ -2376,13 +2446,14 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// Export to a folder the user picks. Never overwrites: clashes get "Name 2.png" like Finder.
-    func exportToFolder(_ ids: Set<UUID>, mode: DragOut.ExportMode, checked: Bool = false) {
+    func exportToFolder(_ ids: Set<UUID>, mode: DragOut.ExportMode, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         let picked = catalog.assets.filter { ids.contains($0.id) }
         guard !picked.isEmpty else { return }
         if !checked {
-            guardRights(picked.map(\.id), action: "Export", skip: { self.exportToFolder(Set($0), mode: mode, checked: true) }) { self.exportToFolder(ids, mode: mode, checked: true) }
+            guardRights(picked.map(\.id), action: "Export", skip: { self.exportToFolder(Set($0), mode: mode, checked: true, ticket: $1) }) { self.exportToFolder(ids, mode: mode, checked: true, ticket: $0) }
             return
         }
+        guard let ticket, validRights(ticket), ticket.ids == picked.map(\.id) else { return }
         if picked.count == 1, let a = picked.first {
             // One asset: a save panel with the planned name, same rules as the folder export.
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-export/\(UUID().uuidString)", isDirectory: true)
@@ -2390,7 +2461,7 @@ final class StudioLibrary: ObservableObject {
             guard let made = write(a, mode: mode, into: tmp, taken: [], copy: true) else { flash("Nothing to export for \(a.title)"); return }
             let s = NSSavePanel(); s.nameFieldStringValue = made.lastPathComponent; s.canCreateDirectories = true
             if let t = UTType(filenameExtension: made.pathExtension) { s.allowedContentTypes = [t] }
-            guard s.runModal() == .OK, let dst = s.url else { return }
+            guard s.runModal() == .OK, let dst = s.url, validRights(ticket) else { return }
             try? FileManager.default.removeItem(at: dst)
             let ok = (try? FileManager.default.moveItem(at: made, to: dst)) != nil
             flash(ok ? "Exported \(dst.lastPathComponent)" : "Export failed")
@@ -2401,7 +2472,7 @@ final class StudioLibrary: ObservableObject {
         p.prompt = "Export Here"
         p.message = mode == .originals ? "Export \(picked.count) original files (generated studies export as PNG)"
                                        : "Export \(picked.count) assets as shown (original file when unchanged, PNG otherwise)"
-        guard p.runModal() == .OK, let dir = p.url else { return }
+        guard p.runModal() == .OK, let dir = p.url, validRights(ticket) else { return }
         var taken = Set((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
         var written: [URL] = []
         for a in picked {
@@ -2738,7 +2809,7 @@ final class StudioLibrary: ObservableObject {
                 let fm = FileManager.default
                 try? fm.removeItem(at: self.supportRoot.appendingPathComponent("demo-contact-sheet.pdf"))
                 try? fm.copyItem(at: p.pdf, to: self.supportRoot.appendingPathComponent("demo-contact-sheet.pdf"))
-                let small = SheetPreview(title: p.title, ids: Array(p.ids.prefix(4)), pdf: p.pdf)
+                let small = SheetPreview(title: p.title, ids: Array(p.ids.prefix(4)), pdf: p.pdf, rightsTicket: p.rightsTicket)
                 self.buildBrandKit(small, mode: .originals, to: self.supportRoot.appendingPathComponent("demo-brand-kit.zip"))
                 // Whole-library sheet, so CI can report the size of a 28-asset PDF with JPEG thumbnails.
                 // Written under a temp name and renamed at the end, so CI never measures a half-written file.
@@ -3021,7 +3092,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "health-incomplete", "health-recovered", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
+             "license-files", "rights-presets", "export-guard", "rights-recheck-warning", "rights-recheck-stale", "health-incomplete", "health-recovered", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3350,6 +3421,26 @@ final class StudioLibrary: ObservableObject {
                 show(collection: StudioCatalog.inboxCollection)
                 let three = ["Northlight Lobby.png", "Atrium Cork Wall.png", "Stage Mockup.png"].compactMap { find($0)?.id }
                 selection = Set(three); focusID = three.first
+            case "rights-recheck-warning", "rights-recheck-stale":
+                show(collection: StudioCatalog.inboxCollection)
+                let ids = ["Northlight Lobby.png", "Harbor Night.png"].compactMap { find($0)?.id }
+                guardRights(ids, action: "Share gallery") { _ in
+                    // This demo must never reach an output on a stale ticket.
+                    try? "unexpected-write".write(to: self.supportRoot.appendingPathComponent("demo-rights-recheck-output.txt"), atomically: true, encoding: .utf8)
+                }
+                if demo == "rights-recheck-stale" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        guard let first = ids.first, let warning = self.rightsWarning else { return }
+                        self.setRights(UsageRights(license: .editorial, source: "Review changed"), for: [first], quiet: true)
+                        self.finishRightsWarning(warning, leaveOut: false)
+                        let blocked = self.rightsWarning == nil &&
+                            !FileManager.default.fileExists(atPath: self.supportRoot.appendingPathComponent("demo-rights-recheck-output.txt").path)
+                        self.guardRights(ids, action: "Share gallery") { _ in }
+                        let fresh = self.rightsWarning?.issues.count == 2
+                        try? "done blocked=\(blocked) fresh=\(fresh) output=false".write(
+                            to: self.supportRoot.appendingPathComponent("demo-rights-recheck.txt"), atomically: true, encoding: .utf8)
+                    }
+                }
             case "export-guard":
                 show(collection: StudioCatalog.inboxCollection)
                 let ids = filtered.map(\.id)
@@ -3494,15 +3585,26 @@ extension StudioLibrary {
     }
 
     /// Share Round (1.22): the board's review gallery with the round summary PDF inside the same zip.
-    func shareRound(_ id: UUID, to fixedDir: URL? = nil, checked: Bool = false) {
+    func shareRound(_ id: UUID, to fixedDir: URL? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         if fixedDir == nil, !checked, let b = catalog.board(id) {
-            guardRights(b.items.compactMap(\.assetID), action: "Share Round") { self.shareRound(id, to: nil, checked: true) }
+            var seen = Set<UUID>()
+            let ids = b.readingOrder.compactMap { $0.kind == .asset ? $0.assetID : nil }.filter { seen.insert($0).inserted }
+            guardRights(ids, action: "Share Round", scope: {
+                var current = Set<UUID>()
+                return (self.catalog.board(id)?.readingOrder.compactMap { $0.kind == .asset ? $0.assetID : nil } ?? [])
+                    .filter { current.insert($0).inserted }
+            },
+                        boardItems: { self.catalog.board(id)?.items.map(\.id) ?? [] }) {
+                self.shareRound(id, to: nil, checked: true, ticket: $0)
+            }
             return
         }
+        if fixedDir == nil { guard let ticket, validRights(ticket, boardItems: catalog.board(id)?.items.map(\.id)) else { return } }
         let pdf = FileManager.default.temporaryDirectory.appendingPathComponent("round-summary-\(UUID().uuidString).pdf")
         Task { @MainActor in
+            if fixedDir == nil { guard let ticket, self.validRights(ticket, boardItems: self.catalog.board(id)?.items.map(\.id)) else { return } }
             guard await self.writeRoundSummary(id, to: pdf) != nil else { self.flash("Couldn't make the round summary"); return }
-            self.shareBoardGallery(id, to: fixedDir, summaryPDF: pdf, checked: true)
+            self.shareBoardGallery(id, to: fixedDir, summaryPDF: pdf, checked: true, ticket: ticket)
         }
     }
 
@@ -3519,12 +3621,45 @@ extension StudioLibrary {
         flash("Deleted \(name) · ⌘Z to undo")
     }
 
-    /// Runs `proceed` right away when every asset is cleared for use; otherwise asks first (1.25).
-    /// With `skip`, the warning also offers to go ahead with only the cleared assets (1.27).
-    func guardRights(_ ids: [UUID], action: String, skip: (([UUID]) -> Void)? = nil, proceed: @escaping () -> Void) {
-        let check = catalog.rightsCheck(ids)
-        if check.issues.isEmpty { proceed() }
-        else { rightsWarning = RightsWarning(action: action, issues: check.issues, cleared: check.cleared, proceed: proceed, skip: check.cleared.isEmpty ? nil : skip) }
+    /// A decision is scoped to exact assets, catalog rights and one local calendar day.
+    func guardRights(_ ids: [UUID], action: String, scope: (() -> [UUID])? = nil,
+                     boardItems: (() -> [UUID])? = nil, skip: (([UUID], RightsExportTicket) -> Void)? = nil,
+                     proceed: @escaping (RightsExportTicket) -> Void) {
+        let unique = ids.reduce(into: [UUID]()) { result, id in if !result.contains(id) { result.append(id) } }
+        let day = UsageRights.today()
+        let reviewed = scope?() ?? unique
+        let check = catalog.rightsCheck(unique, asOf: day)
+        guard let original = RightsExportTicket(catalog: catalog, ids: unique, day: day, decision: .anyway, reviewedIDs: reviewed, boardItems: boardItems?()) else {
+            flash("Rights could not be checked. Try again."); return
+        }
+        if check.issues.isEmpty {
+            guard let cleared = RightsExportTicket(catalog: catalog, ids: unique, day: day, decision: .cleared, reviewedIDs: reviewed, boardItems: boardItems?()) else { return }
+            proceed(cleared)
+        } else {
+            rightsWarning = RightsWarning(action: action, issues: check.issues, cleared: check.cleared,
+                original: original, scope: scope, boardItems: boardItems, proceed: proceed,
+                skip: check.cleared.isEmpty ? nil : skip)
+        }
+    }
+
+    func validRights(_ ticket: RightsExportTicket, scope: [UUID]? = nil, boardItems: [UUID]? = nil) -> Bool {
+        guard ticket.stillMatches(catalog, day: UsageRights.today(), scope: scope, boardItems: boardItems) else {
+            rightsWarning = nil
+            flash("Rights or asset selection changed. Nothing exported; review rights again.")
+            return false
+        }
+        return true
+    }
+
+    func finishRightsWarning(_ warning: RightsWarning, leaveOut: Bool) {
+        guard validRights(warning.original, scope: warning.scope?(), boardItems: warning.boardItems?()) else { return }
+        let ids = leaveOut ? warning.cleared : warning.original.ids
+        guard let ticket = RightsExportTicket(catalog: catalog, ids: ids, day: UsageRights.today(),
+                                              decision: leaveOut ? .leaveOut : .anyway,
+                                              reviewedIDs: warning.original.reviewedIDs, boardItems: warning.original.boardItems) else { return }
+        rightsWarning = nil
+        if leaveOut { if let skip = warning.skip { DispatchQueue.main.async { skip(ids, ticket) } } }
+        else { DispatchQueue.main.async { warning.proceed(ticket) } }
     }
 
     /// Saves usage rights and writes them to the sidecar of the user's own files.
@@ -4005,15 +4140,29 @@ extension StudioLibrary {
         return CGSize(width: cg.width, height: cg.height)
     }
 
-    func exportBoard(_ id: UUID, pdf: Bool, checked: Bool = false) {
+    func exportBoard(_ id: UUID, pdf: Bool, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         guard let board = catalog.board(id) else { return }
-        if !checked { guardRights(board.items.compactMap(\.assetID), action: pdf ? "Export PDF" : "Export PNG") { self.exportBoard(id, pdf: pdf, checked: true) }; return }
+        if !checked { guardRights(board.items.compactMap(\.assetID), action: pdf ? "Export PDF" : "Export PNG",
+                                  scope: { self.catalog.board(id)?.items.compactMap(\.assetID) ?? [] },
+                                  boardItems: { self.catalog.board(id)?.items.map(\.id) ?? [] }) {
+            self.exportBoard(id, pdf: pdf, checked: true, ticket: $0)
+        }; return }
+        guard let ticket, validRights(ticket, scope: board.items.compactMap(\.assetID), boardItems: board.items.map(\.id)) else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [pdf ? UTType.pdf : UTType.png]
         panel.nameFieldStringValue = board.name + (pdf ? ".pdf" : ".png")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url,
+              validRights(ticket, scope: catalog.board(id)?.items.compactMap(\.assetID), boardItems: catalog.board(id)?.items.map(\.id)) else { return }
         Task { @MainActor in
-            if await writeBoard(id, pdf: pdf, to: url) != nil { flash("Exported \(url.lastPathComponent)") } else { flash("Couldn't export \(board.name)") }
+            guard self.validRights(ticket, scope: self.catalog.board(id)?.items.compactMap(\.assetID), boardItems: self.catalog.board(id)?.items.map(\.id)) else { return }
+            let stage = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-board-\(UUID().uuidString).\(pdf ? "pdf" : "png")")
+            guard await writeBoard(id, pdf: pdf, to: stage) != nil else { flash("Couldn't export \(board.name)"); return }
+            defer { try? FileManager.default.removeItem(at: stage) }
+            guard self.validRights(ticket, scope: self.catalog.board(id)?.items.compactMap(\.assetID), boardItems: self.catalog.board(id)?.items.map(\.id)) else { return }
+            do {
+                try Data(contentsOf: stage).write(to: url, options: .atomic)
+                flash("Exported \(url.lastPathComponent)")
+            } catch { flash("Couldn't export \(board.name)") }
         }
     }
 
@@ -4287,15 +4436,33 @@ extension StudioLibrary {
     }
 
     /// Review gallery of the board's assets (reading order) with the rendered board on top.
-    func shareBoardGallery(_ id: UUID, to fixedDir: URL? = nil, summaryPDF: URL? = nil, checked: Bool = false) {
+    func shareBoardGallery(_ id: UUID, to fixedDir: URL? = nil, summaryPDF: URL? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
         guard let board = catalog.board(id) else { return }
         var seen = Set<UUID>()
         let ids = board.readingOrder.compactMap { $0.kind == .asset ? $0.assetID : nil }.filter { seen.insert($0).inserted }
         guard !ids.isEmpty else { flash("Add assets to the board first"); return }
+        if fixedDir == nil, !checked {
+            guardRights(ids, action: "Share gallery", scope: {
+                var current = Set<UUID>()
+                return (self.catalog.board(id)?.readingOrder.compactMap { $0.kind == .asset ? $0.assetID : nil } ?? [])
+                    .filter { current.insert($0).inserted }
+            }, boardItems: { self.catalog.board(id)?.items.map(\.id) ?? [] }) {
+                self.shareBoardGallery(id, to: nil, summaryPDF: summaryPDF, checked: true, ticket: $0)
+            }
+            return
+        }
+        if fixedDir == nil, checked {
+            guard let ticket, validRights(ticket, boardItems: board.items.map(\.id)), ticket.ids == ids else { return }
+        }
         Task { @MainActor in
+            if fixedDir == nil, checked {
+                guard let ticket,
+                      self.validRights(ticket, boardItems: self.catalog.board(id)?.items.map(\.id)),
+                      self.catalog.board(id) != nil else { return }
+            }
             guard let rendered = await self.renderBoard(id), let cg = rendered.0.cgImage,
                   let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { self.flash("Couldn't render \(board.name)"); return }
-            self.exportGallery(ids, title: board.name, to: fixedDir, board: (png, cg.width, cg.height, board), summaryPDF: summaryPDF, checked: checked)
+            self.exportGallery(ids, title: board.name, to: fixedDir, board: (png, cg.width, cg.height, board), summaryPDF: summaryPDF, checked: checked, ticket: ticket)
         }
     }
 }
@@ -7455,6 +7622,7 @@ struct SheetPreview: Identifiable {
     let title: String
     let ids: [UUID]
     let pdf: URL
+    let rightsTicket: RightsExportTicket?
 }
 
 struct PDFPreview: NSViewRepresentable {
@@ -11630,9 +11798,12 @@ struct RightsWarning: Identifiable {
     let action: String
     let issues: [RightsIssue]
     var cleared: [UUID] = []
-    let proceed: () -> Void
-    /// Goes ahead with only the cleared assets; nil when that isn't offered.
-    var skip: (([UUID]) -> Void)? = nil
+    let original: RightsExportTicket
+    let scope: (() -> [UUID])?
+    let boardItems: (() -> [UUID])?
+    let proceed: (RightsExportTicket) -> Void
+    /// Goes ahead with only the reviewed cleared assets; nil when that isn't offered.
+    var skip: (([UUID], RightsExportTicket) -> Void)? = nil
 }
 
 /// A made-up license document for the demo library (1.27).
@@ -11686,6 +11857,8 @@ struct RightsWarningSheet: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            Text("This decision applies to this review's assets, including cleared ones. ASSSETS checks again before export.")
+                .font(.caption).foregroundStyle(Theme.warning)
             ScrollView {
                 VStack(spacing: 6) {
                     ForEach(warning.issues, id: \.asset) { issue in row(issue) }
@@ -11695,16 +11868,14 @@ struct RightsWarningSheet: View {
             HStack(spacing: 10) {
                 Button("Cancel") { model.rightsWarning = nil }.keyboardShortcut(.cancelAction)
                 Spacer()
-                if let skip = warning.skip {
+                if warning.skip != nil {
                     Button("Leave Out \(n) · \(warning.action) \(warning.cleared.count)") {
-                        let ids = warning.cleared; model.rightsWarning = nil
-                        DispatchQueue.main.async { skip(ids) }
+                        model.finishRightsWarning(warning, leaveOut: true)
                     }
                     .help("Go ahead with only the assets that are cleared")
                 }
                 Button("\(warning.action) Anyway") {
-                    let go = warning.proceed; model.rightsWarning = nil
-                    DispatchQueue.main.async { go() }
+                    model.finishRightsWarning(warning, leaveOut: false)
                 }
                 .buttonStyle(.borderedProminent).tint(Theme.danger).keyboardShortcut(.defaultAction)
             }
