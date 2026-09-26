@@ -313,6 +313,7 @@ struct AttackRow: View {
     @Binding var attack: Attack
     let rollMode: RollMode
     @EnvironmentObject var model: AppModel
+    @State private var savedFlash = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -366,6 +367,14 @@ struct AttackRow: View {
                     model.rollLabeled("\(attack.name) damage", attack.damageString(scores: character.scores))
                 }
                 .controlSize(.small)
+
+                Button(savedFlash ? "Saved" : "Save") {
+                    model.saveMacro(forAttack: attack, of: character)
+                    savedFlash = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { savedFlash = false }
+                }
+                .controlSize(.small)
+                .help("Save as a combo macro (attack + damage) in the Dice pane")
             }
             if character.era.usesWeaponMastery {
                 HStack(spacing: Theme.Gap.xs) {

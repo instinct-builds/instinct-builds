@@ -1302,6 +1302,32 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/initiative.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // Sheet-to-dice bridge proof (3.23.0): the sample Fire Bolt becomes a
+    // two-part combo macro; re-saving after a damage edit refreshes in place.
+    if let fireBolt = character.attacks.first(where: { $0.name == "Fire Bolt" }) {
+        var bridgeLines = ["Sheet-to-dice bridge (3.23.0)",
+                           "sheet attack -> combo macro snapshot; re-save refreshes (scoped-id upsert)"]
+        model.saveMacro(forAttack: fireBolt, of: character)
+        if let saved = model.macros.first(where: { $0.name == "Fire Bolt" && $0.characterName == character.name }),
+           let parts = saved.parts {
+            bridgeLines.append("saved as: \(saved.name) [\(saved.characterName ?? "table-wide")]")
+            for p in parts {
+                let type = p.damageType.map { " (\($0))" } ?? ""
+                bridgeLines.append("  \(p.label): \(p.expression)\(type)")
+            }
+        }
+        var edited = fireBolt
+        edited.damageExpression = "3d6"
+        model.saveMacro(forAttack: edited, of: character)
+        let sameScope = model.macros.filter { $0.name == "Fire Bolt" && $0.characterName == character.name }
+        if let refreshed = sameScope.first, let parts = refreshed.parts {
+            bridgeLines.append("after editing damage to 3d6 and re-saving: \(parts.map { $0.expression }.joined(separator: ", "))")
+            bridgeLines.append("macro count for that name+owner unchanged: \(sameScope.count == 1)")
+        }
+        try? bridgeLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/bridge.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

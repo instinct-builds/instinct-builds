@@ -280,6 +280,17 @@ public final class AppModel: ObservableObject {
         macroStore.save(macros)
     }
 
+    /// Sheet-to-dice bridge (3.23.0): save a sheet attack as a reusable
+    /// combo macro (attack + damage parts) scoped to that character.
+    /// Re-saving after an edit refreshes in place via the scoped-id
+    /// upsert above - refresh semantics, matching the macro pane.
+    public func saveMacro(forAttack attack: Attack, of c: Character) {
+        let macro = MacroBridge.combo(for: attack, characterName: c.name,
+                                      scores: c.scores, level: c.level)
+        saveMacro(name: macro.name, expression: macro.expression,
+                  forCharacter: macro.characterName, parts: macro.parts)
+    }
+
     /// Replaces a macro in place (edit-in-place): validates the drafts,
     /// removes the old scoped id, then upserts under the new one. The owner
     /// binding (table-wide vs character) is preserved.
