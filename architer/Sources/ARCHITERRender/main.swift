@@ -1921,9 +1921,13 @@ func run(model: AppModel, character: Character, outDir: String) {
         width: 560, name: "table-log", outDir: outDir, minHeight: 120, maxHeight: 400)
     if let first = model.tableLog.first { model.deleteTableLogEntry(first) }
     tlLines.append("delete: log count \(model.tableLog.count) (the recap entry survives)")
-    let logCountBeforeReload = model.tableLog.count
-    model.reload()
-    tlLines.append("persistence: model reload keeps \(model.tableLog.count) of \(logCountBeforeReload) entries - '\(model.tableLog.last?.title ?? "MISSING")'")
+    // Persistence proof via a scoped store load: reloading the whole model
+    // here re-seeds the roster from the scratch store on disk and drops the
+    // in-memory-only fixture members, voiding the rest/undo proofs below
+    // (3.45.0 first build). A direct store round-trip leaves live state
+    // untouched.
+    let persistedLog = model.tableLogStore.load()
+    tlLines.append("persistence: disk round-trip keeps \(persistedLog.count) of \(model.tableLog.count) entries - latest '\(persistedLog.last?.title ?? "MISSING")'")
     // Negative: an idle End combat files to NEITHER the journal nor the log.
     let jBefore = model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.count ?? -1
     let lBefore = model.tableLog.count

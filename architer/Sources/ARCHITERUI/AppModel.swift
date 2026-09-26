@@ -1074,7 +1074,7 @@ public final class AppModel: ObservableObject {
     /// character files; not a character, so deletes arm a confirm instead
     /// of riding an undo stack.
     @Published public var tableLog: [TableLogEntry] = []
-    var tableLogStore: TableLogStore { TableLogStore(directory: store.directory) }
+    public var tableLogStore: TableLogStore { TableLogStore(directory: store.directory) }
 
     /// Append a manual entry; blank title AND blank text adds nothing.
     public func addTableLogEntry(title: String, text: String) {
