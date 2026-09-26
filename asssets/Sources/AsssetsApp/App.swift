@@ -3506,6 +3506,36 @@ final class StudioLibrary: ObservableObject {
                                         }
                                     }
                                     if demo == "source-receipt-search" || demo == "source-receipt-csv" || demo == "source-receipt-copy" {
+                                        // The receipt query/export proof belongs to the accepted-refresh path.
+                                        // A Library Health sheet can be replaced during the refresh, so its
+                                        // onAppear is not a reliable completion signal on a busy runner.
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                            let results = self.catalog.matchingSourceReceipts(filename: "Northlight")
+                                            let ok = results.count == 1 && results[0].path.hasSuffix("Northlight Lobby.png")
+                                            try? "done found=\(ok) count=\(results.count)".write(
+                                                to: self.supportRoot.appendingPathComponent("demo-source-receipt-search.txt"), atomically: true, encoding: .utf8)
+                                            if demo == "source-receipt-copy", ok {
+                                                let entry = results[0]
+                                                let catalogBefore = try? self.catalog.encoded()
+                                                self.copySourceReceiptHash(entry, before: true)
+                                                let beforeOK = NSPasteboard.general.string(forType: .string) == entry.before.sha256
+                                                self.copySourceReceiptHash(entry, before: false)
+                                                let afterOK = NSPasteboard.general.string(forType: .string) == entry.after.sha256
+                                                let unchanged = catalogBefore != nil && catalogBefore == (try? self.catalog.encoded())
+                                                try? "done before=\(beforeOK) after=\(afterOK) unchanged=\(unchanged)".write(
+                                                    to: self.supportRoot.appendingPathComponent("demo-source-receipt-copy.txt"), atomically: true, encoding: .utf8)
+                                            }
+                                            if demo == "source-receipt-csv", ok {
+                                                let output = self.supportRoot.appendingPathComponent("demo-source-receipts.csv")
+                                                self.exportSourceReceiptCSV(results, to: output)
+                                                let csv = (try? String(contentsOf: output, encoding: .utf8)) ?? ""
+                                                let lines = csv.components(separatedBy: "\r\n").filter { !$0.isEmpty }
+                                                let hash = csv.contains(results[0].after.sha256), noPath = !csv.contains(results[0].path)
+                                                let safe = hash && noPath && lines.count == 2
+                                                try? "done rows=\(max(0, lines.count - 1)) safe=\(safe) hash=\(hash) noPath=\(noPath)".write(
+                                                    to: self.supportRoot.appendingPathComponent("demo-source-receipt-csv.txt"), atomically: true, encoding: .utf8)
+                                            }
+                                        }
                                         self.healthOpen = false
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                             self.healthOpen = true
@@ -8750,42 +8780,7 @@ struct LibraryHealthSheet: View {
                 }
             }
         }
-        .onAppear {
-            if (ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv") || ProcessInfo.processInfo.arguments.contains("source-receipt-copy")),
-               !model.catalog.sourceRefreshHistory.isEmpty {
-                receiptFilename = "Northlight"
-                receiptDateEnabled = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
-                    let results = model.catalog.matchingSourceReceipts(filename: receiptFilename)
-                    let ok = results.count == 1 && results[0].path.hasSuffix("Northlight Lobby.png")
-                    try? "done found=\(ok) count=\(results.count)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-search.txt"), atomically: true, encoding: .utf8)
-                    if ProcessInfo.processInfo.arguments.contains("source-receipt-copy"), ok {
-                        let entry = results[0]
-                        let catalogBefore = try? model.catalog.encoded()
-                        model.copySourceReceiptHash(entry, before: true)
-                        let beforeOK = NSPasteboard.general.string(forType: .string) == entry.before.sha256
-                        model.copySourceReceiptHash(entry, before: false)
-                        let afterOK = NSPasteboard.general.string(forType: .string) == entry.after.sha256
-                        let catalogAfter = try? model.catalog.encoded()
-                        let unchanged = catalogBefore != nil && catalogBefore == catalogAfter
-                        try? "done before=\(beforeOK) after=\(afterOK) unchanged=\(unchanged)".write(
-                            to: model.supportRoot.appendingPathComponent("demo-source-receipt-copy.txt"), atomically: true, encoding: .utf8)
-                    }
-                    if ProcessInfo.processInfo.arguments.contains("source-receipt-csv"), ok {
-                        let output = model.supportRoot.appendingPathComponent("demo-source-receipts.csv")
-                        model.exportSourceReceiptCSV(results, to: output)
-                        let csv = (try? String(contentsOf: output, encoding: .utf8)) ?? ""
-                        let hasHash = csv.contains(results[0].after.sha256)
-                        let noPath = !csv.contains(results[0].path)
-                        // RFC 4180 uses CRLF, a single grapheme in Swift; split the exact delimiter.
-                        let lines = csv.components(separatedBy: "\r\n").filter { !$0.isEmpty }
-                        let safe = hasHash && noPath && lines.count == 2
-                        try? "done rows=\(max(0, lines.count - 1)) safe=\(safe) hash=\(hasHash) noPath=\(noPath)".write(
-                            to: model.supportRoot.appendingPathComponent("demo-source-receipt-csv.txt"), atomically: true, encoding: .utf8)
-                    }
-                }
-            }
-        }
+
     }
 }
 
