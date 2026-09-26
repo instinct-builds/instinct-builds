@@ -85,6 +85,11 @@ struct CharacterDetailView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, Theme.Gap.lg)
             .padding(.vertical, Theme.Gap.sm)
+            // 3.29.0: party overview strip - read-only roster awareness on
+            // every tab; hidden at a roster of one (nothing to overview).
+            if model.characters.count > 1 {
+                PartyStripView()
+            }
             switch tab {
             case 0:
                 ScrollView {
@@ -98,6 +103,95 @@ struct CharacterDetailView: View {
             default: DiceRollerView()
             }
         }
+    }
+}
+
+/// Party overview strip (3.29.0): one card per roster character - name,
+/// level, HP with a thin bar, condition and concentration chips (truncated
+/// with a "+N more" marker). Read-only: a tap selects via the same binding
+/// the sidebar list uses; the sheet stays the only editor.
+public struct PartyStripView: View {
+    @EnvironmentObject var model: AppModel
+
+    public init() {}
+
+    public var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Gap.sm) {
+                ForEach(model.characters) { c in
+                    let summary = PartyCardSummary(character: c)
+                    let isSelected = model.selectedID == c.id
+                    Button { model.selectedID = c.id } label: {
+                        VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+                            HStack {
+                                Text(summary.name)
+                                    .font(Theme.Typeface.headline)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("Lvl \(summary.level)")
+                                    .font(Theme.Typeface.caption)
+                                    .foregroundStyle(Theme.inkMuted)
+                            }
+                            HStack(spacing: Theme.Gap.xs) {
+                                Text("\(summary.currentHP)/\(summary.maxHP)")
+                                    .font(Theme.Typeface.caption)
+                                HPBarView(fraction: summary.maxHP > 0
+                                          ? Double(summary.currentHP) / Double(summary.maxHP) : 0)
+                                if summary.tempHP > 0 {
+                                    Text("+\(summary.tempHP) temp")
+                                        .font(Theme.Typeface.captionSmall)
+                                        .foregroundStyle(Theme.accent)
+                                }
+                            }
+                            HStack(spacing: Theme.Gap.xs) {
+                                ForEach(summary.visibleChips, id: \.self) { chip in
+                                    Text(chip)
+                                        .font(Theme.Typeface.captionSmall)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Theme.surfaceRaised)
+                                        .clipShape(Capsule())
+                                }
+                                if summary.extraChipCount > 0 {
+                                    Text("+\(summary.extraChipCount) more")
+                                        .font(Theme.Typeface.captionSmall)
+                                        .foregroundStyle(Theme.inkMuted)
+                                }
+                            }
+                        }
+                        .padding(Theme.Gap.sm)
+                        .frame(width: 220)
+                        .background(Theme.surfaceRaised)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.md)
+                                .stroke(isSelected ? Theme.accent : Color.clear,
+                                        lineWidth: 2)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+                    }
+                    .buttonStyle(.plain)
+                    .help(isSelected ? "\(summary.name) - selected" : "Select \(summary.name)")
+                }
+            }
+            .padding(.horizontal, Theme.Gap.lg)
+            .padding(.bottom, Theme.Gap.sm)
+        }
+    }
+}
+
+/// The strip's thin HP bar: current over max, accent on a muted track.
+private struct HPBarView: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.inkMuted.opacity(0.3))
+                Capsule().fill(Theme.accent)
+                    .frame(width: geo.size.width * min(1, max(0, fraction)))
+            }
+        }
+        .frame(width: 64, height: 5)
     }
 }
 

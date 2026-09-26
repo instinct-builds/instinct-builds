@@ -1447,6 +1447,26 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? concLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/concentrating.txt"),
                atomically: true, encoding: .utf8)
+    // Party strip proof (3.29.0): the roster is three by now, so the strip
+    // renders; base renders earlier in the run had a roster of one and stay
+    // byte-identical (the strip hides). party.txt states each card.
+    var partyLines = ["Party overview strip (3.29.0)",
+                      "read-only roster cards on every tab; hidden at a roster of one"]
+    for c in model.characters {
+        let card = PartyCardSummary(character: c)
+        let selMark = model.selectedID == c.id ? " [selected]" : ""
+        let chips = card.chips.isEmpty ? "-" : card.chips.joined(separator: ", ")
+        partyLines.append("\(card.name): lvl \(card.level), HP \(card.currentHP)/\(card.maxHP), temp \(card.tempHP), chips: \(chips)\(selMark)")
+    }
+    renderPNG(
+        PartyStripView()
+            .padding(.vertical)
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 720, name: "party-strip", outDir: outDir, minHeight: 90, maxHeight: 200)
+    try? partyLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party.txt"),
+               atomically: true, encoding: .utf8)
     try? groupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
                atomically: true, encoding: .utf8)
