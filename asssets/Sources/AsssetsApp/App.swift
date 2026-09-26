@@ -8184,10 +8184,14 @@ struct SourceReceiptSheet: View {
                 if timeline.receipts.count > 1 {
                     Button { selectedID = timeline.older?.id } label: { Label("Older", systemImage: "chevron.left") }
                         .disabled(timeline.older == nil).controlSize(.small)
+                        .keyboardShortcut(.leftArrow, modifiers: [])
+                        .help("Older receipt (←)")
                     Text("\(timeline.position) of \(timeline.receipts.count)")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(minWidth: 44)
                     Button { selectedID = timeline.newer?.id } label: { Label("Newer", systemImage: "chevron.right") }
                         .disabled(timeline.newer == nil).controlSize(.small)
+                        .keyboardShortcut(.rightArrow, modifiers: [])
+                        .help("Newer receipt (→)")
                 }
             }
             Text(receipt.refreshedAt.formatted(date: .complete, time: .shortened))
@@ -8205,8 +8209,14 @@ struct SourceReceiptSheet: View {
                 digest("SHA-256 before", receipt.before.sha256)
                 digest("SHA-256 after", receipt.after.sha256)
             }
-            Text("These are small saved snapshots, not original files. The old source cannot be restored from this receipt.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline) {
+                Text("These are small saved snapshots, not original files. The old source cannot be restored from this receipt.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if timeline.receipts.count > 1 {
+                    Text("← older · newer →").font(.caption2).foregroundStyle(.tertiary).fixedSize()
+                }
+            }
         }
         .padding(20).frame(width: 700).background(Theme.panel)
         .onAppear {

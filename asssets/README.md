@@ -936,3 +936,7 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - The focused receipt sheet now has Older and Newer controls with a position count. It stays scoped to the same asset's accepted receipts, newest first, and only presents catalog facts plus small bounded visual references where available. The first and last controls disable at the ends; nothing in history changes when browsing.
 - CI creates two accepted source refreshes and captures the older receipt in the same focused sheet, proving the navigation and both snapshot sides without implying recovery of original file bytes.
+
+## 1.50.0: keyboard receipt navigation
+
+- In a focused receipt timeline, the left arrow moves to an older accepted receipt and the right arrow moves newer. These are the same disabled-at-the-ends controls as the visible buttons. A shortcut hint sits beside the non-restoration warning, so keyboard use never hides the snapshot-only framing.
