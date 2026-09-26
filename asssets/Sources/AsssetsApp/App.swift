@@ -7781,9 +7781,10 @@ struct LibraryHealthSheet: View {
                         let csv = (try? String(contentsOf: output, encoding: .utf8)) ?? ""
                         let hasHash = csv.contains(results[0].after.sha256)
                         let noPath = !csv.contains(results[0].path)
-                        let rows = csv.split(separator: "\n").count
-                        let safe = hasHash && noPath && rows == 2
-                        try? "done rows=\(rows - 1) safe=\(safe) hash=\(hasHash) noPath=\(noPath)".write(
+                        // RFC 4180 uses CRLF, a single grapheme in Swift; split the exact delimiter.
+                        let lines = csv.components(separatedBy: "\r\n").filter { !$0.isEmpty }
+                        let safe = hasHash && noPath && lines.count == 2
+                        try? "done rows=\(max(0, lines.count - 1)) safe=\(safe) hash=\(hasHash) noPath=\(noPath)".write(
                             to: model.supportRoot.appendingPathComponent("demo-source-receipt-csv.txt"), atomically: true, encoding: .utf8)
                     }
                 }
