@@ -1538,6 +1538,31 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: 520, name: "roster-delete-confirm", outDir: outDir, minHeight: 60, maxHeight: 120)
+    // Concentration timer proof (3.33.0): cast a 1-minute spell (10 rounds),
+    // wrap once, render the row at 9, then wrap on to the expiry milestone.
+    var ctLines = ["Concentration duration timers (3.33.0)",
+                   "cast sets the timer from the spell's duration; the wrap ticks it; 0 drops concentration"]
+    if let faerie = Spell.all.first(where: { $0.name == "Faerie Fire" }) {
+        model.castSpell(faerie)
+        ctLines.append("cast Faerie Fire (1 minute) -> timer \(model.selected?.wrappedValue.concentrationTimer ?? -1), concentrating")
+        for _ in 0..<model.initiative.entries.count { model.advanceInitiative() }
+        ctLines.append("after wrap 1: timer \(model.selected?.wrappedValue.concentrationTimer ?? -1)")
+        if let selBinding = model.selected {
+            renderPNG(
+                SpellcastingBlock(character: selBinding)
+                    .padding()
+                    .background(Theme.surface)
+                    .environmentObject(model),
+                width: 520, name: "concentration-timer", outDir: outDir, minHeight: 200, maxHeight: 480)
+        }
+        for _ in 0..<(9 * model.initiative.entries.count) { model.advanceInitiative() }
+        let after = model.selected?.wrappedValue
+        let milestone = after?.notes.contains("Concentration on Faerie Fire ended (duration).") == true ? "present" : "MISSING"
+        ctLines.append("after wrap 10: concentrating \(after?.concentratingOn ?? "ended"), milestone \(milestone)")
+    }
+    try? ctLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/concentration-timer.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

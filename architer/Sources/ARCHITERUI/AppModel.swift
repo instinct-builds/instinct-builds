@@ -728,6 +728,12 @@ public final class AppModel: ObservableObject {
                 let line = "\(name) ended (duration)."
                 c.notes = c.notes.isEmpty ? line : c.notes + "\n" + line
             }
+            // 3.33.0: the same wrap ticks a concentration timer; at 0 the
+            // concentration drops with its own milestone.
+            if let spell = c.tickConcentrationTimer() {
+                let line = "Concentration on \(spell) ended (duration)."
+                c.notes = c.notes.isEmpty ? line : c.notes + "\n" + line
+            }
             guard c != characters[idx] else { continue }
             var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
             stack.push(c)
@@ -1064,6 +1070,9 @@ public final class AppModel: ObservableObject {
         if spell.concentration {
             guard var c = selected?.wrappedValue else { return }
             c.beginConcentration(on: spell.name)
+            // 3.33.0: the timer derives from the spell's own duration text;
+            // unparseable durations get no timer rather than a wrong one.
+            c.concentrationTimer = Character.concentrationRounds(forDuration: spell.duration)
             selected?.wrappedValue = c
         }
     }

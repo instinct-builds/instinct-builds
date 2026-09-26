@@ -683,6 +683,10 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var era: RulesetVariant
     /// Name of the spell currently being concentrated on, if any.
     public var concentratingOn: String?
+    /// Rounds remaining on the current concentration spell (3.33.0); ticks
+    /// on the initiative round wrap. nil means no timer - the spell runs
+    /// until dropped, lost, or replaced.
+    public var concentrationTimer: Int?
     // Combat & magic
     public var attacks: [Attack]
     public var spellcasting: Spellcasting?
@@ -810,6 +814,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
+        concentrationTimer: Int? = nil,
         attacks: [Attack] = [],
         spellcasting: Spellcasting? = nil,
         inventory: [InventoryItem] = [],
@@ -863,6 +868,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.vulnerabilities = vulnerabilities
         self.era = era
         self.concentratingOn = concentratingOn
+        self.concentrationTimer = concentrationTimer
         self.exhaustion = max(0, min(era.exhaustionCap, exhaustion))
         self.attacks = attacks
         self.spellcasting = spellcasting
@@ -919,6 +925,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
         era = try c.decodeIfPresent(RulesetVariant.self, forKey: .era) ?? .era2014
         concentratingOn = try c.decodeIfPresent(String.self, forKey: .concentratingOn)
+        concentrationTimer = try c.decodeIfPresent(Int.self, forKey: .concentrationTimer)
         let rawExhaustion = try c.decodeIfPresent(Int.self, forKey: .exhaustion) ?? 0
         exhaustion = max(0, min(era.exhaustionCap, rawExhaustion))
         attacks = try c.decode([Attack].self, forKey: .attacks)
@@ -1152,10 +1159,46 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// Start concentrating on a spell; any previous concentration ends.
     public mutating func beginConcentration(on spellName: String) {
         concentratingOn = spellName
+        // A fresh concentration resets any timer; the caller (cast) sets
+        // the new spell's duration right after.
+        concentrationTimer = nil
     }
 
     public mutating func dropConcentration() {
         concentratingOn = nil
+        concentrationTimer = nil
+    }
+
+    /// Parse a spell duration string into combat rounds (3.33.0).
+    /// Genre-standard units only; anything else yields no timer rather
+    /// than a wrong one.
+    public static func concentrationRounds(forDuration duration: String) -> Int? {
+        let parts = duration.lowercased()
+            .trimmingCharacters(in: .whitespaces)
+            .split(separator: " ")
+        guard parts.count == 2, let n = Int(parts[0]), n > 0 else { return nil }
+        switch parts[1] {
+        case "round", "rounds": return n
+        case "minute", "minutes": return n * 10
+        case "hour", "hours": return n * 600
+        default: return nil
+        }
+    }
+
+    /// Tick the concentration timer one round (3.33.0). At 0 the
+    /// concentration ends: returns the expired spell's name for the notes
+    /// milestone, else nil.
+    @discardableResult
+    public mutating func tickConcentrationTimer() -> String? {
+        guard let remaining = concentrationTimer else { return nil }
+        if remaining > 1 {
+            concentrationTimer = remaining - 1
+            return nil
+        }
+        concentrationTimer = nil
+        let spell = concentratingOn
+        concentratingOn = nil
+        return spell
     }
 
     /// Level up by one: max HP rises by the (rolled or average) gain, current

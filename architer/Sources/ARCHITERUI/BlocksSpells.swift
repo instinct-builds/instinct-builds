@@ -2,12 +2,18 @@
 import SwiftUI
 import ArchiterCore
 
-struct SpellcastingBlock: View {
+public struct SpellcastingBlock: View {
     @Binding var character: Character
     @EnvironmentObject var model: AppModel
     @State private var searchText = ""
 
-    var body: some View {
+    // Explicit public init: the memberwise one is internal, and the render
+    // harness (3.33.0 concentration timer proof) lives in another module.
+    public init(character: Binding<Character>) {
+        _character = character
+    }
+
+    public var body: some View {
         BlockCard(title: "Spells") {
             if let concentrating = character.concentratingOn {
                 HStack(spacing: Theme.Gap.xs) {
@@ -17,6 +23,22 @@ struct SpellcastingBlock: View {
                     Text(concentrating)
                         .font(Theme.Typeface.body.bold())
                         .foregroundStyle(Theme.ink)
+                    // 3.33.0: countdown from the spell's duration, ticking on
+                    // the initiative round wrap; removing it keeps the spell.
+                    if character.concentrationTimer != nil {
+                        Stepper("", value: Binding(
+                            get: { character.concentrationTimer ?? 1 },
+                            set: { character.concentrationTimer = max(1, min(999, $0)) }
+                        ), in: 1...999)
+                        .labelsHidden()
+                        Text("rounds")
+                            .font(Theme.Typeface.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                        Button(role: .destructive) {
+                            character.concentrationTimer = nil
+                        } label: { Image(systemName: "minus.circle") }
+                        .help("Remove the timer - the concentration stays")
+                    }
                     Spacer()
                     Button("Drop") { model.dropConcentration() }
                         .buttonStyle(RollButtonStyle())
