@@ -1131,6 +1131,38 @@ func run(model: AppModel, character: Character, outDir: String) {
             .background(Theme.surface)
             .environmentObject(model),
         width: width, name: "dice-macro-pin", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    // 3.19.0 proof: apply a history roll to HP - the Fireball roll
+    // lands on Wren (fire resistance halves, temp HP absorbs), the Edit
+    // menu names the step, and one undo restores. Runs last: every
+    // sheet render and PDF is already written, so the byte-diffs hold.
+    do {
+        if let fireball = model.rollHistory.first(where: {
+            $0.expression == "8d6" && $0.reroll?.damageType == "fire"
+        }), let before = model.selected?.wrappedValue {
+            let hpBefore = before.currentHP, tempBefore = before.tempHP
+            model.applyRollToHP(fireball, healing: false)
+            if let applied = model.selected?.wrappedValue {
+                let undoLabel = model.undoMenuLabel
+                renderPNG(
+                    VitalsBlock(character: .constant(applied))
+                        .padding()
+                        .background(Theme.surface)
+                        .environmentObject(model),
+                    width: width, name: "sheet-hp-applied", outDir: outDir, minHeight: 200, maxHeight: 600)
+                model.undo()
+                let restored = model.selected?.wrappedValue
+                try? (["Apply to HP (3.19.0)",
+                       "roll: \(fireball.expression) fire, total \(fireball.total)",
+                       "before: \(hpBefore) HP + \(tempBefore) temp",
+                       "after apply: \(applied.currentHP) HP + \(applied.tempHP) temp (resist halves, temp absorbs)",
+                       "Edit menu while applied: \"\(undoLabel)\"",
+                       "after undo: \(restored?.currentHP ?? -1) HP + \(restored?.tempHP ?? -1) temp"])
+                    .joined(separator: "\n")
+                    .write(to: URL(fileURLWithPath: "\(outDir)/apply-hp.txt"),
+                           atomically: true, encoding: .utf8)
+            }
+        }
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

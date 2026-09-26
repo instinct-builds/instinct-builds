@@ -989,6 +989,48 @@ public final class AppModel: ObservableObject {
 
     // MARK: Undo
 
+    /// 3.19.0: the last HP apply's description and the undo depth it
+    /// left behind, so the Edit menu can name the step while it is on
+    /// top. Any newer character edit (or the undo itself) moves the
+    /// depth and the menu falls back to plain "Undo".
+    @Published public private(set) var lastApplyDescription: String?
+    private var lastApplyUndoDepth: Int?
+
+    /// 3.19.0: apply a history roll to the selected character's HP.
+    /// Damage folds the recorded damage type's defenses in (immune,
+    /// resist-halve, vuln-double; temp HP absorbs first); healing is
+    /// flat. One Binding write is exactly one undo step. A no-change
+    /// apply (full immunity, healing at full HP) pushes no snapshot and
+    /// names nothing.
+    public func applyRollToHP(_ roll: RollResult, healing: Bool) {
+        guard var c = selected?.wrappedValue else { return }
+        let type = roll.reroll?.damageType.flatMap { DamageType(rawValue: $0) }
+        if healing {
+            c.applyHealing(roll.total)
+        } else {
+            c.applyDamage(roll.total, type: type)
+        }
+        let depthBefore = selectedID.flatMap { undoStacks[$0] }?.depth ?? 0
+        selected?.wrappedValue = c
+        let depthAfter = selectedID.flatMap { undoStacks[$0] }?.depth ?? 0
+        if depthAfter > depthBefore {
+            lastApplyDescription = hpApplyMenuLabel(amount: roll.total, type: type,
+                                                    healing: healing, characterName: c.name)
+            lastApplyUndoDepth = depthAfter
+        }
+    }
+
+    /// 3.19.0: the Edit menu names an HP apply while it is the top undo
+    /// step; any newer edit or the undo itself falls back to "Undo".
+    public var undoMenuLabel: String {
+        if let desc = lastApplyDescription,
+           let depth = lastApplyUndoDepth,
+           selectedID.flatMap({ undoStacks[$0] })?.depth == depth {
+            return "Undo \(desc)"
+        }
+        return "Undo"
+    }
+
     public var canUndo: Bool { selectedID.flatMap { undoStacks[$0] }?.canUndo ?? false }
     public var canRedo: Bool { selectedID.flatMap { undoStacks[$0] }?.canRedo ?? false }
 

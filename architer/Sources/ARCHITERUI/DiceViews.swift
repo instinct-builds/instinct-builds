@@ -979,6 +979,30 @@ struct RollCard: View {
                         }
                     }
             }
+            // 3.19.0: apply the roll to the selected character's HP.
+            // Plain click applies damage (the recorded type folds
+            // defenses in); the menu offers healing. Incoming-damage
+            // cards are excluded - that damage already landed.
+            if roll.reroll?.kind != .incomingDamage,
+               let applyTarget = model.selected?.wrappedValue.name {
+                Button {
+                    model.applyRollToHP(roll, healing: false)
+                } label: { Image(systemName: "heart") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.inkFaint)
+                    .help("Apply as damage to \(applyTarget) - right-click for healing")
+                    .contextMenu {
+                        Button(hpApplyMenuLabel(amount: roll.total,
+                                                type: roll.reroll?.damageType.flatMap { DamageType(rawValue: $0) },
+                                                healing: false, characterName: applyTarget)) {
+                            model.applyRollToHP(roll, healing: false)
+                        }
+                        Button(hpApplyMenuLabel(amount: roll.total, type: nil,
+                                                healing: true, characterName: applyTarget)) {
+                            model.applyRollToHP(roll, healing: true)
+                        }
+                    }
+            }
             // 2.84.0: star the memorable ones by hand.
             Button { model.toggleStar(roll) }
                 label: { Image(systemName: roll.starred == true ? "star.fill" : "star") }

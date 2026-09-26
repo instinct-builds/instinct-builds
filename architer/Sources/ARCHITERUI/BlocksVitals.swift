@@ -2,7 +2,7 @@
 import SwiftUI
 import ArchiterCore
 
-struct VitalsBlock: View {
+public struct VitalsBlock: View {
     @Binding var character: Character
     @EnvironmentObject var model: AppModel
     @State private var damageAmount = ""
@@ -10,7 +10,11 @@ struct VitalsBlock: View {
     @State private var tempAmount = ""
     @State private var damageType: DamageType? = nil
 
-    var body: some View {
+    /// Public so the render harness (ARCHITERRender target) can
+    /// snapshot the applied-HP state (3.19.0).
+    public init(character: Binding<Character>) { _character = character }
+
+    public var body: some View {
         BlockCard(title: "Vitals") {
             // HP row with damage / heal / temp workflows
             HStack(spacing: Theme.Gap.md) {

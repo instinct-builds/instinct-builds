@@ -251,6 +251,23 @@ public func undoDeleteLabel(removedCount: Int, sessionName: String?) -> String {
                              : "Restore the \(removedCount) deleted rolls"
 }
 
+/// 3.19.0: apply-to-HP phrasing - "24 fire damage", "7 damage",
+/// "12 healing". Shared by the history card's apply menu and the Edit
+/// menu's named undo step.
+public func hpApplyPhrase(amount: Int, type: DamageType?, healing: Bool) -> String {
+    if healing { return "\(amount) healing" }
+    if let type { return "\(amount) \(type.rawValue) damage" }
+    return "\(amount) damage"
+}
+
+/// 3.19.0: the card menu's action label - "Apply 24 fire damage to
+/// Wren". AppModel stores it as the apply's description; the Edit menu
+/// shows "Undo <label>" while the apply is the top undo step.
+public func hpApplyMenuLabel(amount: Int, type: DamageType?, healing: Bool,
+                             characterName: String) -> String {
+    "Apply \(hpApplyPhrase(amount: amount, type: type, healing: healing)) to \(characterName)"
+}
+
 /// 3.17.0: the session trash's hover label names its target. The delete
 /// fires without a confirm (one undo step restores), so the label is the
 /// only pre-click signal of which session - and how many rolls - goes.

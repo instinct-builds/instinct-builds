@@ -15,7 +15,7 @@ struct ARCHITERApp: App {
         }
         .commands {
             CommandGroup(replacing: .undoRedo) {
-                Button("Undo") { model.undo() }
+                Button(model.undoMenuLabel) { model.undo() }
                     .keyboardShortcut("z", modifiers: [.command])
                     .disabled(!model.canUndo)
                 Button("Redo") { model.redo() }

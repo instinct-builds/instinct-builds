@@ -845,6 +845,19 @@ struct CharacterTests {
                 == "Restore the 3 deleted rolls")
     }
 
+    @Test func hpApplyLabels() throws {
+        // 3.19.0: typed damage, untyped damage, and healing phrasing.
+        #expect(hpApplyMenuLabel(amount: 24, type: .fire, healing: false,
+                                 characterName: "Wren")
+                == "Apply 24 fire damage to Wren")
+        #expect(hpApplyMenuLabel(amount: 7, type: nil, healing: false,
+                                 characterName: "Wren")
+                == "Apply 7 damage to Wren")
+        #expect(hpApplyMenuLabel(amount: 12, type: nil, healing: true,
+                                 characterName: "Wren")
+                == "Apply 12 healing to Wren")
+    }
+
     @Test func freeRollerTypeMemoryResolvesPerCharacter() throws {
         // Missing entry falls back to the table-wide selection.
         #expect(resolveFreeRollerType(map: [:], characterID: "A", tableDefault: .fire) == .fire)
