@@ -1530,6 +1530,20 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? gsaveLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupsave.txt"),
                atomically: true, encoding: .utf8)
+    // Delete confirmation proof (3.32.0): the armed toolbar state. Runs at
+    // END; no state is mutated (the confirm is never fired).
+    renderPNG(
+        ContentView(initialConfirmingDelete: true)
+            .environmentObject(model),
+        width: 1000, name: "roster-delete-confirm", outDir: outDir, minHeight: 480, maxHeight: 760)
+    try? (["Delete confirmation (3.32.0)",
+           "the toolbar trash arms an inline confirm - Delete fires only from",
+           "the armed state; Cancel disarms. The character's undo stack dies",
+           "with it, so the armed Delete warns it cannot be undone.",
+           "armed caption reads: Delete \(model.selected?.wrappedValue.name ?? "character")?"]
+          .joined(separator: "\n"))
+        .write(to: URL(fileURLWithPath: "\(outDir)/delete-confirm.txt"),
+               atomically: true, encoding: .utf8)
     try? groupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/groupcheck.txt"),
                atomically: true, encoding: .utf8)

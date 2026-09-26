@@ -15,8 +15,14 @@ extension String {
 
 public struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    /// Delete confirmation (3.32.0): the trash arms an inline confirm,
+    /// matching the history-delete/clear patterns - Delete fires only from
+    /// the armed state, and the character's undo stack dies with it.
+    @State private var confirmingDelete = false
 
-    public init() {}
+    public init(initialConfirmingDelete: Bool = false) {
+        _confirmingDelete = State(initialValue: initialConfirmingDelete)
+    }
 
     public var body: some View {
         NavigationSplitView {
@@ -43,8 +49,27 @@ public struct ContentView: View {
                     .help("Compendium - browse spells and equipment") }
                 ToolbarItem { Button(action: model.duplicateSelected) { Image(systemName: "plus.square.on.square") }
                     .help("Duplicate") }
-                ToolbarItem { Button(action: model.deleteSelected) { Image(systemName: "trash") }
-                    .help("Delete") }
+                ToolbarItem {
+                    if confirmingDelete {
+                        HStack(spacing: Theme.Gap.sm) {
+                            Text("Delete \(model.selected?.wrappedValue.name ?? "character")?")
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.inkMuted)
+                            Button("Delete", role: .destructive) {
+                                model.deleteSelected()
+                                confirmingDelete = false
+                            }
+                            .controlSize(.small)
+                            .help("Delete this character for good - this cannot be undone")
+                            Button("Cancel") { confirmingDelete = false }
+                                .controlSize(.small)
+                        }
+                    } else {
+                        Button(action: { confirmingDelete = true }) { Image(systemName: "trash") }
+                            .disabled(model.selectedID == nil)
+                            .help("Delete the selected character, behind a confirm")
+                    }
+                }
             }
         } detail: {
             if let binding = model.selected {
