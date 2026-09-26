@@ -1334,6 +1334,9 @@ func run(model: AppModel, character: Character, outDir: String) {
     if var hindered = model.selected?.wrappedValue {
         hindered.conditions = [.prone, .poisoned]
         hindered.exhaustion = 2
+        // 2024-style so the exhaustion line mirrors a real penalty (2014
+        // carries no numeric penalty and the advisory correctly stays silent).
+        hindered.era = .era2024
         model.selected?.wrappedValue = hindered
     }
     var advisoryLines = ["Condition advisory (3.24.0)",

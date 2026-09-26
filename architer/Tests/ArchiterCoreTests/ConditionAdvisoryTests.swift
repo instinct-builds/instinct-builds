@@ -5,11 +5,12 @@ import Testing
 @Suite("Condition advisory (3.24.0)")
 struct ConditionAdvisoryTests {
     private func character(conditions: Set<Condition> = [], custom: [CustomCondition] = [],
-                           exhaustion: Int = 0) -> Character {
+                           exhaustion: Int = 0, era: RulesetVariant = .era2014) -> Character {
         var c = Character(name: "Test")
         c.conditions = conditions
         c.customConditions = custom
         c.exhaustion = exhaustion
+        c.era = era
         return c
     }
 
@@ -30,10 +31,16 @@ struct ConditionAdvisoryTests {
     }
 
     @Test func exhaustionAddsPenaltyLine() {
-        let penalty = character(exhaustion: 2).exhaustionRollPenalty
-        let lines = ConditionAdvisory.lines(for: character(exhaustion: 2))
-        #expect(penalty > 0)
-        #expect(lines == ["Exhaustion 2: -\(penalty) on d20 rolls"])
+        // 2024-style: the penalty equals the exhaustion level.
+        let lines = ConditionAdvisory.lines(for: character(exhaustion: 2, era: .era2024))
+        #expect(lines == ["Exhaustion 2: -2 on d20 rolls"])
+    }
+
+    @Test func exhaustionIsSilentUnder2014() {
+        // 2014-style carries no numeric roll penalty, so there is nothing to
+        // mirror - the gate matches what rollCheck would actually subtract.
+        let lines = ConditionAdvisory.lines(for: character(exhaustion: 2, era: .era2014))
+        #expect(lines.isEmpty)
     }
 
     @Test func cleanCharacterHasNoLines() {
