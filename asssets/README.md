@@ -990,3 +990,15 @@ membership or apply board status changes. Keep the exported gallery intact for
 this step. If the file changes before confirmation, the recovery is refused.
 The manifest and feedback JSON are not cryptographically bound and do not
 verify who wrote either file; use a trusted handoff and inspect the preview.
+
+## 1.66.0: pin feedback to reviewed bytes
+
+The import preview now keeps each selected feedback file's exact path and SHA-256.
+At Import, ASSSETS reads each regular file again without following symlinks and
+checks the bytes, file identity and current preview. A changed file or library
+state shows a new preview and needs another Import press. A missing, invalid or
+unreadable file blocks the batch and asks for a fresh selection; no file from
+that batch lands. Files claiming the same gallery and reviewer cannot be
+silently merged. The app's built-in demo covers a changed file with no picks
+applied, and captures the original-gallery recovery confirmation at 1024x768.
+This guards the review-to-import handoff, not the authenticity of feedback.

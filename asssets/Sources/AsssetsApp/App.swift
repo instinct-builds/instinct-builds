@@ -527,12 +527,41 @@ final class StudioLibrary: ObservableObject {
         previewFeedback(p.urls)
     }
 
+    /// Read the exact regular file without following a symlink, and bind the preview to its bytes.
+    /// The same descriptor is checked before/after reading and against the path before use.
+    private func feedbackBytes(_ url: URL) -> (data: Data, digest: String)? {
+        let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var before = stat(), after = stat(), pathStat = stat()
+        guard fstat(fd, &before) == 0, (before.st_mode & 0o170000) == 0o100000,
+              before.st_size >= 0, before.st_size <= 2_000_000 else { return nil }
+        var data = Data(), buffer = [UInt8](repeating: 0, count: 65_536)
+        while true {
+            let count = buffer.withUnsafeMutableBytes { raw in Darwin.read(fd, raw.baseAddress, raw.count) }
+            guard count >= 0, data.count + count <= 2_000_000 else { return nil }
+            if count == 0 { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        guard fstat(fd, &after) == 0, lstat(url.path, &pathStat) == 0,
+              (pathStat.st_mode & 0o170000) == 0o100000,
+              before.st_dev == after.st_dev, before.st_ino == after.st_ino,
+              before.st_size == after.st_size, before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
+              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
+              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
+              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec,
+              pathStat.st_dev == after.st_dev, pathStat.st_ino == after.st_ino else { return nil }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return (data, digest)
+    }
+
     /// Reads the files and opens the preview sheet; nothing changes until Import.
     func previewFeedback(_ urls: [URL]) {
         var files: [PendingFeedback.File] = [], bad = 0
         for u in urls {
-            guard let data = try? Data(contentsOf: u), let f = ReviewGallery.decodeFeedback(data) else { bad += 1; continue }
-            files.append(.init(feedback: f, preview: catalog.previewFeedback(f), name: u.lastPathComponent))
+            guard let bytes = feedbackBytes(u), let f = ReviewGallery.decodeFeedback(bytes.data) else { bad += 1; continue }
+            files.append(.init(feedback: f, preview: catalog.previewFeedback(f), name: u.lastPathComponent,
+                               path: u.path, digest: bytes.digest))
         }
         guard !files.isEmpty else { flash("That isn't an ASSSETS review feedback file"); return }
         pendingFeedback = PendingFeedback(files: files, unreadable: bad)
@@ -574,8 +603,9 @@ final class StudioLibrary: ObservableObject {
         }
         guard persistRoster(exact) else { flash("Gallery roster could not be saved; nothing imported."); return }
         galleryRecovery = nil
-        pendingFeedback = PendingFeedback(files: pending.files.map { f in
-            .init(feedback: f.feedback, preview: catalog.previewFeedback(f.feedback), name: f.name)
+        pendingFeedback = PendingFeedback(id: pending.id, files: pending.files.map { f in
+            .init(id: f.id, feedback: f.feedback, preview: catalog.previewFeedback(f.feedback), name: f.name,
+                  path: f.path, digest: f.digest)
         }, unreadable: pending.unreadable)
     }
 
@@ -592,15 +622,36 @@ final class StudioLibrary: ObservableObject {
 
     func applyPendingFeedback() {
         guard let p = pendingFeedback else { return }
-        let current = p.files.map { catalog.previewFeedback($0.feedback) }
-        guard zip(p.files, current).allSatisfy({ $0.preview == $1 }),
-              Set(p.files.map { $0.feedback.gallery.lowercased() + "|" + $0.feedback.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == p.files.count else {
-            pendingFeedback = PendingFeedback(files: p.files.map { .init(feedback: $0.feedback, preview: catalog.previewFeedback($0.feedback), name: $0.name) }, unreadable: p.unreadable)
-            flash("Feedback or gallery changed; review the updated preview before importing.")
+        var updated: [PendingFeedback.File] = [], changed = false, unreadable = false
+        for f in p.files {
+            let url = URL(fileURLWithPath: f.path)
+            guard let bytes = feedbackBytes(url), let current = ReviewGallery.decodeFeedback(bytes.data) else {
+                unreadable = true; break
+            }
+            let preview = catalog.previewFeedback(current)
+            if bytes.digest != f.digest || current != f.feedback || preview != f.preview { changed = true }
+            updated.append(.init(id: f.id, feedback: current, preview: preview, name: f.name,
+                                 path: f.path, digest: bytes.digest))
+        }
+        if unreadable {
+            pendingFeedback = PendingFeedback(id: p.id, files: p.files, unreadable: p.unreadable,
+                notice: "A selected feedback file is missing, unreadable, or no longer valid. Choose the files again; nothing imported.")
             return
         }
+        let keys = updated.map { $0.feedback.gallery.lowercased() + "|" + $0.feedback.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        if Set(keys).count != keys.count {
+            pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable,
+                notice: "Two files claim the same gallery and reviewer. Choose one file; nothing imported.")
+            return
+        }
+        if changed || p.notice != nil {
+            // Even a same-size replacement must get a new review, not just a silent recheck.
+            pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable,
+                notice: changed ? "A feedback file or library state changed. Review this updated preview, then press Import again." : nil)
+            if changed { return }
+        }
         pendingFeedback = nil
-        importFeedback(feedback: p.files.map(\.feedback), unreadable: p.unreadable)
+        importFeedback(feedback: updated.map(\.feedback), unreadable: p.unreadable)
     }
 
     func importFeedback(_ urls: [URL]) {
@@ -3485,13 +3536,15 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
-        case "feedback-roster", "feedback-legacy":
+        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
             let ids = Array(mocks.prefix(2).map(\.id))
             let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
-            if demo == "feedback-roster", let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
-                mutate { _ = $0.recordGallery(roster) }
+            if demo == "feedback-roster" || demo == "feedback-changed" {
+                if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
+                    mutate { _ = $0.recordGallery(roster) }
+                }
             }
             let feedback = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
                 .init(id: ids[0].uuidString, favorite: true, note: "Use this one"),
@@ -3499,6 +3552,29 @@ final class StudioLibrary: ObservableObject {
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-feedback-roster.json")
             if let data = try? JSONEncoder().encode(feedback) { try? data.write(to: url) }
             previewFeedback([url])
+            if demo == "feedback-recovery" {
+                let items = ids.map { id in ReviewGallery.Item(id: id.uuidString, title: catalog.assets.first(where: { $0.id == id })?.title ?? "Asset",
+                    kind: "Image", resolution: "", palette: [], tags: [], image: "images/01.jpg", thumb: "thumbs/01.jpg") }
+                let manifest = ReviewGallery.Manifest(gallery: gallery, title: "Launch proof", created: "2026-09-26", items: items)
+                let page = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-original-gallery-index.html")
+                try? ReviewGallery.html(manifest).write(to: page, atomically: true, encoding: .utf8)
+                if let text = try? String(contentsOf: page, encoding: .utf8),
+                   let read = ReviewGallery.manifest(fromHTML: text),
+                   let roster = GalleryRoster(gallery: read.gallery, title: read.title, created: read.created,
+                                              assets: read.items.compactMap { UUID(uuidString: $0.id) }, recovered: true),
+                   pendingFeedback?.files.first?.feedback.gallery == read.gallery {
+                    galleryRecovery = GalleryRecovery(fileID: pendingFeedback!.files[0].id, roster: roster, path: page.path)
+                    try? "done recovered=2 board=false".write(to: supportRoot.appendingPathComponent("demo-feedback-recovery.txt"), atomically: true, encoding: .utf8)
+                }
+            }
+            if demo == "feedback-changed" {
+                let changed = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: true, note: "Different bytes after preview")])
+                if let data = try? JSONEncoder().encode(changed) { try? data.write(to: url, options: .atomic) }
+                applyPendingFeedback()
+                let marker = "done blocked=\(pendingFeedback?.notice != nil) picked=\(catalog.assets.first(where: { $0.id == ids[0] })?.tags.contains(ReviewGallery.clientPickTag) ?? false)"
+                try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-changed.txt"), atomically: true, encoding: .utf8)
+            }
             if demo == "feedback-roster" {
                 let p = pendingFeedback?.files.first?.preview
                 let marker = "done picks=\(p?.picks ?? -1) skipped=\(p?.skippedCount ?? -1) outsider=\(p?.rows.last?.skipped ?? "missing")"
@@ -12090,14 +12166,25 @@ struct GalleryRecovery: Identifiable {
 
 struct PendingFeedback: Identifiable {
     struct File: Identifiable {
-        let id = UUID()
+        let id: UUID
         let feedback: ReviewGallery.Feedback
         let preview: FeedbackPreview
         let name: String
+        let path: String
+        let digest: String
+        init(id: UUID = UUID(), feedback: ReviewGallery.Feedback, preview: FeedbackPreview,
+             name: String, path: String, digest: String) {
+            self.id = id; self.feedback = feedback; self.preview = preview
+            self.name = name; self.path = path; self.digest = digest
+        }
     }
-    let id = UUID()
+    let id: UUID
     var files: [File]
     var unreadable: Int
+    var notice: String?
+    init(id: UUID = UUID(), files: [File], unreadable: Int, notice: String? = nil) {
+        self.id = id; self.files = files; self.unreadable = unreadable; self.notice = notice
+    }
 }
 
 /// Tidy plus align, distribute and match size for the selected cards. One undo step each.
@@ -12190,9 +12277,14 @@ struct FeedbackPreviewSheet: View {
                 }
                 Spacer()
             }
+            if let notice = model.pendingFeedback?.notice {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(Theme.warning)
+                if notice.contains("Choose") { Button("Choose Files Again…") { model.importFeedback() } }
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(pending.files) { f in file(f) }
+                    ForEach(model.pendingFeedback?.files ?? pending.files) { f in file(f) }
                 }
             }
             HStack {
@@ -12203,7 +12295,8 @@ struct FeedbackPreviewSheet: View {
                 Spacer()
                 Button("Cancel") { model.pendingFeedback = nil }.keyboardShortcut(.cancelAction)
                 Button("Import") { model.applyPendingFeedback() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).tint(Theme.accent)
-                    .disabled(pending.files.allSatisfy { $0.preview.isEmpty })
+                    .disabled((model.pendingFeedback?.files ?? pending.files).allSatisfy { $0.preview.isEmpty } ||
+                              (model.pendingFeedback?.notice ?? "").contains("Choose"))
             }
         }
         .padding(20)

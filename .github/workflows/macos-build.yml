@@ -234,6 +234,11 @@ jobs:
           grep -q '^done picks=1 skipped=1 outsider=Not in this gallery$' "$SUP/demo-feedback-roster.txt"
           cp "$SUP/demo-feedback-roster.txt" "ASSSETS-$ASSSETS_VERSION-feedback-roster.txt"
           shoot feedback-legacy 1024x768 feedback-legacy
+          shoot feedback-recovery 1024x768 feedback-recovery demo-feedback-recovery.txt
+          grep -q '^done recovered=2 board=false$' "$SUP/demo-feedback-recovery.txt"
+          shoot feedback-changed 1024x768 feedback-changed demo-feedback-changed.txt
+          grep -q '^done blocked=true picked=false$' "$SUP/demo-feedback-changed.txt"
+          cp "$SUP/demo-feedback-changed.txt" "ASSSETS-$ASSSETS_VERSION-feedback-changed.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
@@ -433,6 +438,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-partial.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-roster.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-changed.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
