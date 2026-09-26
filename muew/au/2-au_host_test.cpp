@@ -215,6 +215,21 @@ int main() {
         printf("AU noise BURST key time recalls and renders; 40 published parameter IDs unchanged\n");
     }
 
+    // 0.66.0: optional note-velocity COLOR depth combines with existing
+    // noise color state without publishing an AU parameter.
+    {
+        AudioUnit t=openUnit();muew::Preset p;
+        p.voice.noiseCharacter=2;p.voice.noiseColor=.65;p.voice.noiseLevel=.7;
+        p.voice.noiseBurst=.2;p.voice.noiseBurstVelColor=.8;
+        p.routes={{muew::ModRoute::Source::Macro1,muew::ModRoute::Dest::NoiseColor,.2}};
+        bool ok=t&&setState(t,p);muew::Preset back;
+        ok=ok&&getState(t,back)&&back==p&&back.serialize().find("\nnoisebvcolor 0.8\n")!=std::string::npos;
+        if(ok)ok=MusicDeviceMIDIEvent(t,0x90,60,35,0)==noErr&&render(t,l,r);
+        if(t){AudioUnitUninitialize(t);AudioComponentInstanceDispose(t);}
+        if(!ok){printf("FAIL: AU noise BURST velocity COLOR state\n");return 1;}
+        printf("AU noise BURST velocity COLOR recalls and renders alongside its matrix route; 40 IDs unchanged\n");
+    }
+
     // Every factory preset selects and sounds through the host path.
     for(SInt32 n=0;n<kExpectedPresets;++n){
         AUPreset sel{n,nullptr};

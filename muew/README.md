@@ -537,3 +537,13 @@ time scaling and latched for the whole note. A host tempo jump cannot change
 the active hit; a new note uses the current BPM or the 120 fallback. Depth
 zero skips the new math, preserving existing audio. The optional
 `noisebkey <depth>` line defaults to zero; no new AU parameter ID.
+
+## 0.66.0 Noise burst velocity color
+
+VEL COLOR is the sixth and final BURST SHAPE control. With an enabled burst
+in AIR, GRAIN or DUST, soft notes can pull the existing COLOR toward a darker
+texture while hard notes keep the original setting. This note-local offset
+combines with the existing matrix NOISE COLOR route before clamping to the
+0-100% range. At zero depth, old renders remain byte-identical. CLASSIC and
+BURST OFF ignore the new depth. The optional `noisebvcolor <depth>` preset
+line defaults to zero, without adding an AU parameter ID.

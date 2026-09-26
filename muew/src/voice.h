@@ -152,6 +152,7 @@ struct VoiceParams {
     double noiseBurstVelocity = 0.0; // 0.63.0: 0 legacy/static; 1 scales burst noise by note velocity
     double noiseBurstVelTime = 0.0; // 0.64.0: 0 legacy duration; 1 shortens soft-note burst to velocity fraction
     double noiseBurstKeyTime = 0.0; // 0.65.0: bipolar -1..1; higher notes shorter at positive depth
+    double noiseBurstVelColor = 0.0; // 0.66.0: soft hits darken AIR/GRAIN/DUST color during an enabled burst
     int filter2Type = 0;       // Filter2Type
     double filter2Cutoff = 2000.0, filter2Reso = 0.7;
     int filterRouting = 0;     // 0 serial (filter 1 -> filter 2), 1 parallel
@@ -587,8 +588,13 @@ public:
             l += sv; r += sv;
         }
         if (usesNoise_) {
-            if (params_.noiseCharacter != 0 && usesNoiseColor_) {
-                const double color = std::clamp(params_.noiseColor + modSum(ModRoute::Dest::NoiseColor), 0.0, 1.0);
+            if (params_.noiseCharacter != 0 && (usesNoiseColor_ || (noiseBurstLength_ > 0 && params_.noiseBurstVelColor > 0.0))) {
+                // Velocity is a note-local offset to the existing COLOR route.
+                // At full velocity and at depth zero, old behavior is exact.
+                const double velColor = noiseBurstLength_ > 0 ?
+                    std::clamp(params_.noiseBurstVelColor, 0.0, 1.0) *
+                    (std::clamp((double)velocity_, 0.0, 1.0) - 1.0) * 0.5 : 0.0;
+                const double color = std::clamp(params_.noiseColor + modSum(ModRoute::Dest::NoiseColor) + velColor, 0.0, 1.0);
                 noise_.setCharacter(params_.noiseCharacter, color);
                 if (params_.noiseWidth > 0) noiseR_.setCharacter(params_.noiseCharacter, color);
             }
