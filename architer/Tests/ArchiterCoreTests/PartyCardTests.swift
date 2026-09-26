@@ -25,6 +25,14 @@ struct PartyCardTests {
         #expect(card.chips == ["Prone", "Vault-marked", "Concentrating: Ember Ward"])
     }
 
+    @Test func concentrationTimerRidesTheChip() {
+        var c = character(name: "Wren")
+        c.beginConcentration(on: "Ember Ward")
+        #expect(PartyCardSummary(character: c).chips == ["Concentrating: Ember Ward"])
+        c.concentrationTimer = 9
+        #expect(PartyCardSummary(character: c).chips == ["Concentrating: Ember Ward (9)"])
+    }
+
     @Test func truncationKeepsTwoPlusCount() {
         var c = character(name: "Wren")
         c.conditions = [.prone, .poisoned]

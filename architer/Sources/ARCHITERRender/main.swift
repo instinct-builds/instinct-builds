@@ -1592,6 +1592,26 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? encLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/encounter.txt"),
                atomically: true, encoding: .utf8)
+    // Party-strip concentration chip proof (3.35.0): a running timer rides
+    // the chip. Runs at END; mutates Wren after every earlier render.
+    if let idx = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
+        model.characters[idx].beginConcentration(on: "Faerie Fire")
+        model.characters[idx].concentrationTimer = 9
+    }
+    renderPNG(
+        PartyStripView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 720, name: "party-strip-concentration", outDir: outDir, minHeight: 90, maxHeight: 200)
+    let wrenChip = model.characters.first(where: { $0.name == "Wren Halloway" })
+        .map { PartyCardSummary(character: $0).chips.last ?? "-" } ?? "-"
+    try? (["Party-strip concentration chip (3.35.0)",
+           "a running concentration timer rides the chip, matching the condition countdowns",
+           "Wren's last chip: \(wrenChip)"]
+          .joined(separator: "\n"))
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-strip-concentration.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

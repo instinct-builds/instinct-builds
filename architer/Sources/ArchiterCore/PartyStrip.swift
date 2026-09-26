@@ -26,7 +26,10 @@ public struct PartyCardSummary: Equatable, Sendable {
         tempHP = c.tempHP
         var chips = c.conditionChipNames
         if let spell = c.concentratingOn {
-            chips.append("Concentrating: \(spell)")
+            // 3.35.0: a running timer rides the chip, matching the
+            // condition countdowns ("Prone (1)").
+            let chip = c.concentrationTimer.map { "\(spell) (\($0))" } ?? spell
+            chips.append("Concentrating: \(chip)")
         }
         self.chips = chips
     }
