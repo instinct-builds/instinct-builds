@@ -1358,6 +1358,29 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? advisoryLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/conditions.txt"),
                atomically: true, encoding: .utf8)
+    // Level-up preview proof (3.25.0): render the preview sheet and record
+    // the derived delta, then confirm via the average path and record the
+    // result. Runs at END so every earlier render stays byte-identical.
+    var levelLines = ["Level-up preview (3.25.0)",
+                      "delta computed by derivation; Confirm rides the existing levelUp machinery"]
+    if let sel = model.selected?.wrappedValue, let preview = LevelUpPreview(character: sel) {
+        levelLines.append("level \(preview.fromLevel) -> \(preview.toLevel); hit dice \(preview.hitDiceFrom) -> \(preview.hitDiceTo); proficiency +\(preview.proficiencyFrom) -> +\(preview.proficiencyTo)")
+        for d in preview.slotDeltas {
+            levelLines.append("  spell level \(d.spellLevel) slots \(d.from) -> \(d.to)")
+        }
+        let hpBefore = sel.maxHP
+        renderPNG(
+            LevelUpPreviewView(character: .constant(sel))
+                .environmentObject(model),
+            width: 420, name: "level-up-preview", outDir: outDir, minHeight: 180, maxHeight: 480)
+        model.levelUp(rollHP: false)
+        if let after = model.selected?.wrappedValue {
+            levelLines.append("after average confirm: level \(after.level), maxHP \(hpBefore) -> \(after.maxHP) (+\(after.maxHP - hpBefore))")
+        }
+    }
+    try? levelLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/levelup.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -71,6 +71,7 @@ struct IdentityBlock: View {
     @Binding var character: Character
     @EnvironmentObject var model: AppModel
     @State private var xpToAdd = ""
+    @State private var showLevelUpPreview = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Gap.md) {
@@ -103,6 +104,7 @@ struct IdentityBlock: View {
                 }
                 if character.level < 20 {
                     Menu {
+                        Button("Preview\u{2026}") { showLevelUpPreview = true }
                         Button("Roll HP (\(character.levelUpRollExpression))") { model.levelUp(rollHP: true) }
                         Button("Take average (+\(character.averageLevelUpHP))") { model.levelUp(rollHP: false) }
                     } label: {
@@ -112,6 +114,10 @@ struct IdentityBlock: View {
                     .font(Theme.Typeface.caption)
                     .foregroundStyle(Theme.accent)
                     .help("Level up: roll or average HP, slots and proficiency update automatically")
+                    .sheet(isPresented: $showLevelUpPreview) {
+                        LevelUpPreviewView(character: $character)
+                            .environmentObject(model)
+                    }
                 }
             }
             HStack(spacing: Theme.Gap.sm) {
@@ -413,3 +419,59 @@ private struct ToolProficiencyRow: View {
     }
 }
 #endif
+
+
+/// Level-up preview (3.25.0): see the level N -> N+1 delta before committing.
+/// Both confirm paths ride the existing levelUp machinery, so undo, journal,
+/// and history behave exactly as the one-click menu paths. The roll path's
+/// die lands at Confirm, never in the preview.
+public struct LevelUpPreviewView: View {
+    @Binding var character: Character
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    public init(character: Binding<Character>) {
+        _character = character
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.md) {
+            if let preview = LevelUpPreview(character: character) {
+                Text("Level \(preview.fromLevel) \u{2192} \(preview.toLevel)")
+                    .font(Theme.Typeface.headline)
+                    .foregroundStyle(Theme.ink)
+                VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+                    if preview.proficiencyTo != preview.proficiencyFrom {
+                        Text("Proficiency bonus +\(preview.proficiencyFrom) \u{2192} +\(preview.proficiencyTo)")
+                    }
+                    Text("Hit dice \(preview.hitDiceFrom) \u{2192} \(preview.hitDiceTo)")
+                    ForEach(preview.slotDeltas, id: \.spellLevel) { d in
+                        Text("Spell level \(d.spellLevel) slots \(d.from) \u{2192} \(d.to)")
+                    }
+                    Text(preview.notesLine(hpGain: preview.averageHPGain))
+                        .foregroundStyle(Theme.inkMuted)
+                }
+                .font(Theme.Typeface.body)
+                .foregroundStyle(Theme.ink)
+                HStack(spacing: Theme.Gap.sm) {
+                    Button("Take average (+\(preview.averageHPGain))") {
+                        model.levelUp(rollHP: false)
+                        dismiss()
+                    }
+                    Button("Roll HP (\(preview.rollExpression))") {
+                        model.levelUp(rollHP: true)
+                        dismiss()
+                    }
+                    Button("Cancel", role: .cancel) { dismiss() }
+                }
+                .controlSize(.small)
+            } else {
+                Text("Already at the level cap.")
+                    .foregroundStyle(Theme.inkMuted)
+            }
+        }
+        .padding()
+        .frame(minWidth: 380)
+        .background(Theme.surface)
+    }
+}
