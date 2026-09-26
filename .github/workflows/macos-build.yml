@@ -150,6 +150,16 @@ jobs:
           G=$(ls -d "$SUP/demo-gallery/"*Review | head -1); test -f "$G/index.html"
           unzip -l "$G.zip" | tee "ASSSETS-$ASSSETS_VERSION-gallery-listing.txt"; grep -q 'index.html' "ASSSETS-$ASSSETS_VERSION-gallery-listing.txt"
           if grep -q '__MACOSX' "ASSSETS-$ASSSETS_VERSION-gallery-listing.txt"; then echo "gallery zip has __MACOSX"; exit 1; fi
+          test "$(find "$G/images" -type f | wc -l | tr -d ' ')" -eq 12
+          test "$(find "$G/thumbs" -type f | wc -l | tr -d ' ')" -eq 12
+          DELAY=15 shoot gallery-render-fail 1024x768 gallery-render-fail demo-gallery-fail/gallery-done.txt
+          grep -q '^done prepared=1 expected=12 failed=1 folder=false zip=false$' "$SUP/demo-gallery-fail/gallery-done.txt"
+          ! find "$SUP/demo-gallery-fail" -maxdepth 1 -name '*Review*' | grep .
+          DELAY=15 shoot gallery-publish-fail 1024x768 gallery-publish-fail demo-gallery-fail/gallery-done.txt
+          grep -q '^done prepared=12 expected=12 failed=1 folder=false zip=false$' "$SUP/demo-gallery-fail/gallery-done.txt"
+          test "$(find "$SUP/demo-gallery-fail" -maxdepth 1 -name '*Review' | wc -l | tr -d ' ')" -eq 0
+          test "$(find "$SUP/demo-gallery-fail" -maxdepth 1 -name '*Review.zip' | wc -l | tr -d ' ')" -eq 0
+          cp "$SUP/demo-gallery-fail/gallery-done.txt" "ASSSETS-$ASSSETS_VERSION-gallery-partial.txt"
           CH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; test -x "$CH"
           U=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$G/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-web.png" "$U?demo=grid" || true
@@ -242,6 +252,9 @@ jobs:
           DELAY=18 shoot rights-report-snapshot 1024x768 rights-report-snapshot demo-rights-snapshot.txt
           grep -q '^done complete=true pdf=true csv=true folder=true copies=3$' "$SUP/demo-rights-snapshot.txt"
           cp "$SUP/demo-rights-snapshot.txt" "ASSSETS-$ASSSETS_VERSION-rights-snapshot.txt"
+          cp "$SUP/demo-rights-snapshot.pdf" "ASSSETS-$ASSSETS_VERSION-rights-snapshot.pdf"
+          cp "$SUP/demo-rights-snapshot.csv" "ASSSETS-$ASSSETS_VERSION-rights-snapshot.csv.txt"
+          test -s "ASSSETS-$ASSSETS_VERSION-rights-snapshot.pdf"; test -s "ASSSETS-$ASSSETS_VERSION-rights-snapshot.csv.txt"
           DELAY=18 shoot rights-report-stale 1024x768 rights-report-stale demo-rights-snapshot.txt
           grep -q '^done complete=false pdf=false csv=false folder=false copies=0$' "$SUP/demo-rights-snapshot.txt"
           DELAY=18 shoot rights-report-missing 1024x768 rights-report-missing demo-rights-snapshot.txt
@@ -399,6 +412,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-pdf-sizes.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-export-presets.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-listing.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-partial.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
@@ -406,6 +420,8 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.pdf
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-report.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-snapshot*.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-snapshot.pdf
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-snapshot.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt

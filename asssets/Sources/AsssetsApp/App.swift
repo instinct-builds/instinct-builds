@@ -320,11 +320,15 @@ final class StudioLibrary: ObservableObject {
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
     func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
+        guard !galleryRunning else { flash("A gallery export is already running"); return }
         let galleryID = UUID().uuidString, boardID = board?.layout.id
         let list = ids ?? filtered.map(\.id).filter(selection.contains)
         let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
-        let assets = list.compactMap { byID[$0] }.filter { $0.kind != .audio }
-        guard !assets.isEmpty else { flash("Select images, textures, vectors, mockups or clips for a gallery"); return }
+        guard !list.isEmpty else { flash("Select images, textures, vectors, mockups or clips for a gallery"); return }
+        guard list.count == Set(list).count, list.allSatisfy({ byID[$0] != nil && byID[$0]?.kind != .audio }) else {
+            flash("Gallery incomplete: 0 of \(list.count) prepared, \(list.count) failed. An asset is missing or cannot be shown."); return
+        }
+        let assets = list.compactMap { byID[$0] }
         if fixedDir == nil, !checked {
             let fixedList = assets.map(\.id)
             guardRights(fixedList, action: "Share gallery", skip: board == nil ? { self.exportGallery($0, title: title, to: nil, board: nil, summaryPDF: summaryPDF, checked: true, ticket: $1) } : nil) {
@@ -342,7 +346,7 @@ final class StudioLibrary: ObservableObject {
         // License files travel with the gallery only when the user opted in (1.27).
         var licenseCopies: [(URL, String)] = []
         if includeLicenseFiles, includeCredits {
-            let docs = catalog.licenseDocs(forAll: assets.map(\.id)).filter { FileManager.default.fileExists(atPath: licenseURL($0).path) }
+            let docs = catalog.licenseDocs(forAll: assets.map(\.id))
             let byName = Dictionary(docs.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
             for d in docs { licenseCopies.append((licenseURL(d), "licenses/" + d.stored)) }
             for i in creditLines.indices {
@@ -350,7 +354,6 @@ final class StudioLibrary: ObservableObject {
             }
         }
         let name = title ?? (selection.count > 1 || ids != nil ? browsingTitle : "Review")
-        let galleryCredits = creditLines, galleryLicenses = licenseCopies
         var parent = fixedDir
         if parent == nil {
             let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
@@ -366,95 +369,142 @@ final class StudioLibrary: ObservableObject {
                       validRights(ticket, boardItems: live.items.map(\.id)) else { return }
             }
         }
-        let taken = Set((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
-        let folderName = DragOut.uniqueName(DragOut.safeName(name + " Review"), taken: taken)
+        let fm = FileManager.default
+        guard let existing = try? fm.contentsOfDirectory(atPath: parent.path) else { flash("Cannot read the gallery destination"); return }
+        let taken = Set(existing)
+        let folderName = DragOut.uniqueName(DragOut.safeName(name + " Review"), taken: taken.union(Set(existing.compactMap { $0.hasSuffix(".zip") ? String($0.dropLast(4)) : nil })))
         let folder = parent.appendingPathComponent(folderName, isDirectory: true)
+        let zip = parent.appendingPathComponent(folderName + ".zip")
+        guard !cleanupEntryExists(folder), !cleanupEntryExists(zip) else { flash("Gallery name already exists; choose another destination"); return }
+        let stage = parent.appendingPathComponent(".ASSSETS-gallery-\(UUID().uuidString)", isDirectory: true)
+        let stagedFolder = stage.appendingPathComponent(folderName, isDirectory: true)
+        let stagedZip = stage.appendingPathComponent(folderName + ".zip")
         let jobs = assets.map { a in (a, effect, intensity, psdToggled[a.id] ?? [], tiles(for: a), fixSeams.contains(a.id)) }
+        let expected = assets.map(\.id)
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let created = df.string(from: Date())
+        let galleryCredits = creditLines, galleryLicenses = licenseCopies
+        let demoFailure = isDemo ? galleryDemoFailure : nil
         galleryRunning = true
         flash("Building gallery for \(assets.count) assets…")
         Task.detached(priority: .userInitiated) {
-            let fm = FileManager.default
-            try? fm.createDirectory(at: folder.appendingPathComponent("images"), withIntermediateDirectories: true)
-            try? fm.createDirectory(at: folder.appendingPathComponent("thumbs"), withIntermediateDirectories: true)
-            var items: [ReviewGallery.Item] = []
-            for (i, job) in jobs.enumerated() {
-                if fixedDir == nil {
-                    let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
-                    guard stillValid else {
-                    try? fm.removeItem(at: folder)
-                    await MainActor.run { self.galleryRunning = false }
-                    return
-                }
-                }
-                let (a, fx, amt, psd, tiles, fix) = job
-                guard let img = MediaRenderer.exportBase(a, effect: fx, amount: amt, psdToggled: psd, tiles: tiles, fixSeams: fix) else { continue }
-                let stem = ReviewGallery.stem(i, count: jobs.count)
-                let full = ExportRect(x: 0, y: 0, w: img.width, h: img.height)
-                func sized(_ edge: Int) -> ExportOutput {
-                    let s = min(1, Double(edge) / Double(max(img.width, img.height)))
-                    return ExportOutput(suffix: "", width: max(1, Int(Double(img.width) * s)), height: max(1, Int(Double(img.height) * s)), crop: full, format: .jpeg, dpi: 72)
-                }
-                guard MediaRenderer.writePreset(img, output: sized(2000), to: folder.appendingPathComponent("images/\(stem).jpg")),
-                      MediaRenderer.writePreset(img, output: sized(640), to: folder.appendingPathComponent("thumbs/\(stem).jpg")) else { continue }
-                var item = ReviewGallery.Item(id: a.id.uuidString, title: a.title, kind: a.kind.singular, resolution: a.resolution, palette: a.palette,
-                                              tags: a.tags, image: "images/\(stem).jpg", thumb: "thumbs/\(stem).jpg")
-                if let c = a.rights?.credit.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { item.credit = c }
-                items.append(item)
-            }
-            if fixedDir == nil {
-                let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
-                guard stillValid else {
-                    try? fm.removeItem(at: folder)
-                    await MainActor.run { self.galleryRunning = false }
-                    return
+            var prepared = 0, failed = 0, landed: [URL] = []
+            func validRightsNow() async -> Bool {
+                if fixedDir != nil { return true }
+                return await MainActor.run {
+                    guard let ticket, self.validRights(ticket) else { return false }
+                    if let boardID {
+                        guard let live = self.catalog.board(boardID), self.validRights(ticket, boardItems: live.items.map(\.id)) else { return false }
+                    }
+                    return true
                 }
             }
-            var boardView: ReviewGallery.Board?
-            if let board, (try? board.png.write(to: folder.appendingPathComponent("board.png"))) != nil {
-                let spots = ReviewGallery.spots(for: board.layout, including: Set(items.compactMap { UUID(uuidString: $0.id) }))
-                boardView = .init(image: "board.png", width: board.width, height: board.height, spots: spots)
-            }
-            if fixedDir == nil {
-                let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
-                guard stillValid else {
-                    try? fm.removeItem(at: folder)
-                    await MainActor.run { self.galleryRunning = false }
-                    return
+            func fail(_ detail: String) async {
+                if landed.isEmpty { try? fm.removeItem(at: stage) }
+                await MainActor.run {
+                    self.galleryRunning = false
+                    self.flash("Gallery incomplete: \(prepared) of \(jobs.count) prepared, \(failed) failed. \(detail)")
+                    if fixedDir != nil {
+                        try? "done prepared=\(prepared) expected=\(jobs.count) failed=\(failed) folder=\(fm.fileExists(atPath: folder.path)) zip=\(fm.fileExists(atPath: zip.path))".write(
+                            to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8)
+                    }
                 }
             }
-            if !galleryLicenses.isEmpty {
-                try? fm.createDirectory(at: folder.appendingPathComponent("licenses"), withIntermediateDirectories: true)
-                for (src, rel) in galleryLicenses { try? fm.copyItem(at: src, to: folder.appendingPathComponent(rel)) }
-            }
-            var summaryName: String?
-            if let summaryPDF, (try? fm.copyItem(at: summaryPDF, to: folder.appendingPathComponent("round-summary.pdf"))) != nil { summaryName = "round-summary.pdf" }
-            if fixedDir == nil {
-                let stillValid = await MainActor.run { ticket.map { self.validRights($0) } ?? false }
-                guard stillValid else {
-                    try? fm.removeItem(at: folder)
-                    await MainActor.run { self.galleryRunning = false }
-                    return
+            do {
+                try fm.createDirectory(at: stagedFolder.appendingPathComponent("images"), withIntermediateDirectories: true)
+                try fm.createDirectory(at: stagedFolder.appendingPathComponent("thumbs"), withIntermediateDirectories: true)
+                var items: [ReviewGallery.Item] = []
+                for (i, job) in jobs.enumerated() {
+                    guard await validRightsNow() else { failed = 1; await fail("Rights changed; review again."); return }
+                    let (a, fx, amt, psd, tiles, fix) = job
+                    if demoFailure == "render" && i == 1 { failed = 1; await fail("An image could not be rendered."); return }
+                    guard let img = MediaRenderer.exportBase(a, effect: fx, amount: amt, psdToggled: psd, tiles: tiles, fixSeams: fix) else {
+                        failed = 1; await fail("An image could not be rendered."); return
+                    }
+                    let stem = ReviewGallery.stem(i, count: jobs.count)
+                    let full = ExportRect(x: 0, y: 0, w: img.width, h: img.height)
+                    func sized(_ edge: Int) -> ExportOutput {
+                        let s = min(1, Double(edge) / Double(max(img.width, img.height)))
+                        return ExportOutput(suffix: "", width: max(1, Int(Double(img.width) * s)), height: max(1, Int(Double(img.height) * s)), crop: full, format: .jpeg, dpi: 72)
+                    }
+                    let image = "images/\(stem).jpg", thumb = "thumbs/\(stem).jpg"
+                    guard MediaRenderer.writePreset(img, output: sized(2000), to: stagedFolder.appendingPathComponent(image)),
+                          MediaRenderer.writePreset(img, output: sized(640), to: stagedFolder.appendingPathComponent(thumb)),
+                          (((try? fm.attributesOfItem(atPath: stagedFolder.appendingPathComponent(image).path)[.size]) as? NSNumber)?.intValue ?? 0) > 0,
+                          (((try? fm.attributesOfItem(atPath: stagedFolder.appendingPathComponent(thumb).path)[.size]) as? NSNumber)?.intValue ?? 0) > 0 else {
+                        failed = 1; await fail("An image or thumbnail could not be written."); return
+                    }
+                    var item = ReviewGallery.Item(id: a.id.uuidString, title: a.title, kind: a.kind.singular, resolution: a.resolution, palette: a.palette,
+                                                  tags: a.tags, image: image, thumb: thumb)
+                    if let c = a.rights?.credit.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { item.credit = c }
+                    items.append(item); prepared += 1
                 }
-            }
-            var manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView, summary: summaryName)
-            if !galleryCredits.isEmpty { manifest.credits = galleryCredits }
-            let ok = (try? ReviewGallery.html(manifest).write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)) != nil
-            // A zip next to the folder, ready to send.
-            let zip = parent.appendingPathComponent(folderName + ".zip")
-            try? fm.removeItem(at: zip)
-            let proc = Process(); proc.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-            proc.arguments = ["-c", "-k", "--norsrc", "--keepParent", folder.path, zip.path]
-            try? proc.run(); proc.waitUntilExit()
-            let zipped = proc.terminationStatus == 0
-            await MainActor.run { [items] in
-                self.galleryRunning = false
-                guard ok, !items.isEmpty else { self.flash("Could not build the gallery"); return }
-                // Remember where it came from, so the client's feedback pins back onto this board (1.20).
-                if let boardID { self.mutate { $0.noteGalleryShared(galleryID, from: boardID) } }
-                self.flash("Gallery ready: \(items.count) assets\(summaryPDF != nil ? " + round summary" : "")\(zipped ? ", zipped" : "")")
-                if fixedDir == nil { NSWorkspace.shared.activateFileViewerSelecting([zipped ? zip : folder]) }
-                else { try? "\(items.count)".write(to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8) }
+                guard await validRightsNow() else { failed = 1; await fail("Rights changed; review again."); return }
+                var boardView: ReviewGallery.Board?
+                if let board {
+                    try board.png.write(to: stagedFolder.appendingPathComponent("board.png"))
+                    let spots = ReviewGallery.spots(for: board.layout, including: Set(expected))
+                    boardView = .init(image: "board.png", width: board.width, height: board.height, spots: spots)
+                }
+                if !galleryLicenses.isEmpty {
+                    try fm.createDirectory(at: stagedFolder.appendingPathComponent("licenses"), withIntermediateDirectories: false)
+                    for (source, relative) in galleryLicenses {
+                        guard let before = Self.sha256(path: source.path) else { throw NSError(domain: "ASSSETS.Gallery", code: 1) }
+                        let target = stagedFolder.appendingPathComponent(relative)
+                        try fm.copyItem(at: source, to: target)
+                        guard Self.sha256(path: target.path) == before else { throw NSError(domain: "ASSSETS.Gallery", code: 2) }
+                    }
+                }
+                var summaryName: String?
+                if let summaryPDF {
+                    guard let before = Self.sha256(path: summaryPDF.path) else { throw NSError(domain: "ASSSETS.Gallery", code: 5) }
+                    let target = stagedFolder.appendingPathComponent("round-summary.pdf")
+                    try fm.copyItem(at: summaryPDF, to: target)
+                    guard Self.sha256(path: target.path) == before else { throw NSError(domain: "ASSSETS.Gallery", code: 6) }
+                    summaryName = "round-summary.pdf"
+                }
+                var manifest = ReviewGallery.Manifest(gallery: galleryID, title: name, created: created, items: items, board: boardView, summary: summaryName)
+                if !galleryCredits.isEmpty { manifest.credits = galleryCredits }
+                let index = stagedFolder.appendingPathComponent("index.html")
+                try ReviewGallery.html(manifest).write(to: index, atomically: true, encoding: .utf8)
+                let names = Set(try fm.subpathsOfDirectory(atPath: stagedFolder.path))
+                guard GalleryCompleteness.valid(requested: expected, manifest: manifest, files: names,
+                                                requiredLicenses: galleryLicenses.map { $0.1 }, needsBoard: board != nil, needsSummary: summaryPDF != nil),
+                      await validRightsNow() else { failed = 1; await fail("Gallery files or rights changed."); return }
+                let proc = Process(); proc.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                proc.arguments = ["-c", "-k", "--norsrc", "--keepParent", stagedFolder.path, stagedZip.path]
+                try proc.run(); proc.waitUntilExit()
+                guard proc.terminationStatus == 0 else { failed = 1; await fail("ZIP could not be completed."); return }
+                let verify = Process(); verify.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+                verify.arguments = ["-tq", stagedZip.path]
+                try verify.run(); verify.waitUntilExit()
+                guard proc.terminationStatus == 0, verify.terminationStatus == 0,
+                      (((try? fm.attributesOfItem(atPath: stagedZip.path)[.size]) as? NSNumber)?.intValue ?? 0) > 0,
+                      await validRightsNow() else { failed = 1; await fail("ZIP could not be completed."); return }
+                guard !cleanupEntryExists(folder), !cleanupEntryExists(zip) else { throw NSError(domain: "ASSSETS.Gallery", code: 4) }
+                try moveCleanupFile(stagedFolder, folder); landed.append(folder)
+                if demoFailure == "publish" { throw NSError(domain: "ASSSETS.Demo", code: 3) }
+                do { try moveCleanupFile(stagedZip, zip); landed.append(zip) }
+                catch {
+                    // Retract only our newly published folder, never touch a preexisting destination.
+                    try? moveCleanupFile(folder, stagedFolder)
+                    landed.removeAll { $0 == folder && !cleanupEntryExists(folder) }
+                    throw error
+                }
+                try? fm.removeItem(at: stage)
+                await MainActor.run {
+                    self.galleryRunning = false
+                    if let boardID { self.mutate { $0.noteGalleryShared(galleryID, from: boardID) } }
+                    self.flash("Gallery ready: \(items.count) of \(jobs.count) assets\(summaryPDF != nil ? " + round summary" : ""), zipped")
+                    if fixedDir == nil { NSWorkspace.shared.activateFileViewerSelecting([zip]) }
+                    else { try? "\(items.count)".write(to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8) }
+                }
+            } catch {
+                failed = max(1, failed)
+                if landed == [folder] {
+                    try? moveCleanupFile(folder, stagedFolder)
+                    landed.removeAll { $0 == folder && !cleanupEntryExists(folder) }
+                }
+                await fail(landed.isEmpty ? "Nothing shareable was published." : "\(landed.count) of 2 parts landed; inspect \(stage.path). Do not send yet.")
             }
         }
     }
@@ -2201,13 +2251,13 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// Darwin exclusive rename refuses to overwrite a reappearing target.
-    private func moveCleanupFile(_ source: URL, _ target: URL) throws {
+    nonisolated private func moveCleanupFile(_ source: URL, _ target: URL) throws {
         guard renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 else {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
         }
     }
 
-    private func cleanupEntryExists(_ url: URL) -> Bool {
+    nonisolated private func cleanupEntryExists(_ url: URL) -> Bool {
         var st = stat()
         return lstat(url.path, &st) == 0 || errno != ENOENT
     }
@@ -3032,10 +3082,11 @@ final class StudioLibrary: ObservableObject {
                 markCompare(.keep); markCompare(.reject)
                 compareZoom.zoom(by: 2.5, anchorX: 0.3, anchorY: 0.35)
             } else { swipeSplit = 0.46; compareSwipe = true }
-        case "gallery":
+        case "gallery", "gallery-render-fail", "gallery-publish-fail":
+            galleryDemoFailure = demo == "gallery-render-fail" ? "render" : demo == "gallery-publish-fail" ? "publish" : nil
             let ids = catalog.assets.filter { $0.collection == "Device Mockups" }.prefix(12).map(\.id)
             show(collection: "Device Mockups")
-            let out = supportRoot.appendingPathComponent("demo-gallery", isDirectory: true)
+            let out = supportRoot.appendingPathComponent(demo == "gallery" ? "demo-gallery" : "demo-gallery-fail", isDirectory: true)
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             exportGallery(Array(ids), title: "Launch Mockups", to: out)
