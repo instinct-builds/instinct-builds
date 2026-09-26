@@ -1533,9 +1533,11 @@ func run(model: AppModel, character: Character, outDir: String) {
     // Delete confirmation proof (3.32.0): the armed toolbar state. Runs at
     // END; no state is mutated (the confirm is never fired).
     renderPNG(
-        ContentView(initialConfirmingDelete: true)
+        DeleteConfirmCluster(confirmingDelete: .constant(true))
+            .padding()
+            .background(Theme.surface)
             .environmentObject(model),
-        width: 1000, name: "roster-delete-confirm", outDir: outDir, minHeight: 480, maxHeight: 760)
+        width: 520, name: "roster-delete-confirm", outDir: outDir, minHeight: 60, maxHeight: 120)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

@@ -51,19 +51,7 @@ public struct ContentView: View {
                     .help("Duplicate") }
                 ToolbarItem {
                     if confirmingDelete {
-                        HStack(spacing: Theme.Gap.sm) {
-                            Text("Delete \(model.selected?.wrappedValue.name ?? "character")?")
-                                .font(Theme.Typeface.caption)
-                                .foregroundStyle(Theme.inkMuted)
-                            Button("Delete", role: .destructive) {
-                                model.deleteSelected()
-                                confirmingDelete = false
-                            }
-                            .controlSize(.small)
-                            .help("Delete this character for good - this cannot be undone")
-                            Button("Cancel") { confirmingDelete = false }
-                                .controlSize(.small)
-                        }
+                        DeleteConfirmCluster(confirmingDelete: $confirmingDelete)
                     } else {
                         Button(action: { confirmingDelete = true }) { Image(systemName: "trash") }
                             .disabled(model.selectedID == nil)
@@ -135,6 +123,34 @@ struct CharacterDetailView: View {
 /// level, HP with a thin bar, condition and concentration chips (truncated
 /// with a "+N more" marker). Read-only: a tap selects via the same binding
 /// the sidebar list uses; the sheet stays the only editor.
+/// The armed delete-confirm cluster (3.32.0), factored out so the render
+/// harness can prove it directly - window toolbars are chrome and never
+/// appear in an offscreen render.
+public struct DeleteConfirmCluster: View {
+    @EnvironmentObject var model: AppModel
+    @Binding var confirmingDelete: Bool
+
+    public init(confirmingDelete: Binding<Bool>) {
+        _confirmingDelete = confirmingDelete
+    }
+
+    public var body: some View {
+        HStack(spacing: Theme.Gap.sm) {
+            Text("Delete \(model.selected?.wrappedValue.name ?? "character")?")
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.inkMuted)
+            Button("Delete", role: .destructive) {
+                model.deleteSelected()
+                confirmingDelete = false
+            }
+            .controlSize(.small)
+            .help("Delete this character for good - this cannot be undone")
+            Button("Cancel") { confirmingDelete = false }
+                .controlSize(.small)
+        }
+    }
+}
+
 public struct PartyStripView: View {
     @EnvironmentObject var model: AppModel
 
