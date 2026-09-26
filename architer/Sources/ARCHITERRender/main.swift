@@ -1553,7 +1553,10 @@ func run(model: AppModel, character: Character, outDir: String) {
                     .padding()
                     .background(Theme.surface)
                     .environmentObject(model),
-                width: 520, name: "concentration-timer", outDir: outDir, minHeight: 200, maxHeight: 480)
+                // Tall window: renderPNG clips from the TOP when the fitting
+                // height exceeds maxHeight (AppKit lays out bottom-up), and
+                // the concentration row sits at the block's top.
+                width: 520, name: "concentration-timer", outDir: outDir, minHeight: 200, maxHeight: 1800)
         }
         for _ in 0..<(9 * model.initiative.entries.count) { model.advanceInitiative() }
         let after = model.selected?.wrappedValue
