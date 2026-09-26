@@ -223,6 +223,7 @@ public final class AppModel: ObservableObject {
         encounterLines = encounterStore.load()
         savedEncounters = encounterLibraryStore.load()
         initiative = initiativeStore.load()
+        tableLog = tableLogStore.load()
         if selectedID == nil || !characters.contains(where: { $0.id == selectedID }) {
             if let saved = UserDefaults.standard.string(forKey: AppModel.lastSelectedKey),
                let uuid = UUID(uuidString: saved),
@@ -794,11 +795,18 @@ public final class AppModel: ObservableObject {
         // stored inputs (CR breakdown, rounds fought, the recorded
         // award). Rides the selected character's journal and undo stack
         // exactly like any journal add; an idle tracker files nothing.
-        if let line = initiative.fightRecapLine, var c = selected?.wrappedValue {
+        if let line = initiative.fightRecapLine {
             let now = Date()
-            c.journal.append(JournalEntry(date: JournalStamp.day(now), title: "Fight recap",
-                                          text: line, createdAt: now))
-            selected?.wrappedValue = c
+            if var c = selected?.wrappedValue {
+                c.journal.append(JournalEntry(date: JournalStamp.day(now), title: "Fight recap",
+                                              text: line, createdAt: now))
+                selected?.wrappedValue = c
+            }
+            // 3.45.0: the same derived line lands in the table log - the
+            // party's record. Independent entries: deleting one never
+            // touches the other.
+            tableLog.append(TableLogEntry(createdAt: now, title: "Fight recap", text: line))
+            tableLogStore.save(tableLog)
         }
         initiative.endCombat()
         initiativeStore.save(initiative)
@@ -1061,6 +1069,28 @@ public final class AppModel: ObservableObject {
 
     public func saveEncounterLines() { encounterStore.save(encounterLines) }
 
+    /// The table log (3.45.0): the party-level session record - manual
+    /// entries plus the fight recap's second home. Persisted next to the
+    /// character files; not a character, so deletes arm a confirm instead
+    /// of riding an undo stack.
+    @Published public var tableLog: [TableLogEntry] = []
+    var tableLogStore: TableLogStore { TableLogStore(directory: store.directory) }
+
+    /// Append a manual entry; blank title AND blank text adds nothing.
+    public func addTableLogEntry(title: String, text: String) {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty || !body.isEmpty else { return }
+        tableLog.append(TableLogEntry(title: t, text: body))
+        tableLogStore.save(tableLog)
+    }
+
+    /// Delete one entry - the UI arms an inline confirm first.
+    public func deleteTableLogEntry(_ entry: TableLogEntry) {
+        tableLog.removeAll { $0.id == entry.id }
+        tableLogStore.save(tableLog)
+    }
+
     /// The encounter library (3.43.0): named saved encounters. Save
     /// upserts by name - the name is the identity; the UI arms an
     /// overwrite confirm before calling with a duplicate.
@@ -1269,6 +1299,27 @@ public final class AppModel: ObservableObject {
         guard var c = selected?.wrappedValue else { return }
         c.longRest()
         selected?.wrappedValue = c
+    }
+
+    /// Party rest (3.45.0): "you take a long rest" is said to the party,
+    /// not one character at a time. Each member rests through the award
+    /// path - their own undo stack and save - so one member's undo
+    /// restores just them. Returns the names of members whose state moved.
+    @discardableResult
+    public func restParty(long: Bool) -> [String] {
+        var rested: [String] = []
+        for idx in characters.indices {
+            var c = characters[idx]
+            if long { c.longRest() } else { c.shortRest() }
+            guard c != characters[idx] else { continue }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            rested.append(c.name)
+        }
+        return rested
     }
 
     /// Cast a specific spell: spends the slot and, for concentration spells,

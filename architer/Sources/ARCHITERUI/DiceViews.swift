@@ -201,6 +201,7 @@ public struct DiceRollerView: View {
             InitiativeSectionView()
             GroupCheckSectionView()
             EncounterSectionView()
+            TableLogView()
             HStack {
                 Text("History").font(.headline)
                 if let name = model.selected?.wrappedValue.name {
@@ -1267,6 +1268,20 @@ public struct GroupCheckSectionView: View {
                 .disabled(model.characters.isEmpty)
                 .help("Roll for all \(model.characters.count) roster characters")
             }
+            // Party rest (3.45.0): the DM says "you rest" to the party.
+            // Each member rides their own undo stack (the award path);
+            // recovery-direction, so no confirm - matching the
+            // per-character rest buttons.
+            HStack(spacing: Theme.Gap.sm) {
+                Button("Short rest (party)") { model.restParty(long: false) }
+                    .controlSize(.small)
+                    .disabled(model.characters.isEmpty)
+                    .help("Short rest for all \(model.characters.count) roster characters - pact slots and short-rest features recharge")
+                Button("Long rest (party)") { model.restParty(long: true) }
+                    .controlSize(.small)
+                    .disabled(model.characters.isEmpty)
+                    .help("Long rest for all \(model.characters.count) roster characters - HP, slots, hit dice, exhaustion per the era preset")
+            }
             if let outcome = model.lastGroupCheck {
                 VStack(alignment: .leading, spacing: Theme.Gap.xs) {
                     ForEach(outcome.lines, id: \.name) { line in
@@ -1759,12 +1774,87 @@ public struct XPAwardPanelView: View {
     }
 }
 
+/// The table log (3.45.0): the party-level session record - manual notes
+/// and the fight recap's second home, newest first. Deletes arm inline;
+/// the log is not a character, so there is no undo stack.
+public struct TableLogView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var titleDraft = ""
+    @State private var textDraft = ""
+    @State private var deleteArmedID: UUID?
+
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+            HStack(spacing: Theme.Gap.sm) {
+                Text("Table log").font(.headline)
+                    .help("The party's shared session record - manual notes and fight recaps")
+                Spacer()
+                TextField("Title", text: $titleDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(maxWidth: 150)
+                TextField("Note", text: $textDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(maxWidth: 200)
+                Button("Add") {
+                    model.addTableLogEntry(title: titleDraft, text: textDraft)
+                    titleDraft = ""
+                    textDraft = ""
+                }
+                .controlSize(.small)
+                .disabled(titleDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          && textDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Add a note to the table log")
+            }
+            ForEach(model.tableLog.sorted { $0.createdAt > $1.createdAt }) { entry in
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Gap.sm) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: Theme.Gap.sm) {
+                            Text(entry.title.isEmpty ? "Note" : entry.title)
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.ink)
+                            Text(JournalStamp.day(entry.createdAt))
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.inkMuted)
+                        }
+                        if !entry.text.isEmpty {
+                            Text(entry.text)
+                                .font(Theme.Typeface.caption)
+                                .foregroundStyle(Theme.inkMuted)
+                                .lineLimit(2)
+                        }
+                    }
+                    Spacer()
+                    if deleteArmedID == entry.id {
+                        Button("Delete?") {
+                            model.deleteTableLogEntry(entry)
+                            deleteArmedID = nil
+                        }
+                        .controlSize(.small)
+                        .help("Remove this entry - no undo")
+                        Button("Cancel") { deleteArmedID = nil }
+                            .controlSize(.small)
+                    } else {
+                        Button { deleteArmedID = entry.id } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.inkMuted)
+                        .help("Delete this entry (arms a confirm)")
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// The encounter library content (3.43.0): save the current rows under a
 /// name, reload them later. Overwrite, load-replace, and delete each arm
 /// an inline confirm - prep is rebuildable in theory but not experienced
 /// that way at the table. The chevron header lives in
 /// EncounterSectionView so the harness can render this content expanded.
+
 public struct EncounterLibraryView: View {
     @EnvironmentObject var model: AppModel
     @State private var libraryName = ""

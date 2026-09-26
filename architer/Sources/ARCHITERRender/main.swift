@@ -1898,6 +1898,61 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? prLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/prefight-recap.txt"),
                atomically: true, encoding: .utf8)
+    // Table log + party rest proofs (3.45.0). Runs at END.
+    var tlLines = ["Table log + party rest (3.45.0)",
+                   "the party's shared record: manual entries + the fight recap's second home; party rest rides each member's own undo stack"]
+    model.addTableLogEntry(title: "Ember Warrens", text: "The party reaches the bridge over the Ember.")
+    tlLines.append("manual entry: log count \(model.tableLog.count), latest '\(model.tableLog.last?.title ?? "MISSING")' - \(model.tableLog.last?.text ?? "MISSING")")
+    // Fight recap dual-files: the identical derived line to the journal AND the log.
+    model.startFightFromPlanner()
+    model.rollInitiative()
+    for _ in 0..<6 { model.advanceInitiative() }   // two wraps -> round 3
+    _ = model.awardFightXP(mode: .equalSplit, excluded: [])
+    if let wren = model.characters.first(where: { $0.name == "Wren Halloway" }) { model.selectedID = wren.id }
+    model.endCombat()
+    let journalLine = model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.last?.text ?? "MISSING"
+    let logLine = model.tableLog.last?.text ?? "MISSING"
+    tlLines.append("dual-file: journal and log identical: \(journalLine == logLine) - '\(logLine)'")
+    renderPNG(
+        TableLogView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "table-log", outDir: outDir, minHeight: 120, maxHeight: 400)
+    if let first = model.tableLog.first { model.deleteTableLogEntry(first) }
+    tlLines.append("delete: log count \(model.tableLog.count) (the recap entry survives)")
+    let logCountBeforeReload = model.tableLog.count
+    model.reload()
+    tlLines.append("persistence: model reload keeps \(model.tableLog.count) of \(logCountBeforeReload) entries - '\(model.tableLog.last?.title ?? "MISSING")'")
+    // Negative: an idle End combat files to NEITHER the journal nor the log.
+    let jBefore = model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.count ?? -1
+    let lBefore = model.tableLog.count
+    model.endCombat()
+    tlLines.append("idle end combat: journal \(jBefore) -> \(model.characters.first(where: { $0.name == "Wren Halloway" })?.journal.count ?? -1), log \(lBefore) -> \(model.tableLog.count)")
+    // Party rest: rough the roster up first so the rest has something to do.
+    if let w = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
+        model.characters[w].currentHP = max(1, model.characters[w].currentHP - 7)
+    }
+    if let b = model.characters.firstIndex(where: { $0.name == "Bram Oakfel" }) {
+        model.characters[b].exhaustion = 2
+    }
+    tlLines.append("before rest: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) ex \($0.exhaustion)" }.joined(separator: ", "))
+    let rested = model.restParty(long: true)
+    tlLines.append("party long rest: rested \(rested.count) (\(rested.joined(separator: ", ")))")
+    tlLines.append("after rest: " + model.characters.map { "\($0.name) HP \($0.currentHP)/\($0.maxHP) ex \($0.exhaustion)" }.joined(separator: ", "))
+    // The undo ride: one member's undo restores just them.
+    if let wren2 = model.characters.first(where: { $0.name == "Wren Halloway" }) {
+        model.selectedID = wren2.id
+        model.undo()
+        let back = model.characters.first(where: { $0.name == "Wren Halloway" })
+        tlLines.append("undo: Wren HP back to \(back?.currentHP ?? -1) (one step on her own stack; Bram stays rested)")
+    }
+    try? tlLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/table-log.txt"),
+               atomically: true, encoding: .utf8)
+    // 3.44.0 hygiene: hand selection back to Bram so downstream proofs
+    // (the delete-confirm caption) match their pre-3.44.0 bytes.
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",
