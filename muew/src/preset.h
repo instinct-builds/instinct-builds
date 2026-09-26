@@ -70,6 +70,7 @@ struct PresetInfo {
 //                  0.66.0 adds optional `noisebvcolor <depth>`; zero preserves prior noise color.
 //                  0.67.0 adds optional `delayduck <depth> <release ms>`; zero skips the wet-tap detector.
 //                  0.68.0 adds optional `eqmid <hz> <Q>`; 1200 Hz / 0.9 retain old response.
+//                  0.69.0 adds optional `chorusspread <0..1>`; 0.5 retains the original stereo phase.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
 //                  0.23.0 adds optional `voice <mode> <polyVoices> <glideTime> <glideLegato> <uniPhase>`; route dest 27.
 //                  0.32.0 adds optional `wtgen1/2 <recipe>` and `wtspec1/2 <formant> <stretch> <tilt> <oddeven>` (see table_recipe.h).
@@ -208,6 +209,8 @@ struct Preset {
             || ff.lfoRateHz != dff.lfoRateHz || ff.lfoSync != dff.lfoSync || ff.lfoDepth != dff.lfoDepth || ff.mix != dff.mix)
             o << "filterfx " << (ff.enabled ? 1 : 0) << " " << ff.mode << " " << ff.cutoffHz << " " << ff.reso << " " << ff.drive << " "
               << ff.lfoRateHz << " " << ff.lfoSync << " " << ff.lfoDepth << " " << ff.mix << "\n";
+        if (fx.chorus.spread != d.chorus.spread)
+            o << "chorusspread " << fx.chorus.spread << "\n";
         if (fx.delay.syncL != d.delay.syncL || fx.delay.syncR != d.delay.syncR)
             o << "delaysync " << fx.delay.syncL << " " << fx.delay.syncR << "\n";
         if (fx.delay.duckDepth != d.delay.duckDepth || fx.delay.duckReleaseMs != d.delay.duckReleaseMs)
@@ -597,6 +600,10 @@ struct Preset {
                     fx.lfo[k].sync = std::clamp(l[k].sync, 0, kSyncCount - 1);
                 }
             }
+            else if (key == "chorusspread") {
+                double spread;
+                if (ls >> spread && std::isfinite(spread)) fx.chorus.spread = std::clamp(spread, 0.0, 1.0);
+            }
             else if (key == "delaysync") {
                 int a = 0, b = 0;
                 if (ls >> a >> b) { fx.delay.syncL = std::clamp(a, 0, kSyncCount - 1); fx.delay.syncR = std::clamp(b, 0, kSyncCount - 1); }
@@ -747,7 +754,7 @@ struct Preset {
         const auto& fa = fx; const auto& fb = o.fx;
         return fa.chorus.enabled == fb.chorus.enabled && fa.chorus.rateHz == fb.chorus.rateHz
             && fa.chorus.depthMs == fb.chorus.depthMs && fa.chorus.baseMs == fb.chorus.baseMs
-            && fa.chorus.mix == fb.chorus.mix
+            && fa.chorus.mix == fb.chorus.mix && fa.chorus.spread == fb.chorus.spread
             && fa.delay.enabled == fb.delay.enabled && fa.delay.timeLSec == fb.delay.timeLSec
             && fa.delay.timeRSec == fb.delay.timeRSec && fa.delay.feedback == fb.delay.feedback
             && fa.delay.mix == fb.delay.mix

@@ -568,3 +568,12 @@ beside a response plot calculated from the same biquad coefficients used by
 the audio engine. Defaults remain 1.2 kHz / Q 0.9, so existing factory
 sounds and old preset audio keep their bytes. An optional `eqmid <hz> <Q>`
 line saves non-default values; no new AU parameter ID is published.
+
+## 0.69.0 Chorus stereo spread
+
+The CHORUS detail adds a fifth SPREAD row. At 0%, left and right modulation
+taps move together; 50% is the original 90-degree quadrature stereo phase;
+100% moves the right tap 180 degrees away from the left. This changes only
+the right tap's phase, not its gain, delay range or rate. Old sounds use the
+50% default and retain their audio bytes. A non-default value saves as an
+optional `chorusspread <0..1>` preset line with no new AU parameter ID.

@@ -463,7 +463,7 @@ inline const std::vector<FxControl>& fxControls(int unit) {
         {{"MODE", FmtChoice, 0, 2, false, -1}, {"DRIVE", FmtPercent, 0, 1, false, (int)D::DistDrive}, {"MIX", FmtPercent, 0, 1, false, -1},
          {"QUALITY", FmtChoice, 0, 1, false, -1}}, // 0.29.0
         {{"RATE", FmtHz, 0.05, 5, true, -1}, {"DEPTH", FmtMs, 0, 20, false, (int)D::FxChorusDepth}, {"DELAY", FmtMs, 5, 30, false, -1},
-         {"MIX", FmtPercent, 0, 1, false, -1}},
+         {"MIX", FmtPercent, 0, 1, false, -1}, {"SPREAD", FmtPercent, 0, 1, false, -1}},
         {{"TIME L", FmtSec, 0.01, 1.99, true, -1}, {"SYNC L", FmtChoice, 0, kSyncCount - 1, false, -1},
          {"TIME R", FmtSec, 0.01, 1.99, true, -1}, {"SYNC R", FmtChoice, 0, kSyncCount - 1, false, -1},
          {"FEEDBACK", FmtPercent, 0, 0.95, false, (int)D::FxDelayFeedback}, {"MIX", FmtPercent, 0, 1, false, -1},
@@ -503,7 +503,7 @@ inline const char* fxUnitTitle(int unit) {
 inline double fxGet(const FXParams& f, int unit, int i) {
     switch (unit) {
     case FxDist: return i == 0 ? f.dist.mode : i == 1 ? f.dist.drive : i == 3 ? f.dist.quality : f.dist.mix;
-    case FxChorus: return i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix;
+    case FxChorus: return i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : i == 3 ? f.chorus.mix : f.chorus.spread;
     case FxDelay: return i == 0 ? f.delay.timeLSec : i == 1 ? f.delay.syncL : i == 2 ? f.delay.timeRSec : i == 3 ? f.delay.syncR
                        : i == 4 ? f.delay.feedback : i == 5 ? f.delay.mix : i == 6 ? f.delay.duckDepth : f.delay.duckReleaseMs;
     case FxComp: return i == 0 ? f.comp.mode : i == 1 ? f.comp.amount : i == 2 ? f.comp.upward : i == 3 ? f.comp.speed
@@ -528,7 +528,7 @@ inline void fxSet(FXParams& f, int unit, int i, double v) {
     const int k = (int)std::lround(v);
     switch (unit) {
     case FxDist: if (i == 0) f.dist.mode = k; else if (i == 1) f.dist.drive = v; else if (i == 3) f.dist.quality = std::clamp(k, 0, 1); else f.dist.mix = v; break;
-    case FxChorus: (i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : f.chorus.mix) = v; break;
+    case FxChorus: (i == 0 ? f.chorus.rateHz : i == 1 ? f.chorus.depthMs : i == 2 ? f.chorus.baseMs : i == 3 ? f.chorus.mix : f.chorus.spread) = v; break;
     case FxDelay:
         if (i == 1) f.delay.syncL = k; else if (i == 3) f.delay.syncR = k;
         else (i == 0 ? f.delay.timeLSec : i == 2 ? f.delay.timeRSec : i == 4 ? f.delay.feedback : i == 5 ? f.delay.mix

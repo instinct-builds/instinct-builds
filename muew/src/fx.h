@@ -41,6 +41,7 @@ struct ChorusParams {
     double depthMs = 6.0;
     double baseMs = 15.0;
     double mix = 0.35;
+    double spread = 0.5; // 0.69.0: R LFO phase 0..180 degrees; .5 retains the legacy 90 degrees
 };
 
 // Stereo chorus: two modulated delay taps with quadrature LFOs.
@@ -57,7 +58,7 @@ public:
     inline void process(float& l, float& r) {
         const double depthMs = depthOff_ != 0.0 ? std::clamp(p_.depthMs + 10.0 * depthOff_, 0.0, 20.0) : p_.depthMs;
         double lfoL = std::sin(2.0 * M_PI * phase_);
-        double lfoR = std::sin(2.0 * M_PI * phase_ + M_PI * 0.5);
+        double lfoR = std::sin(2.0 * M_PI * phase_ + M_PI * p_.spread);
         phase_ += p_.rateHz / sr_;
         phase_ -= std::floor(phase_);
         double dL = (p_.baseMs + depthMs * (0.5 + 0.5 * lfoL)) * 0.001 * sr_;
