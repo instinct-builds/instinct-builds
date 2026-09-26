@@ -292,6 +292,12 @@ jobs:
           cat "$SUP/demo-license-repair.txt"
           grep -q '^done repaired=true linked=true bytes=true identity=true$' "$SUP/demo-license-repair.txt"
           cp "$SUP/demo-license-repair.txt" "ASSSETS-$ASSSETS_VERSION-license-repair.txt"
+          DELAY=18 shoot license-detach-one 1920x1200 license-detach-one
+          DELAY=18 shoot license-detach-all 1920x1200 license-detach-all
+          DELAY=18 shoot license-detach-apply 1920x1200 license-detach-apply demo-license-detach.txt
+          cat "$SUP/demo-license-detach.txt"
+          grep -q '^done detached=true links=true others=true noUndo=true$' "$SUP/demo-license-detach.txt"
+          cp "$SUP/demo-license-detach.txt" "ASSSETS-$ASSSETS_VERSION-license-detach.txt"
           DELAY=18 shoot source-receipt-copy 1920x1200 source-receipt-copy demo-source-receipt-copy.txt
           cat "$SUP/demo-source-receipt-copy.txt"
           grep -q '^done before=true after=true unchanged=true$' "$SUP/demo-source-receipt-copy.txt"
@@ -358,6 +364,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-detach.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-rows.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-status.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-sidecar.xmp.txt

@@ -121,6 +121,7 @@ final class StudioLibrary: ObservableObject {
     @Published var renamingCollection: String?
     @Published var toast: String?
     @Published var licenseRepairReview: LicenseRepairSelection?
+    @Published var licenseDetachmentReview: MissingLicenseDetachment?
     @Published var selectedSmart: UUID?
     /// Moodboard shown in place of the grid (1.16), its selected card, and the note being edited.
     @Published var selectedBoard: UUID?
@@ -2019,12 +2020,49 @@ final class StudioLibrary: ObservableObject {
         refreshHealth()
     }
 
-    func forgetMissingLicenseFiles() {
-        guard let ids = health?.missingLicenseFiles, !ids.isEmpty else { return }
-        var n = 0
-        mutate("Detach Missing License Files") { n = $0.forgetMissingLicenseFiles(Set(ids)) }
-        flash("Detached \(n) missing license \(n == 1 ? "file" : "files")")
-        refreshHealth()
+    func reviewMissingLicenseDetachment(_ selected: UUID? = nil) {
+        guard let missing = health?.missingLicenseFiles,
+              let review = MissingLicenseDetachment(catalog: catalog, missing: missing, selected: selected),
+              review.entries.allSatisfy({ !FileManager.default.fileExists(atPath: licenseURL($0.document).path) }) else {
+            flash("The missing license records changed. Check Again before detaching."); refreshHealth(); return
+        }
+        licenseDetachmentReview = review
+    }
+
+    /// No catalog Undo: paperwork records and preset links are not covered by UndoHistory.
+    @discardableResult
+    func commitMissingLicenseDetachment(_ review: MissingLicenseDetachment) -> Bool {
+        let fm = FileManager.default
+        let missing = catalog.health(exists: { fm.fileExists(atPath: $0) },
+                                     licenseExists: { fm.fileExists(atPath: licenseURL($0).path) }).missingLicenseFiles
+        guard review.stillMatches(catalog, missing: missing), catalogMatchesDisk(),
+              review.entries.allSatisfy({ !fm.fileExists(atPath: licenseURL($0.document).path) }) else {
+            licenseDetachmentReview = nil
+            flash("A license file or its links changed. Nothing detached. Check Again and review again.")
+            refreshHealth(); return false
+        }
+        var updated = catalog
+        guard updated.detachMissingLicenses(review, missing: missing),
+              review.entries.allSatisfy({ !fm.fileExists(atPath: licenseURL($0.document).path) }),
+              catalogMatchesDisk() else {
+            licenseDetachmentReview = nil
+            flash("A license file or its links changed. Nothing detached. Check Again and review again.")
+            refreshHealth(); return false
+        }
+        do {
+            try updated.encoded().write(to: catalogURL, options: .atomic)
+        } catch {
+            licenseDetachmentReview = nil
+            flash("Catalog save failed. Nothing detached.")
+            refreshHealth(); return false
+        }
+        healthGeneration += 1
+        healthScanning = false
+        catalog = updated
+        licenseDetachmentReview = nil
+        refreshHealth(full: true)
+        flash("Detached \(review.entries.count) missing license \(review.entries.count == 1 ? "record" : "records"). No Undo; no files deleted.")
+        return true
     }
 
     /// Closes Library Health and shows these assets selected in All Assets.
@@ -2902,7 +2940,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3141,6 +3179,13 @@ final class StudioLibrary: ObservableObject {
                     }
                     }
                 }
+            case "license-detach-one", "license-detach-all", "license-detach-apply":
+                if let doc = order.first { try? fm.removeItem(at: licenseURL(doc)) }
+                if demo == "license-detach-all", let doc = catalog.licenseDocs.first(where: { $0.name.contains("Harbor") || $0.name.contains("harbor") }) {
+                    try? fm.removeItem(at: licenseURL(doc))
+                }
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.openLibraryHealth() }
             case "license-repair-review", "license-repair-apply":
                 // Preserve the original generated order PDF as a local recovery candidate before deleting its stored copy.
                 if let doc = order.first, let source = docs["order"] {
@@ -7850,7 +7895,7 @@ struct LibraryHealthSheet: View {
                         let docs = h.missingLicenseFiles.compactMap { model.catalog.licenseDoc($0) }
                         HealthCard(symbol: "doc.badge.ellipsis", tint: Theme.danger, title: "\(docs.count) license \(docs.count == 1 ? "file is" : "files are") gone",
                                    detail: "The stored copy is gone. Replace a record with a reviewed local copy to keep its links, or detach missing records.",
-                                   action: ("Detach \(docs.count)", { model.forgetMissingLicenseFiles() })) {
+                                   action: ("Review Detach…", { model.reviewMissingLicenseDetachment() })) {
                             ForEach(Array(docs.prefix(visibleRows("licenses", count: docs.count)))) { d in
                                 let on = model.catalog.assets.filter { $0.licenseDocs.contains(d.id) }
                                 let presets = model.catalog.rightsPresets.filter { $0.docs.contains(d.id) }
@@ -7858,6 +7903,8 @@ struct LibraryHealthSheet: View {
                                     HealthDocRow(name: d.name, detail: "\(on.count) asset(s) · \(presets.count) preset(s)")
                                     Spacer(minLength: 4)
                                     Button("Replace File…") { model.chooseMissingLicenseReplacement(d.id) }
+                                        .controlSize(.small).fixedSize()
+                                    Button("Detach…") { model.reviewMissingLicenseDetachment(d.id) }
                                         .controlSize(.small).fixedSize()
                                 }
                             }
@@ -8033,8 +8080,32 @@ struct LibraryHealthSheet: View {
         .frame(minWidth: 720, idealWidth: 780, minHeight: 520, idealHeight: 640)
         .background(Theme.panel)
         .sheet(isPresented: $model.folderRelinkOpen) { FolderRelinkSheet().environmentObject(model) }
+        .sheet(item: $model.licenseDetachmentReview) { review in
+            MissingLicenseDetachmentSheet(review: review).environmentObject(model)
+        }
         .sheet(item: $model.licenseRepairReview) { proposal in
             MissingLicenseRepairSheet(proposal: proposal).environmentObject(model)
+        }
+        .onChange(of: model.health?.missingLicenseFiles) { _, missing in
+            let args = ProcessInfo.processInfo.arguments
+            guard args.contains("license-detach-one") || args.contains("license-detach-all") || args.contains("license-detach-apply"),
+                  let missing, !missing.isEmpty, model.licenseDetachmentReview == nil else { return }
+            model.reviewMissingLicenseDetachment(args.contains("license-detach-all") ? nil : missing.first)
+            if args.contains("license-detach-apply"), let review = model.licenseDetachmentReview {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    let before = model.catalog.licenseDocs.count
+                    let undoBefore = model.history.undoLabel
+                    let ok = model.commitMissingLicenseDetachment(review)
+                    let detached = review.entries.allSatisfy { model.catalog.licenseDoc($0.id) == nil }
+                    let linksGone = review.entries.allSatisfy { entry in
+                        model.catalog.assets.allSatisfy { !$0.licenseDocs.contains(entry.id) } &&
+                        model.catalog.rightsPresets.allSatisfy { !$0.docs.contains(entry.id) }
+                    }
+                    let otherKept = model.catalog.licenseDocs.count == before - 1
+                    try? "done detached=\(ok && detached) links=\(linksGone) others=\(otherKept) noUndo=\(model.history.undoLabel == undoBefore)".write(
+                        to: model.supportRoot.appendingPathComponent("demo-license-detach.txt"), atomically: true, encoding: .utf8)
+                }
+            }
         }
         .onChange(of: model.health?.missingLicenseFiles) { _, missing in
             guard (ProcessInfo.processInfo.arguments.contains("license-repair-review") ||
@@ -8094,6 +8165,51 @@ struct LibraryHealthSheet: View {
                 }
             }
         }
+    }
+}
+
+/// A reviewed catalog-only removal; the document and its exact links must still match at commit.
+struct MissingLicenseDetachmentSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let review: MissingLicenseDetachment
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "doc.badge.minus").foregroundStyle(Theme.danger)
+                Text(review.allMissing ? "Detach all missing license records" : "Detach missing license record")
+                    .font(.system(size: 18, weight: .bold))
+                Spacer()
+            }
+            Text("Review the exact paperwork records and links below. Detaching removes these records and their asset/preset links from ASSSETS. It does not cancel license terms or delete files from disk. This cannot be undone.")
+                .font(.callout).foregroundStyle(Theme.warning)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(review.entries.count) record(s) · \(review.assetLinkCount) asset link(s) · \(review.presetLinkCount) preset link(s)")
+                .font(.caption.weight(.semibold))
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(review.entries) { entry in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(entry.document.name).font(.subheadline.weight(.semibold))
+                            Text("Stored: \(entry.document.stored)")
+                            Text("Assets: \(entry.assets.isEmpty ? "None" : entry.assets.map(\.name).joined(separator: ", "))")
+                            Text("Rights presets: \(entry.presets.isEmpty ? "None" : entry.presets.map(\.name).joined(separator: ", "))")
+                        }
+                        .font(.caption).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10).background(Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }.frame(maxHeight: 300)
+            HStack {
+                Button("Cancel") { model.licenseDetachmentReview = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Detach \(review.entries.count) \(review.entries.count == 1 ? "record" : "records")") {
+                    _ = model.commitMissingLicenseDetachment(review)
+                }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(22).frame(width: 610).background(Theme.panel)
     }
 }
 
