@@ -481,14 +481,14 @@ final class StudioLibrary: ObservableObject {
                 guard proc.terminationStatus == 0, verify.terminationStatus == 0,
                       (((try? fm.attributesOfItem(atPath: stagedZip.path)[.size]) as? NSNumber)?.intValue ?? 0) > 0,
                       await validRightsNow() else { failed = 1; await fail("ZIP could not be completed."); return }
-                guard !cleanupEntryExists(folder), !cleanupEntryExists(zip) else { throw NSError(domain: "ASSSETS.Gallery", code: 4) }
-                try moveCleanupFile(stagedFolder, folder); landed.append(folder)
+                guard !self.cleanupEntryExists(folder), !self.cleanupEntryExists(zip) else { throw NSError(domain: "ASSSETS.Gallery", code: 4) }
+                try self.moveCleanupFile(stagedFolder, folder); landed.append(folder)
                 if demoFailure == "publish" { throw NSError(domain: "ASSSETS.Demo", code: 3) }
-                do { try moveCleanupFile(stagedZip, zip); landed.append(zip) }
+                do { try self.moveCleanupFile(stagedZip, zip); landed.append(zip) }
                 catch {
                     // Retract only our newly published folder, never touch a preexisting destination.
-                    try? moveCleanupFile(folder, stagedFolder)
-                    landed.removeAll { $0 == folder && !cleanupEntryExists(folder) }
+                    try? self.moveCleanupFile(folder, stagedFolder)
+                    landed.removeAll { $0 == folder && !self.cleanupEntryExists(folder) }
                     throw error
                 }
                 try? fm.removeItem(at: stage)
@@ -502,8 +502,8 @@ final class StudioLibrary: ObservableObject {
             } catch {
                 failed = max(1, failed)
                 if landed == [folder] {
-                    try? moveCleanupFile(folder, stagedFolder)
-                    landed.removeAll { $0 == folder && !cleanupEntryExists(folder) }
+                    try? self.moveCleanupFile(folder, stagedFolder)
+                    landed.removeAll { $0 == folder && !self.cleanupEntryExists(folder) }
                 }
                 await fail(landed.isEmpty ? "Nothing shareable was published." : "\(landed.count) of 2 parts landed; inspect \(stage.path). Do not send yet.")
             }
