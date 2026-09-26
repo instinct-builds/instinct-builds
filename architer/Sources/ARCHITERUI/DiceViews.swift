@@ -1325,12 +1325,15 @@ public struct InitiativeRowView: View {
     let active: Bool
     @State private var totalDraft: String
     @State private var crDraft: String
+    @State private var renaming = false
+    @State private var nameDraft: String
 
     public init(entry: InitiativeEntry, active: Bool) {
         self.entry = entry
         self.active = active
         _totalDraft = State(initialValue: entry.total.map(String.init) ?? "")
         _crDraft = State(initialValue: entry.cr.map { EncounterMath.crText($0) } ?? "")
+        _nameDraft = State(initialValue: entry.name)
     }
 
     public var body: some View {
@@ -1338,9 +1341,19 @@ public struct InitiativeRowView: View {
             Image(systemName: active ? "arrowtriangle.right.fill" : "circle")
                 .font(Theme.Typeface.captionSmall)
                 .foregroundStyle(active ? Theme.accent : Theme.inkFaint)
-            Text(entry.name)
-                .font(Theme.Typeface.headline)
-                .foregroundStyle(Theme.ink)
+            if renaming {
+                TextField("Name", text: $nameDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 140)
+                    .onSubmit {
+                        model.renameInitiativeEntry(entry, name: nameDraft)
+                        renaming = false
+                    }
+            } else {
+                Text(entry.name)
+                    .font(Theme.Typeface.headline)
+                    .foregroundStyle(Theme.ink)
+            }
             Text(signed(entry.bonus))
                 .font(Theme.Typeface.captionSmall)
                 .foregroundStyle(Theme.inkMuted)
@@ -1362,6 +1375,10 @@ public struct InitiativeRowView: View {
                     model.setInitiativeTotal(entry, total: trimmed.isEmpty ? nil : Int(trimmed))
                 }
                 .help("Rolled total - edit by hand if the table rolled physically")
+            Button { nameDraft = entry.name; renaming = true } label: { Image(systemName: "pencil") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.inkFaint)
+                .help("Rename this entry - blank keeps the current name")
             Button { model.rerollInitiative(entry) } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.inkFaint)

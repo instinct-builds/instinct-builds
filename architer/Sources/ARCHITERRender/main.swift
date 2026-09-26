@@ -1666,6 +1666,28 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? sfLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/start-fight.txt"),
                atomically: true, encoding: .utf8)
+    // Rename proof (3.38.0): the pencil swaps the row's name for a field;
+    // blank keeps the current name. Runs at END on the pushed tracker.
+    var rnLines = ["Tracker-entry rename (3.38.0)",
+                   "pencil swaps the name for an inline field; blank keeps the current name"]
+    if let target = model.initiative.entries.first(where: { $0.name == "CR 3 #2" }) {
+        model.renameInitiativeEntry(target, name: "Gnoll archer")
+        model.renameInitiativeEntry(target, name: "   ")
+        let after = model.initiative.entries.first(where: { $0.id == target.id })
+        rnLines.append("renamed: \(target.name) -> \(after?.name ?? "MISSING") (a blank submit kept it)")
+        rnLines.append("preserved: CR \(after?.cr.map { EncounterMath.crText($0) } ?? "-"), total nil: \(after?.total == nil)")
+    } else {
+        rnLines.append("rename target MISSING")
+    }
+    renderPNG(
+        InitiativeSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "initiative-rename", outDir: outDir, minHeight: 200, maxHeight: 600)
+    try? rnLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/initiative-rename.txt"),
+               atomically: true, encoding: .utf8)
     try? (["Delete confirmation (3.32.0)",
            "the toolbar trash arms an inline confirm - Delete fires only from",
            "the armed state; Cancel disarms. The character's undo stack dies",

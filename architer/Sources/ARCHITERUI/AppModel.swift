@@ -727,6 +727,16 @@ public final class AppModel: ObservableObject {
         initiativeStore.save(initiative)
     }
 
+    /// Rename an entry (3.38.0) - "CR 3 #1" becomes "Gnoll archer" at the
+    /// table; blank keeps the current name.
+    public func renameInitiativeEntry(_ entry: InitiativeEntry, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        guard let i = initiative.entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        initiative.entries[i].name = trimmed
+        initiativeStore.save(initiative)
+    }
+
     public func advanceInitiative() {
         let roundBefore = initiative.round
         initiative.advance()
