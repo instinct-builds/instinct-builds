@@ -35,6 +35,11 @@ struct BoardFollowTests {
         let board = c.createBoard(named: "Lobby")
         _ = c.addToBoard(board, assets: [v2])
         c.noteGalleryShared("G", from: board)
+        let sharedCard = c.board(board)!.items[0]
+        let roster = GalleryRoster(gallery: "G", title: "", created: "2026-09-26", assets: [v2], board: board,
+                                   cards: [.init(id: sharedCard.id, asset: v2)])!
+        let recorded = c.recordGallery(roster)
+        #expect(recorded)
         _ = c.applyFeedback(ReviewGallery.Feedback(gallery: "G", title: "", reviewer: "Mara", items: [.init(id: v2.uuidString, favorite: true, note: "Warmer", status: "approved")]), imported: "d")
         let card = c.board(board)!.items[0]
         #expect(c.board(board)!.status(of: card.id) == .approved)

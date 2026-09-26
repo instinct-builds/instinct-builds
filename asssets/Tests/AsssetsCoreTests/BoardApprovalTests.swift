@@ -40,15 +40,22 @@ struct BoardApprovalTests {
         let board = c.createBoard(named: "Lobby")
         _ = c.addToBoard(board, assets: [x, y, z])
         c.noteGalleryShared("G", from: board)
+        let cards = c.board(board)!.items.compactMap { item -> GalleryRoster.Card? in
+            guard item.kind == .asset, let asset = item.assetID else { return nil }
+            return .init(id: item.id, asset: asset)
+        }
+        let roster = GalleryRoster(gallery: "G", title: "", created: "2026-09-26", assets: [x, y, z], board: board, cards: cards)!
+        let recorded = c.recordGallery(roster)
+        #expect(recorded)
         _ = c.applyFeedback(ReviewGallery.Feedback(gallery: "G", title: "", reviewer: "Mara", items: [
             .init(id: x.uuidString, favorite: true, note: "This one")]), imported: "2026-09-23")
-        let cards = c.board(board)!.readingOrder.map(\.id)
+        let cardIDs = c.board(board)!.readingOrder.map(\.id)
         _ = c.updateBoard(board) { b in
-            b.setStatus(.approved, for: [cards[0]]); b.setStatus(.changes, for: [cards[1]])
-            b.addReply(to: cards[1], author: "Spence", text: "Swapping the screen art", posted: "t")
+            b.setStatus(.approved, for: [cardIDs[0]]); b.setStatus(.changes, for: [cardIDs[1]])
+            b.addReply(to: cardIDs[1], author: "Spence", text: "Swapping the screen art", posted: "t")
         }
         let b = c.board(board)!
-        #expect(b.threadedCards() == [cards[0], cards[1]])
+        #expect(b.threadedCards() == [cardIDs[0], cardIDs[1]])
         let s = c.roundSummary(board)!
         #expect(s.board == "Lobby" && s.reviewers == ["Mara"] && s.rows.count == 3)
         #expect(s.rows[0].status == .approved && s.rows[0].pickedBy == ["Mara"] && s.rows[0].comments.first?.text == "This one")
