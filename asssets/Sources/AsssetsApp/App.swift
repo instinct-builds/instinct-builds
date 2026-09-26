@@ -701,6 +701,33 @@ final class StudioLibrary: ObservableObject {
         }
     }
 
+    /// Export exactly the currently matched receipts, including rows hidden by Show Recent.
+    func exportSourceReceiptCSV(_ matched: [SourceRefreshRecord], to demoURL: URL? = nil) {
+        guard !matched.isEmpty else { flash("No matching receipts to export"); return }
+        let destination: URL
+        if let demoURL { destination = demoURL }
+        else {
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = "ASSSETS source receipts.csv"
+            panel.allowedContentTypes = [.commaSeparatedText]
+            panel.canCreateDirectories = true
+            panel.message = "Only dates, filenames, sizes and hashes. No previews or original files."
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destination = url
+        }
+        let titles = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0.title) })
+        let csv = SourceReceiptCSV.render(matched, titles: titles)
+        do {
+            try csv.write(to: destination, atomically: true, encoding: .utf8)
+            if demoURL == nil {
+                flash("Saved \(matched.count) source receipt\(matched.count == 1 ? "" : "s") as CSV")
+                NSWorkspace.shared.activateFileViewerSelecting([destination])
+            }
+        } catch {
+            flash("Could not save source receipts CSV")
+        }
+    }
+
     func sourcePreview(_ a: StudioAsset) -> CGImage? {
         guard let hash = a.sourcePreviewHash, hash == a.sourceFingerprint?.sha256 else { return nil }
         let url = sourcePreviewRoot.appendingPathComponent(Self.previewFilename(a.id, hash: hash))
@@ -2862,7 +2889,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search":
+             "license-files", "rights-presets", "export-guard", "batch-license-row", "duplicates-merge", "library-health", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -2985,7 +3012,7 @@ final class StudioLibrary: ObservableObject {
                         }
                     }
                 }
-            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search":
+            case "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv":
                 show(collection: StudioCatalog.inboxCollection)
                 if let source = find("Northlight Lobby.png"), let path = source.importedPath,
                    let baseline = Self.sourceFingerprint(path) {
@@ -3039,7 +3066,7 @@ final class StudioLibrary: ObservableObject {
                                 self.selection = [source.id]; self.focusID = source.id
                                 self.inspectorAnchor = "source-changes"
                             }
-                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" || demo == "source-receipt-search" {
+                            if demo == "changed-source-apply" || demo == "source-history-inspector" || demo == "source-receipt-focus" || demo == "source-receipt-timeline" || demo == "source-receipt-search" || demo == "source-receipt-csv" {
                                 self.reviewChangedSource(source.id)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                     self.reviewedSourceID = nil
@@ -3086,7 +3113,7 @@ final class StudioLibrary: ObservableObject {
                                             }
                                         }
                                     }
-                                    if demo == "source-receipt-search" {
+                                    if demo == "source-receipt-search" || demo == "source-receipt-csv" {
                                         self.healthOpen = false
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                             self.healthOpen = true
@@ -7673,6 +7700,9 @@ struct LibraryHealthSheet: View {
                                             receiptEnd = Date()
                                         }
                                     }
+                                Button("Export CSV…") { model.exportSourceReceiptCSV(matched) }
+                                    .controlSize(.small).disabled(matched.isEmpty)
+                                    .help("Export all matching receipts, even rows hidden by Show Recent. Dates, filenames, sizes and hashes only.")
                                 if filtered {
                                     Text("\(matched.count) found").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                     Button("Clear") { receiptFilename = ""; receiptDateEnabled = false; model.sourceHistoryExpanded = false }
@@ -7713,7 +7743,7 @@ struct LibraryHealthSheet: View {
                 .padding(20)
             }
             .onAppear {
-                if ProcessInfo.processInfo.arguments.contains("source-receipt-search") {
+                if ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                         withAnimation { proxy.scrollTo("source-receipt-history", anchor: .top) }
                     }
@@ -7737,7 +7767,7 @@ struct LibraryHealthSheet: View {
         .background(Theme.panel)
         .sheet(isPresented: $model.folderRelinkOpen) { FolderRelinkSheet().environmentObject(model) }
         .onAppear {
-            if ProcessInfo.processInfo.arguments.contains("source-receipt-search"),
+            if (ProcessInfo.processInfo.arguments.contains("source-receipt-search") || ProcessInfo.processInfo.arguments.contains("source-receipt-csv")),
                !model.catalog.sourceRefreshHistory.isEmpty {
                 receiptFilename = "Northlight"
                 receiptDateEnabled = false
@@ -7745,6 +7775,14 @@ struct LibraryHealthSheet: View {
                     let results = model.catalog.matchingSourceReceipts(filename: receiptFilename)
                     let ok = results.count == 1 && results[0].path.hasSuffix("Northlight Lobby.png")
                     try? "done found=\(ok) count=\(results.count)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-search.txt"), atomically: true, encoding: .utf8)
+                    if ProcessInfo.processInfo.arguments.contains("source-receipt-csv"), ok {
+                        let output = model.supportRoot.appendingPathComponent("demo-source-receipts.csv")
+                        model.exportSourceReceiptCSV(results, to: output)
+                        let csv = (try? String(contentsOf: output, encoding: .utf8)) ?? ""
+                        let safe = csv.contains(results[0].after.sha256) && !csv.contains(results[0].path) &&
+                            csv.split(separator: "\n").count == 2
+                        try? "done rows=1 safe=\(safe)".write(to: model.supportRoot.appendingPathComponent("demo-source-receipt-csv.txt"), atomically: true, encoding: .utf8)
+                    }
                 }
             }
         }

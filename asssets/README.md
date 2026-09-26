@@ -945,3 +945,8 @@ Phase 3: connectors the user authorizes to their own licensed sources.
 
 - Library Health's read-only Source refresh history now searches source filenames without regard to case and can narrow by inclusive acceptance dates. A result count, Clear control and empty state make the filter explicit; Show All applies to matching receipts, not the unfiltered history. The stored catalog remains unchanged.
 - A native demo shows a Northlight filename match after an accepted source refresh, while core tests cover filename, date boundaries and ordering. Receipt images remain bounded and snapshot-only; neither the search nor the history view can restore original bytes.
+
+## 1.52.0: export filtered source receipts
+
+- Library Health's Export CSV writes every currently matched receipt, not just the five visible rows. The save dialog chooses the destination; CSV contains UTC acceptance dates, asset titles, source filenames, before/after sizes and full SHA-256 digests. It carries no original path, image preview or source bytes. The user can filter by filename and dates before exporting.
+- CSV strings are quoted and formula-leading titles or filenames are made safe for spreadsheet opening. CI exports a one-row filtered result and checks the digest is present while the full path is absent.

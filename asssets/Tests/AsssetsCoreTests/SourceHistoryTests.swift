@@ -97,6 +97,23 @@ struct SourceHistoryTests {
         #expect(c.sourceRefreshHistory.count == 2)
     }
 
+    @Test func csvHasFilteredFactsButNoPathsOrBytes() throws {
+        var c = StudioCatalog()
+        let id = c.importFile(path: "/private/Client, one.png")!
+        _ = c.seedSourceFingerprint(SourceFingerprint(size: 12, modified: 1, sha256: "old-hash"), for: id, path: "/private/Client, one.png")
+        _ = c.acceptChangedSource(SourceFingerprint(size: 34, modified: 2, sha256: "new-hash"), for: id,
+            path: "/private/Client, one.png", palette: ["#111111"], resolution: "4 × 4", at: Date(timeIntervalSince1970: 0))
+        let rows = c.matchingSourceReceipts(filename: "Client")
+        let csv = SourceReceiptCSV.render(rows, titles: [id: "=SUM(1,2)"])
+        #expect(rows.count == 1)
+        #expect(csv.contains("1970-01-01T00:00:00.000Z"))
+        #expect(csv.contains("\"'=SUM(1,2)\"") && csv.contains("\"Client, one.png\""))
+        #expect(csv.contains("\"12\",\"34\",\"old-hash\",\"new-hash\""))
+        #expect(!csv.contains("/private") && !csv.contains("#111111"))
+        #expect(csv.components(separatedBy: "\r\n").count == 3)
+        #expect(SourceReceiptCSV.render([], titles: [:]).components(separatedBy: "\r\n").count == 2)
+    }
+
     @Test func legacyCatalogHasEmptyHistory() throws {
         var c = StudioCatalog()
         _ = c.importFile(path: "/old.png")

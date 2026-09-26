@@ -75,3 +75,28 @@ public struct SourceReceiptTimeline: Sendable {
     public var newer: SourceRefreshRecord? { selected > 0 && receipts.indices.contains(selected - 1) ? receipts[selected - 1] : nil }
     public var position: Int { receipts.isEmpty ? 0 : selected + 1 }
 }
+
+/// CSV only contains receipt facts. There are no source or preview bytes in this export.
+public enum SourceReceiptCSV {
+    public static let columns = ["Accepted UTC", "Asset title", "Source filename", "Before bytes", "After bytes", "Before SHA-256", "After SHA-256"]
+
+    public static func render(_ receipts: [SourceRefreshRecord], titles: [UUID: String]) -> String {
+        let clock = ISO8601DateFormatter()
+        clock.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        clock.timeZone = TimeZone(secondsFromGMT: 0)!
+        func quoted(_ raw: String) -> String {
+            // CSV may be opened in a spreadsheet. Treat titles and filenames as text, never formulas.
+            let leading = raw.drop(while: { $0.isWhitespace }).first
+            let value = leading.map { "=+-@".contains($0) } == true ? "'" + raw : raw
+            return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        var lines = [columns.map(quoted).joined(separator: ",")]
+        for receipt in receipts {
+            let fields = [clock.string(from: receipt.refreshedAt), titles[receipt.assetID] ?? "Removed asset",
+                URL(fileURLWithPath: receipt.path).lastPathComponent,
+                String(receipt.before.size), String(receipt.after.size), receipt.before.sha256, receipt.after.sha256]
+            lines.append(fields.map(quoted).joined(separator: ","))
+        }
+        return lines.joined(separator: "\r\n") + "\r\n"
+    }
+}
