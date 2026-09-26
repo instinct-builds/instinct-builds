@@ -931,6 +931,75 @@ struct SessionSegmentTests {
     // span - hours and minutes "2h 14m", whole hours "2h", sub-hour
     // "38m", sub-minute "<1m"; single-roll and undated sessions print
     // no span at all.
+    @Test func targetOutcomeAttackAutoRules() throws {
+        // Attack rolls: a kept nat 20 meets even short of the DC, a
+        // kept nat 1 misses even at it (genre-standard auto rule).
+        let nat20 = RollResult(expression: "1d20-2",
+                               dice: [DieResult(sides: 20, value: 20, kept: true)],
+                               modifier: -2, total: 18, alternateTotal: nil,
+                               label: "Longsword attack", targetDC: 21)
+        #expect(targetOutcome(for: nat20) == .met)
+        #expect(targetBadgeLabel(for: nat20) == "DC 21 met")
+        let nat1 = RollResult(expression: "1d20+14",
+                              dice: [DieResult(sides: 20, value: 1, kept: true)],
+                              modifier: 14, total: 15, alternateTotal: nil,
+                              label: "Warhammer attack", targetDC: 15)
+        #expect(targetOutcome(for: nat1) == .missed)
+        #expect(targetBadgeLabel(for: nat1) == "DC 15 missed")
+    }
+
+    @Test func targetOutcomeChecksArePureArithmetic() throws {
+        // Checks get no auto rule: a nat 20 short of the DC still misses.
+        let nat20Check = RollResult(expression: "1d20+4",
+                                    dice: [DieResult(sides: 20, value: 20, kept: true)],
+                                    modifier: 4, total: 24, alternateTotal: nil,
+                                    label: "Stealth check", targetDC: 25)
+        #expect(targetOutcome(for: nat20Check) == .missed)
+        let made = RollResult(expression: "1d20+9",
+                              dice: [DieResult(sides: 20, value: 5, kept: true)],
+                              modifier: 9, total: 14, alternateTotal: nil,
+                              label: "Perception check", targetDC: 14)
+        #expect(targetOutcome(for: made) == .met)
+        #expect(targetBadgeLabel(for: made) == "DC 14 met")
+        var noTarget = made
+        noTarget.targetDC = nil
+        #expect(targetOutcome(for: noTarget) == nil)
+        #expect(targetBadgeLabel(for: noTarget) == nil)
+    }
+
+    @Test func sessionStatsCountTargetedRolls() throws {
+        let met = RollResult(expression: "1d20+9",
+                             dice: [DieResult(sides: 20, value: 12, kept: true)],
+                             modifier: 9, total: 21, alternateTotal: nil,
+                             label: "Perception check", targetDC: 15)
+        let missed = RollResult(expression: "1d20+9",
+                                dice: [DieResult(sides: 20, value: 2, kept: true)],
+                                modifier: 9, total: 11, alternateTotal: nil,
+                                label: "Stealth check", targetDC: 15)
+        let untargetedRoll = RollResult(expression: "2d6+3",
+                                        dice: [DieResult(sides: 6, value: 4, kept: true),
+                                               DieResult(sides: 6, value: 2, kept: true)],
+                                        modifier: 3, total: 9, alternateTotal: nil)
+        let session = RollSession(number: 1, title: "t", key: nil,
+                                  rolls: [met, missed, untargetedRoll])
+        let line = sessionStats(session).line
+        #expect(line.contains("DC met 1/2"))
+        // No targeted rolls: the line keeps its pre-3.20.0 shape.
+        let quiet = sessionStats(RollSession(number: 1, title: "t", key: nil,
+                                             rolls: [untargetedRoll]))
+        #expect(!quiet.line.contains("DC met"))
+    }
+
+    @Test func rollsAndMacrosWithoutTargetDCDecode() throws {
+        // Pre-3.20.0 saves carry no targetDC key; it decodes to nil.
+        let rollJSON = #"{"expression":"1d20","dice":[{"sides":20,"value":11,"kept":true}],"modifier":0,"total":11}"#
+        let roll = try JSONDecoder().decode(RollResult.self, from: Data(rollJSON.utf8))
+        #expect(roll.targetDC == nil)
+        let macroJSON = #"{"name":"Fireball","expression":"8d6"}"#
+        let macro = try JSONDecoder().decode(DiceMacro.self, from: Data(macroJSON.utf8))
+        #expect(macro.targetDC == nil)
+    }
+
     @Test func sessionStatsLineCarriesTheSpan() throws {
         let cal = utc
         let t0 = at(cal, 24, 16)

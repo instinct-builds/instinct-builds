@@ -64,13 +64,19 @@ public struct RollResult: Equatable, Codable, Sendable {
     /// complementing the automatic crits filter. Optional so old saves
     /// decode unchanged and nil stays unencoded.
     public var starred: Bool? = nil
+    /// Target DC the roll was made against (3.20.0); nil for rolls
+    /// with no target and pre-3.20.0 saves. Optional so old saves
+    /// decode unchanged and nil stays unencoded. Met/missed is derived
+    /// from this and the total, never stored.
+    public var targetDC: Int? = nil
 
     /// Explicit public init: the memberwise one is internal, and the
     /// render harness (a separate module) builds crafted history rolls.
     public init(expression: String, dice: [DieResult], modifier: Int, total: Int,
                 alternateTotal: Int?, label: String? = nil, note: String? = nil,
                 characterName: String? = nil,
-                rolledAt: Date? = nil, reroll: RerollSpec? = nil, starred: Bool? = nil) {
+                rolledAt: Date? = nil, reroll: RerollSpec? = nil, starred: Bool? = nil,
+                targetDC: Int? = nil) {
         self.expression = expression
         self.dice = dice
         self.modifier = modifier
@@ -82,6 +88,7 @@ public struct RollResult: Equatable, Codable, Sendable {
         self.rolledAt = rolledAt
         self.reroll = reroll
         self.starred = starred
+        self.targetDC = targetDC
     }
 }
 
@@ -112,14 +119,17 @@ public struct RerollSpec: Equatable, Codable, Sendable {
     /// DamageType raw value; unknown stored values fail safe to nil on
     /// reroll (2.33.0 pattern).
     public var damageType: String?
+    /// Target DC (3.20.0): Roll Again preserves the contest.
+    public var targetDC: Int?
 
     public init(kind: RerollKind, baseLabel: String? = nil, mode: RollMode? = nil,
-                checkBonus: Int? = nil, damageType: String? = nil) {
+                checkBonus: Int? = nil, damageType: String? = nil, targetDC: Int? = nil) {
         self.kind = kind
         self.baseLabel = baseLabel
         self.mode = mode
         self.checkBonus = checkBonus
         self.damageType = damageType
+        self.targetDC = targetDC
     }
 }
 
@@ -268,6 +278,35 @@ public func hpApplyMenuLabel(amount: Int, type: DamageType?, healing: Bool,
     "Apply \(hpApplyPhrase(amount: amount, type: type, healing: healing)) to \(characterName)"
 }
 
+/// 3.20.0: whether a targeted roll met its DC.
+public enum TargetOutcome: String, Equatable, Sendable {
+    case met
+    case missed
+}
+
+/// Did the roll meet its target? Derived from the recorded DC and
+/// total, never stored - a later relabel or edit can't drift the badge
+/// out of sync. Attack rolls (labels tagged "attack", the same
+/// heuristic rollCheck uses) follow the genre-standard auto rule: a
+/// kept natural 20 always meets, a kept natural 1 always misses.
+/// Everything else is pure arithmetic.
+public func targetOutcome(for roll: RollResult) -> TargetOutcome? {
+    guard let dc = roll.targetDC else { return nil }
+    if (roll.label ?? roll.expression).localizedCaseInsensitiveContains("attack") {
+        let keptD20 = roll.dice.filter { $0.sides == 20 && $0.kept }
+        if keptD20.contains(where: { $0.value == 20 }) { return .met }
+        if keptD20.contains(where: { $0.value == 1 }) { return .missed }
+    }
+    return roll.total >= dc ? .met : .missed
+}
+
+/// 3.20.0: the history card's target badge - "DC 15 met" / "DC 15
+/// missed". Shared by the card view and the render proof.
+public func targetBadgeLabel(for roll: RollResult) -> String? {
+    guard let dc = roll.targetDC, let outcome = targetOutcome(for: roll) else { return nil }
+    return "DC \(dc) \(outcome.rawValue)"
+}
+
 /// 3.17.0: the session trash's hover label names its target. The delete
 /// fires without a confirm (one undo step restores), so the label is the
 /// only pre-click signal of which session - and how many rolls - goes.
@@ -399,6 +438,10 @@ public struct SessionStats: Equatable, Sendable {
     /// Newest stamp minus oldest stamp; nil under two stamped rolls -
     /// a lone or undated roll has no span worth printing.
     public let span: TimeInterval?
+    /// Targeted rolls (3.20.0): how many carried a DC and how many met
+    /// it. Zero-attempt sessions print exactly the pre-3.20.0 line.
+    public let dcMet: Int
+    public let dcAttempted: Int
 
     /// "9 rolls \u{00B7} high 26 \u{00B7} low 5 \u{00B7} nat 20 \u{00D7}2 \u{00B7} span 2h 14m" -
     /// crit counts appear only when nonzero and the span only when it
@@ -408,6 +451,7 @@ public struct SessionStats: Equatable, Sendable {
                      "high \(high)", "low \(low)"]
         if nat20s > 0 { parts.append("nat 20 \u{00D7}\(nat20s)") }
         if nat1s > 0 { parts.append("nat 1 \u{00D7}\(nat1s)") }
+        if dcAttempted > 0 { parts.append("DC met \(dcMet)/\(dcAttempted)") }
         if let span = span { parts.append("span " + SessionStats.formatSpan(span)) }
         return parts.joined(separator: " \u{00B7} ")
     }
@@ -525,12 +569,15 @@ public func sessionStats(_ session: RollSession) -> SessionStats {
     } else {
         span = nil
     }
+    let targeted = rolls.filter { $0.targetDC != nil }
     return SessionStats(count: rolls.count,
                         high: rolls.map(\.total).max() ?? 0,
                         low: rolls.map(\.total).min() ?? 0,
                         nat20s: keptD20.filter { $0.value == 20 }.count,
                         nat1s: keptD20.filter { $0.value == 1 }.count,
-                        span: span)
+                        span: span,
+                        dcMet: targeted.filter { targetOutcome(for: $0) == .met }.count,
+                        dcAttempted: targeted.count)
 }
 
 /// Day groups for session-log exports (2.68.0): the 2.38.0 day groups

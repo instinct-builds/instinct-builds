@@ -255,12 +255,13 @@ public final class AppModel: ObservableObject {
     /// ignored. Passing a character name binds the macro to that character,
     /// so a table macro and a character macro can share a name.
     public func saveMacro(name: String, expression: String, forCharacter characterName: String? = nil,
-                          damageType: String? = nil) {
+                          damageType: String? = nil, targetDC: Int? = nil) {
         let macro = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
             expression: expression.trimmingCharacters(in: .whitespaces),
             characterName: characterName,
-            damageType: damageType)
+            damageType: damageType,
+            targetDC: targetDC)
         guard macro.isValid else { return }
         macros.removeAll { $0.id == macro.id }
         macros.append(macro)
@@ -272,18 +273,20 @@ public final class AppModel: ObservableObject {
     /// removes the old scoped id, then upserts under the new one. The owner
     /// binding (table-wide vs character) is preserved.
     public func updateMacro(_ macro: DiceMacro, name: String, expression: String,
-                            damageType: String? = nil) {
+                            damageType: String? = nil, targetDC: Int? = nil) {
         var updated = DiceMacro(
             name: name.trimmingCharacters(in: .whitespaces),
             expression: expression.trimmingCharacters(in: .whitespaces),
             characterName: macro.characterName,
-            damageType: damageType)
+            damageType: damageType,
+            targetDC: targetDC)
         // 3.15.0: an edit keeps the pin.
         updated.pinned = macro.pinned
         guard updated.isValid else { return }
         macros.removeAll { $0.id == macro.id }
         saveMacro(name: updated.name, expression: updated.expression,
-                  forCharacter: updated.characterName, damageType: updated.damageType)
+                  forCharacter: updated.characterName, damageType: updated.damageType,
+                  targetDC: updated.targetDC)
     }
 
     /// Clones a macro in place as "<name> copy" (bumped when taken); the
@@ -291,7 +294,8 @@ public final class AppModel: ObservableObject {
     public func duplicateMacro(_ macro: DiceMacro) {
         let copy = ArchiterCore.duplicatedMacro(macro, existing: macros)
         saveMacro(name: copy.name, expression: copy.expression,
-                  forCharacter: copy.characterName, damageType: copy.damageType)
+                  forCharacter: copy.characterName, damageType: copy.damageType,
+                  targetDC: copy.targetDC)
     }
 
     /// Pins a macro to the top of its group, or lifts the pin (3.15.0).
@@ -512,9 +516,10 @@ public final class AppModel: ObservableObject {
         if autoLogRollsToJournal { addRollToJournal(r) }
     }
 
-    public func roll(_ expression: String) {
+    public func roll(_ expression: String, targetDC: Int? = nil) {
         if var r = try? roller.roll(expression) {
-            r.reroll = RerollSpec(kind: .plain)
+            r.targetDC = targetDC
+            r.reroll = RerollSpec(kind: .plain, targetDC: targetDC)
             record(r)
         }
     }
@@ -548,14 +553,15 @@ public final class AppModel: ObservableObject {
     /// the history entry carries the same outgoing-defense note attack rolls
     /// get (what the total deals against resist / immune / vuln). Untyped
     /// rolls record exactly as before.
-    public func rollFree(_ expression: String, type: DamageType?) {
-        guard let type else { roll(expression); return }
-        recordDamageRoll(expression, expression, type: type)
+    public func rollFree(_ expression: String, type: DamageType?, targetDC: Int? = nil) {
+        guard let type else { roll(expression, targetDC: targetDC); return }
+        recordDamageRoll(expression, expression, type: type, targetDC: targetDC)
     }
 
-    public func rollLabeled(_ label: String, _ expression: String) {
+    public func rollLabeled(_ label: String, _ expression: String, targetDC: Int? = nil) {
         if var r = try? roller.rollLabeled(label, expression) {
-            r.reroll = RerollSpec(kind: .plain, baseLabel: label)
+            r.targetDC = targetDC
+            r.reroll = RerollSpec(kind: .plain, baseLabel: label, targetDC: targetDC)
             record(r)
         }
     }
@@ -577,22 +583,32 @@ public final class AppModel: ObservableObject {
         if let spec = source.reroll {
             switch spec.kind {
             case .plain:
-                if let base = spec.baseLabel { rollLabeled(base, source.expression.withRerollModifier(variant)) }
-                else { roll(source.expression.withRerollModifier(variant)) }
+                if let base = spec.baseLabel {
+                    rollLabeled(base, source.expression.withRerollModifier(variant),
+                                targetDC: spec.targetDC)
+                } else {
+                    roll(source.expression.withRerollModifier(variant), targetDC: spec.targetDC)
+                }
             case .check:
                 let adjusted = spec.adjusted(for: variant)
                 rollCheck(adjusted.baseLabel ?? source.label ?? "Check",
-                          bonus: adjusted.checkBonus ?? 0, mode: adjusted.mode ?? .normal)
+                          bonus: adjusted.checkBonus ?? 0, mode: adjusted.mode ?? .normal,
+                          targetDC: adjusted.targetDC)
             case .outgoingDamage:
                 recordDamageRoll(spec.baseLabel ?? source.label ?? "Damage",
                                  source.expression.withRerollModifier(variant),
-                                 type: spec.damageType.flatMap { DamageType(rawValue: $0) })
+                                 type: spec.damageType.flatMap { DamageType(rawValue: $0) },
+                                 targetDC: spec.targetDC)
             case .incomingDamage:
                 break
             }
         } else {
-            if let label = source.label { rollLabeled(label, source.expression.withRerollModifier(variant)) }
-            else { roll(source.expression.withRerollModifier(variant)) }
+            if let label = source.label {
+                rollLabeled(label, source.expression.withRerollModifier(variant),
+                            targetDC: source.targetDC)
+            } else {
+                roll(source.expression.withRerollModifier(variant), targetDC: source.targetDC)
+            }
         }
         // 2.91.0 reroll-and-star: a starred card's reroll inherits the
         // star, so the highlight reel survives the re-roll. The original
@@ -612,22 +628,25 @@ public final class AppModel: ObservableObject {
     public func rollMacro(_ macro: DiceMacro) {
         let type = macro.damageType.flatMap { DamageType(rawValue: $0) }
         if let type {
-            recordDamageRoll(macro.name, macro.expression, type: type)
+            recordDamageRoll(macro.name, macro.expression, type: type,
+                             targetDC: macro.targetDC)
         } else {
-            rollLabeled(macro.name, macro.expression)
+            rollLabeled(macro.name, macro.expression, targetDC: macro.targetDC)
         }
     }
 
     /// Damage roll labeled with the outgoing-defense math for its type -
     /// what the total deals against resistance, immunity, and vulnerability
     /// on the target. Untyped or unrecognized types roll without a note.
-    private func recordDamageRoll(_ label: String, _ expression: String, type: DamageType?) {
+    private func recordDamageRoll(_ label: String, _ expression: String, type: DamageType?,
+                                  targetDC: Int? = nil) {
         guard var r = try? roller.rollLabeled(label, expression) else { return }
         if let type {
             r.label = "\(label) (\(Character.outgoingDefenseNote(total: r.total, type: type)))"
         }
+        r.targetDC = targetDC
         r.reroll = RerollSpec(kind: .outgoingDamage, baseLabel: label,
-                              damageType: type?.rawValue)
+                              damageType: type?.rawValue, targetDC: targetDC)
         record(r)
     }
 
@@ -740,10 +759,13 @@ public final class AppModel: ObservableObject {
     /// Era- and condition-aware d20 roll: the 2024-style preset subtracts
     /// exhaustion from every d20 test, and hindering conditions (poisoned,
     /// blinded, prone...) fold disadvantage into the mode.
-    public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal) {
+    public func rollCheck(_ label: String, bonus: Int, mode: RollMode = .normal,
+                          targetDC: Int? = nil) {
         guard let c = selected?.wrappedValue else {
             var r = roller.check(label, bonus: bonus, mode: mode)
-            r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode, checkBonus: bonus)
+            r.targetDC = targetDC
+            r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode,
+                                  checkBonus: bonus, targetDC: targetDC)
             record(r)
             return
         }
@@ -760,7 +782,9 @@ public final class AppModel: ObservableObject {
         }
         let tagged = tags.isEmpty ? label : "\(label) (\(tags.joined(separator: "; ")))"
         var r = roller.check(tagged, bonus: bonus - penalty, mode: effective)
-        r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode, checkBonus: bonus)
+        r.targetDC = targetDC
+        r.reroll = RerollSpec(kind: .check, baseLabel: label, mode: mode,
+                              checkBonus: bonus, targetDC: targetDC)
         record(r)
     }
 

@@ -22,14 +22,19 @@ public struct DiceMacro: Codable, Equatable, Sendable, Identifiable {
     /// actually needs stay above the fold. Optional, so macro files
     /// written before 3.15.0 decode unchanged; nil stays unencoded.
     public var pinned: Bool?
+    /// Target DC for rolls from this macro (3.20.0): the history card
+    /// shows whether the roll met it. Optional, so macro files written
+    /// before 3.20.0 decode unchanged; nil stays unencoded.
+    public var targetDC: Int?
 
     public init(name: String, expression: String, characterName: String? = nil,
-                damageType: String? = nil, pinned: Bool? = nil) {
+                damageType: String? = nil, pinned: Bool? = nil, targetDC: Int? = nil) {
         self.name = name
         self.expression = expression
         self.characterName = characterName
         self.damageType = damageType
         self.pinned = pinned
+        self.targetDC = targetDC
     }
 
     /// Trimmed, non-empty name and an expression the dice parser accepts.
@@ -105,5 +110,6 @@ public func duplicatedMacro(_ macro: DiceMacro, existing: [DiceMacro]) -> DiceMa
         n += 1
     }
     return DiceMacro(name: candidate, expression: macro.expression,
-                     characterName: macro.characterName, damageType: macro.damageType)
+                     characterName: macro.characterName, damageType: macro.damageType,
+                     targetDC: macro.targetDC)
 }

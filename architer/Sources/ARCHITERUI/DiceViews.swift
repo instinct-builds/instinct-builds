@@ -57,11 +57,20 @@ public struct DiceRollerView: View {
     @State private var expression = "2d6+3"
     @State private var d20Mode: RollMode = .normal
     @State private var d20Modifier = 0
+    /// Target DC draft (3.20.0): blank means no target; applies to the
+    /// bar's free roll and d20 check.
+    @State private var dcDraft = ""
     @State private var macroNameDraft = ""
     /// Free-roller damage type, persisted on the model across launches;
     /// nil keeps rolls untyped (no defense note).
     private var damageType: Binding<DamageType?> {
         Binding(get: { model.freeRollerDamageType }, set: { model.freeRollerDamageType = $0 })
+    }
+    /// The bar's target DC (3.20.0); nil when the draft is blank or
+    /// not a number (the field validates on submit, not per keystroke).
+    private var barTargetDC: Int? {
+        let trimmed = dcDraft.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : Int(trimmed)
     }
     /// Save scope for new macros: true binds them to the selected character.
     @State private var saveForCharacter = true
@@ -110,8 +119,8 @@ public struct DiceRollerView: View {
                 TextField("Dice notation", text: $expression)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 200)
-                    .onSubmit { model.rollFree(expression, type: damageType.wrappedValue) }
-                Button("Roll") { model.rollFree(expression, type: damageType.wrappedValue) }
+                    .onSubmit { model.rollFree(expression, type: damageType.wrappedValue, targetDC: barTargetDC) }
+                Button("Roll") { model.rollFree(expression, type: damageType.wrappedValue, targetDC: barTargetDC) }
                     .buttonStyle(RollButtonStyle(prominent: true))
                     .keyboardShortcut(.return)
                 Picker("", selection: damageType) {
@@ -121,6 +130,10 @@ public struct DiceRollerView: View {
                 .labelsHidden()
                 .frame(maxWidth: 110)
                 .help("Damage type: typed rolls note what they deal against resistance, immunity, and vulnerability. Remembered per character (or for the table when none is selected).")
+                TextField("DC", text: $dcDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 48)
+                    .help("Target DC: the roll's history card shows whether it met the DC. Blank means no target.")
                 Text("d20 · 2d6+3 · 4d6kh3 · 4d6dl1 · 1d8+1d4+2")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -133,7 +146,7 @@ public struct DiceRollerView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 320)
                 Stepper("Modifier \(signed(d20Modifier))", value: $d20Modifier, in: -10...30)
-                Button("Roll d20") { model.rollCheck("d20 roll", bonus: d20Modifier, mode: d20Mode) }
+                Button("Roll d20") { model.rollCheck("d20 roll", bonus: d20Modifier, mode: d20Mode, targetDC: barTargetDC) }
                     .buttonStyle(RollButtonStyle(prominent: true))
             }
             VStack(alignment: .leading, spacing: Theme.Gap.sm) {
@@ -804,6 +817,8 @@ public struct MacroRowView: View {
     @State private var nameDraft: String
     @State private var expressionDraft: String
     @State private var typeDraft: DamageType?
+    /// Target DC draft (3.20.0): blank means the macro rolls untargeted.
+    @State private var dcDraft: String
 
     public init(macro: DiceMacro, startEditing: Bool = false) {
         self.macro = macro
@@ -811,11 +826,14 @@ public struct MacroRowView: View {
         _nameDraft = State(initialValue: macro.name)
         _expressionDraft = State(initialValue: macro.expression)
         _typeDraft = State(initialValue: macro.damageType.flatMap { DamageType(rawValue: $0) })
+        _dcDraft = State(initialValue: macro.targetDC.map(String.init) ?? "")
     }
 
     private var draftsValid: Bool {
-        !nameDraft.trimmingCharacters(in: .whitespaces).isEmpty
+        let dcText = dcDraft.trimmingCharacters(in: .whitespaces)
+        return !nameDraft.trimmingCharacters(in: .whitespaces).isEmpty
             && (try? DiceExpression.parse(expressionDraft)) != nil
+            && (dcText.isEmpty || Int(dcText) != nil)
     }
 
     public var body: some View {
@@ -834,9 +852,14 @@ public struct MacroRowView: View {
                 .labelsHidden()
                 .frame(maxWidth: 110)
                 .help("Damage-type tag: rolls from this macro note what they deal against resistance, immunity, and vulnerability")
+                TextField("DC", text: $dcDraft)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 48)
+                    .help("Target DC: history cards show whether rolls from this macro met it. Blank means no target.")
                 Button {
                     model.updateMacro(macro, name: nameDraft, expression: expressionDraft,
-                                      damageType: typeDraft?.rawValue)
+                                      damageType: typeDraft?.rawValue,
+                                      targetDC: Int(dcDraft.trimmingCharacters(in: .whitespaces)))
                     editing = false
                 } label: { Image(systemName: "checkmark") }
                     .disabled(!draftsValid)
@@ -856,6 +879,12 @@ public struct MacroRowView: View {
                         .foregroundStyle(Theme.accent)
                         .help("Damage-type tag: rolls note what they deal against defenses")
                 }
+                if let dc = macro.targetDC {
+                    Text("DC \(dc)")
+                        .font(Theme.Typeface.captionSmall)
+                        .foregroundStyle(Theme.accent)
+                        .help("Target DC: history cards show whether rolls from this macro met it")
+                }
                 Spacer()
                 Button("Roll") { model.rollMacro(macro) }
                     .buttonStyle(RollButtonStyle())
@@ -871,6 +900,7 @@ public struct MacroRowView: View {
                     nameDraft = macro.name
                     expressionDraft = macro.expression
                     typeDraft = macro.damageType.flatMap { DamageType(rawValue: $0) }
+                    dcDraft = macro.targetDC.map(String.init) ?? ""
                     editing = true
                 } label: { Image(systemName: "pencil") }
                     .help("Edit macro")
@@ -1056,6 +1086,13 @@ struct RollCard: View {
                     .foregroundStyle(Theme.inkFaint)
                     .strikethrough()
                     .help("The die not taken")
+            }
+            // 3.20.0: the target badge, derived from the recorded DC
+            // and total - met in the crit green, missed in the fumble red.
+            if let badge = targetBadgeLabel(for: roll) {
+                Text(badge)
+                    .font(Theme.Typeface.caption.monospacedDigit())
+                    .foregroundStyle(targetOutcome(for: roll) == .met ? Theme.success : Theme.danger)
             }
             Text("\(roll.total)")
                 .font(Theme.Typeface.statBig.monospacedDigit())

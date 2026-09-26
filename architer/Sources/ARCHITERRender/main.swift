@@ -1163,6 +1163,58 @@ func run(model: AppModel, character: Character, outDir: String) {
             }
         }
     }
+    // 3.20.0 proof: DC / target checks. Runs last: targeted rolls land
+    // after every sheet render and PDF, so the byte-diffs hold, and
+    // untargeted sessions keep the exact stats line from before.
+    do {
+        // A macro carrying its DC: rolled for real, the badge derives.
+        model.saveMacro(name: "Fire Bolt attack", expression: "1d20+6",
+                        forCharacter: model.selected?.wrappedValue.name,
+                        targetDC: 15)
+        if let bolt = model.macros.first(where: { $0.name == "Fire Bolt attack" }) {
+            model.rollMacro(bolt)
+        }
+        // The bar's ad-hoc DC path (the view passes barTargetDC here).
+        model.rollCheck("Perception check", bonus: 9, targetDC: 14)
+        var proofLines = ["DC / target checks (3.20.0)",
+                          "the badge is derived from the recorded DC and total, never stored"]
+        for roll in model.rollHistory.prefix(2) {
+            proofLines.append("roll: \(roll.label ?? roll.expression), total \(roll.total), badge: \(targetBadgeLabel(for: roll) ?? "none")")
+        }
+        // Crafted edge rolls pin the rules live dice can't be asked
+        // for: attack nat 20 auto-meets even short of the DC, attack
+        // nat 1 auto-misses even at it, checks stay pure arithmetic.
+        let nat20Attack = RollResult(expression: "1d20-2",
+                                     dice: [DieResult(sides: 20, value: 20, kept: true)],
+                                     modifier: -2, total: 18, alternateTotal: nil,
+                                     label: "Longsword attack", targetDC: 21)
+        let nat1Attack = RollResult(expression: "1d20+14",
+                                    dice: [DieResult(sides: 20, value: 1, kept: true)],
+                                    modifier: 14, total: 15, alternateTotal: nil,
+                                    label: "Warhammer attack", targetDC: 15)
+        let nat20Check = RollResult(expression: "1d20+4",
+                                    dice: [DieResult(sides: 20, value: 20, kept: true)],
+                                    modifier: 4, total: 24, alternateTotal: nil,
+                                    label: "Stealth check", targetDC: 25)
+        model.rollHistory.insert(contentsOf: [nat20Check, nat1Attack, nat20Attack], at: 0)
+        for roll in [nat20Attack, nat1Attack, nat20Check] {
+            proofLines.append("edge: \(roll.label ?? roll.expression), total \(roll.total) vs DC \(roll.targetDC ?? -1), badge: \(targetBadgeLabel(for: roll) ?? "none")")
+        }
+        let targetedSession = RollSession(number: 1, title: "DC demo", key: nil,
+                                          rolls: Array(model.rollHistory.prefix(5)))
+        proofLines.append("stats with targets: \(sessionStats(targetedSession).line)")
+        let untargeted = model.rollHistory.filter { $0.targetDC == nil }
+        proofLines.append("stats without targets (unchanged shape): \(sessionStats(RollSession(number: 1, title: "t", key: nil, rolls: untargeted)).line)")
+        renderPNG(
+            DiceRollerView()
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "dice-dc", outDir: outDir, minHeight: 420, maxHeight: 1100)
+        try? proofLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/dc-check.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
