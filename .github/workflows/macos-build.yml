@@ -304,6 +304,19 @@ jobs:
           cat "$SUP/demo-license-repair.txt"
           grep -q '^done repaired=true linked=true bytes=true identity=true$' "$SUP/demo-license-repair.txt"
           cp "$SUP/demo-license-repair.txt" "ASSSETS-$ASSSETS_VERSION-license-repair.txt"
+          DELAY=18 shoot license-cleanup-review 1024x768 license-cleanup-review
+          DELAY=18 shoot license-cleanup-apply 1024x768 license-cleanup-apply demo-license-cleanup.txt
+          grep -q '^done result=true retained=false original=false stray=false journal=false notice=false$' "$SUP/demo-license-cleanup.txt"
+          cp "$SUP/demo-license-cleanup.txt" "ASSSETS-$ASSSETS_VERSION-license-cleanup.txt"
+          DELAY=18 shoot license-cleanup-stale 1024x768 license-cleanup-stale demo-license-cleanup.txt
+          grep -q '^done result=false retained=true original=true stray=true journal=false notice=false$' "$SUP/demo-license-cleanup.txt"
+          DELAY=18 shoot license-cleanup-stage 1024x768 license-cleanup-stage demo-license-cleanup.txt
+          grep -q '^done result=false retained=true original=true stray=true journal=false notice=false$' "$SUP/demo-license-cleanup.txt"
+          DELAY=18 shoot license-cleanup-save 1024x768 license-cleanup-save demo-license-cleanup.txt
+          grep -q '^done result=false retained=true original=true stray=true journal=false notice=false$' "$SUP/demo-license-cleanup.txt"
+          DELAY=18 shoot license-cleanup-purge 1024x768 license-cleanup-purge demo-license-cleanup.txt
+          grep -q '^done result=false retained=false original=false stray=false journal=true notice=true$' "$SUP/demo-license-cleanup.txt"
+          cp "$SUP/demo-license-cleanup.txt" "ASSSETS-$ASSSETS_VERSION-license-cleanup-pending.txt"
           DELAY=18 shoot license-detach-one 1920x1200 license-detach-one
           DELAY=18 shoot license-detach-all 1920x1200 license-detach-all
           DELAY=18 shoot license-detach-apply 1920x1200 license-detach-apply demo-license-detach.txt
@@ -376,6 +389,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipts.csv.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-source-receipt-copy.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-repair.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-cleanup*.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-license-detach.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-rights-recheck.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-health-rows.txt

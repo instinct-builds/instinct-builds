@@ -122,6 +122,9 @@ final class StudioLibrary: ObservableObject {
     @Published var toast: String?
     @Published var licenseRepairReview: LicenseRepairSelection?
     @Published var licenseDetachmentReview: MissingLicenseDetachment?
+    @Published var licenseCleanupReview: LicenseCleanupReview?
+    @Published var licenseCleanupNotice: String?
+    private var cleanupDemoFault: String?
     @Published var selectedSmart: UUID?
     /// Moodboard shown in place of the grid (1.16), its selected card, and the note being edited.
     @Published var selectedBoard: UUID?
@@ -810,11 +813,14 @@ final class StudioLibrary: ObservableObject {
     init() {
         supportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ASSSETS", isDirectory: true)
         try? FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
-        install()
+        // Recover pending paperwork before install() can rewrite the catalog digest.
+        let recovered = reconcileLicenseCleanup()
+        if recovered { install() }
+        else { catalog = loadCatalog() ?? StudioCatalog() }
         startWatching()
-        refreshAutoTags()
+        if recovered { refreshAutoTags() }
         applyLaunchArguments()
-        if !isDemo { checkRightsSinceLastLaunch(); pruneLicenseFiles(); refreshHealth() }
+        if !isDemo { if recovered { checkRightsSinceLastLaunch() }; refreshHealth(full: !recovered) }
         installKeyMonitor()
     }
 
@@ -926,6 +932,7 @@ final class StudioLibrary: ObservableObject {
     }
 
     func save() {
+        if cleanupEntryExists(cleanupJournalURL) { return } // preserve the digest until recovery settles
         if let data = try? catalog.encoded() { try? data.write(to: catalogURL, options: .atomic) }
     }
 
@@ -2157,17 +2164,198 @@ final class StudioLibrary: ObservableObject {
         refreshHealth(full: true)
     }
 
-    /// Deletes license records nothing uses and stray files in the Licenses folder.
-    func cleanUpLicenseFolder() {
-        guard let h = health, healthScanStatus?.coverage.covers(.folder) == true else {
-            flash("License folder could not be checked. Check Again before cleaning up.")
+    private var cleanupJournalURL: URL { supportRoot.appendingPathComponent("license-cleanup-journal.json") }
+    private func cleanupQuarantine(_ id: UUID) -> URL { supportRoot.appendingPathComponent("LicenseCleanup-\(id.uuidString)", isDirectory: true) }
+    private func catalogDigest(_ c: StudioCatalog) -> String? {
+        guard let data = try? c.encoded() else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Open without following links, then hash and stat the same descriptor twice.
+    private func fileIdentity(_ url: URL) -> LicenseCleanupReview.File? {
+        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var before = stat(), after = stat()
+        guard fstat(fd, &before) == 0, (before.st_mode & 0o170000) == 0o100000 else { return nil }
+        var hasher = SHA256()
+        var buffer = [UInt8](repeating: 0, count: 1 << 20)
+        while true {
+            let count = buffer.withUnsafeMutableBytes { bytes in read(fd, bytes.baseAddress, bytes.count) }
+            guard count >= 0 else { return nil }
+            if count == 0 { break }
+            hasher.update(data: Data(buffer.prefix(count)))
+        }
+        guard fstat(fd, &after) == 0, before.st_dev == after.st_dev, before.st_ino == after.st_ino,
+              before.st_size == after.st_size, before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
+              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
+              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
+              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else { return nil }
+        // The directory entry must still name the same regular file, not a swapped symlink.
+        var pathStat = stat()
+        guard lstat(url.path, &pathStat) == 0, (pathStat.st_mode & 0o170000) == 0o100000,
+              pathStat.st_dev == after.st_dev, pathStat.st_ino == after.st_ino else { return nil }
+        return .init(name: url.lastPathComponent, device: UInt64(after.st_dev), inode: UInt64(after.st_ino),
+                     bytes: UInt64(after.st_size), digest: hasher.finalize().map { String(format: "%02x", $0) }.joined())
+    }
+
+    /// Darwin exclusive rename refuses to overwrite a reappearing target.
+    private func moveCleanupFile(_ source: URL, _ target: URL) throws {
+        guard renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+    }
+
+    private func cleanupEntryExists(_ url: URL) -> Bool {
+        var st = stat()
+        return lstat(url.path, &st) == 0 || errno != ENOENT
+    }
+
+    private func cleanupSnapshot(_ c: StudioCatalog, id: UUID = UUID()) -> LicenseCleanupReview? {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: licensesRoot.path),
+              let provisional = LicenseCleanupReview(catalog: c, folder: names, id: id) else { return nil }
+        var files: [LicenseCleanupReview.File] = []
+        for name in provisional.unused.map(\.stored) + provisional.stray {
+            let url = licensesRoot.appendingPathComponent(name)
+            guard names.contains(name) else { continue } // unused record with an already absent copy
+            guard let identity = fileIdentity(url) else { return nil }
+            files.append(identity)
+        }
+        return LicenseCleanupReview(catalog: c, folder: names, files: files, id: id)
+    }
+
+    func reviewLicenseCleanup() {
+        guard !cleanupEntryExists(cleanupJournalURL),
+              let snapshot = cleanupSnapshot(catalog) else {
+            flash("License folder could not be reviewed. Check Again, or inspect pending cleanup files.")
             refreshHealth(full: true); return
         }
-        let n = h.licenseCleanupCount
-        pruneLicenseFiles()
-        for f in h.strayLicenseFiles { try? FileManager.default.removeItem(at: licensesRoot.appendingPathComponent(f)) }
-        flash("Removed \(n) unused license \(n == 1 ? "file" : "files")")
-        refreshHealth()
+        licenseCleanupReview = snapshot
+    }
+
+    /// Reconcile only identities recorded before staging. Ambiguous bytes stay in quarantine.
+    @discardableResult
+    private func reconcileLicenseCleanup() -> Bool {
+        guard cleanupEntryExists(cleanupJournalURL) else { return true }
+        guard let data = try? Data(contentsOf: cleanupJournalURL),
+              let journal = try? JSONDecoder().decode(LicenseCleanupJournal.self, from: data) else {
+            licenseCleanupNotice = "Cleanup paused: journal unreadable. Inspect the cleanup files."; return false
+        }
+        let fm = FileManager.default, quarantine = cleanupQuarantine(journal.id)
+        guard let disk = try? Data(contentsOf: catalogURL) else {
+            licenseCleanupNotice = "Cleanup paused: catalog unreadable. Paperwork is in the cleanup quarantine."; return false
+        }
+        let digest = SHA256.hash(data: disk).map { String(format: "%02x", $0) }.joined()
+        let recovery = journal.recovery(for: digest)
+        guard recovery != .manual else {
+            licenseCleanupNotice = "Cleanup paused: catalog changed. Paperwork is in the cleanup quarantine."; return false
+        }
+        var unresolved = 0
+        for file in journal.files {
+            let staged = quarantine.appendingPathComponent(file.name)
+            let target = licensesRoot.appendingPathComponent(file.name)
+            let stagedExists = cleanupEntryExists(staged), targetExists = cleanupEntryExists(target)
+            if recovery == .restore {
+                // A not-yet-moved original is fine; a missing copy on both sides is not.
+                if !stagedExists && targetExists && fileIdentity(target) == file { continue }
+                if stagedExists && !targetExists && fileIdentity(staged) == file {
+                    do { try moveCleanupFile(staged, target) } catch { unresolved += 1 }
+                } else { unresolved += 1 }
+            } else if stagedExists {
+                if fileIdentity(staged) == file {
+                    do {
+                        if isDemo && cleanupDemoFault == "purge" { throw NSError(domain: "ASSSETS.Demo", code: 3) }
+                        try fm.removeItem(at: staged)
+                    } catch { unresolved += 1 }
+                } else { unresolved += 1 }
+            } else if targetExists {
+                // After commit, a reappearing target might be a new file. Do not delete it.
+                unresolved += 1
+            }
+        }
+        if cleanupEntryExists(quarantine) {
+            if let contents = try? fm.contentsOfDirectory(atPath: quarantine.path) {
+                if !contents.isEmpty { unresolved += contents.filter { !journal.files.map(\.name).contains($0) }.count }
+                else { do { try fm.removeItem(at: quarantine) } catch { unresolved += 1 } }
+            } else { unresolved += 1 }
+        }
+        if unresolved == 0 && !cleanupEntryExists(quarantine) {
+            do { try fm.removeItem(at: cleanupJournalURL); licenseCleanupNotice = nil; return true }
+            catch { unresolved += 1 }
+        }
+        let verb = recovery == .purge ? "committed" : "not committed"
+        licenseCleanupNotice = "Cleanup \(verb): \(journal.recordCount) record\(journal.recordCount == 1 ? "" : "s") \(recovery == .purge ? "removed" : "kept"), \(unresolved) file\(unresolved == 1 ? "" : "s") still need manual cleanup. Stored copies have not been discarded unless verified."
+        return false
+    }
+
+    @discardableResult
+    func commitLicenseCleanup(_ review: LicenseCleanupReview) -> Bool {
+        let fm = FileManager.default
+        guard !cleanupEntryExists(cleanupJournalURL), catalogMatchesDisk(),
+              let diskData = try? Data(contentsOf: catalogURL), let fresh = StudioCatalog.decode(diskData),
+              fresh == catalog, let snapshot = cleanupSnapshot(fresh, id: review.id), snapshot == review,
+              let beforeDigest = catalogDigest(fresh) else {
+            licenseCleanupReview = nil; flash("License cleanup changed. Nothing deleted; Check Again and review again.")
+            refreshHealth(full: true); return false
+        }
+        var updated = fresh
+        let folder = (try? fm.contentsOfDirectory(atPath: licensesRoot.path)) ?? []
+        guard review.apply(to: &updated, folder: folder), let afterData = try? updated.encoded() else {
+            licenseCleanupReview = nil; flash("License cleanup changed. Nothing deleted."); refreshHealth(full: true); return false
+        }
+        let afterDigest = SHA256.hash(data: afterData).map { String(format: "%02x", $0) }.joined()
+        let quarantine = cleanupQuarantine(review.id)
+        let journal = LicenseCleanupJournal(id: review.id, phase: .staging, beforeDigest: beforeDigest,
+                                            afterDigest: afterDigest, files: review.files, recordCount: review.unused.count)
+        do {
+            try fm.createDirectory(at: quarantine, withIntermediateDirectories: false)
+            try JSONEncoder().encode(journal).write(to: cleanupJournalURL, options: .atomic)
+            for (index, file) in review.files.enumerated() {
+                if isDemo && cleanupDemoFault == "stage" && index == 1 { throw NSError(domain: "ASSSETS.Demo", code: 1) }
+                let source = licensesRoot.appendingPathComponent(file.name)
+                guard fileIdentity(source) == file else { throw NSError(domain: "ASSSETS.Cleanup", code: 1) }
+                try moveCleanupFile(source, quarantine.appendingPathComponent(file.name))
+            }
+            guard review.files.allSatisfy({ fileIdentity(quarantine.appendingPathComponent($0.name)) == $0 }),
+                  catalogMatchesDisk() else { throw NSError(domain: "ASSSETS.Cleanup", code: 2) }
+            if isDemo && cleanupDemoFault == "save" { throw NSError(domain: "ASSSETS.Demo", code: 2) }
+            try afterData.write(to: catalogURL, options: .atomic)
+            catalog = updated
+            healthGeneration += 1; healthScanning = false
+            var committed = journal
+            committed.phase = .committed
+            // Recovery uses disk digest, not phase, if this marker write fails.
+            do { try JSONEncoder().encode(committed).write(to: cleanupJournalURL, options: .atomic) }
+            catch {
+                licenseCleanupNotice = "Cleanup committed; journal update failed. Staged files retained for recovery."
+                licenseCleanupReview = nil
+                flash("Cleanup committed; staged files need attention in Library Health.")
+                refreshHealth(full: true)
+                return false
+            }
+            let complete = reconcileLicenseCleanup()
+            licenseCleanupReview = nil
+            if complete { flash("Removed \(review.unused.count) records and \(review.files.count) files. No Undo.") }
+            else { flash("Cleanup committed; remaining staged files need attention in Library Health.") }
+            refreshHealth(full: true)
+            return complete
+        } catch {
+            let complete = reconcileLicenseCleanup()
+            licenseCleanupReview = nil
+            if complete { flash("Cleanup stopped. Nothing committed; reviewed files restored.") }
+            // If journal could not be created, remove only an empty quarantine.
+            if !cleanupEntryExists(cleanupJournalURL),
+               let contents = try? fm.contentsOfDirectory(atPath: quarantine.path), contents.isEmpty {
+                try? fm.removeItem(at: quarantine)
+            }
+            if !complete {
+                licenseCleanupNotice = licenseCleanupNotice ?? "Cleanup paused: inspect staged paperwork and catalog."
+                flash("Cleanup stopped; some paperwork still needs attention in Library Health.")
+            }
+            refreshHealth(full: true)
+            return false
+        }
     }
 
     func reviewMissingLicenseDetachment(_ selected: UUID? = nil) {
@@ -3092,7 +3280,7 @@ final class StudioLibrary: ObservableObject {
                 boardSelection = []
             }
         case "rights-inspector", "rights-expiring", "board-rights", "share-credits", "rights-bulk", "rights-report", "rights-alerts",
-             "license-files", "rights-presets", "export-guard", "rights-recheck-warning", "rights-recheck-stale", "health-incomplete", "health-recovered", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
+             "license-files", "rights-presets", "export-guard", "rights-recheck-warning", "rights-recheck-stale", "health-incomplete", "health-recovered", "batch-license-row", "duplicates-merge", "library-health", "health-status-quick", "health-status-full", "health-rows-compact", "health-rows", "license-repair-review", "license-repair-apply", "license-cleanup-review", "license-cleanup-apply", "license-cleanup-stale", "license-cleanup-stage", "license-cleanup-save", "license-cleanup-purge", "license-detach-one", "license-detach-all", "license-detach-apply", "folder-relink", "folder-relink-apply", "folder-relink-collapsed", "changed-source", "changed-source-review", "changed-source-apply", "changed-source-inspector", "source-history-inspector", "source-review-queue", "source-review-queue-next", "source-preview-review", "source-receipt-focus", "source-receipt-timeline", "source-receipt-search", "source-receipt-csv", "source-receipt-copy":
             // A client drop for a hotel pitch: licensed photos with credits and end dates, one expired,
             // one editorial-only, one client-supplied and one with nothing entered yet (1.25).
             let fm = FileManager.default
@@ -3329,6 +3517,34 @@ final class StudioLibrary: ObservableObject {
                             }
                         }
                     }
+                    }
+                }
+            case "license-cleanup-review", "license-cleanup-apply", "license-cleanup-stale", "license-cleanup-stage", "license-cleanup-save", "license-cleanup-purge":
+                let old = LicenseDoc(name: "Superseded order.pdf")
+                _ = try? "Superseded fictional order".write(to: licenseURL(old), atomically: true, encoding: .utf8)
+                mutate { _ = $0.addLicenseDoc(old, to: []) }
+                try? "Old fictional quote".write(to: licensesRoot.appendingPathComponent("old-quote.txt"), atomically: true, encoding: .utf8)
+                if demo == "license-cleanup-stage" { cleanupDemoFault = "stage" }
+                if demo == "license-cleanup-save" { cleanupDemoFault = "save" }
+                if demo == "license-cleanup-purge" { cleanupDemoFault = "purge" }
+                show(collection: StudioCatalog.inboxCollection)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                    self.openLibraryHealth()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.reviewLicenseCleanup()
+                        guard demo != "license-cleanup-review", let review = self.licenseCleanupReview else { return }
+                        if demo == "license-cleanup-stale" {
+                            try? "Altered after review".write(to: self.licensesRoot.appendingPathComponent("old-quote.txt"), atomically: true, encoding: .utf8)
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            let result = self.commitLicenseCleanup(review)
+                            let retained = self.catalog.licenseDoc(old.id) != nil
+                            let original = fm.fileExists(atPath: self.licenseURL(old).path)
+                            let stray = fm.fileExists(atPath: self.licensesRoot.appendingPathComponent("old-quote.txt").path)
+                            let journal = self.cleanupEntryExists(self.cleanupJournalURL)
+                            let status = "done result=\(result) retained=\(retained) original=\(original) stray=\(stray) journal=\(journal) notice=\(self.licenseCleanupNotice != nil)"
+                            try? status.write(to: self.supportRoot.appendingPathComponent("demo-license-cleanup.txt"), atomically: true, encoding: .utf8)
+                        }
                     }
                 }
             case "license-detach-one", "license-detach-all", "license-detach-apply":
@@ -3926,7 +4142,7 @@ extension StudioLibrary {
         if n > 0, let d = catalog.licenseDoc(id) { flash("Attached \(d.name) to \(n) more asset\(n == 1 ? "" : "s")") }
     }
 
-    /// Detaches only; the stored copy is deleted on the next launch if nothing uses it, so ⌘Z still works.
+    /// Detaches only; a later reviewed Clean Up can remove the unused stored copy.
     func detachLicenseDoc(_ id: UUID, from ids: [UUID]) {
         var n = 0
         mutate("Remove License File") { n = $0.detachLicenseDoc(id, from: ids) }
@@ -3939,12 +4155,6 @@ extension StudioLibrary {
     }
 
     func revealLicense(_ d: LicenseDoc) { NSWorkspace.shared.activateFileViewerSelecting([licenseURL(d)]) }
-
-    func pruneLicenseFiles() {
-        var gone: [LicenseDoc] = []
-        mutate { gone = $0.pruneLicenseDocs() }
-        for d in gone { try? FileManager.default.removeItem(at: licenseURL(d)) }
-    }
 
     /// Demo only: an order confirmation PDF, an email receipt and an invoice PDF, all made up for the demo library.
     func makeDemoLicenseFiles() -> [String: URL] {
@@ -8134,6 +8344,11 @@ struct LibraryHealthSheet: View {
             ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    if let notice = model.licenseCleanupNotice {
+                        HealthCard(symbol: "exclamationmark.triangle.fill", tint: Theme.warning,
+                                   title: "License cleanup needs attention", detail: notice,
+                                   action: ("Reveal Files", { NSWorkspace.shared.activateFileViewerSelecting([model.supportRoot]) })) { EmptyView() }
+                    }
                     if let coverage = model.healthScanStatus?.coverage, !coverage.complete {
                         HealthCard(symbol: "exclamationmark.triangle.fill", tint: Theme.warning,
                                    title: "Check incomplete · \(coverage.affected.count) \(coverage.affected.count == 1 ? "check" : "checks") affected",
@@ -8206,8 +8421,8 @@ struct LibraryHealthSheet: View {
                     }
                     if h.licenseCleanupCount > 0 {
                         HealthCard(symbol: "paperclip.badge.ellipsis", tint: Theme.smart, title: "\(h.licenseCleanupCount) unused license \(h.licenseCleanupCount == 1 ? "file" : "files")",
-                                   detail: "In the Licenses folder but not attached to any asset or preset.",
-                                   action: model.healthScanStatus?.coverage.covers(.folder) == false ? nil : ("Clean Up", { model.cleanUpLicenseFolder() })) {
+                                   detail: "Unused records and stray stored files. Review the exact list before deleting; copies already absent are labeled.",
+                                   action: model.healthScanStatus?.coverage.covers(.folder) == false ? nil : ("Review Clean Up…", { model.reviewLicenseCleanup() })) {
                             let cleanupNames = h.unusedLicenseFiles.compactMap { model.catalog.licenseDoc($0)?.name } + h.strayLicenseFiles
                             ForEach(Array(cleanupNames.prefix(visibleRows("cleanup", count: cleanupNames.count)).enumerated()), id: \.offset) { index, name in
                                 HealthDocRow(name: name, detail: "Not attached")
@@ -8372,6 +8587,9 @@ struct LibraryHealthSheet: View {
         .frame(minWidth: 720, idealWidth: 780, minHeight: 520, idealHeight: 640)
         .background(Theme.panel)
         .sheet(isPresented: $model.folderRelinkOpen) { FolderRelinkSheet().environmentObject(model) }
+        .sheet(item: $model.licenseCleanupReview) { review in
+            LicenseCleanupSheet(review: review).environmentObject(model)
+        }
         .sheet(item: $model.licenseDetachmentReview) { review in
             MissingLicenseDetachmentSheet(review: review).environmentObject(model)
         }
@@ -8457,6 +8675,56 @@ struct LibraryHealthSheet: View {
                 }
             }
         }
+    }
+}
+
+/// Separates unused catalog records from physical stray files before deleting stored paperwork.
+struct LicenseCleanupSheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let review: LicenseCleanupReview
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "paperclip.badge.ellipsis").foregroundStyle(Theme.warning)
+                Text("Review license-folder cleanup").font(.system(size: 18, weight: .bold))
+                Spacer()
+            }
+            Text("This removes the listed ASSSETS records and deletes their stored copies and stray files. It does not cancel license terms. Deletion cannot be undone from ASSSETS.")
+                .font(.callout).foregroundStyle(Theme.warning).fixedSize(horizontal: false, vertical: true)
+            Text("\(review.unused.count) unused records · \(review.stray.count) stray files")
+                .font(.caption.weight(.semibold))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !review.unused.isEmpty {
+                        Text("UNUSED RECORDS").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                        ForEach(review.unused) { doc in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(doc.name).font(.subheadline.weight(.semibold))
+                                Text("Stored: \(doc.stored) · \(review.files.first(where: { $0.name == doc.stored }).map { ByteCountFormatter.string(fromByteCount: Int64($0.bytes), countStyle: .file) } ?? "copy absent") · added \(doc.added)")
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(9).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                    }
+                    if !review.stray.isEmpty {
+                        Text("STRAY FILES · NO CATALOG RECORD").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                        ForEach(review.stray, id: \.self) { name in
+                            Text("\(name) · \(review.files.first(where: { $0.name == name }).map { ByteCountFormatter.string(fromByteCount: Int64($0.bytes), countStyle: .file) } ?? "unknown size")")
+                                .font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(9).background(Theme.raised, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                    }
+                }
+            }.frame(maxHeight: 300)
+            HStack {
+                Button("Cancel") { model.licenseCleanupReview = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Delete \(review.count) \(review.count == 1 ? "item" : "items")") {
+                    _ = model.commitLicenseCleanup(review)
+                }.buttonStyle(.borderedProminent).tint(Theme.danger).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(22).frame(width: 610).background(Theme.panel)
     }
 }
 
