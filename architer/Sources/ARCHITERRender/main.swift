@@ -1484,7 +1484,10 @@ func run(model: AppModel, character: Character, outDir: String) {
     model.addInitiativeEntry(name: "Bram Oakfel", bonus: 1)
     model.addInitiativeEntry(name: "Sera Vint", bonus: 2)
     model.rollInitiative()
-    for _ in 0..<3 { model.advanceInitiative() }
+    // A FULL rotation: the 3.22.0 proof's entries survive its End combat,
+    // so the rotation is longer than the three entries added here - only a
+    // full lap wraps the round and ticks the timers. (3.30.0 fix1)
+    for _ in 0..<model.initiative.entries.count { model.advanceInitiative() }
     for c in model.characters {
         let chips = c.conditionChipNames.isEmpty ? "-" : c.conditionChipNames.joined(separator: ", ")
         durationLines.append("after wrap \(model.initiative.round): \(c.name) chips: \(chips)")
