@@ -2268,13 +2268,21 @@ int main() {
             auto card = [&](int slot) { return NSMakePoint(468 + (slot % 5) * 62 + 20, (slot < 5 ? 58 + h + 6 : 58) + h - 25); };
             auto bar = [&](int row, double n) { return NSMakePoint(36 + 12 + 62 + 100 * n, 48 + 200 - 52 - 17 * row + 8); };
             muew::Preset before; State(before);
-            Click(view, w, card(before.fx.order.slotOf(muew::FxDelay)));
+            // The preceding 0.28 test leaves DELAY open. Clicking its card
+            // again closes the detail; only open it when another unit is shown.
+            NSNumber* open = [view valueForKey:@"fxDetail"];
+            if (!open || open.intValue != muew::FxDelay)
+                Click(view, w, card(before.fx.order.slotOf(muew::FxDelay)));
             Click(view, w, bar(6, .72)); // DUCK depth
             Click(view, w, bar(7, 380.0 / 1180.0)); // RELEASE = 400 ms
             RenderBlock();
             Snapshot(view, "MUEW_DUCK67_PNG", "DELAY duck page snapshot written");
             muew::Preset state;
             const bool read = State(state);
+            printf("delay67: open=%d read=%d duck=%.4f release=%.2f saved=%d\n",
+                   [[view valueForKey:@"fxDetail"] intValue], read ? 1 : 0,
+                   state.fx.delay.duckDepth, state.fx.delay.duckReleaseMs,
+                   state.serialize().find("delayduck ") != std::string::npos);
             Check(read && std::fabs(state.fx.delay.duckDepth - .72) < .01
                   && std::fabs(state.fx.delay.duckReleaseMs - 400) < 2
                   && state.serialize().find("delayduck 0.72 400") != std::string::npos,
