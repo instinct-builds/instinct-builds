@@ -16,7 +16,8 @@ struct FeedbackReviewerIdentityTests {
             guard let id = item.assetID else { return nil }
             return .init(id: item.id, asset: id)
         }
-        #expect(c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-09-26", assets: [a, b], board: board, cards: cards)!))
+        let recorded = c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-09-26", assets: [a, b], board: board, cards: cards)!)
+        #expect(recorded)
         func f(_ reviewer: String, _ entries: [E], gallery: String? = nil) -> ReviewGallery.Feedback {
             .init(gallery: gallery ?? g, title: "Round", reviewer: reviewer, items: entries)
         }
