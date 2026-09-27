@@ -164,7 +164,11 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     filter.query = std::string(search.stringValue.UTF8String ?: "");
     scroll = 0; bscroll = 0;
     [self refilter];
+    [self setNeedsDisplay:YES];
 }
+
+- (void)controlTextDidBeginEditing:(NSNotification*)n { [self setNeedsDisplay:YES]; }
+- (void)controlTextDidEndEditing:(NSNotification*)n { [self setNeedsDisplay:YES]; }
 
 - (void)applySound {
     if (host) host->applyPreset(current, ui::library().factoryNumber(currentIndex), edited);
@@ -2410,6 +2414,13 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [self drawDragBadge];
     if (browserOpen) [self drawBrowser];
     if (outputDetailOpen) [self drawOutputDetail];
+    // The search subview draws after its parent, so this parent-level ring must
+    // lie outside the field's frame. A selected query is not a focus cue.
+    id first = self.window.firstResponder;
+    if (first == search || ([first isKindOfClass:[NSTextView class]] && [(NSTextView*)first delegate] == search)) {
+        NSBezierPath* ring = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(search.frame,-2.5,-2.5) xRadius:8 yRadius:8];
+        [C(0x5adac8) setStroke]; ring.lineWidth=1.5; [ring stroke];
+    }
 }
 
 // A dedicated editor keeps duration, attack, curve, velocity level and time legible.

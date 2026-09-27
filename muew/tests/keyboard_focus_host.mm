@@ -74,7 +74,12 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     v->outputDetailOpen=true; v->browserOpen=true;
     Down(v,w,esc);
     Check(!v->outputDetailOpen && v->browserOpen, "Escape closes output before browser");
-    v->browserOpen=false; [v setBrowserOpen:true]; Snapshot(v,"browser");
+    v->browserOpen=false;
+    v->search.stringValue=@"";
+    [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
+    [v setBrowserOpen:true];
+    Check(!v->visible.empty(), "browser focus proof shows real preset rows");
+    Snapshot(v,"browser");
     Down(v,w,@"\r"); Check(v->browserOpen, "Return does not activate browser rows");
     Down(v,w,esc);
     Check(!v->browserOpen, "Escape closes browser");
