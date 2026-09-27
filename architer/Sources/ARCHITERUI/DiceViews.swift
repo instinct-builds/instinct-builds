@@ -1323,9 +1323,11 @@ public struct GroupCheckSectionView: View {
                     .frame(width: 72) // 56 clipped the placeholder, same fix as 3.48.0's Amount field
                 TextField("Note", text: $partyCondNote)
                     .textFieldStyle(InsetFieldStyle())
-                    .frame(width: 120)
+                    .frame(width: 72) // 3.59.0: 120 clipped the row's labels at narrow widths; "Note" is 4 chars, drafts scroll
                     .help("Why they have it - attaches on apply (max 24 chars); blank keeps any existing note")
-                Menu("Condition (party)") {
+                // 3.59.0: title shortened to reclaim the header - the party
+                // semantics live in the sections below and the help text.
+                Menu("Condition") {
                     // 3.56.0: apply is scoped too - "Everyone" (3.51.0, byte-
                     // identical path) or one item per roster character.
                     // Apply lists EVERYONE (granting is the point); remove
