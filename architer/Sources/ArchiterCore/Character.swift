@@ -1389,6 +1389,27 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         }
     }
 
+    /// Roll condition markers (3.63.0): the ONE flag-derived marker producer
+    /// for every d20 display path - sheet checks, sheet attacks, group checks
+    /// and group saves all read their roll tags from here, so a flag reads
+    /// identically on every character and from every source (built-in or
+    /// custom). Surfacing only: the math stays with `effectiveRollMode` and
+    /// `exhaustionRollPenalty`, every marker is derived from the flags at call
+    /// time (nothing stored, nothing free-typed per condition), and a roll
+    /// kind the flag does not affect gets no marker - saves are never
+    /// condition-hindered, so save-kind calls only ever carry exhaustion.
+    public func rollConditionMarkers(requestedMode mode: RollMode, for kind: D20RollKind) -> [String] {
+        var tags: [String] = []
+        if exhaustionRollPenalty > 0 { tags.append("exhaustion -\(exhaustionRollPenalty)") }
+        let effective = effectiveRollMode(mode, for: kind)
+        if effective != mode, effective == .disadvantage {
+            tags.append("disadvantage: \(disadvantageSourceNames(for: kind).joined(separator: ", "))")
+        } else if mode == .advantage, effective == .normal {
+            tags.append("advantage canceled: \(disadvantageSourceNames(for: kind).joined(separator: ", "))")
+        }
+        return tags
+    }
+
     /// Flat d20 penalty from exhaustion under the current era (2024 style).
     public var exhaustionRollPenalty: Int {
         era.exhaustionRollPenalty(level: exhaustion)

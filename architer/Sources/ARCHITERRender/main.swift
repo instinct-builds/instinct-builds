@@ -1358,6 +1358,79 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? advisoryLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/conditions.txt"),
                atomically: true, encoding: .utf8)
+    // Roll condition markers proof (3.63.0): ONE flag-derived marker
+    // producer in Core feeds every d20 display path. A hindersAttacks custom
+    // marks the attack roll and nothing else; an immobilizing custom flags
+    // the movement readout and no roll; removal removes the marker. State is
+    // set explicitly and restored at the end of the block.
+    var markerLines = ["Roll condition markers (3.63.0)",
+                       "one flag-derived marker producer in Core; four display paths converged; surfacing only, roll math untouched"]
+    if var marked = model.selected?.wrappedValue {
+        let origConditions = marked.conditions
+        let origCustoms = marked.customConditions
+        let origExhaustion = marked.exhaustion
+        let origEra = marked.era
+        // Phase 1: a custom condition that hinders attacks only.
+        marked.conditions = []
+        marked.exhaustion = 0
+        marked.customConditions = [CustomCondition(name: "Grave-chained", hindersAttacks: true)]
+        model.selected?.wrappedValue = marked
+        if let dagger = marked.attacks.first(where: { $0.name == "Dagger" }) {
+            model.rollAttack(dagger, for: marked)
+        }
+        model.rollCheck("Perception check", bonus: 5, mode: .normal)
+        model.rollCheck("Wisdom save", bonus: 3, mode: .normal)
+        let attackLabel = model.rollHistory.first(where: { ($0.label ?? "").hasPrefix("Dagger attack") })?.label ?? "?"
+        let checkLabel = model.rollHistory.first(where: { ($0.label ?? "").hasPrefix("Perception check") })?.label ?? "?"
+        let saveLabel = model.rollHistory.first(where: { ($0.label ?? "").hasPrefix("Wisdom save") })?.label ?? "?"
+        markerLines.append("rolled: \(attackLabel ?? "?")")
+        markerLines.append("hindersAttacks custom marks the attack roll: \(attackLabel == "Dagger attack (disadvantage: Grave-chained)")")
+        markerLines.append("rolled: \(checkLabel ?? "?")")
+        markerLines.append("the same flag marks no check roll: \(checkLabel == "Perception check")")
+        markerLines.append("rolled: \(saveLabel ?? "?")")
+        markerLines.append("the same flag marks no save roll: \(saveLabel == "Wisdom save")")
+        let adv = ConditionAdvisory.lines(for: marked)
+        markerLines.append("pre-roll advisory: \(adv.joined(separator: " \u{00B7} "))")
+        markerLines.append("advisory names the custom flag: \(adv == ["Attacks hindered: Grave-chained"])")
+        renderPNG(
+            DiceRollerView()
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: width, name: "dice-roll-markers", outDir: outDir, minHeight: 420, maxHeight: 1100)
+        // Phase 2: an immobilizing custom - movement readout flagged, every
+        // roll kind clean (the pin-3 boundary in both directions).
+        marked.customConditions = [CustomCondition(name: "Stone-rooted", immobilizes: true)]
+        model.selected?.wrappedValue = marked
+        markerLines.append("immobilized movement readout: \(marked.effectiveMovementSummary)")
+        markerLines.append("immobilize flags the movement readout: \(marked.effectiveMovementSummary == "0 ft (immobilized)")")
+        model.rollCheck("Longbow attack", bonus: 7, mode: .normal)
+        model.rollCheck("Investigation check", bonus: 5, mode: .normal)
+        model.rollCheck("Dexterity save", bonus: 3, mode: .normal)
+        let ia = model.rollHistory.first(where: { ($0.label ?? "").hasPrefix("Longbow attack") })?.label ?? "?"
+        let ic = model.rollHistory.first(where: { ($0.label ?? "").hasPrefix("Investigation check") })?.label ?? "?"
+        let isv = model.rollHistory.first(where: { ($0.label ?? "").hasPrefix("Dexterity save") })?.label ?? "?"
+        markerLines.append("rolled while immobilized: \(ia ?? "?") / \(ic ?? "?") / \(isv ?? "?")")
+        markerLines.append("immobilize marks no attack, check, or save: \(ia == "Longbow attack" && ic == "Investigation check" && isv == "Dexterity save")")
+        // Phase 3: removal removes the marker.
+        marked.customConditions = []
+        model.selected?.wrappedValue = marked
+        model.rollCheck("Dagger attack", bonus: 10, mode: .normal)
+        let ra = model.rollHistory.first?.label ?? "?"
+        markerLines.append("after removal: \(ra ?? "?")")
+        markerLines.append("removal removes the marker: \((ra ?? "?") == "Dagger attack")")
+        // Restore the state the 3.24.0 block left behind.
+        marked.conditions = origConditions
+        marked.customConditions = origCustoms
+        marked.exhaustion = origExhaustion
+        marked.era = origEra
+        model.selected?.wrappedValue = marked
+        let restored = model.selected?.wrappedValue
+        markerLines.append("fixture state restored: \(restored?.conditions == origConditions && restored?.customConditions == origCustoms && restored?.exhaustion == origExhaustion && restored?.era == origEra)")
+    }
+    try? markerLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/roll-markers.txt"),
+               atomically: true, encoding: .utf8)
     // Level-up preview proof (3.25.0): render the preview sheet and record
     // the derived delta, then confirm via the average path and record the
     // result. Runs at END so every earlier render stays byte-identical.

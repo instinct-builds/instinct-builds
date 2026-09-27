@@ -1044,14 +1044,8 @@ public final class AppModel: ObservableObject {
         let kind = Character.d20RollKind(forLabel: label)
         let effective = c.effectiveRollMode(mode, for: kind)
         let penalty = c.exhaustionRollPenalty
-        var tags: [String] = []
-        if penalty > 0 { tags.append("exhaustion -\(penalty)") }
-        if effective != mode, effective == .disadvantage {
-            let names = c.disadvantageSourceNames(for: kind).joined(separator: ", ")
-            tags.append("disadvantage: \(names)")
-        } else if mode == .advantage, effective == .normal {
-            tags.append("advantage canceled by condition")
-        }
+        // 3.63.0: tags come from the single flag-derived marker producer.
+        let tags = c.rollConditionMarkers(requestedMode: mode, for: kind)
         let tagged = tags.isEmpty ? label : "\(label) (\(tags.joined(separator: "; ")))"
         var r = roller.check(tagged, bonus: bonus - penalty, mode: effective)
         r.targetDC = targetDC
@@ -1316,13 +1310,8 @@ public final class AppModel: ObservableObject {
     /// Attack roll + damage roll as two history entries.
     public func rollAttack(_ attack: Attack, for c: Character, mode: RollMode = .normal) {
         let effective = c.effectiveRollMode(mode, for: .attack)
-        var tags: [String] = []
-        if c.exhaustionRollPenalty > 0 { tags.append("exhaustion -\(c.exhaustionRollPenalty)") }
-        if effective != mode, effective == .disadvantage {
-            tags.append("disadvantage: \(c.disadvantageSourceNames(for: .attack).joined(separator: ", "))")
-        } else if mode == .advantage, effective == .normal {
-            tags.append("advantage canceled by condition")
-        }
+        // 3.63.0: tags come from the single flag-derived marker producer.
+        let tags = c.rollConditionMarkers(requestedMode: mode, for: .attack)
         let label = tags.isEmpty ? "\(attack.name) attack" : "\(attack.name) attack (\(tags.joined(separator: "; ")))"
         let attackRoll = roller.check(label, bonus: attack.attackBonus(scores: c.scores, level: c.level) - c.exhaustionRollPenalty, mode: effective)
         record(attackRoll)

@@ -48,13 +48,8 @@ public struct GroupCheckPlan: Equatable, Sendable {
             let bonus = skill.map { $0.bonus(scores: c.scores, level: c.level) } ?? 0
             let mode = c.effectiveRollMode(.normal, for: .check)
             let penalty = c.exhaustionRollPenalty
-            // Mirrors rollCheck's labeling for a normal-mode check.
-            var tags: [String] = []
-            if penalty > 0 { tags.append("exhaustion -\(penalty)") }
-            if mode == .disadvantage {
-                let names = c.disadvantageSourceNames(for: .check).joined(separator: ", ")
-                tags.append("disadvantage: \(names)")
-            }
+            // 3.63.0: the same flag-derived markers rollCheck would show.
+            let tags = c.rollConditionMarkers(requestedMode: .normal, for: .check)
             built.append(Participant(characterID: c.id, name: c.name, bonus: bonus,
                                      mode: mode, penalty: penalty, tags: tags))
         }
@@ -125,8 +120,9 @@ public struct GroupSavePlan: Equatable, Sendable {
             let bonus = c.savingThrow(ability)
             let mode = c.effectiveRollMode(.normal, for: .save)
             let penalty = c.exhaustionRollPenalty
-            var tags: [String] = []
-            if penalty > 0 { tags.append("exhaustion -\(penalty)") }
+            // 3.63.0: saves are never condition-hindered, so this can only
+            // ever carry the exhaustion marker - same producer, same text.
+            let tags = c.rollConditionMarkers(requestedMode: .normal, for: .save)
             built.append(GroupCheckPlan.Participant(characterID: c.id, name: c.name,
                                                     bonus: bonus, mode: mode,
                                                     penalty: penalty, tags: tags))
