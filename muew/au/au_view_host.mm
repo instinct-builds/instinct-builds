@@ -2370,16 +2370,20 @@ int main() {
             if(std::string(priorPage.UTF8String ?: "").find("page=2 ") != 0)
                 Click(view, w, NSMakePoint(638 + 17, top - 29 + 8.5)); // ARP tab
             Click(view, w, NSMakePoint(730, top - 126)); // STEP EDIT
+            // A click selecting a cell is UI-only. Compare the actual AU
+            // readback immediately before and after the gesture. Earlier host
+            // tests may have left dormant pattern fields that the local setup
+            // does not reproduce byte-for-byte.
+            muew::Preset beforeSelect; const bool hadBaseline=State(beforeSelect);
             auto cell=[&](int i){return NSMakePoint(492 + (i+.5)*276.0/16, top - 224);};
             Click(view,w,cell(7)); // select a cell without changing velocity or other badges
-            muew::Preset selected; State(selected);
+            muew::Preset selected; const bool hadSelection=State(selected);
             NSString* debug=[view valueForKey:@"muewArpText"];
-            printf("gate70 select: debug=%s len=%d vel8=%d kind8=%d gate8=%d\n",
-                   debug.UTF8String ?: "", selected.voice.arpPatLen, selected.voice.arpPatVel[7],
-                   selected.voice.arpPatKind[7], selected.voice.arpPatGate[7]);
-            Check(selected.voice.arpPatGate[7] == 0 && selected.voice.arpPatLen == 8
-                  && selected.voice.arpPatVel[7] == setup.voice.arpPatVel[7]
-                  && selected.voice.arpPatKind[7] == setup.voice.arpPatKind[7]
+            printf("gate70 select: baseline=%d selected=%d beforeKind8=%d afterKind8=%d editor=%s\n",
+                   hadBaseline?1:0,hadSelection?1:0,beforeSelect.voice.arpPatKind[7],
+                   selected.voice.arpPatKind[7],debug.UTF8String ?: "");
+            Check(hadBaseline && hadSelection && selected == beforeSelect
+                  && selected.voice.arpPatLen == 8
                   && std::string(debug.UTF8String ?: "").find("stepEdit=1 selected=8")!=std::string::npos,
                   "STEP EDIT pattern selection does not mutate the selected cell");
             for(int i : {1,2}) { // REST and TIE are shown but cannot take gate overrides
