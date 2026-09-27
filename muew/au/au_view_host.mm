@@ -2386,7 +2386,7 @@ int main() {
                    selected.voice.arpPatLen,debug.UTF8String ?: "");
             Check(patternUnchanged && selected.voice.arpPatLen == beforeSelect.voice.arpPatLen
                   && selected.voice.arpPatLen == 8
-                  && std::string(debug.UTF8String ?: "").find("stepEdit=1 selected=8")!=std::string::npos,
+                  && std::string(debug.UTF8String ?: "").find("stepEdit=1 actions=0 selected=8")!=std::string::npos,
                   "STEP EDIT pattern selection does not mutate the selected cell");
             for(int i : {1,2}) { // REST and TIE are shown but cannot take gate overrides
                 Click(view,w,cell(i));
