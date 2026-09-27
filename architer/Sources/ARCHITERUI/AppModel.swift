@@ -1380,12 +1380,18 @@ public final class AppModel: ObservableObject {
         guard var c = selected?.wrappedValue else { return }
         c.shortRest()
         selected?.wrappedValue = c
+        // 3.62.0: the same rest rule one level down - timed conditions run
+        // out through the same removal paths as the party rest.
+        let cleared = clearRestedConditions(memberIDs: [c.id])
+        logRestClear(cleared, long: false, party: false)
     }
 
     public func longRest() {
         guard var c = selected?.wrappedValue else { return }
         c.longRest()
         selected?.wrappedValue = c
+        let cleared = clearRestedConditions(memberIDs: [c.id])
+        logRestClear(cleared, long: true, party: false)
     }
 
     /// Party rest (3.45.0): "you take a long rest" is said to the party,
@@ -1414,8 +1420,21 @@ public final class AppModel: ObservableObject {
             try? store.save(c)
             rested.append(c.name)
         }
+        let clearedByName = clearRestedConditions(memberIDs: Set(characters.map(\.id)))
+        logRestClear(clearedByName, long: long, party: true)
+        return rested
+    }
+
+    /// Rest clearing (3.61.0 party, 3.62.0 per-character): remove every TIMED
+    /// condition on the given members through the existing scoped removal
+    /// paths - never a new sweep - so notes die with their conditions and
+    /// undo/save ride the usual frames. The rule itself lives in core
+    /// (Character.restClearedConditionKeys); this is only the walk. Returns
+    /// what cleared, keyed by character name.
+    @discardableResult
+    private func clearRestedConditions(memberIDs: Set<UUID>) -> [String: [String]] {
         var clearedByName: [String: [String]] = [:]
-        for idx in characters.indices {
+        for idx in characters.indices where memberIDs.contains(characters[idx].id) {
             let c = characters[idx]
             let holder: Set<UUID> = [c.id]
             for key in c.restClearedConditionKeys {
@@ -1430,15 +1449,22 @@ public final class AppModel: ObservableObject {
                 }
             }
         }
-        if !clearedByName.isEmpty {
-            let restName = long ? "Long rest" : "Short rest"
-            let perCharacter = clearedByName.keys.sorted().map { name in
-                "\(name): \(clearedByName[name, default: []].joined(separator: ", "))"
-            }.joined(separator: " \u{00B7} ")
-            tableLog.append(TableLogEntry(title: "Party rest", text: "\(restName) cleared \(perCharacter)"))
-            tableLogStore.save(tableLog)
-        }
-        return rested
+        return clearedByName
+    }
+
+    /// The rest-clear log line (3.61.0 / 3.62.0): 'Party rest' for the party
+    /// buttons, 'Rest' for the sheet-level per-character buttons - the same
+    /// attribution shape at both levels, nothing logged when nothing timed
+    /// out.
+    private func logRestClear(_ clearedByName: [String: [String]], long: Bool, party: Bool) {
+        guard !clearedByName.isEmpty else { return }
+        let restName = long ? "Long rest" : "Short rest"
+        let perCharacter = clearedByName.keys.sorted().map { name in
+            "\(name): \(clearedByName[name, default: []].joined(separator: ", "))"
+        }.joined(separator: " \u{00B7} ")
+        tableLog.append(TableLogEntry(title: party ? "Party rest" : "Rest",
+                                      text: "\(restName) cleared \(perCharacter)"))
+        tableLogStore.save(tableLog)
     }
 
     /// Party damage/heal (3.47.0): "the fireball hits everyone for 26" is
