@@ -3771,7 +3771,11 @@ final class StudioLibrary: ObservableObject {
                     let jordan = saved?.assets.first(where: { $0.id == ids[0] })?.clientNotes.map(\.text) == ["New crop"]
                     let noOld = saved?.assets.first(where: { $0.id == ids[1] })?.clientNotes.isEmpty == true
                     let marker = "done saved=\(jordan && noOld) receipt=\(self.toast ?? "missing")"
-                    try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-receipt.txt"), atomically: true, encoding: .utf8)
+                    // The model writes synchronously, but the sheet and toast need a
+                    // render beat before the workflow takes a screenshot.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                        try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-receipt.txt"), atomically: true, encoding: .utf8)
+                    }
                 }
             }
             if demo == "feedback-roster" {
