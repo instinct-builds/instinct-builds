@@ -326,6 +326,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     edited = false;
     [self applySound];
     [self revealCurrent];
+    if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityValueChangedNotification);
     [self setNeedsDisplay:YES];
 }
 

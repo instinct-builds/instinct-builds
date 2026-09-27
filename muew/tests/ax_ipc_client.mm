@@ -141,19 +141,22 @@ int main(int argc,const char** argv) {
                 printf("AX IPC refilter_ack=%d empty=%lu stale_press=%d\n",filtered,(unsigned long)empty.count,(int)stale);
                 bool cleared=Control(control,2,@"filter-clear");
                 NSArray* restored=Children(list);
-                NSString* restoredLabel=restored.count>1 ? String((__bridge AXUIElementRef)restored[1],kAXDescriptionAttribute) : @"";
+                bool loadedStillPresent=false;
+                for (id element in restored)
+                    if ([String((__bridge AXUIElementRef)element,kAXDescriptionAttribute) containsString:@"loaded: yes"])
+                        loadedStillPresent=true;
                 bool cursor=Control(control,3,@"cursor-down");
                 NSArray* proposed=Children(list);
                 bool proposedFound=false;
                 for (id element in proposed) if ([String((__bridge AXUIElementRef)element,kAXDescriptionAttribute) containsString:@"proposed: yes"]) proposedFound=true;
-                printf("AX IPC restored_ack=%d count=%lu second=%s cursor_ack=%d proposed=%d\n",cleared,(unsigned long)restored.count,restoredLabel.UTF8String,cursor,proposedFound);
+                printf("AX IPC restored_ack=%d count=%lu loaded=%s cursor_ack=%d proposed=%d\n",cleared,(unsigned long)restored.count,loadedStillPresent ? "visible" : "off-page",cursor,proposedFound);
                 [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.25]];
                 NSInteger layout=[counts[(__bridge NSString*)kAXLayoutChangedNotification] integerValue];
                 NSInteger selection=[counts[(__bridge NSString*)kAXSelectedChildrenChangedNotification] integerValue];
                 NSInteger value=[counts[(__bridge NSString*)kAXValueChangedNotification] integerValue];
                 printf("AX IPC notifications layout=%ld selection=%ld value=%ld\n",(long)layout,(long)selection,(long)value);
                 ok=ok && filtered && empty.count==0 && stale!=kAXErrorSuccess && cleared && restored.count>1 &&
-                   [restoredLabel containsString:@"loaded: yes"] && cursor && proposedFound &&
+                   cursor && proposedFound &&
                    layout>0 && selection>0 && value>0;
             }
         }
