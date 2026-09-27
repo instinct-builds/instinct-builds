@@ -228,6 +228,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         for (int idx : visible) if (ui::library().slug(idx) == browserCursorSlug) { stillVisible = true; break; }
         if (!stillVisible) browserCursorSlug.clear();
     }
+    if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityLayoutChangedNotification);
     [MUEWDefaults() setInteger:sortMode forKey:@"MUEWSort"];
     int rows = [self listRows];
     int maxScroll = std::max(0, (int)visible.size() - rows);
@@ -285,6 +286,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     currentIndex = index;
     edited = wasEdited;
     [self revealCurrent];
+    if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityValueChangedNotification);
     [self setNeedsDisplay:YES];
 }
 
@@ -4417,6 +4419,7 @@ static int SortForColumn(int c) {
     const int next = previous < 0 ? (direction > 0 ? 0 : (int)visible.size()-1)
                                   : std::clamp(previous + direction, 0, (int)visible.size()-1);
     browserCursorSlug = ui::library().slug(visible[next]);
+    if (browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilitySelectedChildrenChangedNotification);
     const int rows = [self tableRows];
     if (next < bscroll) bscroll = next;
     if (next >= bscroll + rows) bscroll = next - rows + 1;

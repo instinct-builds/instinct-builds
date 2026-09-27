@@ -55,12 +55,37 @@ int main(int argc,const char** argv) {
     }
     if (err!=kAXErrorSuccess || !windows || CFArrayGetCount((CFArrayRef)windows)==0) { if (windows) CFRelease(windows); CFRelease(app); return 1; }
     AXUIElementRef window=(AXUIElementRef)CFArrayGetValueAtIndex((CFArrayRef)windows,0);
-    printf("AX IPC window=%s\n",String(window,kAXTitleAttribute).UTF8String);
+    NSString* windowTitle=String(window,kAXTitleAttribute);
+    printf("AX IPC window=%s\n",windowTitle.UTF8String);
     AXUIElementRef search=Find(window,@"AXTextField",nil);
     AXUIElementRef list=Find(window,@"AXList",@"Preset results");
     printf("AX IPC native_search=%d named_list=%d\n",!!search,!!list);
+    bool ok=(search != nullptr) && (list != nullptr) && [windowTitle isEqualToString:@"MUEW"];
+    if (list) {
+        NSArray* rows=Children(list);
+        NSString* first=rows.count ? String((__bridge AXUIElementRef)rows[0],kAXDescriptionAttribute) : @"";
+        if (!first.length && rows.count) first=String((__bridge AXUIElementRef)rows[0],kAXTitleAttribute);
+        CFTypeRef frame=Attribute(list,kAXPositionAttribute);
+        printf("AX IPC rows=%lu first=%s frame=%d\n",(unsigned long)rows.count,first.UTF8String,!!frame);
+        ok=ok && rows.count>1 && [first containsString:@"1 of 108"] &&
+           [first containsString:@"proposed: no"] && [first containsString:@"loaded: no"] && !!frame;
+        if (frame) CFRelease(frame);
+        if (ok) {
+            AXUIElementRef row=(__bridge AXUIElementRef)rows[1];
+            NSString* chosen=String(row,kAXDescriptionAttribute);
+            if (!chosen.length) chosen=String(row,kAXTitleAttribute);
+            err=AXUIElementPerformAction(row,kAXPressAction);
+            Log("row_press",err);
+            NSArray* after=Children(list);
+            NSString* loaded=after.count>1 ? String((__bridge AXUIElementRef)after[1],kAXDescriptionAttribute) : @"";
+            if (!loaded.length && after.count>1) loaded=String((__bridge AXUIElementRef)after[1],kAXTitleAttribute);
+            printf("AX IPC press_selected=%s after=%s\n",chosen.UTF8String,loaded.UTF8String);
+            ok=ok && err==kAXErrorSuccess && [loaded containsString:@"loaded: yes"];
+        }
+    }
     if (search) CFRelease(search); if (list) CFRelease(list);
     CFRelease(windows); CFRelease(app);
-    return 0; // further assertions only after this trust boundary is available
+    printf("AX IPC %s\n",ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
  }
 }

@@ -689,3 +689,13 @@ or traversing rows is inert; deliberate row press resolves a current, visible
 slug before loading it. A row held across a refilter is invalid. The macOS
 host harness queries the AppKit tree, states and actions. This is a browser
 results pilot, not a claim that the full instrument supports VoiceOver.
+
+## 0.82.0 External AX trust-boundary probe
+
+A separate executable queries the standalone window over AXUIElement IPC for
+its native Search and named preset results, then probes row details and press.
+The application posts focused layout, selection and value notifications when
+results, cursor and loaded state change. CI records the external probe log. A
+macOS Accessibility/TCC refusal is logged as blocked, not rebranded as a pass;
+see `docs/voiceover-manual-checklist.md` for the manual VoiceOver/AU-host pass.
+The in-process 0.81.0 evidence remains the limit until IPC actually succeeds.
