@@ -71,6 +71,7 @@ struct PresetInfo {
 //                  0.67.0 adds optional `delayduck <depth> <release ms>`; zero skips the wet-tap detector.
 //                  0.68.0 adds optional `eqmid <hz> <Q>`; 1200 Hz / 0.9 retain old response.
 //                  0.69.0 adds optional `chorusspread <0..1>`; 0.5 retains the original stereo phase.
+//                  0.73.0 adds optional `phaserspread <0..1>`; 0.5 retains the original stereo phase.
 //                  0.70.0 adds optional `arpg <gate>x16`; 0 inherits global GATE.
 //                  0.71.0 adds optional `arps <semitones>x16`; 0 leaves pitch unchanged.
 //                  0.24.0 adds optional `perf <bendRange>`; route sources 15-18.
@@ -192,6 +193,7 @@ struct Preset {
         const auto& ph = fx.phaser; const auto& dp = d.phaser;
         if (ph.enabled != dp.enabled || ph.rateHz != dp.rateHz || ph.depth != dp.depth || ph.feedback != dp.feedback || ph.mix != dp.mix)
             fxLine("phaser", ph.enabled, ph.rateHz, ph.depth, ph.feedback, ph.mix);
+        if (ph.spread != dp.spread) o << "phaserspread " << ph.spread << "\n";
         const auto& fl = fx.flanger; const auto& df = d.flanger;
         if (fl.enabled != df.enabled || fl.rateHz != df.rateHz || fl.depth != df.depth || fl.feedback != df.feedback || fl.mix != df.mix)
             fxLine("flanger", fl.enabled, fl.rateHz, fl.depth, fl.feedback, fl.mix);
@@ -614,6 +616,10 @@ struct Preset {
                     fx.lfo[k].sync = std::clamp(l[k].sync, 0, kSyncCount - 1);
                 }
             }
+            else if (key == "phaserspread") {
+                double spread;
+                if (ls >> spread && std::isfinite(spread)) fx.phaser.spread = std::clamp(spread, 0.0, 1.0);
+            }
             else if (key == "chorusspread") {
                 double spread;
                 if (ls >> spread && std::isfinite(spread)) fx.chorus.spread = std::clamp(spread, 0.0, 1.0);
@@ -787,6 +793,7 @@ struct Preset {
             && fa.comp.enabled == fb.comp.enabled && fa.comp.amount == fb.comp.amount
             && fa.phaser.enabled == fb.phaser.enabled && fa.phaser.rateHz == fb.phaser.rateHz
             && fa.phaser.depth == fb.phaser.depth && fa.phaser.feedback == fb.phaser.feedback && fa.phaser.mix == fb.phaser.mix
+            && fa.phaser.spread == fb.phaser.spread
             && fa.flanger.enabled == fb.flanger.enabled && fa.flanger.rateHz == fb.flanger.rateHz
             && fa.flanger.depth == fb.flanger.depth && fa.flanger.feedback == fb.flanger.feedback && fa.flanger.mix == fb.flanger.mix
             && fa.delay.syncL == fb.delay.syncL && fa.delay.syncR == fb.delay.syncR

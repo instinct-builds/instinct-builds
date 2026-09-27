@@ -2354,6 +2354,32 @@ int main() {
             if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
             fflush(stdout);
         });
+        After(7.0885, ^{ // 0.73.0: PHASER stereo phase spread, state and screenshot
+            CGFloat t=view.bounds.size.height-100;
+            CGFloat h=(t-286-44-58-6)/2;
+            auto card=[&](int slot){return NSMakePoint(468+(slot%5)*62+20,(slot<5?58+h+6:58)+h-25);};
+            auto bar=[&](int row,double n){return NSMakePoint(36+12+92+196*n,48+200-58-24*row+10);};
+            muew::Preset before;State(before);
+            NSNumber* open=[view valueForKey:@"fxDetail"];
+            if(!open||open.intValue!=muew::FxPhaser) Click(view,w,card(before.fx.order.slotOf(muew::FxPhaser)));
+            const NSPoint toggle=NSMakePoint(36+424-84+23,48+200-25+8);
+            if(!before.fx.phaser.enabled) Click(view,w,toggle);
+            Click(view,w,bar(4,.78));
+            RenderBlock();Snapshot(view,"MUEW_PHASER73_PNG","PHASER stereo spread snapshot written");
+            muew::Preset st;const bool read=State(st);
+            printf("phaser73: open=%d read=%d on=%d spread=%.4f state=%d\n",
+                   [[view valueForKey:@"fxDetail"] intValue],read?1:0,st.fx.phaser.enabled?1:0,
+                   st.fx.phaser.spread,st.serialize().find("phaserspread 0.78")!=std::string::npos);
+            Check(read&&st.fx.phaser.enabled&&std::fabs(st.fx.phaser.spread-.78)<.01
+                  &&st.serialize().find("phaserspread 0.78")!=std::string::npos,
+                  "PHASER SPREAD reached AU state and saved");
+            NSString* text=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            fflush(stdout);
+        });
         After(7.089, ^{ // 0.70.0: selected-step GATE editor, AU state and select-only lane
             muew::Preset before; State(before);
             muew::Preset setup = before;

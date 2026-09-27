@@ -639,6 +639,7 @@ struct PhaserParams {
     double depth = 0.7;    // 0..1 sweep width
     double feedback = 0.5; // 0..0.9
     double mix = 0.5;      // 0..1
+    double spread = 0.5;   // 0..1: L/R LFO phase 0..180 degrees; 0.5 retains legacy 90 degrees
 };
 
 // Six first-order allpass stages per channel with a swept break frequency
@@ -658,7 +659,7 @@ public:
         // keeps switching the unit on at roughly the same loudness.
         const double comp = 1.0 / std::sqrt((1.0 - mix) * (1.0 - mix) + mix * mix);
         for (int ch = 0; ch < 2; ++ch) {
-            double lfo = 0.5 + 0.5 * std::sin(2.0 * M_PI * (phase_ + ch * 0.25));
+            double lfo = 0.5 + 0.5 * std::sin(2.0 * M_PI * (phase_ + ch * (0.5 * std::clamp(p_.spread, 0.0, 1.0))));
             double hz = 180.0 * std::pow(25.0, depth * lfo);
             double t = std::tan(M_PI * std::min(hz, sr_ * 0.45) / sr_);
             double a = (t - 1.0) / (t + 1.0);

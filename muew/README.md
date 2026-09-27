@@ -607,3 +607,11 @@ Only the active LEN steps rotate; dormant cells do not move. PASTE and ROTATE
 are atomic undo actions, while COPY changes only the editor clipboard. A preset
 switch or external state change clears clipboard/history. This editor-only
 feature adds no preset key or AU parameter, and does not restart the arp clock.
+
+## 0.73.0 PHASER stereo spread
+
+The PHASER detail panel adds SPREAD below MIX. At zero the two allpass
+sweeps align, at 50% the existing quarter-cycle offset is unchanged, and at
+100% the right sweep is half a cycle ahead. A double-click returns to 50%.
+Only a nondefault value writes `phaserspread <0..1>` to the preset; old files
+retain their text and sound, and no AU parameter ID is added.

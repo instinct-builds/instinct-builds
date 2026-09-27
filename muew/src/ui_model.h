@@ -479,7 +479,8 @@ inline const std::vector<FxControl>& fxControls(int unit) {
         {{"LOW", FmtDb, -12, 12, false, -1}, {"MID GAIN", FmtDb, -12, 12, false, -1}, {"HIGH", FmtDb, -12, 12, false, -1},
          {"MID FREQ", FmtHz, 200, 8000, true, -1}, {"MID Q", FmtRatio, 0.3, 8, false, -1}},
         {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxPhaserDepth},
-         {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
+         {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1},
+         {"SPREAD", FmtPercent, 0, 1, false, -1}},
         {{"RATE", FmtHz, 0.02, 8, true, -1}, {"DEPTH", FmtPercent, 0, 1, false, (int)D::FxFlangerDepth},
          {"FEEDBACK", FmtPercent, 0, 0.9, false, -1}, {"MIX", FmtPercent, 0, 1, false, -1}},
         // 0.27.0 HYPER / DIMENSION
@@ -511,7 +512,7 @@ inline double fxGet(const FXParams& f, int unit, int i) {
     case FxReverb: return i == 0 ? f.reverb.mode : i == 1 ? f.reverb.decay : i == 2 ? f.reverb.damping : i == 3 ? f.reverb.preDelayMs
                         : i == 4 ? f.reverb.size : i == 5 ? f.reverb.width : i == 6 ? f.reverb.lowCutHz : f.reverb.mix;
     case FxEQ: return i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : i == 2 ? f.eq.highDb : i == 3 ? f.eq.midHz : f.eq.midQ;
-    case FxPhaser: return i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix;
+    case FxPhaser: return i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : i == 3 ? f.phaser.mix : f.phaser.spread;
     case FxFlanger: return i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix;
     case FxHyper: return i == 0 ? f.hyper.rateHz : i == 1 ? f.hyper.detune : i == 2 ? f.hyper.dimension : f.hyper.mix;
     case FxFilter: return i == 0 ? f.filter.mode : i == 1 ? f.filter.cutoffHz : i == 2 ? f.filter.reso : i == 3 ? f.filter.drive
@@ -545,7 +546,7 @@ inline void fxSet(FXParams& f, int unit, int i, double v) {
               : i == 5 ? f.reverb.width : i == 6 ? f.reverb.lowCutHz : f.reverb.mix) = v;
         break;
     case FxEQ: (i == 0 ? f.eq.lowDb : i == 1 ? f.eq.midDb : i == 2 ? f.eq.highDb : i == 3 ? f.eq.midHz : f.eq.midQ) = v; break;
-    case FxPhaser: (i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : f.phaser.mix) = v; break;
+    case FxPhaser: (i == 0 ? f.phaser.rateHz : i == 1 ? f.phaser.depth : i == 2 ? f.phaser.feedback : i == 3 ? f.phaser.mix : f.phaser.spread) = v; break;
     case FxFlanger: (i == 0 ? f.flanger.rateHz : i == 1 ? f.flanger.depth : i == 2 ? f.flanger.feedback : f.flanger.mix) = v; break;
     case FxHyper: (i == 0 ? f.hyper.rateHz : i == 1 ? f.hyper.detune : i == 2 ? f.hyper.dimension : f.hyper.mix) = v; break;
     case FxFilter:

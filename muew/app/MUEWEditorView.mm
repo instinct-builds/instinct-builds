@@ -3336,7 +3336,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
         else snprintf(foot, sizeof foot, "%s  \u2022  8-LINE FEEDBACK NETWORK  \u2022  RT60 %.1f s  \u2022  PRE %.0f ms",
                       f.reverb.mode == 2 ? "PLATE" : "HALL", SpaceReverb::rt60(f.reverb.mode, f.reverb.decay), f.reverb.preDelayMs);
         break;
-    case FxPhaser: snprintf(foot, sizeof foot, "SIX ALLPASS STAGES  \u2022  SWEEP 180 Hz TO %.1f kHz", 0.18 * std::pow(25.0, std::clamp(f.phaser.depth, 0.0, 1.0))); break;
+    case FxPhaser: snprintf(foot, sizeof foot, "SIX ALLPASS STAGES  \u2022  R PHASE %.0f\u00b0  \u2022  SWEEP TO %.1f kHz", f.phaser.spread * 180.0, 0.18 * std::pow(25.0, std::clamp(f.phaser.depth, 0.0, 1.0))); break;
     case FxFlanger: snprintf(foot, sizeof foot, "SWEEP 0.3 TO %.1f ms  \u2022  QUADRATURE STEREO", 0.3 + 4.0 * std::clamp(f.flanger.depth, 0.0, 1.0)); break;
     case FxChorus: snprintf(foot, sizeof foot, "TWO TAPS  \u2022  %.1f TO %.1f ms  \u2022  R PHASE %.0f\u00b0", f.chorus.baseMs, f.chorus.baseMs + f.chorus.depthMs, f.chorus.spread * 180.0); break;
     case FxDist: snprintf(foot, sizeof foot, "OUTPUT TRIMS AS DRIVE RISES"); break;
