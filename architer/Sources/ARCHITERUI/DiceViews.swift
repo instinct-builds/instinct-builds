@@ -1927,8 +1927,14 @@ public struct EncounterLibraryView: View {
     /// 3.46.0: which row's tactics note is being edited, plus its draft.
     @State private var notesEditingID: UUID?
     @State private var notesDraft = ""
+    /// 3.50.0: which row's name is being renamed, plus its draft.
+    @State private var renameEditingID: UUID?
+    @State private var renameDraft = ""
 
-    public init() {}
+    /// initialRenameID opens a row's rename field directly (renders).
+    public init(initialRenameID: UUID? = nil) {
+        _renameEditingID = State(initialValue: initialRenameID)
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Theme.Gap.xs) {
@@ -1964,8 +1970,15 @@ public struct EncounterLibraryView: View {
             ForEach(model.savedEncounters) { saved in
                 VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Theme.Gap.sm) {
+                    // 3.50.0: tap the name to rename in place - a typo'd
+                    // save no longer costs a delete-and-resave.
                     Text(saved.name)
                         .font(Theme.Typeface.body)
+                        .onTapGesture {
+                            renameDraft = saved.name
+                            renameEditingID = saved.id
+                        }
+                        .help("Click to rename")
                     Text(saved.summary)
                         .font(Theme.Typeface.caption)
                         .foregroundStyle(Theme.inkMuted)
@@ -1997,6 +2010,11 @@ public struct EncounterLibraryView: View {
                     Button("Copy") { model.copySavedEncounterToPasteboard(saved) }
                         .controlSize(.small)
                         .help("Copy this encounter as one text block - rows, band vs the current party, note")
+                    // 3.50.0: duplicate - the copy carries rows and the
+                    // tactics note, the start of a variant.
+                    Button("Duplicate") { model.duplicateSavedEncounter(id: saved.id) }
+                        .controlSize(.small)
+                        .help("Save a copy with its rows and tactics note - lands as 'Name copy'")
                     if loadArmedID == saved.id {
                         Button("Replace \(model.encounterLines.count) rows") {
                             model.loadSavedEncounter(saved)
@@ -2027,6 +2045,14 @@ public struct EncounterLibraryView: View {
                             label: { Image(systemName: "minus.circle") }
                             .controlSize(.small)
                     }
+                }
+                if renameEditingID == saved.id {
+                    TextField("Encounter name", text: $renameDraft, onCommit: {
+                        model.renameSavedEncounter(id: saved.id, name: renameDraft)
+                        renameEditingID = nil
+                    })
+                    .textFieldStyle(InsetFieldStyle())
+                    .onAppear { if renameDraft.isEmpty { renameDraft = saved.name } }
                 }
                 if notesEditingID == saved.id {
                     TextField("Tactics note (optional)", text: $notesDraft, onCommit: {

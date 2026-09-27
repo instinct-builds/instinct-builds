@@ -1162,6 +1162,38 @@ public final class AppModel: ObservableObject {
         encounterLibraryStore.save(savedEncounters)
     }
 
+    /// Rename a saved encounter in place (3.50.0): fixes a typo'd save
+    /// without a delete-and-resave - identity, rows and the tactics note
+    /// all kept. Blank is a no-op; a name another encounter already owns
+    /// is rejected, because the name is the save/overwrite identity and
+    /// two encounters sharing one would fork it.
+    public func renameSavedEncounter(id: UUID, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        guard let idx = savedEncounters.firstIndex(where: { $0.id == id }) else { return }
+        guard !savedEncounters.contains(where: { $0.id != id && $0.name == trimmed }) else { return }
+        savedEncounters[idx].name = trimmed
+        encounterLibraryStore.save(savedEncounters)
+    }
+
+    /// Duplicate a saved encounter (3.50.0): new identity, same rows and
+    /// tactics note - the starting point for a variant. The copy lands as
+    /// "Name copy" ("Name copy 2", ...) so the name identity never forks.
+    @discardableResult
+    public func duplicateSavedEncounter(id: UUID) -> UUID? {
+        guard let src = savedEncounters.first(where: { $0.id == id }) else { return nil }
+        var candidate = "\(src.name) copy"
+        var suffix = 2
+        while savedEncounters.contains(where: { $0.name == candidate }) {
+            candidate = "\(src.name) copy \(suffix)"
+            suffix += 1
+        }
+        let copy = SavedEncounter(name: candidate, lines: src.lines, notes: src.notes)
+        savedEncounters.append(copy)
+        encounterLibraryStore.save(savedEncounters)
+        return copy.id
+    }
+
     /// Cross-character journal search (3.46.0): one query across the whole
     /// party's journals, with per-hit attribution. Derived, never stored.
     public func journalPartySearch(_ query: String) -> [PartyJournalHit] {

@@ -2227,6 +2227,67 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? esLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/encounter-share.txt"),
                atomically: true, encoding: .utf8)
+    // Library rename + duplicate proofs (3.50.0). Runs at END.
+    var lrLines = ["Library rename (3.50.0)",
+                   "rename in place fixes a typo'd save - identity, rows and note kept"]
+    if let den = model.savedEncounters.first(where: { $0.name == "Proof Den" }) {
+        model.renameSavedEncounter(id: den.id, name: "Proof Den (west)")
+        let rn = model.savedEncounters.first(where: { $0.id == den.id })
+        lrLines.append("renamed: '\(rn?.name ?? "MISSING")', id kept \(rn?.id == den.id)")
+        lrLines.append("rows kept: \(rn?.lines == den.lines), note kept: \(rn?.notes == den.notes)")
+        let rnPersist = model.encounterLibraryStore.load().first(where: { $0.id == den.id })
+        lrLines.append("persistence: store reload shows '\(rnPersist?.name ?? "MISSING")'")
+        model.renameSavedEncounter(id: den.id, name: "   ")
+        lrLines.append("blank rename is a no-op: \(model.savedEncounters.first(where: { $0.id == den.id })?.name == "Proof Den (west)")")
+        model.renameSavedEncounter(id: den.id, name: "Proof Den")
+        lrLines.append("renamed back: '\(model.savedEncounters.first(where: { $0.id == den.id })?.name ?? "MISSING")'")
+    } else {
+        lrLines.append("SETUP MISS: Proof Den not in the library")
+    }
+    if let den = model.savedEncounters.first(where: { $0.name == "Proof Den" }) {
+        renderPNG(
+            EncounterLibraryView(initialRenameID: den.id)
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 560, name: "library-rename", outDir: outDir, minHeight: 120, maxHeight: 400)
+    }
+    try? lrLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/library-rename.txt"),
+               atomically: true, encoding: .utf8)
+    var dupLines = ["Library duplicate (3.50.0)",
+                    "the copy carries rows and the tactics note under a fresh identity - the start of a variant"]
+    if let den = model.savedEncounters.first(where: { $0.name == "Proof Den" }) {
+        let libCount = model.savedEncounters.count
+        let dupAID = model.duplicateSavedEncounter(id: den.id)
+        let dupA = model.savedEncounters.first(where: { $0.id == dupAID })
+        dupLines.append("copy: '\(dupA?.name ?? "MISSING")', new identity \(dupAID != nil && dupAID != den.id)")
+        dupLines.append("rows carried: \(dupA?.lines == den.lines), note carried: \(dupA?.notes == den.notes && dupA?.notes.isEmpty == false)")
+        dupLines.append("original untouched: \(model.savedEncounters.first(where: { $0.id == den.id })?.name == "Proof Den")")
+        let dupPersist = model.encounterLibraryStore.load()
+        dupLines.append("persistence: store reload has \(dupPersist.count) encounters (was \(libCount)), copy present \(dupPersist.contains(where: { $0.id == dupAID }))")
+        let dupBID = model.duplicateSavedEncounter(id: den.id)
+        dupLines.append("second copy dedupes the name: '\(model.savedEncounters.first(where: { $0.id == dupBID })?.name ?? "MISSING")'")
+        if let dupBID {
+            model.renameSavedEncounter(id: dupBID, name: "Proof Den copy")
+            let dupBName = model.savedEncounters.first(where: { $0.id == dupBID })?.name
+            dupLines.append("rename onto a taken name is rejected: still '\(dupBName ?? "MISSING")'")
+        }
+        renderPNG(
+            EncounterLibraryView()
+                .padding()
+                .background(Theme.surface)
+                .environmentObject(model),
+            width: 560, name: "library-duplicate", outDir: outDir, minHeight: 120, maxHeight: 400)
+        model.savedEncounters.removeAll { $0.id == dupAID || $0.id == dupBID }
+        model.encounterLibraryStore.save(model.savedEncounters)
+        dupLines.append("hygiene: copies removed, library back to \(model.savedEncounters.count) encounter(s)")
+    } else {
+        dupLines.append("SETUP MISS: Proof Den not in the library")
+    }
+    try? dupLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/library-duplicate.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
