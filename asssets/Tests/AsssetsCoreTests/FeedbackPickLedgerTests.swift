@@ -8,7 +8,8 @@ struct FeedbackPickLedgerTests {
     func fixture(legacy: Bool = false) -> (StudioCatalog, UUID, UUID, String) {
         var c = StudioCatalog()
         let a = c.importFile(path: "/x/one.png")!, b = c.importFile(path: "/x/two.png")!
-        if legacy { c.assets[0].tags.append(ReviewGallery.clientPickTag) }
+        // importFile inserts at the front; bind the legacy tag by ID, not array position.
+        if legacy { c.assets[c.assets.firstIndex(where: { $0.id == a })!].tags.append(ReviewGallery.clientPickTag) }
         let gallery = UUID().uuidString
         _ = c.recordGallery(GalleryRoster(gallery: gallery, title: "Round", created: "2026-09-26", assets: [a, b])!)
         return (c, a, b, gallery)
