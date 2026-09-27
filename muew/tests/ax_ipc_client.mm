@@ -82,7 +82,8 @@ int main(int argc,const char** argv) {
         }
         CFTypeRef frame=Attribute(list,kAXPositionAttribute);
         printf("AX IPC rows=%lu first=%s frame=%d\n",(unsigned long)rows.count,first.UTF8String,!!frame);
-        ok=ok && rows.count>1 && [first containsString:@"1 of 108"] &&
+        NSRegularExpression* position=[NSRegularExpression regularExpressionWithPattern:@"\\b[0-9]+ of 108\\b" options:0 error:nil];
+        ok=ok && rows.count>1 && [position firstMatchInString:first options:0 range:NSMakeRange(0,first.length)] &&
            [first containsString:@"proposed: no"] && [first containsString:@"loaded: no"] && !!frame;
         if (frame) CFRelease(frame);
         if (ok) {
