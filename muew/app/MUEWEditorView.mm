@@ -483,8 +483,13 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         TextA([NSString stringWithFormat:@"%+d st", pitch],
               NSMakeRect(NSMaxX(pb) + 4, pb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
     }
-    if (!note) Text(dormant ? @"OUTSIDE LEN" : v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE",
-                    NSMakeRect(g.origin.x + 130, NSMaxY(g) - 15, dormant ? 83 : 44, 11), 7, C(0x8793a3), NSFontWeightBold);
+    if (dormant) {
+        // Between the short STEP n / LEN heading and the ACTIONS tab;
+        // anything at x+132 or later is covered by that tab on the page.
+        Text(@"OUTSIDE LEN", NSMakeRect(g.origin.x + 61, NSMaxY(g) - 15, 69, 11),
+             6.5, C(0x8793a3), NSFontWeightBold);
+    } else if (!note) Text(v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE",
+                           NSMakeRect(g.origin.x + 130, NSMaxY(g) - 15, 44, 11), 7, C(0x8793a3), NSFontWeightBold);
 }
 - (void)drawArpGrid {
     const VoiceParams& v = current.voice;
