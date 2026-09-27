@@ -130,6 +130,13 @@ int main() {
     @autoreleasepool {
         NSApplication* app = [NSApplication sharedApplication];
         app.activationPolicy = NSApplicationActivationPolicyRegular;
+        // This hosted mouse fixture expects factory bank order. The preceding
+        // keyboard test deliberately exercises name sorting and MUEW stores
+        // that preference in a shared suite; reset only the fixture's sort.
+        NSUserDefaults* fixtureDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"co.instinct.muew"];
+        [fixtureDefaults setInteger:muew::ui::SortBank forKey:@"MUEWSort"];
+        Check([fixtureDefaults integerForKey:@"MUEWSort"] == muew::ui::SortBank,
+              "AU hosted browser fixture begins in factory bank order");
 
         AudioComponentDescription desc{kAudioUnitType_MusicDevice, 'Muew', 'Inst', 0, 0};
         AudioComponent comp = AudioComponentFindNext(nullptr, &desc);
