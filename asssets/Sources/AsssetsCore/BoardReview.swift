@@ -52,7 +52,8 @@ extension Moodboard {
     /// Records (or replaces) one reviewer's round. Only assets on the board count; returns false when nothing matched.
     @discardableResult
     public mutating func recordReview(_ f: ReviewGallery.Feedback, imported: String) -> Bool {
-        let reviewer = f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Client" : f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let incoming = StudioCatalog.feedbackReviewer(f.reviewer)
+        let reviewer = reviews.first(where: { StudioCatalog.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, incoming) })?.reviewer ?? incoming
         let here = assetIDs
         var picks: [UUID] = [], notes: [UUID: String] = [:]
         for e in f.items {
@@ -65,9 +66,9 @@ extension Moodboard {
         var asked: [UUID: CardStatus] = [:]
         for e in f.items { if let id = UUID(uuidString: e.id), here.contains(id), let st = e.cardStatus { asked[id] = st } }
         for it in items where it.kind == .asset { if let a = it.assetID, let st = asked[a] { statuses[it.id] = st } }
-        let previous = reviews.contains { $0.gallery == f.gallery && $0.reviewer == reviewer }
+        let previous = reviews.contains { StudioCatalog.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }
         guard previous || !picks.isEmpty || !notes.isEmpty || !asked.isEmpty else { return false }
-        reviews.removeAll { $0.gallery == f.gallery && $0.reviewer == reviewer }
+        reviews.removeAll { StudioCatalog.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }
         if !picks.isEmpty || !notes.isEmpty || !asked.isEmpty {
             reviews.append(BoardReview(gallery: f.gallery, reviewer: reviewer, imported: imported, picks: picks, notes: notes))
         }
@@ -83,7 +84,7 @@ extension Moodboard {
             var pin = BoardPin(item: it.id, pickedBy: [], comments: [])
             // Rounds on earlier versions of this card's image still belong to the card (1.24 Update to Newest).
             let shown = [a] + (earlierAssets[it.id] ?? []).reversed()
-            for r in rounds where reviewer == nil || r.reviewer == reviewer {
+            for r in rounds where reviewer.map { r.reviewer.lowercased() == $0.lowercased() } ?? true {
                 if shown.contains(where: r.picks.contains) && !pin.pickedBy.contains(r.reviewer) { pin.pickedBy.append(r.reviewer) }
                 if let t = shown.lazy.compactMap({ r.notes[$0] }).first { pin.comments.append(.init(reviewer: r.reviewer, text: t, imported: r.imported)) }
             }

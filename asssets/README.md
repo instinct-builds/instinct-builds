@@ -1049,3 +1049,14 @@ A file with only invalid or outside-gallery asset IDs does not clear notes or
 picks. An empty file can still explicitly clear the previous reviewer's notes.
 Core tests cover shorter and empty replacements, two reviewers, and an
 outsider-only file. Native proof captures the compact replacement preview.
+
+## 1.70.0: one reviewer identity across feedback replacements
+
+A re-import with only casing changed in the gallery ID or reviewer name now
+matches the same pick ledger, asset notes, and board review. The preview shows
+the old notes, withdrawn picks, and the original display spelling of the
+reviewer. Applying the replacement removes only that reviewer's old round;
+other reviewers' notes and picks remain. A persisted-catalog test covers the
+replacement and a case-variant empty withdrawal. Native proof captures the
+1024x768 preview. This matches stored review rounds by their normalized key;
+it does not authenticate who supplied the feedback file.

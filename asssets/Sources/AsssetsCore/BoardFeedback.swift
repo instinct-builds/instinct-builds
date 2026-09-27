@@ -56,8 +56,7 @@ public struct FeedbackPreview: Equatable, Sendable {
 extension StudioCatalog {
     /// Reads a feedback file against the library and, when the gallery came from a board, that board. Changes nothing.
     public func previewFeedback(_ f: ReviewGallery.Feedback) -> FeedbackPreview {
-        let who = f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines)
-        let reviewer = who.isEmpty ? "Client" : who
+        let reviewer = feedbackDisplayReviewer(gallery: f.gallery, reviewer: f.reviewer)
         let roster = roster(for: f.gallery)
         let issue = roster == nil ? "Gallery roster unavailable" : roster?.title != f.title ? "Gallery title differs from published roster" : nil
         let bid = issue == nil && roster?.recovered == false ? roster?.board : nil
@@ -79,7 +78,7 @@ extension StudioCatalog {
             return text.isEmpty ? nil : (id, String(text.prefix(4000)))
         })
         let priorNotes = Dictionary(uniqueKeysWithValues: assets.compactMap { asset -> (UUID, String)? in
-            guard let note = asset.clientNotes.first(where: { $0.gallery == f.gallery && $0.reviewer == reviewer }) else { return nil }
+            guard let note = asset.clientNotes.first(where: { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }) else { return nil }
             return (asset.id, note.text)
         })
         let nextPicks = Set(scope.items.compactMap { e -> UUID? in
@@ -113,14 +112,14 @@ extension StudioCatalog {
             if reason == nil, let id, intentional, prior.contains(id), !nextPicks.contains(id) {
                 row.withdrawsPick = true
                 row.remainsPicked = preservedPickTags.contains(id) || feedbackPickLedger.contains {
-                    ($0.gallery != f.gallery.lowercased() || $0.reviewer.lowercased() != reviewer.lowercased()) && $0.assets.contains(id)
+                    !Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) && $0.assets.contains(id)
                 }
             }
             return row
         }
         let replaces = feedbackRound(gallery: f.gallery, reviewer: reviewer) != nil ||
-            (b?.reviews.contains { $0.gallery == f.gallery && $0.reviewer == reviewer } ?? false) ||
-            assets.contains { asset in asset.clientNotes.contains { $0.gallery == f.gallery && $0.reviewer == reviewer } }
+            (b?.reviews.contains { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) } ?? false) ||
+            assets.contains { asset in asset.clientNotes.contains { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) } }
         var preview = FeedbackPreview(reviewer: reviewer, title: f.title, board: b == nil ? nil : bid, boardName: b?.name, replaces: replaces, rows: rows)
         preview.rosterIssue = issue
         if issue == nil && intentional {
@@ -132,7 +131,7 @@ extension StudioCatalog {
                 row.withdrawsPick = prior.contains(id)
                 row.removedNote = priorNotes[id]
                 row.remainsPicked = preservedPickTags.contains(id) || feedbackPickLedger.contains {
-                    ($0.gallery != f.gallery.lowercased() || $0.reviewer.lowercased() != reviewer.lowercased()) && $0.assets.contains(id)
+                    !Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) && $0.assets.contains(id)
                 }
                 preview.rows.append(row)
             }

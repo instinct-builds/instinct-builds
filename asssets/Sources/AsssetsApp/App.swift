@@ -776,7 +776,7 @@ final class StudioLibrary: ObservableObject {
             total.statuses += r.statuses; total.withdrawn += r.withdrawn
             total.smartCollection = r.smartCollection ?? total.smartCollection
             total.board = r.board ?? total.board
-            let who = StudioCatalog.feedbackReviewer(f.reviewer)
+            let who = next.feedbackDisplayReviewer(gallery: f.gallery, reviewer: f.reviewer)
             if !reviewers.contains(who) { reviewers.append(who) }
         }
         guard applied else {
@@ -3648,12 +3648,12 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
-        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal":
+        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal", "feedback-reviewer-case":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
             let ids = Array(mocks.prefix(2).map(\.id))
             let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
-            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" {
+            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" || demo == "feedback-reviewer-case" {
                 if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
                     mutate { _ = $0.recordGallery(roster) }
                 }
@@ -3723,6 +3723,22 @@ final class StudioLibrary: ObservableObject {
                 let p = pendingFeedback?.files.first?.preview
                 let marker = "done removed=\(p?.noteRemovals ?? -1) replaced=\(p?.noteReplacements ?? -1) other=\(catalog.assets.first(where: { $0.id == ids[1] })?.clientNotes.contains(where: { $0.reviewer == "Sam" }) ?? false)"
                 try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-note-removal.txt"), atomically: true, encoding: .utf8)
+            }
+            if demo == "feedback-reviewer-case" {
+                let first = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: true, note: "Old crop"),
+                    .init(id: ids[1].uuidString, favorite: true, note: "Old lighting")])
+                importFeedback(feedback: [first], unreadable: 0)
+                let other = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Sam", items: [
+                    .init(id: ids[1].uuidString, favorite: true, note: "Sam stays")])
+                importFeedback(feedback: [other], unreadable: 0)
+                let changed = ReviewGallery.Feedback(gallery: gallery.lowercased(), title: "Launch proof", reviewer: "jOrDaN", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: "New crop")])
+                if let data = try? JSONEncoder().encode(changed) { try? data.write(to: url, options: .atomic) }
+                previewFeedback([url])
+                let p = pendingFeedback?.files.first?.preview
+                let marker = "done name=\(p?.reviewer ?? "missing") withdrawn=\(p?.withdrawals ?? -1) removed=\(p?.noteRemovals ?? -1) replaced=\(p?.noteReplacements ?? -1) other=\(catalog.assets.first(where: { $0.id == ids[1] })?.clientNotes.contains(where: { $0.reviewer == "Sam" }) ?? false)"
+                try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-reviewer-case.txt"), atomically: true, encoding: .utf8)
             }
             if demo == "feedback-roster" {
                 let p = pendingFeedback?.files.first?.preview

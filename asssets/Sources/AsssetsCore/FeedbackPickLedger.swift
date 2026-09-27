@@ -17,17 +17,36 @@ extension StudioCatalog {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Client" : trimmed
     }
+    /// One identity for a feedback round across the pick ledger, asset notes, and board reviews.
+    /// Casing changes in a later file must not create a second person's round.
+    public static func sameFeedbackRound(_ firstGallery: String, _ firstReviewer: String,
+                                         _ secondGallery: String, _ secondReviewer: String) -> Bool {
+        firstGallery.lowercased() == secondGallery.lowercased() &&
+        feedbackReviewer(firstReviewer).lowercased() == feedbackReviewer(secondReviewer).lowercased()
+    }
     public func feedbackRound(gallery: String, reviewer: String) -> FeedbackPickRound? {
-        feedbackPickLedger.first { $0.gallery == gallery.lowercased() &&
-            $0.reviewer.lowercased() == Self.feedbackReviewer(reviewer).lowercased() }
+        feedbackPickLedger.first { Self.sameFeedbackRound($0.gallery, $0.reviewer, gallery, reviewer) }
+    }
+    /// Keep the first accepted display spelling even if a replacement file changes case.
+    public func feedbackDisplayReviewer(gallery: String, reviewer: String) -> String {
+        let incoming = Self.feedbackReviewer(reviewer)
+        if let old = feedbackRound(gallery: gallery, reviewer: incoming) { return old.reviewer }
+        if let old = assets.flatMap(\.clientNotes).first(where: {
+            Self.sameFeedbackRound($0.gallery, $0.reviewer, gallery, incoming)
+        }) { return old.reviewer }
+        if let old = boards.flatMap(\.reviews).first(where: {
+            Self.sameFeedbackRound($0.gallery, $0.reviewer, gallery, incoming)
+        }) { return old.reviewer }
+        return incoming
     }
     /// Only IDs whose tag we added are removable by ledger recomputation.
     public mutating func replaceFeedbackPicks(gallery: String, reviewer: String, with picks: [UUID]) -> Int {
-        let who = Self.feedbackReviewer(reviewer), gallery = gallery.lowercased()
+        let who = feedbackDisplayReviewer(gallery: gallery, reviewer: reviewer)
+        let gallery = gallery.lowercased()
         let old = feedbackRound(gallery: gallery, reviewer: who)?.assets ?? []
         let previouslyOwned = ledgerOwnedPickTags
         let fresh = FeedbackPickRound(gallery: gallery, reviewer: who, assets: picks)
-        feedbackPickLedger.removeAll { $0.gallery == gallery && $0.reviewer.lowercased() == who.lowercased() }
+        feedbackPickLedger.removeAll { Self.sameFeedbackRound($0.gallery, $0.reviewer, gallery, who) }
         feedbackPickLedger.append(fresh) // Empty is an explicit reviewed withdrawal.
         let touched = Set(old).union(fresh.assets)
         for id in touched {

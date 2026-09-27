@@ -283,14 +283,14 @@ extension StudioCatalog {
             }
             if pinned { r.board = b }
         }
-        let reviewer = Self.feedbackReviewer(f.reviewer)
+        let reviewer = feedbackDisplayReviewer(gallery: f.gallery, reviewer: f.reviewer)
         r.withdrawn = replaceFeedbackPicks(gallery: f.gallery, reviewer: reviewer,
             with: scoped.items.filter(\.favorite).compactMap { UUID(uuidString: $0.id) })
         let index = Dictionary(uniqueKeysWithValues: assets.enumerated().map { ($1.id.uuidString.uppercased(), $0) })
         // A replacement drops this reviewer's previous notes even when a formerly
         // shared asset is no longer present in the new feedback file.
         for i in assets.indices {
-            assets[i].clientNotes.removeAll { $0.reviewer == reviewer && $0.gallery == f.gallery }
+            assets[i].clientNotes.removeAll { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }
         }
         for e in scoped.items {
             guard let i = index[e.id.uppercased()] else { r.unknown += 1; continue }

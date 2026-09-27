@@ -254,6 +254,9 @@ jobs:
           shoot feedback-note-removal 1024x768 feedback-note-removal demo-feedback-note-removal.txt
           grep -q '^done removed=1 replaced=1 other=true$' "$SUP/demo-feedback-note-removal.txt"
           cp "$SUP/demo-feedback-note-removal.txt" "ASSSETS-$ASSSETS_VERSION-feedback-note-removal.txt"
+          shoot feedback-reviewer-case 1024x768 feedback-reviewer-case demo-feedback-reviewer-case.txt
+          grep -q '^done name=Jordan withdrawn=2 removed=1 replaced=1 other=true$' "$SUP/demo-feedback-reviewer-case.txt"
+          cp "$SUP/demo-feedback-reviewer-case.txt" "ASSSETS-$ASSSETS_VERSION-feedback-reviewer-case.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
@@ -458,6 +461,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-changed.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-save-fail.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-note-removal.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-reviewer-case.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
