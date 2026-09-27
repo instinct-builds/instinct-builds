@@ -1317,7 +1317,7 @@ public struct GroupCheckSectionView: View {
                 // no confirm. Rounds blank = untimed apply.
                 TextField("Rounds", text: $partyCondRounds)
                     .textFieldStyle(InsetFieldStyle())
-                    .frame(width: 56)
+                    .frame(width: 72) // 56 clipped the placeholder, same fix as 3.48.0's Amount field
                 Menu("Condition (party)") {
                     ForEach(Condition.allCases, id: \.self) { cond in
                         Button(cond.displayName) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue) }
