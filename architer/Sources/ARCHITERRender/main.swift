@@ -2659,6 +2659,52 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? apsLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-apply-subset.txt"),
                atomically: true, encoding: .utf8)
+    // Summary-row expiry highlight proofs (3.57.0). Runs at END.
+    var expLines = ["Summary-row expiry highlight (3.57.0)",
+                    "a clock at 1 - one tick from removal - reads in accent on the summary line"]
+    var expOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
+    for c in model.characters { expOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // setup: Wren Prone 1r (ending) + her fixture Poisoned (untimed);
+    // Bram Prone 3r (not ending); Sera Prone 2r (boundary - not ending)
+    _ = model.applyPartyCondition(.prone, rounds: 1, from: Set([model.characters.first(where: { $0.name == "Wren Halloway" })?.id].compactMap { $0 }))
+    _ = model.applyPartyCondition(.prone, rounds: 3, from: Set([model.characters.first(where: { $0.name == "Bram Oakfel" })?.id].compactMap { $0 }))
+    _ = model.applyPartyCondition(.prone, rounds: 2, from: Set([model.characters.first(where: { $0.name == "Sera Vint" })?.id].compactMap { $0 }))
+    let expItems = partyConditionSummaryItems(model.characters)
+    let expWren = expItems.first(where: { $0.name == "Wren Halloway" })
+    let expBram = expItems.first(where: { $0.name == "Bram Oakfel" })
+    let expSera = expItems.first(where: { $0.name == "Sera Vint" })
+    expLines.append("summary: '\(partyConditionSummary(model.characters))'")
+    expLines.append("Wren's Prone 1r marked expiring \(expWren?.parts.first(where: { $0.label == "Prone 1r" })?.expiring == true)")
+    expLines.append("Wren's untimed Poisoned not expiring \(expWren?.parts.first(where: { $0.label == "Poisoned" })?.expiring == false)")
+    expLines.append("Bram's Prone 3r not expiring \(expBram?.parts.first(where: { $0.label == "Prone 3r" })?.expiring == false)")
+    expLines.append("boundary: Sera's Prone 2r not expiring \(expSera?.parts.first(where: { $0.label == "Prone 2r" })?.expiring == false)")
+    // the 3.53.0 string contract survives: text still derives byte-identical
+    let expJoined = expItems.map(\.text).joined(separator: " \u{00B7} ")
+    expLines.append("text byte-identical to the 3.53.0 string \(partyConditionSummary(model.characters) == expJoined)")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-expiry-highlight", outDir: outDir, minHeight: 120, maxHeight: 500)
+    // hygiene: restore every character's original conditions + clocks, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = expOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    expLines.append("hygiene: roster conditions, clocks, log and selection restored")
+    try? expLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-expiry-highlight.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

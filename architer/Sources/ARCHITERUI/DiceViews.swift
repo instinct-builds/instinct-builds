@@ -1377,9 +1377,14 @@ public struct GroupCheckSectionView: View {
                         Button {
                             model.revealOnSheet(item.characterID)
                         } label: {
-                            Text(item.text)
-                                .font(.caption)
-                                .foregroundStyle(Theme.inkMuted)
+                            // 3.57.0: expiring labels (clock at 1) render in
+                            // accent; everything else stays muted. Same line,
+                            // same density - a glance, not a billboard.
+                            item.parts.enumerated().reduce(Text("\(item.name): ").font(.caption).foregroundStyle(Theme.inkMuted)) { acc, pair in
+                                let (idx, part) = pair
+                                return acc + Text(idx == 0 ? part.label : ", \(part.label)").font(.caption)
+                                    .foregroundStyle(part.expiring ? Theme.accent : Theme.inkMuted)
+                            }
                         }
                         .buttonStyle(.plain)
                         .help("Open \(item.name)'s sheet")
