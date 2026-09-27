@@ -65,6 +65,21 @@ int main(int argc,const char** argv) {
         NSArray* rows=Children(list);
         NSString* first=rows.count ? String((__bridge AXUIElementRef)rows[0],kAXDescriptionAttribute) : @"";
         if (!first.length && rows.count) first=String((__bridge AXUIElementRef)rows[0],kAXTitleAttribute);
+        if (rows.count) {
+            AXUIElementRef firstRow=(__bridge AXUIElementRef)rows[0];
+            CFArrayRef attributes=nullptr;
+            AXError attributesError=AXUIElementCopyAttributeNames(firstRow,&attributes);
+            printf("AX IPC row role=%s title=%s description=%s value=%s help=%s names_error=%d\n",
+                   String(firstRow,kAXRoleAttribute).UTF8String,
+                   String(firstRow,kAXTitleAttribute).UTF8String,
+                   String(firstRow,kAXDescriptionAttribute).UTF8String,
+                   String(firstRow,kAXValueAttribute).UTF8String,
+                   String(firstRow,kAXHelpAttribute).UTF8String,(int)attributesError);
+            if (attributes) {
+                for (id key in (__bridge NSArray*)attributes) printf("AX IPC row attribute=%s\n",[key UTF8String]);
+                CFRelease(attributes);
+            }
+        }
         CFTypeRef frame=Attribute(list,kAXPositionAttribute);
         printf("AX IPC rows=%lu first=%s frame=%d\n",(unsigned long)rows.count,first.UTF8String,!!frame);
         ok=ok && rows.count>1 && [first containsString:@"1 of 108"] &&
