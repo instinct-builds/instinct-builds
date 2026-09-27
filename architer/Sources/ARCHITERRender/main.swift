@@ -2181,27 +2181,27 @@ func run(model: AppModel, character: Character, outDir: String) {
     // 3.48.0 hygiene: hand selection back to Bram (the jump already lands there).
     if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
     // Table-log entry edit + encounter share proofs (3.49.0). Runs at END.
-    var elLines = ["Table-log entry edit (3.49.0)",
+    var editLines = ["Table-log entry edit (3.49.0)",
                    "edit in place keeps id and createdAt - a fix costs the entry nothing"]
     if let ember = model.tableLog.first(where: { $0.title == "Ember Warrens" }) {
         let origTitle = ember.title, origText = ember.text
-        elLines.append("before: '\(origTitle)' / '\(origText)' (day \(JournalStamp.day(ember.createdAt)))")
+        editLines.append("before: '\(origTitle)' / '\(origText)' (day \(JournalStamp.day(ember.createdAt)))")
         model.editTableLogEntry(id: ember.id, title: "Ember Warrens (corrected)", text: "The party reaches the bridge over the Ember - west side collapsed.")
         let edited = model.tableLog.first(where: { $0.id == ember.id })
-        elLines.append("after edit: '\(edited?.title ?? "MISSING")' / '\(edited?.text ?? "MISSING")'")
-        elLines.append("id kept: \(edited?.id == ember.id), createdAt kept: \(edited?.createdAt == ember.createdAt)")
+        editLines.append("after edit: '\(edited?.title ?? "MISSING")' / '\(edited?.text ?? "MISSING")'")
+        editLines.append("id kept: \(edited?.id == ember.id), createdAt kept: \(edited?.createdAt == ember.createdAt)")
         let persisted = model.tableLogStore.load().first(where: { $0.id == ember.id })
-        elLines.append("persistence: store reload shows '\(persisted?.title ?? "MISSING")'")
+        editLines.append("persistence: store reload shows '\(persisted?.title ?? "MISSING")'")
         model.editTableLogEntry(id: ember.id, title: origTitle, text: origText)
         let restored = model.tableLog.first(where: { $0.id == ember.id })
-        elLines.append("edited back: '\(restored?.title ?? "MISSING")' restored \(restored?.title == origTitle && restored?.text == origText)")
+        editLines.append("edited back: '\(restored?.title ?? "MISSING")' restored \(restored?.title == origTitle && restored?.text == origText)")
         let blank = model.tableLog.count
         model.editTableLogEntry(id: ember.id, title: " ", text: " ")
-        elLines.append("blank+blank is a no-op: \(model.tableLog.count == blank && model.tableLog.first(where: { $0.id == ember.id })?.title == origTitle)")
+        editLines.append("blank+blank is a no-op: \(model.tableLog.count == blank && model.tableLog.first(where: { $0.id == ember.id })?.title == origTitle)")
     } else {
-        elLines.append("SETUP MISS: Ember Warrens entry not found")
+        editLines.append("SETUP MISS: Ember Warrens entry not found")
     }
-    try? elLines.joined(separator: "\n")
+    try? editLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/table-log-edit.txt"),
                atomically: true, encoding: .utf8)
     var esLines = ["Encounter share text (3.49.0)",
