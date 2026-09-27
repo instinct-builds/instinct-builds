@@ -61,7 +61,9 @@ public struct CharacterStore: Sendable {
         let url = directory.appendingPathComponent("\(id.uuidString).json")
         do {
             let data = try Data(contentsOf: url)
-            return try JSONDecoder().decode(Character.self, from: data)
+            let dec = JSONDecoder()
+            dec.dateDecodingStrategy = .iso8601 // saves write iso8601 dates; a bare decoder throws on journal createdAt strings (3.51.0)
+            return try dec.decode(Character.self, from: data)
         } catch let error as DecodingError {
             _ = error
             throw CharacterStoreError.corruptData
@@ -77,9 +79,12 @@ public struct CharacterStore: Sendable {
         }
         var out: [Character] = []
         for f in files where f.pathExtension == "json" {
-            if let data = try? Data(contentsOf: f),
-               let c = try? JSONDecoder().decode(Character.self, from: data) {
-                out.append(c)
+            if let data = try? Data(contentsOf: f) {
+                let dec = JSONDecoder()
+                dec.dateDecodingStrategy = .iso8601 // match save; without it every dated-journal character silently drops from the roster (3.51.0)
+                if let c = try? dec.decode(Character.self, from: data) {
+                    out.append(c)
+                }
             }
         }
         return out.sorted { $0.name < $1.name }

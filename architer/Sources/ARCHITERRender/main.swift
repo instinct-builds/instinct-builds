@@ -2293,21 +2293,28 @@ func run(model: AppModel, character: Character, outDir: String) {
                    "one condition to the whole roster - never stacks, rounds refresh, untimed keeps running clocks"]
     var pcOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
     for c in model.characters { pcOrig[c.id] = (c.conditions, c.conditionDurations) }
-    // setup: Wren (already untimed Prone in the fixture) gets a 2-round clock
+    // setup: construct the "already has it" case - Wren Prone with a
+    // 2-round clock (earlier blocks' initiative wraps can tick a fixture
+    // Prone off, so set the condition explicitly)
     if let wren = model.characters.first(where: { $0.name == "Wren Halloway" }) {
         model.selectedID = wren.id
         var w = wren
+        w.conditions.insert(.prone)
         w.conditionDurations[Condition.prone.rawValue] = 2
         model.selected?.wrappedValue = w
     }
     let pcOutcome = model.applyPartyCondition(.prone, rounds: 3)
     pcLines.append("apply Prone (3 rounds) to the roster: new [\(pcOutcome.applied.joined(separator: ", "))], refreshed [\(pcOutcome.refreshed.joined(separator: ", "))]")
     let pcWren = model.characters.first(where: { $0.name == "Wren Halloway" })
-    pcLines.append("Wren was already Prone: no stack, clock refreshed 2 -> \(pcWren?.conditionDurations[Condition.prone.rawValue] ?? -1)")
+    pcLines.append("Wren already had it: in refreshed \(pcOutcome.refreshed.contains("Wren Halloway")), not in new \(!pcOutcome.applied.contains("Wren Halloway")), clock refreshed 2 -> \(pcWren?.conditionDurations[Condition.prone.rawValue] ?? -1)")
     let pcBram = model.characters.first(where: { $0.name == "Bram Oakfel" })
     pcLines.append("Bram gained Prone with 3 rounds: \(pcBram?.conditions.contains(.prone) == true && pcBram?.conditionDurations[Condition.prone.rawValue] == 3)")
-    let pcPersist = (try? model.store.load(id: pcBram?.id ?? UUID()))?.conditions.contains(.prone) ?? false
-    pcLines.append("persistence: store reload shows Bram Prone \(pcPersist)")
+    do {
+        let pcReload = try model.store.load(id: pcBram?.id ?? UUID())
+        pcLines.append("persistence: store reload shows Bram Prone \(pcReload.conditions.contains(.prone))")
+    } catch {
+        pcLines.append("persistence: store reload threw \(error)")
+    }
     let pcLogCount = model.tableLog.filter { $0.title == "Party condition" }.count
     let pcLog = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "MISSING"
     pcLines.append("table log entry: '\(pcLog)'")
