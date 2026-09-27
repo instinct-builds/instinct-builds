@@ -380,9 +380,14 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
             TextA([NSString stringWithFormat:@"%d", v.arpPatChance[i]], NSMakeRect(c.origin.x + 2, c.origin.y + 19, c.size.width - 4, 8),
                   5.5, C(0xf5cc78), NSFontWeightBold, NSTextAlignmentCenter);
         }
-        NSString* tag = kind == arp::StepOn ? @"" : kind == arp::StepRest ? @"R" : @"T";
-        FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 1.5, c.size.width - 4, 6), 1.5, used && kind != arp::StepOn ? C(0x232b36) : C(0x151b23));
-        if (tag.length) TextA(tag, NSMakeRect(c.origin.x, c.origin.y + 1, c.size.width, 7), 5, used ? C(0x8793a3) : C(0x3a4452), NSFontWeightBold, NSTextAlignmentCenter);
+        // ON steps share the otherwise empty kind strip for a pitch offset.
+        // REST/TIE still show their kind, including when hidden pitch is stored.
+        const int pitch = used && kind == arp::StepOn ? std::clamp(v.arpPatPitch[i], -12, 12) : 0;
+        NSString* tag = kind == arp::StepOn ? (pitch ? [NSString stringWithFormat:@"%+d", pitch] : @"") : kind == arp::StepRest ? @"R" : @"T";
+        FillRound(NSMakeRect(c.origin.x + 2, c.origin.y + 1.5, c.size.width - 4, 6), 1.5,
+                  pitch ? C(0x243440) : used && kind != arp::StepOn ? C(0x232b36) : C(0x151b23));
+        if (tag.length) TextA(tag, NSMakeRect(c.origin.x, c.origin.y + 1, c.size.width, 7), 5,
+                              pitch ? C(0x80cfdb) : used ? C(0x8793a3) : C(0x3a4452), NSFontWeightBold, NSTextAlignmentCenter);
         if (arpStepEdit && i == arpSelectedStep) {
             NSBezierPath* outline = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(c, 0.7, 0.7) xRadius:3 yRadius:3];
             [pink setStroke]; outline.lineWidth = 1; [outline stroke];

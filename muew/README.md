@@ -632,3 +632,11 @@ slider thumbs, and labels both right-hand value slots with the step kind.
 Buttons are muted; clicks remain inert. The seven stored fields are not
 removed or reset, so a later COPY/PASTE still transports hidden data.
 ON steps retain the original live two-row inspector.
+
+
+## 0.76.0 ARP pitch indicators
+
+The bottom kind strip of each active ON pattern cell shows a signed semitone
+offset when nonzero, in cyan. A neutral ON cell looks exactly as before.
+REST/TIE keep their kind marks, even if hidden pitch data is stored. No
+sound, preset format, AU parameter or click-target changes.

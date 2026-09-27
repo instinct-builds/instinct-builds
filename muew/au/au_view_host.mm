@@ -2661,6 +2661,33 @@ int main() {
             Click(view,w,NSMakePoint(730,top-126));Click(view,w,NSMakePoint(492+30,top-20.5));
             fflush(stdout);
         });
+        After(7.08995, ^{ // 0.76.0: ON pitch badge at maximum 16-cell density
+            muew::Preset before;State(before);muew::Preset setup=before;
+            setup.voice.arpOn=true;setup.voice.arpPatOn=true;setup.voice.arpPatLen=16;
+            for(int i=0;i<16;++i){setup.voice.arpPatKind[i]=muew::arp::StepOn;setup.voice.arpPatPitch[i]=0;}
+            setup.voice.arpPatPitch[0]=12;setup.voice.arpPatPitch[7]=-12;setup.voice.arpPatPitch[15]=5;
+            setup.voice.arpPatKind[5]=muew::arp::StepRest;setup.voice.arpPatPitch[5]=7; // hidden, kind must win
+            setup.voice.arpPatKind[10]=muew::arp::StepTie;setup.voice.arpPatPitch[10]=-3;
+            NSString* text=[NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            const CGFloat top=view.bounds.size.height-100;
+            NSString* page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("page=2 ")!=0)Click(view,w,NSMakePoint(655,top-20.5));
+            muew::Preset displayed;const bool ok=State(displayed);
+            bool unchanged=ok&&displayed.voice.arpPatLen==16;
+            for(int i=0;i<muew::arp::kPatSteps;++i)unchanged&=muew::arp::readStep(setup.voice,i)==muew::arp::readStep(displayed.voice,i);
+            RenderBlock();Snapshot(view,"MUEW_PITCH76_PNG","ARP 16-cell signed pitch badges snapshot written");
+            Check(unchanged,"pitch badges display full-density signed and hidden offsets without changing AU state");
+            NSString* restoreText=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef restore=(__bridge CFStringRef)restoreText;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&restore,sizeof(restore));
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            Click(view,w,NSMakePoint(492+30,top-20.5));
+            fflush(stdout);
+        });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;
