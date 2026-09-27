@@ -707,6 +707,11 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// built-in rawValue or custom-condition UUID string. Timers tick once
     /// per initiative round; a timer reaching 0 ends the condition.
     public var conditionDurations: [String: Int] = [:]
+    /// Condition notes (3.58.0): the DM's "why they have it" per condition,
+    /// keyed like conditionDurations (built-in rawValue, custom UUID string).
+    /// Stored input - the summary line derives from it, nothing is computed
+    /// into it. A note dies with its condition: every removal path clears it.
+    public var conditionNotes: [String: String] = [:]
     public var resistances: Set<DamageType>
     public var immunities: Set<DamageType>
     public var vulnerabilities: Set<DamageType>
@@ -843,6 +848,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditions: Set<Condition> = [],
         customConditions: [CustomCondition] = [],
         conditionDurations: [String: Int] = [:],
+        conditionNotes: [String: String] = [:],
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
@@ -895,6 +901,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.conditions = conditions
         self.customConditions = customConditions
         self.conditionDurations = conditionDurations
+        self.conditionNotes = conditionNotes
         self.resistances = resistances
         self.immunities = immunities
         self.vulnerabilities = vulnerabilities
@@ -952,6 +959,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditions = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditions) ?? []
         customConditions = try c.decodeIfPresent([CustomCondition].self, forKey: .customConditions) ?? []
         conditionDurations = try c.decodeIfPresent([String: Int].self, forKey: .conditionDurations) ?? [:]
+        conditionNotes = try c.decodeIfPresent([String: String].self, forKey: .conditionNotes) ?? [:]
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
@@ -1309,6 +1317,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
                 conditionDurations[key] = rounds - 1
             } else {
                 conditionDurations.removeValue(forKey: key)
+                conditionNotes.removeValue(forKey: key) // 3.58.0: the note dies with the condition
                 if let builtIn = Condition(rawValue: key) {
                     conditions.remove(builtIn)
                     ended.append(builtIn.displayName)
@@ -1319,6 +1328,16 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
             }
         }
         return ended
+    }
+
+    /// Note hygiene (3.58.0): one line, trimmed, capped at 24 characters -
+    /// the summary row stays a glance at table density. Blank normalizes to
+    /// nil, which callers read as "leave any existing note alone".
+    public static func normalizedConditionNote(_ text: String) -> String? {
+        let oneLine = text.components(separatedBy: .newlines).joined(separator: " ")
+        let trimmed = oneLine.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(24)).trimmingCharacters(in: .whitespaces)
     }
 
     /// Condition chips with remaining rounds appended for timed conditions -

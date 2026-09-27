@@ -196,7 +196,10 @@ struct ConditionGrid: View {
                     get: { character.conditions.contains(condition) },
                     set: { on in
                         if on { character.conditions.insert(condition) }
-                        else { character.conditions.remove(condition) }
+                        else {
+                            character.conditions.remove(condition)
+                            character.conditionNotes.removeValue(forKey: condition.rawValue) // 3.58.0: the note dies with the condition
+                        }
                     }
                 ))
                 .toggleStyle(.checkbox)
@@ -212,6 +215,7 @@ struct ConditionGrid: View {
                 Toggle("Speed 0", isOn: $cc.immobilizes).toggleStyle(.checkbox)
                 Button(role: .destructive) {
                     character.customConditions.removeAll { $0.id == cc.id }
+                    character.conditionNotes.removeValue(forKey: cc.id.uuidString) // 3.58.0: the note dies with the condition
                 } label: { Image(systemName: "minus.circle") }
             }
             .font(.caption)

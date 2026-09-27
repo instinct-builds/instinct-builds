@@ -29,9 +29,13 @@ public struct PartyConditionSummaryItem: Equatable, Sendable, Identifiable {
 public struct PartyConditionSummaryPart: Equatable, Sendable {
     public let label: String
     public let expiring: Bool
-    public init(label: String, expiring: Bool) {
+    /// The DM's "why they have it" (3.58.0), rendered in parens after the
+    /// label in faint - never accent, which stays reserved for expiring.
+    public let note: String?
+    public init(label: String, expiring: Bool, note: String? = nil) {
         self.label = label
         self.expiring = expiring
+        self.note = note
     }
 }
 
@@ -40,13 +44,17 @@ public func partyConditionSummaryItems(_ characters: [Character]) -> [PartyCondi
         guard !c.conditions.isEmpty else { return nil }
         var parts: [PartyConditionSummaryPart] = []
         let held = c.conditions.sorted { $0.displayName < $1.displayName }.map { cond -> String in
+            // 3.58.0: the note rides the label in the derived string too -
+            // the line stays exactly what's stored, nothing computed in.
+            let note = c.conditionNotes[cond.rawValue]
+            let suffix = note.map { " (\($0))" } ?? ""
             if let rounds = c.conditionDurations[cond.rawValue] {
                 let label = "\(cond.displayName) \(rounds)r"
-                parts.append(PartyConditionSummaryPart(label: label, expiring: rounds == 1))
-                return label
+                parts.append(PartyConditionSummaryPart(label: label, expiring: rounds == 1, note: note))
+                return label + suffix
             }
-            parts.append(PartyConditionSummaryPart(label: cond.displayName, expiring: false))
-            return cond.displayName
+            parts.append(PartyConditionSummaryPart(label: cond.displayName, expiring: false, note: note))
+            return cond.displayName + suffix
         }
         return PartyConditionSummaryItem(characterID: c.id, name: c.name,
                                          text: "\(c.name): \(held.joined(separator: ", "))",

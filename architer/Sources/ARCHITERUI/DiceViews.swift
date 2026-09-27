@@ -1229,6 +1229,9 @@ public struct GroupCheckSectionView: View {
         let v = Int(partyCondRounds.trimmingCharacters(in: .whitespaces)) ?? 0
         return v > 0 ? v : nil
     }
+    /// 3.58.0: party-condition note draft - "why they have it". Attaches on
+    /// apply; blank keeps any existing note (same discipline as blank rounds).
+    @State private var partyCondNote = ""
     @State private var skillPick = "Stealth"
     @State private var abilityPick: Ability = .wisdom
     @State private var dcDraft = ""
@@ -1318,6 +1321,10 @@ public struct GroupCheckSectionView: View {
                 TextField("Rounds", text: $partyCondRounds)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 72) // 56 clipped the placeholder, same fix as 3.48.0's Amount field
+                TextField("Note", text: $partyCondNote)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 120)
+                    .help("Why they have it - attaches on apply (max 24 chars); blank keeps any existing note")
                 Menu("Condition (party)") {
                     // 3.56.0: apply is scoped too - "Everyone" (3.51.0, byte-
                     // identical path) or one item per roster character.
@@ -1326,11 +1333,11 @@ public struct GroupCheckSectionView: View {
                     Section("Apply") {
                         ForEach(Condition.allCases, id: \.self) { cond in
                             Menu(cond.displayName) {
-                                Button("Everyone") { model.applyPartyCondition(cond, rounds: partyCondRoundsValue) }
+                                Button("Everyone") { model.applyPartyCondition(cond, rounds: partyCondRoundsValue, note: partyCondNote) }
                                 if !model.characters.isEmpty {
                                     Divider()
                                     ForEach(model.characters) { target in
-                                        Button(target.name) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue, from: [target.id]) }
+                                        Button(target.name) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue, note: partyCondNote, from: [target.id]) }
                                     }
                                 }
                             }
@@ -1382,8 +1389,14 @@ public struct GroupCheckSectionView: View {
                             // same density - a glance, not a billboard.
                             item.parts.enumerated().reduce(Text("\(item.name): ").font(.caption).foregroundStyle(Theme.inkMuted)) { acc, pair in
                                 let (idx, part) = pair
-                                return acc + Text(idx == 0 ? part.label : ", \(part.label)").font(.caption)
+                                // 3.58.0: the note rides the label in faint -
+                                // never accent, which stays reserved for expiring.
+                                var line = acc + Text(idx == 0 ? part.label : ", \(part.label)").font(.caption)
                                     .foregroundStyle(part.expiring ? Theme.accent : Theme.inkMuted)
+                                if let note = part.note {
+                                    line = line + Text(" (\(note))").font(.caption).foregroundStyle(Theme.inkFaint)
+                                }
+                                return line
                             }
                         }
                         .buttonStyle(.plain)

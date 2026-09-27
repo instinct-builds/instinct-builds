@@ -2705,6 +2705,87 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? expLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-expiry-highlight.txt"),
                atomically: true, encoding: .utf8)
+    // Condition notes proofs (3.58.0). Runs at END.
+    var pcnLines = ["Condition notes on the summary line (3.58.0)",
+                    "the 'why they have it' - stored input, the line stays derived, the note dies with the condition"]
+    var pcnOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int], notes: [String: String])] = [:]
+    for c in model.characters { pcnOrig[c.id] = (c.conditions, c.conditionDurations, c.conditionNotes) }
+    // the note-free roster still reads byte-identical to the 3.53.0 string shape
+    pcnLines.append("note-free summary: '\(partyConditionSummary(model.characters))'")
+    pcnLines.append("note-free roster byte-identical to the 3.53.0 shape \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned")")
+    let pcnWrenID = model.characters.first(where: { $0.name == "Wren Halloway" })?.id
+    let pcnBramID = model.characters.first(where: { $0.name == "Bram Oakfel" })?.id
+    // setup: Wren Poisoned note "sting" (untimed) + Prone 1r note "shove"; Bram Prone 3r no note
+    if let w = pcnWrenID {
+        _ = model.applyPartyCondition(.poisoned, rounds: nil, note: "sting", from: [w])
+        _ = model.applyPartyCondition(.prone, rounds: 1, note: "shove", from: [w])
+    }
+    if let b = pcnBramID { _ = model.applyPartyCondition(.prone, rounds: 3, from: [b]) }
+    let pcnItems = partyConditionSummaryItems(model.characters)
+    let pcnWren = pcnItems.first(where: { $0.name == "Wren Halloway" })
+    let pcnBram = pcnItems.first(where: { $0.name == "Bram Oakfel" })
+    pcnLines.append("summary: '\(partyConditionSummary(model.characters))'")
+    pcnLines.append("summary exact \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned (sting), Prone 1r (shove) \u{00B7} Bram Oakfel: Prone 3r")")
+    let pcnPoison = pcnWren?.parts.first(where: { $0.label == "Poisoned" })
+    let pcnProne = pcnWren?.parts.first(where: { $0.label == "Prone 1r" })
+    pcnLines.append("Poisoned carries its note \(pcnPoison?.note == "sting"), untimed and not expiring \(pcnPoison?.expiring == false)")
+    pcnLines.append("Prone 1r carries its note \(pcnProne?.note == "shove"), expiring still derived \(pcnProne?.expiring == true)")
+    pcnLines.append("Bram's note-free Prone 3r: no note \(pcnBram?.parts.first?.note == nil), label unchanged \(pcnBram?.parts.first?.label == "Prone 3r")")
+    if let w = pcnWrenID {
+        // blank-note re-apply preserves; typed-note re-apply replaces
+        let pcnLogCount = model.tableLog.filter { $0.title == "Party condition" }.count
+        let pcnNoop = model.applyPartyCondition(.poisoned, rounds: nil, from: [w])
+        pcnLines.append("blank-note re-apply: no-op \(pcnNoop.applied.isEmpty && pcnNoop.refreshed.isEmpty), note kept \(model.characters.first(where: { $0.id == w })?.conditionNotes[Condition.poisoned.rawValue] == "sting"), no new log \(model.tableLog.filter { $0.title == "Party condition" }.count == pcnLogCount)")
+        _ = model.applyPartyCondition(.poisoned, rounds: nil, note: "bite", from: [w])
+        pcnLines.append("typed-note re-apply replaces: note now '\(model.characters.first(where: { $0.id == w })?.conditionNotes[Condition.poisoned.rawValue] ?? "missing")'")
+        // cap: a 36-char note stores as 24, trailing trim
+        _ = model.applyPartyCondition(.poisoned, rounds: nil, note: "this note is definitely over the cap", from: [w])
+        let pcnCapped = model.characters.first(where: { $0.id == w })?.conditionNotes[Condition.poisoned.rawValue]
+        pcnLines.append("cap: 36-char note stored as \(pcnCapped?.count ?? -1) chars ('\(pcnCapped ?? "missing")')")
+        // persistence: notes round-trip through the store (2 notes on Wren here)
+        if let pcnWrenNow = model.characters.first(where: { $0.id == w }), let pcnReload = try? model.store.load(id: w) {
+            pcnLines.append("persistence: notes round-trip \(pcnReload.conditionNotes == pcnWrenNow.conditionNotes && pcnReload.conditionNotes.count == 2)")
+        }
+    }
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-condition-notes", outDir: outDir, minHeight: 120, maxHeight: 500)
+    if let w = pcnWrenID {
+        // removal drops the note with the condition
+        _ = model.removePartyCondition(.poisoned, from: [w])
+        let pcnWrenAfter = model.characters.first(where: { $0.id == w })
+        pcnLines.append("removal: Poisoned gone \(pcnWrenAfter?.conditions.contains(.poisoned) == false), note gone \(pcnWrenAfter?.conditionNotes[Condition.poisoned.rawValue] == nil)")
+        // a clock at 0 drops the note too
+        if let wIdx = model.characters.firstIndex(where: { $0.id == w }) {
+            var pcnTick = model.characters[wIdx]
+            _ = pcnTick.tickConditionDurations()
+            model.characters[wIdx] = pcnTick
+            try? model.store.save(pcnTick)
+            pcnLines.append("tick to 0: Prone gone \(pcnTick.conditions.contains(.prone) == false), note gone \(pcnTick.conditionNotes[Condition.prone.rawValue] == nil)")
+        }
+    }
+    // hygiene: restore every character's original conditions + clocks + notes, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = pcnOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations || c.conditionNotes != orig.notes {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            restored.conditionNotes = orig.notes
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    pcnLines.append("hygiene: roster conditions, clocks, notes, log and selection restored")
+    try? pcnLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-notes.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

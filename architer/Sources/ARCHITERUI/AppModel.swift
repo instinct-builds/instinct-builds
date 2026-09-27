@@ -1439,8 +1439,8 @@ public final class AppModel: ObservableObject {
     /// timer, while an untimed apply leaves any running timer alone - a
     /// shouted "everyone's prone" never silently kills a 3-round clock.
     @discardableResult
-    public func applyPartyCondition(_ condition: Condition, rounds: Int?) -> (applied: [String], refreshed: [String]) {
-        applyPartyCondition(condition, rounds: rounds, from: Set(characters.map(\.id)))
+    public func applyPartyCondition(_ condition: Condition, rounds: Int?, note: String? = nil) -> (applied: [String], refreshed: [String]) {
+        applyPartyCondition(condition, rounds: rounds, note: note, from: Set(characters.map(\.id)))
     }
 
     /// Targeted apply (3.56.0): 3.51.0's semantics scoped to a subset -
@@ -1448,7 +1448,7 @@ public final class AppModel: ObservableObject {
     /// undo stacks, one log entry naming exactly those touched. An empty
     /// subset (or one fully covered with blank rounds) is a no-op.
     @discardableResult
-    public func applyPartyCondition(_ condition: Condition, rounds: Int?, from ids: Set<UUID>) -> (applied: [String], refreshed: [String]) {
+    public func applyPartyCondition(_ condition: Condition, rounds: Int?, note: String? = nil, from ids: Set<UUID>) -> (applied: [String], refreshed: [String]) {
         var applied: [String] = []
         var refreshed: [String] = []
         for idx in characters.indices where ids.contains(characters[idx].id) {
@@ -1456,6 +1456,11 @@ public final class AppModel: ObservableObject {
             let had = c.conditions.contains(condition)
             if !had { c.conditions.insert(condition) }
             if let rounds, rounds > 0 { c.conditionDurations[condition.rawValue] = rounds }
+            // 3.58.0: a typed note replaces; blank keeps any existing note
+            // (same discipline as blank rounds keeping a running clock).
+            if let note = Character.normalizedConditionNote(note ?? "") {
+                c.conditionNotes[condition.rawValue] = note
+            }
             guard c != characters[idx] else { continue }
             var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
             stack.push(c)
@@ -1501,6 +1506,7 @@ public final class AppModel: ObservableObject {
             guard c.conditions.contains(condition) else { continue }
             c.conditions.remove(condition)
             c.conditionDurations.removeValue(forKey: condition.rawValue)
+            c.conditionNotes.removeValue(forKey: condition.rawValue) // 3.58.0: the note dies with the condition
             var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
             stack.push(c)
             undoStacks[c.id] = stack
