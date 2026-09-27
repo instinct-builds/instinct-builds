@@ -143,7 +143,10 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     // Local PASTE/ROTATE/UNDO can echo back through the AU's generation timer.
     // Keep that history only for our exact state; external changes invalidate it.
     if (index != currentIndex || p.info.name != current.info.name || !(p == current)) {
-        arpActions.clear(); arpActionsPage = false; arpSelectedStep = 0;
+        // State adoption invalidates clipboard/undo, but never resets the
+        // user's current editor mode or selected cell. A DAW can deliver a
+        // state echo while the user is clicking through the pattern.
+        arpActions.clear();
     }
     bool routeChanged = current.routes.size() != p.routes.size();
     for (size_t i = 0; !routeChanged && i < p.routes.size(); ++i) {

@@ -2374,6 +2374,9 @@ int main() {
             Click(view,w,cell(7)); // select a cell without changing velocity or other badges
             muew::Preset selected; State(selected);
             NSString* debug=[view valueForKey:@"muewArpText"];
+            printf("gate70 select: debug=%s len=%d vel8=%d kind8=%d gate8=%d\n",
+                   debug.UTF8String ?: "", selected.voice.arpPatLen, selected.voice.arpPatVel[7],
+                   selected.voice.arpPatKind[7], selected.voice.arpPatGate[7]);
             Check(selected.voice.arpPatGate[7] == 0 && selected.voice.arpPatLen == 8
                   && selected.voice.arpPatVel[7] == setup.voice.arpPatVel[7]
                   && selected.voice.arpPatKind[7] == setup.voice.arpPatKind[7]
