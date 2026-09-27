@@ -280,6 +280,9 @@ jobs:
           shoot feedback-duplicate 1024x768 feedback-duplicate demo-feedback-duplicate.txt
           grep -q '^done duplicate=1 reviewer=Client files=2 unchanged=true$' "$SUP/demo-feedback-duplicate.txt"
           cp "$SUP/demo-feedback-duplicate.txt" "ASSSETS-$ASSSETS_VERSION-feedback-duplicate.txt"
+          shoot feedback-note-limit 1024x768 feedback-note-limit demo-feedback-note-limit.txt
+          grep -q '^done submitted=4001 saved=4000 replaced=0 unchanged=true$' "$SUP/demo-feedback-note-limit.txt"
+          cp "$SUP/demo-feedback-note-limit.txt" "ASSSETS-$ASSSETS_VERSION-feedback-note-limit.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
@@ -488,6 +491,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-receipt.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-batch-conflict.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-duplicate.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-note-limit.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt

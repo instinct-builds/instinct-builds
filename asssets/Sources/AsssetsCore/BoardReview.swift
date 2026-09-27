@@ -59,8 +59,8 @@ extension Moodboard {
         for e in f.items {
             guard let id = UUID(uuidString: e.id), here.contains(id) else { continue }
             if e.favorite && !picks.contains(id) { picks.append(id) }
-            let t = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty { notes[id] = String(t.prefix(4000)) }
+            let t = FeedbackNoteText.saved(e.note)
+            if !t.isEmpty { notes[id] = t }
         }
         // 1.23: Approve / Request changes from the gallery set the status on every card showing that asset.
         var asked: [UUID: CardStatus] = [:]

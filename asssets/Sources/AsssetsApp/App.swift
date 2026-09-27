@@ -3664,12 +3664,12 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
-        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal", "feedback-reviewer-case", "feedback-receipt", "feedback-batch-conflict", "feedback-duplicate":
+        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal", "feedback-reviewer-case", "feedback-receipt", "feedback-batch-conflict", "feedback-duplicate", "feedback-note-limit":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
             let ids = Array(mocks.prefix(2).map(\.id))
             let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
-            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" || demo == "feedback-reviewer-case" || demo == "feedback-receipt" || demo == "feedback-batch-conflict" || demo == "feedback-duplicate" {
+            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" || demo == "feedback-reviewer-case" || demo == "feedback-receipt" || demo == "feedback-batch-conflict" || demo == "feedback-duplicate" || demo == "feedback-note-limit" {
                 if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
                     mutate { _ = $0.recordGallery(roster) }
                 }
@@ -3829,6 +3829,21 @@ final class StudioLibrary: ObservableObject {
                     let p = pendingFeedback
                     let marker = "done duplicate=\(p?.duplicates.count ?? -1) reviewer=\(p?.duplicates.first?.reviewer ?? "missing") files=\(p?.duplicates.first?.indices.count ?? -1) unchanged=\(catalog.feedbackPickLedger.isEmpty)"
                     try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-duplicate.txt"), atomically: true, encoding: .utf8)
+                }
+            }
+            if demo == "feedback-note-limit" {
+                let prefix = String(repeating: "🌿", count: FeedbackNoteText.limit)
+                let old = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: prefix)])
+                importFeedback(feedback: [old], unreadable: 0)
+                let changed = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: prefix + "X")])
+                if let data = try? JSONEncoder().encode(changed), (try? data.write(to: url, options: .atomic)) != nil {
+                    previewFeedback([url])
+                    let p = pendingFeedback?.files.first?.preview
+                    let row = p?.rows.first
+                    let marker = "done submitted=\(row?.submittedNoteCount ?? -1) saved=\(row?.note.count ?? -1) replaced=\(p?.noteReplacements ?? -1) unchanged=\(catalog.assets.first(where: { $0.id == ids[0] })?.clientNotes.first?.text == prefix)"
+                    try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-note-limit.txt"), atomically: true, encoding: .utf8)
                 }
             }
             if demo == "feedback-roster" {
@@ -12708,8 +12723,20 @@ struct FeedbackPreviewSheet: View {
                     Text(r.title).font(.caption.weight(.semibold)).foregroundStyle(r.known ? .primary : .secondary).lineLimit(1)
                     if r.favorite && r.known { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(Color(red: 1, green: 0.36, blue: 0.54)) }
                 }
+                if let submitted = r.submittedNoteCount {
+                    Text("Only the first \(FeedbackNoteText.limit) of \(submitted) characters will be saved. The rest is dropped.")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(Theme.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if !r.note.isEmpty {
-                    Text("\u{201C}\(r.note)\u{201D}").font(.caption2).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    if r.submittedNoteCount != nil {
+                        DisclosureGroup("Show saved note (\(r.note.count) characters)") {
+                            Text(r.note).font(.caption2).foregroundStyle(.secondary)
+                                .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        }.font(.caption2)
+                    } else {
+                        Text("\u{201C}\(r.note)\u{201D}").font(.caption2).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 if let old = r.removedNote {
                     Text(r.replacesNote ? "Replace this reviewer's prior note: \(old)" : "Remove this reviewer's prior note: \(old)")

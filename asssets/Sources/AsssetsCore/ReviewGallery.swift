@@ -302,8 +302,8 @@ extension StudioCatalog {
             if e.favorite {
                 r.favorites += 1
             }
-            let text = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { r.notes += 1; assets[i].clientNotes.append(ClientNote(reviewer: reviewer, text: String(text.prefix(4000)), gallery: f.gallery)) }
+            let text = FeedbackNoteText.saved(e.note)
+            if !text.isEmpty { r.notes += 1; assets[i].clientNotes.append(ClientNote(reviewer: reviewer, text: text, gallery: f.gallery)) }
         }
         if r.favorites > 0 {
             let rules = SmartRules(requiredTags: [ReviewGallery.clientPickTag])

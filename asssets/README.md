@@ -1097,3 +1097,16 @@ land. The final import still checks for duplicates after the file re-read.
 Core tests cover case variants, blank-vs-Client, distinct reviewers, and
 changed state. Native 1024x768 proof shows the warning and disabled Import.
 This is a batch identity guard, not an authentication of the reviewer.
+
+## 1.74.0: preview the exact saved note text
+
+Feedback import trims and retains at most 4,000 Swift characters in each
+note. The preview offers the exact saved prefix in a disclosure, and warns with the
+submitted count when a longer note will lose its tail. Comparing a
+replacement to the earlier note uses the saved prefix: changing only the
+part beyond the limit does not claim a note replacement in the preview or
+verified result. Asset notes and board pins share the same normalization.
+Core tests cover the exact boundary, a tail-only change, composed Unicode,
+board pins and catalog persistence. Native 1024x768 proof shows the warning
+and checks that a 4,001-character submission previews 4,000 saved characters
+without a false replacement.

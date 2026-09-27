@@ -14,6 +14,8 @@ public struct FeedbackPreview: Equatable, Sendable {
         public var skipped: String? = nil
         public var favorite: Bool
         public var note: String
+        /// Trimmed submitted count when the accepted note will be capped on save.
+        public var submittedNoteCount: Int? = nil
         /// Current gallery/reviewer pick that this file removes.
         public var withdrawsPick: Bool = false
         /// A withdrawal remains visible in Client Picks due to another tracked reviewer or a preserved tag.
@@ -76,8 +78,8 @@ extension StudioCatalog {
         let scope = scopedFeedback(f).feedback
         let nextNotes = Dictionary(uniqueKeysWithValues: scope.items.compactMap { e -> (UUID, String)? in
             guard let id = UUID(uuidString: e.id) else { return nil }
-            let text = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : (id, String(text.prefix(4000)))
+            let text = FeedbackNoteText.saved(e.note)
+            return text.isEmpty ? nil : (id, text)
         })
         let priorNotes = Dictionary(uniqueKeysWithValues: assets.compactMap { asset -> (UUID, String)? in
             guard let note = asset.clientNotes.first(where: { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }) else { return nil }
@@ -104,10 +106,12 @@ extension StudioCatalog {
                 return only
             }
             var row = FeedbackPreview.Row(id: e.id, asset: a?.id, title: a?.title ?? (reason ?? "Not in this library"),
-                                       favorite: e.favorite, note: e.note.trimmingCharacters(in: .whitespacesAndNewlines),
+                                       favorite: e.favorite, note: FeedbackNoteText.saved(e.note),
                                        from: card.map { b!.status(of: $0.id) }, to: card == nil ? nil : e.cardStatus)
             row.skipped = reason
             row.card = card?.id
+            let submittedCount = FeedbackNoteText.submittedCount(e.note)
+            if reason == nil && submittedCount > FeedbackNoteText.limit { row.submittedNoteCount = submittedCount }
             if reason == nil, let id, intentional, let old = priorNotes[id], old != nextNotes[id] {
                 row.removedNote = old
                 row.replacesNote = nextNotes[id] != nil
