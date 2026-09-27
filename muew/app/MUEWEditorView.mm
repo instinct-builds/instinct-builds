@@ -84,6 +84,13 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 - (BOOL)accessibilityPerformPress { return [self.editor accessibilityActivateBrowserSlug:self.slug generation:self.generation]; }
 @end
 
+@interface MUEWBrowserAXList : NSAccessibilityElement
+@property(nonatomic, weak) MUEWEditorView* editor;
+@end
+@implementation MUEWBrowserAXList
+- (NSArray*)accessibilityChildren { return [self.editor browserAccessibilityRows]; }
+@end
+
 @implementation MUEWEditorView
 
 - (instancetype)initWithFrame:(NSRect)f {
@@ -121,11 +128,17 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 - (NSArray*)accessibilityChildren {
     if (!browserOpen) return @[search];
     if (!browserAXList) {
-        browserAXList = [NSAccessibilityElement accessibilityElementWithRole:NSAccessibilityListRole
+        MUEWBrowserAXList* list = [MUEWBrowserAXList accessibilityElementWithRole:NSAccessibilityListRole
             frame:NSZeroRect label:@"Preset results" parent:self];
+        list.editor=self;
+        browserAXList=list;
     }
+    browserAXList.accessibilityFrameInParentSpace = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
+    return @[search,browserAXList];
+}
+- (NSArray*)browserAccessibilityRows {
+    if (!browserOpen) return @[];
     NSRect listFrame = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
-    browserAXList.accessibilityFrameInParentSpace = listFrame;
     NSMutableArray* rows = [NSMutableArray array];
     const ui::Library& lib = ui::library();
     const int page = [self tableRows];
@@ -148,8 +161,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         row.accessibilityFrameInParentSpace=relative;
         [rows addObject:row];
     }
-    browserAXList.accessibilityChildren=rows;
-    return @[search,browserAXList];
+    return rows;
 }
 - (BOOL)accessibilityActivateBrowserSlug:(NSString*)slug generation:(NSUInteger)generation {
     if (!browserOpen || !slug || !host || generation != browserAXGeneration) return NO;

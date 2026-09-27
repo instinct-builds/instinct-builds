@@ -202,6 +202,7 @@ struct MUEWEditorHost {
 // Browser keyboard cursor queries also used by the macOS hosted interaction proof.
 - (void)refilter;
 - (int)browserCursorPosition;
+- (NSArray*)browserAccessibilityRows;
 - (BOOL)accessibilityActivateBrowserSlug:(NSString*)slug generation:(NSUInteger)generation;
 - (BOOL)importPresetFile:(NSString*)path;
 // 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
