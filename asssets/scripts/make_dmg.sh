@@ -44,7 +44,21 @@ codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 lipo "$APP_DIR/Contents/MacOS/$APP" -verify_arch arm64 x86_64
 rm -f "$APP-$VERSION.dmg"
 hdiutil create -volname "$APP" -srcfolder "$APP_DIR" -ov -format UDZO "$APP-$VERSION.dmg"
-hdiutil verify "$APP-$VERSION.dmg"
+# macOS runners can briefly hold the image resource after create. Retry only that
+# transient error; every other verification failure remains fatal.
+verify_dmg() {
+  local log
+  log=$(mktemp)
+  for attempt in 1 2 3; do
+    if hdiutil verify "$APP-$VERSION.dmg" >"$log" 2>&1; then cat "$log"; rm -f "$log"; return 0; fi
+    cat "$log" >&2
+    if ! grep -q 'Resource temporarily unavailable' "$log" || [ "$attempt" -eq 3 ]; then
+      rm -f "$log"; return 1
+    fi
+    sleep 3
+  done
+}
+verify_dmg
 # Keep a staged app for the workflow's native launch screenshot and size audit.
 rm -rf out/ASSSETS.app; cp -R "$APP_DIR" out/ASSSETS.app
 du -sh out/ASSSETS.app "$APP-$VERSION.dmg"

@@ -59,7 +59,14 @@ jobs:
           V=$(sed -n 's/^VERSION=${VERSION:-\(.*\)}$/\1/p' scripts/make_dmg.sh)
           echo "ASSSETS_VERSION=$V" >> "$GITHUB_ENV"
           test $(stat -f%z ASSSETS-$V.dmg) -gt 5000000
-          hdiutil verify ASSSETS-$V.dmg
+          # Creation and this second audit may race runner disk-image cleanup.
+          # Retry only EAGAIN; keep other verification errors fatal.
+          for attempt in 1 2 3; do
+            if hdiutil verify ASSSETS-$V.dmg >verify.log 2>&1; then cat verify.log; break; fi
+            cat verify.log >&2
+            if ! grep -q 'Resource temporarily unavailable' verify.log || [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 3
+          done
           mount=$(mktemp -d)
           hdiutil attach ASSSETS-$V.dmg -nobrowse -readonly -mountpoint "$mount"
           file "$mount/ASSSETS.app/Contents/MacOS/ASSSETS"
