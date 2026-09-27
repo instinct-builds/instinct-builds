@@ -2791,6 +2791,21 @@ func run(model: AppModel, character: Character, outDir: String) {
                     "name is the party identity - customs are per-character instances, born in the per-character editor, party-appliable after"]
     var pccOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int], notes: [String: String], customs: [CustomCondition])] = [:]
     for c in model.characters { pccOrig[c.id] = (c.conditions, c.conditionDurations, c.conditionNotes, c.customConditions) }
+    // fixture control (3.60.0 f2): SampleContent seeds a "Vault-marked" custom
+    // on Wren - strip every roster custom (and any non-built-in duration/note
+    // key) so the block's starting state is explicit. Hygiene below restores.
+    let pccBuiltInKeys = Set(Condition.allCases.map(\.rawValue))
+    for idx in model.characters.indices {
+        var stripped = model.characters[idx]
+        stripped.customConditions = []
+        stripped.conditionDurations = stripped.conditionDurations.filter { pccBuiltInKeys.contains($0.key) }
+        stripped.conditionNotes = stripped.conditionNotes.filter { pccBuiltInKeys.contains($0.key) }
+        if stripped != model.characters[idx] {
+            model.characters[idx] = stripped
+            try? model.store.save(stripped)
+        }
+    }
+    pccLines.append("fixture control: roster customs stripped (the sample seeds one on Wren) \(model.characters.allSatisfy { $0.customConditions.isEmpty })")
     // a customs-free roster keeps the 3.53.0 string contract
     pccLines.append("customs-free summary: '\(partyConditionSummary(model.characters))'")
     pccLines.append("customs-free roster byte-identical to the 3.53.0 shape \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned")")
