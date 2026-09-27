@@ -195,6 +195,9 @@ struct MUEWEditorHost {
 // 0.11.0: open or close the full preset browser, and bring a .muew file into
 // the Imported bank (the browser's Import button after its file panel).
 - (void)setBrowserOpen:(bool)open;
+// Browser keyboard cursor queries also used by the macOS hosted interaction proof.
+- (void)refilter;
+- (int)browserCursorPosition;
 - (BOOL)importPresetFile:(NSString*)path;
 // 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
 - (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus;
