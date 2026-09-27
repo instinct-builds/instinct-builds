@@ -552,8 +552,13 @@ jobs:
           clang++ -std=c++17 -O2 -fobjc-arc -isysroot "$(xcrun --show-sdk-path)" -Isrc -Iapp \
             tests/keyboard_focus_host.mm app/MUEWEditorView.mm -framework AppKit -framework AudioToolbox \
             -o build/keyboard_focus_host
+          # The focus harness exercises sorting; MUEW deliberately persists sort
+          # in its shared defaults suite. Keep this process's preferences in a
+          # disposable HOME so the later AU host proof sees its normal bank order.
+          focus_home="$RUNNER_TEMP/muew-focus-home"
+          mkdir -p "$focus_home"
           set +e
-          MUEW_FOCUS_PROOF_DIR="$PWD/out" ./build/keyboard_focus_host 2>&1 | tee out/keyboard_focus_host.log
+          HOME="$focus_home" CFFIXED_USER_HOME="$focus_home" MUEW_FOCUS_PROOF_DIR="$PWD/out" ./build/keyboard_focus_host 2>&1 | tee out/keyboard_focus_host.log
           focus_status=${PIPESTATUS[0]}
           set -e
           if [ "$focus_status" -ne 0 ]; then
