@@ -671,3 +671,10 @@ existing slug-stable amber cursor or choose first/last only when none exists;
 Return still commits only the visible cursor. Shift-Tab returns to Search with
 its query intact. Search keeps native text, arrows, Return and Escape. The AU
 host still owns plugin keys. No DSP, preset format or AU parameter changes.
+
+## 0.80.1 Search caret proof
+
+The hosted keyboard-focus harness puts the native Search caret inside a filtered
+query, tabs to the list and Shift-Tabs back, then checks the exact text selection
+range. Both Search-focused states are captured beside the list-focused frame.
+No DSP, preset schema or AU parameter IDs change.

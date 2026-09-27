@@ -32,7 +32,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.80.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.80.1-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -165,14 +165,28 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check(!v->browserListFocus && v->currentIndex==committedBefore,
           "typed filter has no accidental preset load");
     editor=w.firstResponder;
+    const NSRange caret=NSMakeRange(2,0); // deliberately not the default end-of-query position
+    Check([editor isKindOfClass:[NSTextView class]],"filtered Search owns a native text editor");
+    if ([editor isKindOfClass:[NSTextView class]]) [(NSTextView*)editor setSelectedRange:caret];
+    Check([editor isKindOfClass:[NSTextView class]] && NSEqualRanges([(NSTextView*)editor selectedRange],caret),
+          "nonterminal Search caret is established before Tab");
+    Snapshot(v,"handoff-search-caret");
     [editor keyDown:Key(w,NSEventTypeKeyDown,@"\t",48)];
     Check(w.firstResponder==v && v->browserListFocus && !v->visible.empty(),
           "Tab from filtered search reaches result list");
     [v keyDown:Key(w,NSEventTypeKeyDown,@"\t",48,NSEventModifierFlagShift)];
+    id returned=w.firstResponder;
+    NSRange after=[returned isKindOfClass:[NSTextView class]] ? [(NSTextView*)returned selectedRange] : NSMakeRange(NSNotFound,0);
+    std::printf("handoff caret: before=(%lu,%lu) after=(%lu,%lu) responder=%s\n",
+                (unsigned long)caret.location,(unsigned long)caret.length,
+                (unsigned long)after.location,(unsigned long)after.length,object_getClassName(returned));
+    Check([returned isKindOfClass:[NSTextView class]] && NSEqualRanges(after,caret),
+          "Shift-Tab restores the exact nonterminal Search caret");
     std::printf("handoff back: first=%s list=%d query=%s expected=%s\n",
                 object_getClassName(w.firstResponder),v->browserListFocus,v->search.stringValue.UTF8String,query.UTF8String);
     Check(w.firstResponder!=v && !v->browserListFocus && [v->search.stringValue isEqualToString:query],
           "Shift-Tab returns to Search without changing its query");
+    Snapshot(v,"handoff-search-return-caret");
     Check(host->on.size()==onBefore+1 && host->off.size()==offBefore+1,
           "Tab/Shift-Tab and browser arrows never trigger piano notes");
     Snapshot(v,"handoff-search-return");
