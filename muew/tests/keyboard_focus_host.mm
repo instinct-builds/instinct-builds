@@ -38,14 +38,19 @@ static void Snapshot(MUEWEditorView* v, const char* name) {
 }
 int main() {
  @autoreleasepool {
-    [NSApplication sharedApplication];
-    [NSApp activateIgnoringOtherApps:YES];
+    setvbuf(stdout, nullptr, _IONBF, 0); // retain the last passing assertion on a runner crash
+    std::fprintf(stderr, "focus: boot\n");
+    NSApplication* app = [NSApplication sharedApplication];
+    app.activationPolicy = NSApplicationActivationPolicyRegular;
     NSWindow* w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,1000,680)
                  styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
     w.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     MUEWEditorView* v = [[MUEWEditorView alloc] initWithFrame:NSMakeRect(0,0,1000,680)];
     KeyboardHost host; v->host = &host; w.contentView = v;
-    [v loadPresetIndex:0]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
+    [v loadPresetIndex:0]; [w center]; [w makeKeyAndOrderFront:nil];
+    [app activateIgnoringOtherApps:YES];
+    [w makeFirstResponder:v];
+    std::fprintf(stderr, "focus: window ready\n");
     Check(w.isKeyWindow && w.firstResponder == v, "editor is the standalone key responder");
     const int original = v->currentIndex;
     Down(v,w,@"a"); Down(v,w,@"a");
@@ -58,7 +63,7 @@ int main() {
     const size_t onBefore=host.on.size(), offBefore=host.off.size();
     const int patchBefore=v->currentIndex;
     v->search.stringValue=@"awsedftgyhujk zx";
-    [v controlTextDidChange:nil];
+    [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
     // Even misdirected events must not escape a native text editor into piano controls.
     Down(v,w,@"z"); Down(v,w,@"x"); Down(v,w,@"a");
     unichar rightArrow = NSRightArrowFunctionKey, escape = 27;
@@ -92,6 +97,9 @@ int main() {
     Check(v->fxDetail<0 && v->currentIndex==original, "Escape closes small panel without a sound edit");
     Down(v,w,esc);
     Check(v->currentIndex==original, "Escape on base editor has no effect");
+    // Drop host binding before asynchronous AppKit window release; the destructor
+    // must not call through a stack host that has already gone out of scope.
+    v->host = nullptr;
     [w close];
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
     return failures ? 1 : 0;

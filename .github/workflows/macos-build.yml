@@ -544,7 +544,18 @@ jobs:
           clang++ -std=c++17 -O2 -fobjc-arc -isysroot "$(xcrun --show-sdk-path)" -Isrc -Iapp \
             tests/keyboard_focus_host.mm app/MUEWEditorView.mm -framework AppKit -framework AudioToolbox \
             -o build/keyboard_focus_host
-          MUEW_FOCUS_PROOF_DIR="$PWD/out" ./build/keyboard_focus_host | tee out/keyboard_focus_host.log
+          set +e
+          MUEW_FOCUS_PROOF_DIR="$PWD/out" ./build/keyboard_focus_host 2>&1 | tee out/keyboard_focus_host.log
+          focus_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$focus_status" -ne 0 ]; then
+            echo "keyboard focus host exit: $focus_status"
+            if [ "$focus_status" -eq 139 ]; then
+              # A headless CI crash cannot be triaged from an empty stdout file.
+              lldb --batch -o run -o 'thread backtrace all' -- ./build/keyboard_focus_host 2>&1 | tee out/keyboard_focus_lldb.log || true
+            fi
+            exit "$focus_status"
+          fi
           for state in text output-detail browser; do test -s "out/MUEW-0.78.0-focus-$state.png"; done
       - name: Host MUEW AU editor like a DAW (automation, macros, user presets, unison, FX rack) and capture proof
         run: |
@@ -753,6 +764,7 @@ jobs:
             muew/out/MUEW-0.78.0-output-*.png
             muew/out/MUEW-0.78.0-focus-*.png
             muew/out/keyboard_focus_host.log
+            muew/out/keyboard_focus_lldb.log
             muew/out/au_view_host.log
             muew/out/auval.log
             muew/out/au_host_test.log
