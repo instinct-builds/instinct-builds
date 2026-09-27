@@ -648,3 +648,7 @@ An out-of-LEN selected step says OUTSIDE LEN and presents dim, inert rails
 instead of showing or changing its hidden gate and pitch. Changing LEN later
 reveals the original step fields intact. This is editor-only behavior; no
 sound, preset format, or AU parameter changes.
+
+## 0.78.0 Keyboard focus safety
+
+Standalone piano shortcuts run only while the editor itself owns key focus, the window is key, no editing panel is open, and no Command, Control or Option modifier is held. Text entry remains native, with a visible search-field focus ring. The editor tracks exact note-on pitches per physical key, releasing them on key-up, focus loss, window deactivation and overlay entry. Escape dismisses the top layer (output readout, full browser, wavetable editor, then a small edit panel); Return closes only the read-only output panel. AU host keys remain host-owned. The macOS keyboard host test checks key suppression, focus transitions, note releases, and captures text, output, browser focus pixels.

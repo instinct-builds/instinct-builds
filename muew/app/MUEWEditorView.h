@@ -61,6 +61,7 @@ struct MUEWEditorHost {
     NSPoint dragStart;
     double dragValue;
     int octave;
+    int heldKeyboardNotes[13]; // exact note-on pitch per piano key, -1 if released
     NSSearchField* search;
     // 0.8.0 mod matrix: visible page (4 slots each), selected modulator
     // (index into ui::matrixSources), source badge being dragged onto a knob,

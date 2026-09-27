@@ -79,6 +79,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if ((self = [super initWithFrame:f])) {
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
+        std::fill_n(heldKeyboardNotes, 13, -1);
         std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; outputDisplay.clear(); outputDetail.clear(); outputDetailOpen = false; outputMeterClock = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
@@ -99,7 +100,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         search.placeholderString = @"Search presets";
         search.font = [NSFont systemFontOfSize:11];
         search.delegate = self;
-        search.focusRingType = NSFocusRingTypeNone;
+        search.focusRingType = NSFocusRingTypeDefault;
         [self addSubview:search];
         [self refilter];
     }
@@ -107,6 +108,41 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 
 - (BOOL)acceptsFirstResponder { return host && host->playsNotes(); }
+- (void)releaseHeldKeyboardNotes {
+    for (int& pitch : heldKeyboardNotes) {
+        if (pitch >= 0 && host) host->noteOff(pitch);
+        pitch = -1;
+    }
+}
+- (BOOL)resignFirstResponder {
+    [self releaseHeldKeyboardNotes];
+    [self setNeedsDisplay:YES];
+    return [super resignFirstResponder];
+}
+- (BOOL)becomeFirstResponder {
+    [self setNeedsDisplay:YES];
+    return [super becomeFirstResponder];
+}
+- (void)windowLostKey:(NSNotification*)notification {
+    [self releaseHeldKeyboardNotes];
+    [self setNeedsDisplay:YES];
+}
+- (void)viewWillMoveToWindow:(NSWindow*)window {
+    if (self.window) [[NSNotificationCenter defaultCenter] removeObserver:self name:NSWindowDidResignKeyNotification object:self.window];
+    [self releaseHeldKeyboardNotes];
+    [super viewWillMoveToWindow:window];
+    if (window) [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(windowLostKey:) name:NSWindowDidResignKeyNotification object:window];
+}
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self releaseHeldKeyboardNotes];
+}
+- (BOOL)hasEditorKeyboardFocus { return self.window && self.window.isKeyWindow && self.window.firstResponder == self; }
+- (void)drawKeyboardCloseFocus:(NSRect)rect {
+    if (![self hasEditorKeyboardFocus] || !host || !host->playsNotes()) return;
+    NSBezierPath* ring = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(rect, -2, -2) xRadius:4 yRadius:4];
+    [C(0x5adac8) setStroke]; ring.lineWidth = 1.5; [ring stroke];
+}
 - (BOOL)isFlipped { return NO; }
 
 - (void)saveFavorites {
@@ -786,6 +822,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     [C(0x5adac8,.55) setStroke];border.lineWidth=1;[border stroke];
     Text(@"MUEW OUTPUT", NSMakeRect(p.origin.x+18,NSMaxY(p)-27,210,15),11,C(0x5adac8),NSFontWeightBold);
     TextA(@"×",[self outputDetailClose],16,C(0xc3cbd6),NSFontWeightRegular,NSTextAlignmentCenter);
+    [self drawKeyboardCloseFocus:[self outputDetailClose]];
     Text(@"After MUEW's soft master · dBFS",NSMakeRect(p.origin.x+18,NSMaxY(p)-47,270,13),8,C(0xa8b2c1));
     for(int i=0;i<2;++i) {
         const CGFloat y=NSMaxY(p)-85-i*44;
@@ -4251,6 +4288,7 @@ static int SortForColumn(int c) {
 }
 
 - (void)setBrowserOpen:(bool)open {
+    [self releaseHeldKeyboardNotes];
     browserOpen = open;
     wtEdit = -1;
     bscroll = 0;
@@ -4308,6 +4346,7 @@ static int SortForColumn(int c) {
     TextA([NSString stringWithFormat:@"%d of %d sounds", (int)visible.size(), lib.count()], NSMakeRect(170, t - 28, 140, 14), 9,
           C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentLeft);
     TextA(@"\u2715", [self browserClose], 12, C(0x9ca6b4), NSFontWeightRegular, NSTextAlignmentCenter);
+    [self drawKeyboardCloseFocus:[self browserClose]];
     [C(0x232c37) setFill]; NSRectFill(NSMakeRect(b.origin.x + 12, t - 42, b.size.width - 24, 1));
 
     // Sidebar
@@ -4501,6 +4540,7 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseDown:(NSEvent*)e {
+    [self releaseHeldKeyboardNotes];
     [self.window makeFirstResponder:self];
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     dragStart = p;
@@ -4827,26 +4867,49 @@ static int NoteForKey(unichar ch) {
 }
 
 - (void)keyDown:(NSEvent*)e {
-    if (!host || !host->playsNotes()) { [super keyDown:e]; return; } // let the DAW keep its keys
-    if (e.isARepeat) return;
+    if (!host || !host->playsNotes() || ![self hasEditorKeyboardFocus]) { [super keyDown:e]; return; }
+    if (e.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption)) {
+        [super keyDown:e]; return;
+    }
     NSString* s = e.charactersIgnoringModifiers;
     if (s.length == 0) return;
     unichar ch = [s characterAtIndex:0];
+    if (ch == 27) { // Escape dismisses the top visible surface without changing the patch.
+        [self releaseHeldKeyboardNotes];
+        if (outputDetailOpen) outputDetailOpen = false;
+        else if (browserOpen) { [self setBrowserOpen:false]; return; }
+        else if (wtEdit >= 0) wtEdit = -1;
+        else if (burstDetail) burstDetail = false;
+        else if (msegEdit >= 0) msegEdit = -1;
+        else if (fxDetail >= 0) fxDetail = -1;
+        [self setNeedsDisplay:YES]; return;
+    }
+    if (ch == '\r' || ch == '\n' || ch == NSEnterCharacter) {
+        if (outputDetailOpen) { [self releaseHeldKeyboardNotes]; outputDetailOpen = false; [self setNeedsDisplay:YES]; }
+        return; // no implicit activation of mouse-only controls
+    }
+    if (outputDetailOpen || browserOpen || wtEdit >= 0 || burstDetail || msegEdit >= 0 || fxDetail >= 0) return;
+    if (e.isARepeat) return;
     if (ch == NSLeftArrowFunctionKey || ch == NSUpArrowFunctionKey) { [self stepPreset:-1]; return; }
     if (ch == NSRightArrowFunctionKey || ch == NSDownArrowFunctionKey) { [self stepPreset:1]; return; }
     if (ch == 'z') { octave = std::max(-3, octave - 1); return; }
     if (ch == 'x') { octave = std::min(3, octave + 1); return; }
     int n = NoteForKey(ch);
-    if (n >= 0) host->noteOn(48 + 12 * octave + n, .85f);
+    if (n >= 0 && heldKeyboardNotes[n] < 0) {
+        heldKeyboardNotes[n] = 48 + 12 * octave + n;
+        host->noteOn(heldKeyboardNotes[n], .85f);
+    }
 }
 
 - (void)keyUp:(NSEvent*)e {
-    if (!host || !host->playsNotes()) { [super keyUp:e]; return; }
+    if (!host || !host->playsNotes() || ![self hasEditorKeyboardFocus]) { [super keyUp:e]; return; }
     NSString* s = e.charactersIgnoringModifiers;
     if (s.length == 0) return;
     int n = NoteForKey([s characterAtIndex:0]);
-    if (n >= 0)
-        for (int o = -3; o <= 3; ++o) host->noteOff(48 + 12 * o + n); // release even if octave changed mid-note
+    if (n >= 0 && heldKeyboardNotes[n] >= 0) {
+        host->noteOff(heldKeyboardNotes[n]);
+        heldKeyboardNotes[n] = -1;
+    }
 }
 @end
 
