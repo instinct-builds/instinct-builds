@@ -1440,9 +1440,18 @@ public final class AppModel: ObservableObject {
     /// shouted "everyone's prone" never silently kills a 3-round clock.
     @discardableResult
     public func applyPartyCondition(_ condition: Condition, rounds: Int?) -> (applied: [String], refreshed: [String]) {
+        applyPartyCondition(condition, rounds: rounds, from: Set(characters.map(\.id)))
+    }
+
+    /// Targeted apply (3.56.0): 3.51.0's semantics scoped to a subset -
+    /// never stacks, holders refresh per the rounds rules, per-character
+    /// undo stacks, one log entry naming exactly those touched. An empty
+    /// subset (or one fully covered with blank rounds) is a no-op.
+    @discardableResult
+    public func applyPartyCondition(_ condition: Condition, rounds: Int?, from ids: Set<UUID>) -> (applied: [String], refreshed: [String]) {
         var applied: [String] = []
         var refreshed: [String] = []
-        for idx in characters.indices {
+        for idx in characters.indices where ids.contains(characters[idx].id) {
             var c = characters[idx]
             let had = c.conditions.contains(condition)
             if !had { c.conditions.insert(condition) }

@@ -2590,6 +2590,75 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? subLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-remove-subset.txt"),
                atomically: true, encoding: .utf8)
+    // Party apply-to-subset proofs (3.56.0). Runs at END.
+    var apsLines = ["Party condition apply-to-subset (3.56.0)",
+                    "grant a condition to a chosen subset - the rest of the roster is untouched"]
+    var apsOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
+    for c in model.characters { apsOrig[c.id] = (c.conditions, c.conditionDurations) }
+    let apsWren = model.characters.first(where: { $0.name == "Wren Halloway" })
+    let apsBram = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    let apsSera = model.characters.first(where: { $0.name == "Sera Vint" })
+    // apply Frightened 2 to {Wren, Bram} only
+    let apsOutcome = model.applyPartyCondition(.frightened, rounds: 2, from: Set([apsWren?.id, apsBram?.id].compactMap { $0 }))
+    apsLines.append("apply to {Wren, Bram}: applied [\(apsOutcome.applied.joined(separator: ", "))], refreshed [\(apsOutcome.refreshed.joined(separator: ", "))]")
+    let apsWrenAfter = model.characters.first(where: { $0.name == "Wren Halloway" })
+    let apsBramAfter = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    let apsSeraAfter = model.characters.first(where: { $0.name == "Sera Vint" })
+    apsLines.append("both gained Frightened with clocks at 2 \(apsWrenAfter?.conditionDurations[Condition.frightened.rawValue] == 2 && apsBramAfter?.conditionDurations[Condition.frightened.rawValue] == 2)")
+    apsLines.append("Sera untouched \(apsSeraAfter?.conditions.contains(.frightened) == false && apsSeraAfter?.conditionDurations[Condition.frightened.rawValue] == nil)")
+    do {
+        let apsReload = try model.store.load(id: apsSera?.id ?? UUID())
+        apsLines.append("persistence: store reload shows Sera without Frightened \(!apsReload.conditions.contains(.frightened))")
+    } catch {
+        apsLines.append("persistence: store reload threw \(error)")
+    }
+    let apsLog = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "MISSING"
+    apsLines.append("table log entry: '\(apsLog)'")
+    // blank-rounds re-apply to a holder is a full no-op (never stacks, no refresh without rounds)
+    let apsLogCount = model.tableLog.filter { $0.title == "Party condition" }.count
+    let apsNoop = model.applyPartyCondition(.frightened, rounds: nil, from: Set([apsWren?.id].compactMap { $0 }))
+    let apsWrenNoop = model.characters.first(where: { $0.name == "Wren Halloway" })
+    apsLines.append("blank re-apply to Wren: applied \(apsNoop.applied.count) refreshed \(apsNoop.refreshed.count), clock still 2 \(apsWrenNoop?.conditionDurations[Condition.frightened.rawValue] == 2), no new log \(model.tableLog.filter { $0.title == "Party condition" }.count == apsLogCount)")
+    // rounds re-apply to a holder refreshes the clock
+    let apsRefresh = model.applyPartyCondition(.frightened, rounds: 5, from: Set([apsWren?.id].compactMap { $0 }))
+    let apsWrenRef = model.characters.first(where: { $0.name == "Wren Halloway" })
+    apsLines.append("5-round re-apply to Wren: refreshed [\(apsRefresh.refreshed.joined(separator: ", "))], clock now \(apsWrenRef?.conditionDurations[Condition.frightened.rawValue] ?? -1)")
+    // undo on Bram removes condition AND clock
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) {
+        model.selectedID = bram.id
+        model.undo()
+        let bramAfter = model.characters.first(where: { $0.id == bram.id })
+        apsLines.append("undo on Bram: Frightened gone \(bramAfter?.conditions.contains(.frightened) == false), clock gone \(bramAfter?.conditionDurations[Condition.frightened.rawValue] == nil)")
+        model.redo()
+    }
+    // empty subset is a silent no-op
+    let apsLogCount2 = model.tableLog.filter { $0.title == "Party condition" }.count
+    let apsEmpty = model.applyPartyCondition(.frightened, rounds: 2, from: [])
+    apsLines.append("empty subset: applied \(apsEmpty.applied.count) refreshed \(apsEmpty.refreshed.count), no new log \(model.tableLog.filter { $0.title == "Party condition" }.count == apsLogCount2)")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-apply-subset", outDir: outDir, minHeight: 120, maxHeight: 500)
+    // hygiene: restore every character's original conditions + clocks, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = apsOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    apsLines.append("hygiene: roster conditions, clocks, log and selection restored")
+    try? apsLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-apply-subset.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

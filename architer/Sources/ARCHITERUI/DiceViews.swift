@@ -1319,9 +1319,21 @@ public struct GroupCheckSectionView: View {
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 72) // 56 clipped the placeholder, same fix as 3.48.0's Amount field
                 Menu("Condition (party)") {
-                    Section("Apply to all") {
+                    // 3.56.0: apply is scoped too - "Everyone" (3.51.0, byte-
+                    // identical path) or one item per roster character.
+                    // Apply lists EVERYONE (granting is the point); remove
+                    // lists only holders. Rounds feeds every apply path.
+                    Section("Apply") {
                         ForEach(Condition.allCases, id: \.self) { cond in
-                            Button(cond.displayName) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue) }
+                            Menu(cond.displayName) {
+                                Button("Everyone") { model.applyPartyCondition(cond, rounds: partyCondRoundsValue) }
+                                if !model.characters.isEmpty {
+                                    Divider()
+                                    ForEach(model.characters) { target in
+                                        Button(target.name) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue, from: [target.id]) }
+                                    }
+                                }
+                            }
                         }
                     }
                     // 3.52.0: the remove sibling - clears the condition and
