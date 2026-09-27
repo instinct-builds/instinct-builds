@@ -90,7 +90,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0;
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear();
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -153,6 +153,11 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 
 - (void)refilter {
     visible = ui::visiblePresets(filter, favorites, ui::library(), ratings, sortMode);
+    if (!browserCursorSlug.empty()) {
+        bool stillVisible = false;
+        for (int idx : visible) if (ui::library().slug(idx) == browserCursorSlug) { stillVisible = true; break; }
+        if (!stillVisible) browserCursorSlug.clear();
+    }
     [MUEWDefaults() setInteger:sortMode forKey:@"MUEWSort"];
     int rows = [self listRows];
     int maxScroll = std::max(0, (int)visible.size() - rows);
@@ -4301,6 +4306,7 @@ static int SortForColumn(int c) {
 - (void)setBrowserOpen:(bool)open {
     [self releaseHeldKeyboardNotes];
     browserOpen = open;
+    browserCursorSlug.clear();
     wtEdit = -1;
     bscroll = 0;
     NSRect b = [self browserRect];
@@ -4315,6 +4321,33 @@ static int SortForColumn(int c) {
     if (open) [self revealInTable];
 }
 
+- (int)browserCursorPosition {
+    if (browserCursorSlug.empty()) return -1;
+    for (int i=0; i<(int)visible.size(); ++i)
+        if (ui::library().slug(visible[i]) == browserCursorSlug) return i;
+    return -1;
+}
+- (void)moveBrowserCursor:(int)direction {
+    if (visible.empty()) { browserCursorSlug.clear(); [self setNeedsDisplay:YES]; return; }
+    const int previous = [self browserCursorPosition];
+    const int next = previous < 0 ? (direction > 0 ? 0 : (int)visible.size()-1)
+                                  : std::clamp(previous + direction, 0, (int)visible.size()-1);
+    browserCursorSlug = ui::library().slug(visible[next]);
+    const int rows = [self tableRows];
+    if (next < bscroll) bscroll = next;
+    if (next >= bscroll + rows) bscroll = next - rows + 1;
+    [self setNeedsDisplay:YES];
+}
+- (void)commitBrowserCursor {
+    const int pos = [self browserCursorPosition];
+    if (pos < 0) { browserCursorSlug.clear(); [self setNeedsDisplay:YES]; return; }
+    const int idx = visible[pos];
+    // The slug is checked again at commitment, not inferred from a stale row.
+    if (ui::library().slug(idx) != browserCursorSlug) return;
+    browserCursorSlug.clear();
+    [self loadPresetIndex:idx];
+    [self revealInTable];
+}
 - (void)revealInTable {
     int rows = [self tableRows];
     for (int r = 0; r < (int)visible.size(); ++r)
@@ -4403,6 +4436,7 @@ static int SortForColumn(int c) {
     [C(0x232c37) setFill]; NSRectFill(NSMakeRect(226, [self tableTop], 476, 1));
     int rows = [self tableRows];
     bscroll = std::clamp(bscroll, 0, std::max(0, (int)visible.size() - rows));
+    const int cursorPosition = [self browserCursorPosition];
     for (int r = 0; r < rows && bscroll + r < (int)visible.size(); ++r) {
         int idx = visible[bscroll + r];
         const Preset& p = lib.at(idx);
@@ -4410,6 +4444,10 @@ static int SortForColumn(int c) {
         bool sel = idx == currentIndex;
         if (sel) FillRound(row, 4, C(0x293c3b));
         else if (r % 2) FillRound(row, 4, C(0x161d27));
+        if (cursorPosition == bscroll+r) {
+            NSBezierPath* outline = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(row,1.5,1.5) xRadius:3 yRadius:3];
+            [C(0xf0b44a) setStroke]; outline.lineWidth=1.5; [outline stroke];
+        }
         CGFloat y = row.origin.y + 3;
         int bk = ui::bankOf(lib, idx);
         TextA(bk == ui::BankFactory ? [NSString stringWithFormat:@"%d", idx + 1] : bk == ui::BankUser ? @"U" : @"IMP",
@@ -4421,6 +4459,9 @@ static int SortForColumn(int c) {
         bool fav = favorites.count(lib.slug(idx)) > 0;
         if (fav) TextA(@"\u2665", NSMakeRect(NSMaxX(row) - 18, y - 1, 14, 14), 10, C(0xf2ab55), NSFontWeightRegular, NSTextAlignmentCenter);
     }
+    if ([self hasEditorKeyboardFocus] && host && host->playsNotes())
+        TextA(cursorPosition >= 0 ? @"RETURN TO LOAD" : @"UP/DOWN TO SELECT", NSMakeRect(530,t-29,182,14),8,
+              cursorPosition >= 0 ? C(0xf0b44a) : C(0x8793a3),NSFontWeightSemibold,NSTextAlignmentRight);
     if (visible.empty())
         TextA(@"No presets match these filters", NSMakeRect(226, [self tableTop] - 60, 476, 16), 11, C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentCenter);
     if ((int)visible.size() > rows) {
@@ -4545,6 +4586,7 @@ static int SortForColumn(int c) {
         int idx = visible[bscroll + r];
         for (int s = 0; s < 5; ++s)
             if (NSPointInRect(p, [self rowStar:r star:s])) { [self rate:idx stars:s + 1]; return; }
+        browserCursorSlug.clear();
         [self loadPresetIndex:idx];
         return;
     }
@@ -4896,10 +4938,16 @@ static int NoteForKey(unichar ch) {
         [self setNeedsDisplay:YES]; return;
     }
     if (ch == '\r' || ch == '\n' || ch == NSEnterCharacter) {
+        if (browserOpen && !outputDetailOpen) { [self commitBrowserCursor]; return; }
         if (outputDetailOpen) { [self releaseHeldKeyboardNotes]; outputDetailOpen = false; [self setNeedsDisplay:YES]; }
         return; // no implicit activation of mouse-only controls
     }
-    if (outputDetailOpen || browserOpen || wtEdit >= 0 || burstDetail || msegEdit >= 0 || fxDetail >= 0) return;
+    if (browserOpen && !outputDetailOpen) {
+        if (ch == NSDownArrowFunctionKey) [self moveBrowserCursor:1];
+        else if (ch == NSUpArrowFunctionKey) [self moveBrowserCursor:-1];
+        return;
+    }
+    if (outputDetailOpen || wtEdit >= 0 || burstDetail || msegEdit >= 0 || fxDetail >= 0) return;
     if (e.isARepeat) return;
     if (ch == NSLeftArrowFunctionKey || ch == NSUpArrowFunctionKey) { [self stepPreset:-1]; return; }
     if (ch == NSRightArrowFunctionKey || ch == NSDownArrowFunctionKey) { [self stepPreset:1]; return; }

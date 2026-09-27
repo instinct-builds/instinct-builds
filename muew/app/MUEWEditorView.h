@@ -183,6 +183,7 @@ struct MUEWEditorHost {
     int sortMode;
     muew::ui::Ratings ratings;
     int bscroll;
+    std::string browserCursorSlug; // proposed row, distinct from the loaded preset
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)

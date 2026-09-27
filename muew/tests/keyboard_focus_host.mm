@@ -32,7 +32,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.78.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.79.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -90,6 +90,51 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check(v->fxDetail<0 && v->currentIndex==original, "Escape closes small panel without a sound edit");
     Down(v,w,esc);
     Check(v->currentIndex==original, "Escape on base editor has no effect");
+    [v setBrowserOpen:true];
+    Check(v->browserCursorSlug.empty(), "browser opens without an implicit keyboard choice");
+    const int loaded=v->currentIndex, loads=host->patches;
+    Down(v,w,@"\r"); Check(v->currentIndex==loaded && host->patches==loads,"Return without cursor does not load");
+    Down(v,w,arrow);
+    Check(v->browserCursorSlug.empty() && host->patches==loads,"right arrow is not a browser selection shortcut");
+    unichar downCode=NSDownArrowFunctionKey, upCode=NSUpArrowFunctionKey;
+    NSString* down=[NSString stringWithCharacters:&downCode length:1], *up=[NSString stringWithCharacters:&upCode length:1];
+    Down(v,w,down); Down(v,w,down);
+    Check(v->browserCursorSlug==muew::ui::library().slug(v->visible[1]) && host->patches==loads,
+          "Down selects second row visibly without loading a preset");
+    Check(v->currentIndex==loaded && v->visible[1]!=loaded,"cursor proposal remains distinct from loaded preset");
+    Snapshot(v,"browser-cursor");
+    const std::string chosen=v->browserCursorSlug;
+    v->sortMode=muew::ui::SortName;
+    [v refilter];
+    Check(v->browserCursorSlug==chosen && [v browserCursorPosition]>=0,"cursor retains slug after sort, not old row number");
+    v->browserCursorSlug="nonexistent-slug";
+    Down(v,w,@"\r");
+    Check(host->patches==loads && v->browserCursorSlug.empty(),"stale slug Return refuses to load by row index");
+    v->browserCursorSlug=chosen;
+    v->filter.query="no-such-sound-987"; [v refilter];
+    Check(v->visible.empty() && v->browserCursorSlug.empty(),"filter removing cursor clears it instead of retargeting");
+    Down(v,w,@"\r");
+    Check(host->patches==loads && v->currentIndex==loaded,"Return with empty results is inert");
+    v->filter.query=""; [v refilter];
+    Check(v->browserCursorSlug.empty(),"broadening search never silently picks another preset");
+    Down(v,w,up);
+    Check(v->browserCursorSlug==muew::ui::library().slug(v->visible.back()),"Up from no cursor chooses last visible result");
+    for(int i=0;i<110;++i) Down(v,w,up);
+    Check(v->browserCursorSlug==muew::ui::library().slug(v->visible.front()) && v->bscroll==0,
+          "Up clamps at first and scrolls it into view");
+    for(int i=0;i<110;++i) Down(v,w,down);
+    Check(v->browserCursorSlug==muew::ui::library().slug(v->visible.back()) && v->bscroll>0,
+          "Down clamps at last and scrolls it into view");
+    // Move to a different sound so Return must change the loaded preset.
+    Down(v,w,up); const int chosenIndex=v->visible[[v browserCursorPosition]];
+    Down(v,w,@"\r");
+    Check(v->currentIndex==chosenIndex && v->browserCursorSlug.empty() && v->browserOpen && host->patches==loads+1,
+          "Return commits exact cursor once, stays in browser and clears pending choice");
+    [v setBrowserOpen:false]; [v setBrowserOpen:true];
+    Down(v,w,down); const int committedBefore=v->currentIndex;
+    Down(v,w,esc);
+    Check(!v->browserOpen && v->browserCursorSlug.empty() && v->currentIndex==committedBefore,
+          "Escape cancels pending cursor without loading");
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
     fflush(stdout);
     // Bypass runner AppKit teardown after capturing assertions and pixels. The

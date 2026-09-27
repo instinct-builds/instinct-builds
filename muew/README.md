@@ -652,3 +652,12 @@ sound, preset format, or AU parameter changes.
 ## 0.78.0 Keyboard focus safety
 
 Standalone piano shortcuts run only while the editor itself owns key focus, the window is key, no editing panel is open, and no Command, Control or Option modifier is held. Text entry remains native, with a visible search-field focus ring. The editor tracks exact note-on pitches per physical key, releasing them on key-up, focus loss, window deactivation and overlay entry. Escape dismisses the top layer (output readout, full browser, wavetable editor, then a small edit panel); Return closes only the read-only output panel. AU host keys remain host-owned. The macOS keyboard host test checks key suppression, focus transitions, note releases, and captures text, output, browser focus pixels.
+
+## 0.79.0 Preset browser keyboard cursor
+
+The full browser's Up/Down keys propose a preset by stable slug, with an amber
+outlined row distinct from the loaded green row. No sound changes until Return
+loads that exact visible slug, leaving the browser open. A refilter clears a
+removed cursor rather than picking a different sound. Escape closes and drops
+the proposal. The search field keeps native text navigation; AU keys remain
+host-owned. This editor-only change adds no preset format or AU parameters.
