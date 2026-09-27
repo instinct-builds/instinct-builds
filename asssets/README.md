@@ -1071,3 +1071,16 @@ zero incoming notes. A save failure still has no success receipt. Core tests
 cover shorter, empty, outsider-only and sequential two-reviewer batches.
 Native proof captures the result message at 1024x768 and checks the saved
 catalog and exact batch counts.
+
+## 1.72.0: ordered batch feedback preview
+
+Multiple feedback files now preview against a temporary catalog in import
+order. Each later file sees the earlier file's effects. When different
+reviewers ask for different statuses on the same published board card, the
+sheet names their choices in order and the final status that the batch would
+leave. No board status policy changes; the existing last-file-wins behavior is
+made visible before Import. At the button, ASSSETS re-reads the exact files,
+rebuilds the ordered preview, and asks for another review if the files or
+catalog have changed. Core tests cover conflicting and reversed orders,
+disjoint cards, persistence, and changed-state preview. Native proof checks
+the conflict at 1024x768, with no pre-import catalog mutation.

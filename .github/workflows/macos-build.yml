@@ -274,6 +274,9 @@ jobs:
           DELAY=1 shoot feedback-receipt 1024x768 feedback-receipt demo-feedback-receipt.txt before
           grep -q '^done saved=true receipt=0 client picks, 1 note, 2 notes removed, 1 note replaced from Jordan, Sam$' "$SUP/demo-feedback-receipt.txt"
           cp "$SUP/demo-feedback-receipt.txt" "ASSSETS-$ASSSETS_VERSION-feedback-receipt.txt"
+          shoot feedback-batch-conflict 1024x768 feedback-batch-conflict demo-feedback-batch-conflict.txt
+          grep -q '^done conflicts=1 final=Changes secondFrom=Approved unchanged=true$' "$SUP/demo-feedback-batch-conflict.txt"
+          cp "$SUP/demo-feedback-batch-conflict.txt" "ASSSETS-$ASSSETS_VERSION-feedback-batch-conflict.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
@@ -480,6 +483,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-note-removal.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-reviewer-case.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-receipt.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-batch-conflict.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt

@@ -9,6 +9,8 @@ public struct FeedbackPreview: Equatable, Sendable {
         /// Nil when the asset isn't in this library.
         public var asset: UUID?
         public var title: String
+        /// Exact published board card, nil if there is no unambiguous match.
+        public var card: UUID? = nil
         public var skipped: String? = nil
         public var favorite: Bool
         public var note: String
@@ -105,6 +107,7 @@ extension StudioCatalog {
                                        favorite: e.favorite, note: e.note.trimmingCharacters(in: .whitespacesAndNewlines),
                                        from: card.map { b!.status(of: $0.id) }, to: card == nil ? nil : e.cardStatus)
             row.skipped = reason
+            row.card = card?.id
             if reason == nil, let id, intentional, let old = priorNotes[id], old != nextNotes[id] {
                 row.removedNote = old
                 row.replacesNote = nextNotes[id] != nil
