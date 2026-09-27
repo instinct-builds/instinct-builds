@@ -2288,6 +2288,66 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? dupLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/library-duplicate.txt"),
                atomically: true, encoding: .utf8)
+    // Party-condition apply proofs (3.51.0). Runs at END.
+    var pcLines = ["Party-condition apply (3.51.0)",
+                   "one condition to the whole roster - never stacks, rounds refresh, untimed keeps running clocks"]
+    var pcOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
+    for c in model.characters { pcOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // setup: Wren (already untimed Prone in the fixture) gets a 2-round clock
+    if let wren = model.characters.first(where: { $0.name == "Wren Halloway" }) {
+        model.selectedID = wren.id
+        var w = wren
+        w.conditionDurations[Condition.prone.rawValue] = 2
+        model.selected?.wrappedValue = w
+    }
+    let pcOutcome = model.applyPartyCondition(.prone, rounds: 3)
+    pcLines.append("apply Prone (3 rounds) to the roster: new [\(pcOutcome.applied.joined(separator: ", "))], refreshed [\(pcOutcome.refreshed.joined(separator: ", "))]")
+    let pcWren = model.characters.first(where: { $0.name == "Wren Halloway" })
+    pcLines.append("Wren was already Prone: no stack, clock refreshed 2 -> \(pcWren?.conditionDurations[Condition.prone.rawValue] ?? -1)")
+    let pcBram = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    pcLines.append("Bram gained Prone with 3 rounds: \(pcBram?.conditions.contains(.prone) == true && pcBram?.conditionDurations[Condition.prone.rawValue] == 3)")
+    let pcPersist = (try? model.store.load(id: pcBram?.id ?? UUID()))?.conditions.contains(.prone) ?? false
+    pcLines.append("persistence: store reload shows Bram Prone \(pcPersist)")
+    let pcLogCount = model.tableLog.filter { $0.title == "Party condition" }.count
+    let pcLog = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "MISSING"
+    pcLines.append("table log entry: '\(pcLog)'")
+    // untimed re-apply: nothing changes, no clock dies, no new log entry
+    let pcOutcome2 = model.applyPartyCondition(.prone, rounds: nil)
+    let pcWren2 = model.characters.first(where: { $0.name == "Wren Halloway" })
+    pcLines.append("untimed re-apply: touched \(pcOutcome2.applied.count + pcOutcome2.refreshed.count) characters, Wren's clock still \(pcWren2?.conditionDurations[Condition.prone.rawValue] ?? -1), no new log entry \(model.tableLog.filter { $0.title == "Party condition" }.count == pcLogCount)")
+    // undo/redo on one character
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) {
+        model.selectedID = bram.id
+        model.undo()
+        let pcBramAfter = model.characters.first(where: { $0.id == bram.id })
+        pcLines.append("undo on Bram: Prone gone \(pcBramAfter?.conditions.contains(.prone) == false)")
+        model.redo()
+        pcLines.append("redo: Prone back \(model.characters.first(where: { $0.id == bram.id })?.conditions.contains(.prone) == true)")
+    }
+    // hygiene: restore every character's original conditions + clocks, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = pcOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    pcLines.append("hygiene: roster conditions, clocks, log and selection restored")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-condition", outDir: outDir, minHeight: 120, maxHeight: 500)
+    try? pcLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-condition.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

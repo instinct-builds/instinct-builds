@@ -1432,6 +1432,42 @@ public final class AppModel: ObservableObject {
         return adjusted
     }
 
+    /// Apply a built-in condition to the whole roster at once (3.51.0):
+    /// "the shove lands on everyone". Rides adjustPartyHP's discipline -
+    /// own undo stack per changed character, no confirm. Re-applying
+    /// never stacks (conditions are a Set); a rounds value REFRESHES the
+    /// timer, while an untimed apply leaves any running timer alone - a
+    /// shouted "everyone's prone" never silently kills a 3-round clock.
+    @discardableResult
+    public func applyPartyCondition(_ condition: Condition, rounds: Int?) -> (applied: [String], refreshed: [String]) {
+        var applied: [String] = []
+        var refreshed: [String] = []
+        for idx in characters.indices {
+            var c = characters[idx]
+            let had = c.conditions.contains(condition)
+            if !had { c.conditions.insert(condition) }
+            if let rounds, rounds > 0 { c.conditionDurations[condition.rawValue] = rounds }
+            guard c != characters[idx] else { continue }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            if had { refreshed.append(c.name) } else { applied.append(c.name) }
+        }
+        let names = applied + refreshed
+        if !names.isEmpty {
+            let base = condition.displayName + (rounds.flatMap { $0 > 0 ? " (\($0) rounds)" : nil } ?? "")
+            var text = "\(base) -> \(names.joined(separator: ", "))"
+            if !applied.isEmpty && !refreshed.isEmpty {
+                text += " (new: \(applied.joined(separator: ", ")); refreshed: \(refreshed.joined(separator: ", ")))"
+            }
+            tableLog.append(TableLogEntry(title: "Party condition", text: text))
+            tableLogStore.save(tableLog)
+        }
+        return (applied, refreshed)
+    }
+
     /// Cast a specific spell: spends the slot and, for concentration spells,
     /// moves concentration to it (ending any previous one).
     public func castSpell(_ spell: Spell) {

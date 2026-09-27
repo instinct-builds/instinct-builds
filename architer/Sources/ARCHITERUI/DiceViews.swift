@@ -1222,6 +1222,13 @@ public struct GroupCheckSectionView: View {
     private var partyAmountValue: Int {
         Int(partyAmount.trimmingCharacters(in: .whitespaces)) ?? 0
     }
+    /// 3.51.0: party-condition rounds draft; blank or not a positive
+    /// number means an untimed apply (which never kills a running clock).
+    @State private var partyCondRounds = ""
+    private var partyCondRoundsValue: Int? {
+        let v = Int(partyCondRounds.trimmingCharacters(in: .whitespaces)) ?? 0
+        return v > 0 ? v : nil
+    }
     @State private var skillPick = "Stealth"
     @State private var abilityPick: Ability = .wisdom
     @State private var dcDraft = ""
@@ -1305,6 +1312,20 @@ public struct GroupCheckSectionView: View {
                     .controlSize(.small)
                     .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
                     .help("Heal all \(model.characters.count) roster characters - capped at max HP, undo restores")
+                // Party condition (3.51.0): "the shove lands on everyone".
+                // Same discipline as party damage/heal - own undo stacks,
+                // no confirm. Rounds blank = untimed apply.
+                TextField("Rounds", text: $partyCondRounds)
+                    .textFieldStyle(InsetFieldStyle())
+                    .frame(width: 56)
+                Menu("Condition (party)") {
+                    ForEach(Condition.allCases, id: \.self) { cond in
+                        Button(cond.displayName) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue) }
+                    }
+                }
+                .controlSize(.small)
+                .disabled(model.characters.isEmpty)
+                .help("Apply a condition to all \(model.characters.count) roster characters - never stacks; rounds refresh timers, blank rounds keeps them; undo restores")
             }
             if let outcome = model.lastGroupCheck {
                 VStack(alignment: .leading, spacing: Theme.Gap.xs) {
