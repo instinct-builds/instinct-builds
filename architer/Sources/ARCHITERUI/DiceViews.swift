@@ -1319,8 +1319,17 @@ public struct GroupCheckSectionView: View {
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 72) // 56 clipped the placeholder, same fix as 3.48.0's Amount field
                 Menu("Condition (party)") {
-                    ForEach(Condition.allCases, id: \.self) { cond in
-                        Button(cond.displayName) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue) }
+                    Section("Apply to all") {
+                        ForEach(Condition.allCases, id: \.self) { cond in
+                            Button(cond.displayName) { model.applyPartyCondition(cond, rounds: partyCondRoundsValue) }
+                        }
+                    }
+                    // 3.52.0: the remove sibling - clears the condition and
+                    // its clock; Rounds does not apply.
+                    Section("Remove from all") {
+                        ForEach(Condition.allCases, id: \.self) { cond in
+                            Button(cond.displayName) { model.removePartyCondition(cond) }
+                        }
                     }
                 }
                 .controlSize(.small)

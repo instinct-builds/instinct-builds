@@ -1468,6 +1468,36 @@ public final class AppModel: ObservableObject {
         return (applied, refreshed)
     }
 
+    /// Remove a built-in condition from the whole roster at once (3.52.0):
+    /// "everyone shakes it off". Same discipline as apply - per-character
+    /// undo stacks, no confirm, characters without it skipped silently.
+    /// Removal clears the duration key too: a clock that outlives its
+    /// condition is invisible in the UI but would silently resurrect on a
+    /// later apply and keeps ticking as a ghost. Undo restores condition
+    /// AND clock together - the stack snapshots the whole character.
+    @discardableResult
+    public func removePartyCondition(_ condition: Condition) -> [String] {
+        var removed: [String] = []
+        for idx in characters.indices {
+            var c = characters[idx]
+            guard c.conditions.contains(condition) else { continue }
+            c.conditions.remove(condition)
+            c.conditionDurations.removeValue(forKey: condition.rawValue)
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            removed.append(c.name)
+        }
+        if !removed.isEmpty {
+            tableLog.append(TableLogEntry(title: "Party condition",
+                                          text: "\(condition.displayName) removed: \(removed.joined(separator: ", "))"))
+            tableLogStore.save(tableLog)
+        }
+        return removed
+    }
+
     /// Cast a specific spell: spends the slot and, for concentration spells,
     /// moves concentration to it (ending any previous one).
     public func castSpell(_ spell: Spell) {

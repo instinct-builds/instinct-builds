@@ -2355,6 +2355,64 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? pcLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-condition.txt"),
                atomically: true, encoding: .utf8)
+    // Party condition-remove proofs (3.52.0). Runs at END.
+    var rmLines = ["Party condition-remove (3.52.0)",
+                   "remove from the whole roster - clears the condition and its clock; undo restores both"]
+    var rmOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
+    for c in model.characters { rmOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // setup: everyone Prone with 3-round clocks via the 3.51.0 apply
+    _ = model.applyPartyCondition(.prone, rounds: 3)
+    let rmSetup = model.characters.allSatisfy { $0.conditions.contains(.prone) && $0.conditionDurations[Condition.prone.rawValue] == 3 }
+    rmLines.append("setup: whole roster Prone (3 rounds) \(rmSetup)")
+    let rmOutcome = model.removePartyCondition(.prone)
+    rmLines.append("remove Prone from the roster: cleared [\(rmOutcome.joined(separator: ", "))]")
+    rmLines.append("condition gone from all: \(model.characters.allSatisfy { !$0.conditions.contains(.prone) })")
+    rmLines.append("no ghost clocks: \(model.characters.allSatisfy { $0.conditionDurations[Condition.prone.rawValue] == nil })")
+    let rmBram = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    do {
+        let rmReload = try model.store.load(id: rmBram?.id ?? UUID())
+        rmLines.append("persistence: store reload shows Bram without Prone \(!rmReload.conditions.contains(.prone))")
+    } catch {
+        rmLines.append("persistence: store reload threw \(error)")
+    }
+    let rmLog = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "MISSING"
+    rmLines.append("table log entry: '\(rmLog)'")
+    // undo restores condition AND clock - the stack snapshots the whole character
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) {
+        model.selectedID = bram.id
+        model.undo()
+        let rmBramAfter = model.characters.first(where: { $0.id == bram.id })
+        rmLines.append("undo on Bram: Prone back \(rmBramAfter?.conditions.contains(.prone) == true), clock back at \(rmBramAfter?.conditionDurations[Condition.prone.rawValue] ?? -1)")
+        model.redo()
+    }
+    // removing what nobody has is a silent no-op
+    let rmLogCount = model.tableLog.filter { $0.title == "Party condition" }.count
+    let rmOutcome2 = model.removePartyCondition(.prone)
+    rmLines.append("second remove: touched \(rmOutcome2.count) characters, no new log entry \(model.tableLog.filter { $0.title == "Party condition" }.count == rmLogCount)")
+    // hygiene: restore every character's original conditions + clocks, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = rmOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    rmLines.append("hygiene: roster conditions, clocks, log and selection restored")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-condition-remove", outDir: outDir, minHeight: 120, maxHeight: 500)
+    try? rmLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-remove.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
