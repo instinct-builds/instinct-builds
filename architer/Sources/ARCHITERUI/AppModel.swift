@@ -1498,6 +1498,17 @@ public final class AppModel: ObservableObject {
         return removed
     }
 
+    /// Summary-row click-through (3.54.0): tap a name in the party
+    /// condition summary, land on that character's sheet. Read-only
+    /// navigation - selects the character and flips the detail tab to
+    /// Sheet. The tab key is the AppStorage key CharacterDetailView owns;
+    /// AppStorage observes this defaults write.
+    public func revealOnSheet(_ id: UUID) {
+        guard characters.contains(where: { $0.id == id }) else { return }
+        selectedID = id
+        UserDefaults.standard.set(0, forKey: "architer.detailTab")
+    }
+
     /// Cast a specific spell: spends the slot and, for concentration spells,
     /// moves concentration to it (ending any previous one).
     public func castSpell(_ spell: Spell) {

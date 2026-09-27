@@ -2472,6 +2472,60 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? sumLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-summary.txt"),
                atomically: true, encoding: .utf8)
+    // Party summary click-through proofs (3.54.0). Runs at END.
+    var tapLines = ["Party summary click-through (3.54.0)",
+                    "tap a name in the summary line, land on that character's sheet"]
+    var tapOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
+    for c in model.characters { tapOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // setup: Prone 3 on everyone; Wren also Poisoned (untimed)
+    _ = model.applyPartyCondition(.prone, rounds: 3)
+    if let idx = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
+        var w = model.characters[idx]
+        w.conditions.insert(.poisoned)
+        model.characters[idx] = w
+        try? model.store.save(w)
+    }
+    let tapItems = partyConditionSummaryItems(model.characters)
+    tapLines.append("segments: \(tapItems.count) holders")
+    tapLines.append("first segment: '\(tapItems.first?.text ?? "MISSING")'")
+    tapLines.append("segment ids match holders \(tapItems.count == 3 && tapItems[0].characterID == model.characters[0].id && tapItems[1].characterID == model.characters[1].id && tapItems[2].characterID == model.characters[2].id)")
+    // the 3.53.0 string still derives from the same segments
+    tapLines.append("summary string unchanged \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned, Prone 3r \u{00B7} Bram Oakfel: Prone 3r \u{00B7} Sera Vint: Prone 3r")")
+    // the tap: from the Dice tab (2), reveal Sera -> selection moves, tab flips to Sheet (0)
+    let tapTab = UserDefaults.standard.integer(forKey: "architer.detailTab")
+    UserDefaults.standard.set(2, forKey: "architer.detailTab")
+    let tapSera = model.characters.first(where: { $0.name == "Sera Vint" })
+    model.revealOnSheet(tapSera?.id ?? UUID())
+    tapLines.append("tap Sera: selection landed \(model.selectedID == tapSera?.id), tab flipped to sheet \(UserDefaults.standard.integer(forKey: "architer.detailTab") == 0)")
+    // unknown id is a silent no-op
+    let tapBefore = model.selectedID
+    model.revealOnSheet(UUID())
+    tapLines.append("unknown id ignored \(model.selectedID == tapBefore)")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-clickthrough", outDir: outDir, minHeight: 120, maxHeight: 500)
+    // hygiene: tab value, conditions + clocks, log entries, selection
+    UserDefaults.standard.set(tapTab, forKey: "architer.detailTab")
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = tapOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    tapLines.append("hygiene: tab, roster, log and selection restored")
+    try? tapLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-clickthrough.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

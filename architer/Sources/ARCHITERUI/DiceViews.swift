@@ -1339,11 +1339,28 @@ public struct GroupCheckSectionView: View {
             // Party condition summary (3.53.0): who's holding what plus
             // clocks, at a glance. Read-only, derived from stored state;
             // hidden when the roster holds nothing.
-            let partyCondSummary = partyConditionSummary(model.characters)
-            if !partyCondSummary.isEmpty {
-                Text(partyCondSummary)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkMuted)
+            // 3.54.0: segments are tappable - a name click-through lands
+            // on that character's sheet (read-only navigation).
+            let partyCondItems = partyConditionSummaryItems(model.characters)
+            if !partyCondItems.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(Array(partyCondItems.enumerated()), id: \.element.id) { idx, item in
+                        if idx > 0 {
+                            Text("\u{00B7}")
+                                .font(.caption)
+                                .foregroundStyle(Theme.inkFaint)
+                        }
+                        Button {
+                            model.revealOnSheet(item.characterID)
+                        } label: {
+                            Text(item.text)
+                                .font(.caption)
+                                .foregroundStyle(Theme.inkMuted)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open \(item.name)'s sheet")
+                    }
+                }
             }
             if let outcome = model.lastGroupCheck {
                 VStack(alignment: .leading, spacing: Theme.Gap.xs) {
