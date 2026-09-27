@@ -2418,6 +2418,25 @@ func run(model: AppModel, character: Character, outDir: String) {
                     "who's holding what plus clocks - one read-only glance line"]
     var sumOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
     for c in model.characters { sumOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // fixture control (3.60.0 f3): SampleContent seeds a custom on Wren and
+    // customs now render on the summary line - strip every roster custom (and
+    // any custom duration/note key) so this block's line assertions keep their
+    // pre-3.60.0 contract. Hygiene below restores them.
+    var sumCustomOrig: [UUID: (customs: [CustomCondition], durations: [String: Int], notes: [String: String])] = [:]
+    let sumBuiltInKeys = Set(Condition.allCases.map(\.rawValue))
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        sumCustomOrig[c.id] = (c.customConditions, c.conditionDurations, c.conditionNotes)
+        var stripped = c
+        stripped.customConditions = []
+        stripped.conditionDurations = c.conditionDurations.filter { sumBuiltInKeys.contains($0.key) }
+        stripped.conditionNotes = c.conditionNotes.filter { sumBuiltInKeys.contains($0.key) }
+        if stripped != c {
+            model.characters[idx] = stripped
+            try? model.store.save(stripped)
+        }
+    }
+    sumLines.append("fixture control: roster customs stripped (the sample seeds one on Wren) \(model.characters.allSatisfy { $0.customConditions.isEmpty })")
     // setup: Prone 3 on everyone via the 3.51.0 party apply; Wren also
     // holds Poisoned (untimed) so the line shows a clock next to no-clock
     _ = model.applyPartyCondition(.prone, rounds: 3)
@@ -2466,9 +2485,21 @@ func run(model: AppModel, character: Character, outDir: String) {
         }
     }
     model.tableLog.removeAll { $0.title == "Party condition" }
+    // restore the stripped roster customs (and any custom duration/note keys)
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let corig = sumCustomOrig[c.id], c.customConditions != corig.customs || c.conditionDurations != corig.durations || c.conditionNotes != corig.notes {
+            var restored = c
+            restored.customConditions = corig.customs
+            restored.conditionDurations = corig.durations
+            restored.conditionNotes = corig.notes
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
     model.tableLogStore.save(model.tableLog)
     if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
-    sumLines.append("hygiene: roster conditions, clocks, log and selection restored")
+    sumLines.append("hygiene: roster conditions, clocks, notes, customs, log and selection restored")
     try? sumLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-summary.txt"),
                atomically: true, encoding: .utf8)
@@ -2477,6 +2508,25 @@ func run(model: AppModel, character: Character, outDir: String) {
                     "tap a name in the summary line, land on that character's sheet"]
     var tapOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
     for c in model.characters { tapOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // fixture control (3.60.0 f3): SampleContent seeds a custom on Wren and
+    // customs now render on the summary line - strip every roster custom (and
+    // any custom duration/note key) so this block's line assertions keep their
+    // pre-3.60.0 contract. Hygiene below restores them.
+    var tapCustomOrig: [UUID: (customs: [CustomCondition], durations: [String: Int], notes: [String: String])] = [:]
+    let tapBuiltInKeys = Set(Condition.allCases.map(\.rawValue))
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        tapCustomOrig[c.id] = (c.customConditions, c.conditionDurations, c.conditionNotes)
+        var stripped = c
+        stripped.customConditions = []
+        stripped.conditionDurations = c.conditionDurations.filter { tapBuiltInKeys.contains($0.key) }
+        stripped.conditionNotes = c.conditionNotes.filter { tapBuiltInKeys.contains($0.key) }
+        if stripped != c {
+            model.characters[idx] = stripped
+            try? model.store.save(stripped)
+        }
+    }
+    tapLines.append("fixture control: roster customs stripped (the sample seeds one on Wren) \(model.characters.allSatisfy { $0.customConditions.isEmpty })")
     // setup: Prone 3 on everyone; Wren also Poisoned (untimed)
     _ = model.applyPartyCondition(.prone, rounds: 3)
     if let idx = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
@@ -2520,9 +2570,21 @@ func run(model: AppModel, character: Character, outDir: String) {
         }
     }
     model.tableLog.removeAll { $0.title == "Party condition" }
+    // restore the stripped roster customs (and any custom duration/note keys)
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let corig = tapCustomOrig[c.id], c.customConditions != corig.customs || c.conditionDurations != corig.durations || c.conditionNotes != corig.notes {
+            var restored = c
+            restored.customConditions = corig.customs
+            restored.conditionDurations = corig.durations
+            restored.conditionNotes = corig.notes
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
     model.tableLogStore.save(model.tableLog)
     if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
-    tapLines.append("hygiene: tab, roster, log and selection restored")
+    tapLines.append("hygiene: tab, roster, customs, log and selection restored")
     try? tapLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-clickthrough.txt"),
                atomically: true, encoding: .utf8)
@@ -2710,6 +2772,25 @@ func run(model: AppModel, character: Character, outDir: String) {
                     "the 'why they have it' - stored input, the line stays derived, the note dies with the condition"]
     var pcnOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int], notes: [String: String])] = [:]
     for c in model.characters { pcnOrig[c.id] = (c.conditions, c.conditionDurations, c.conditionNotes) }
+    // fixture control (3.60.0 f3): SampleContent seeds a custom on Wren and
+    // customs now render on the summary line - strip every roster custom (and
+    // any custom duration/note key) so this block's line assertions keep their
+    // pre-3.60.0 contract. Hygiene below restores them.
+    var pcnCustomOrig: [UUID: (customs: [CustomCondition], durations: [String: Int], notes: [String: String])] = [:]
+    let pcnBuiltInKeys = Set(Condition.allCases.map(\.rawValue))
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        pcnCustomOrig[c.id] = (c.customConditions, c.conditionDurations, c.conditionNotes)
+        var stripped = c
+        stripped.customConditions = []
+        stripped.conditionDurations = c.conditionDurations.filter { pcnBuiltInKeys.contains($0.key) }
+        stripped.conditionNotes = c.conditionNotes.filter { pcnBuiltInKeys.contains($0.key) }
+        if stripped != c {
+            model.characters[idx] = stripped
+            try? model.store.save(stripped)
+        }
+    }
+    pcnLines.append("fixture control: roster customs stripped (the sample seeds one on Wren) \(model.characters.allSatisfy { $0.customConditions.isEmpty })")
     // the note-free roster still reads byte-identical to the 3.53.0 string shape
     pcnLines.append("note-free summary: '\(partyConditionSummary(model.characters))'")
     pcnLines.append("note-free roster byte-identical to the 3.53.0 shape \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned")")
@@ -2780,9 +2861,21 @@ func run(model: AppModel, character: Character, outDir: String) {
         }
     }
     model.tableLog.removeAll { $0.title == "Party condition" }
+    // restore the stripped roster customs (and any custom duration/note keys)
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let corig = pcnCustomOrig[c.id], c.customConditions != corig.customs || c.conditionDurations != corig.durations || c.conditionNotes != corig.notes {
+            var restored = c
+            restored.customConditions = corig.customs
+            restored.conditionDurations = corig.durations
+            restored.conditionNotes = corig.notes
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
     model.tableLogStore.save(model.tableLog)
     if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
-    pcnLines.append("hygiene: roster conditions, clocks, notes, log and selection restored")
+    pcnLines.append("hygiene: roster conditions, clocks, notes, customs, log and selection restored")
     try? pcnLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-notes.txt"),
                atomically: true, encoding: .utf8)
