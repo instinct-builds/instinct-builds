@@ -3017,6 +3017,71 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? pnlLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-note-log.txt"),
                atomically: true, encoding: .utf8)
+    // Party-remove note log lines (3.65.0): the removal log line carries
+    // each cleared holder's dropped note (captured before it dies with the
+    // condition), per holder, on built-in and custom paths. Returned names
+    // stay bare; only the log line gains the suffix. State is set
+    // explicitly and restored at the end of the block.
+    var prnLines = ["Party-remove note log lines (3.65.0)",
+                    "the removal log gains each holder's dropped note: 'X removed: A (note: ...), B'; unnoted holders stay bare; returned names stay bare"]
+    var prnOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int], notes: [String: String], customs: [CustomCondition])] = [:]
+    for c in model.characters { prnOrig[c.id] = (c.conditions, c.conditionDurations, c.conditionNotes, c.customConditions) }
+    if let w = model.characters.first(where: { $0.name == "Wren Halloway" })?.id,
+       let b = model.characters.first(where: { $0.name == "Bram Oakfel" })?.id,
+       let sr = model.characters.first(where: { $0.name == "Sera Vint" })?.id {
+        // Mixed noted/unnoted holders: Wren noted, Bram bare.
+        _ = model.applyPartyCondition(.blinded, rounds: 3, note: "smoke", from: [w])
+        _ = model.applyPartyCondition(.blinded, rounds: 5, from: [b])
+        let prnRemoved = model.removePartyCondition(.blinded, from: [w, b])
+        let prnLast = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+        prnLines.append("mixed removal: '\(prnLast)'")
+        prnLines.append("mixed removal exact \(prnLast == "Blinded removed: Wren Halloway (note: smoke), Bram Oakfel")")
+        prnLines.append("returned names stay bare \(prnRemoved == ["Wren Halloway", "Bram Oakfel"])")
+        prnLines.append("notes died with the condition \(model.characters.allSatisfy { $0.conditionNotes[Condition.blinded.rawValue] == nil })")
+        // Persistence: a store reload shows the notes gone post-removal.
+        let prnPersist = (try? model.store.load(id: w))?.conditionNotes[Condition.blinded.rawValue] == nil
+            && (try? model.store.load(id: b))?.conditionNotes[Condition.blinded.rawValue] == nil
+        prnLines.append("persistence: store reload shows dropped notes gone \(prnPersist)")
+        // Unnoted-only removal: no suffix at all.
+        _ = model.applyPartyCondition(.prone, rounds: nil, from: [w, b])
+        _ = model.removePartyCondition(.prone, from: [w, b])
+        let prnBare = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+        prnLines.append("unnoted removal: '\(prnBare)'")
+        prnLines.append("unnoted removal logs no note suffix \(prnBare == "Prone removed: Wren Halloway, Bram Oakfel")")
+        // Custom path: note captured per instance before removal.
+        _ = model.applyPartyCustomCondition(name: "Hexed", rounds: nil, note: "the brand", from: [sr])
+        _ = model.removePartyCustomCondition(name: "Hexed", from: [sr])
+        let prnCustom = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+        prnLines.append("custom removal with note: '\(prnCustom)'")
+        prnLines.append("custom removal exact \(prnCustom == "Hexed removed: Sera Vint (note: the brand)")")
+        prnLines.append("custom note died with the condition \(model.characters.first(where: { $0.id == sr })?.conditionNotes.values.contains("the brand") == false)")
+    }
+    // PNG: the table log showing removal lines carrying (and omitting) notes.
+    renderPNG(
+        TableLogView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-remove-note-log", outDir: outDir, minHeight: 120, maxHeight: 400)
+    // Hygiene: restore conditions/clocks/notes/customs, drop this block's log entries.
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = prnOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations || c.conditionNotes != orig.notes || c.customConditions != orig.customs {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            restored.conditionNotes = orig.notes
+            restored.customConditions = orig.customs
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    prnLines.append("hygiene: conditions, clocks, notes, customs and the log restored")
+    try? prnLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-remove-note-log.txt"),
+               atomically: true, encoding: .utf8)
     // Custom conditions on the summary line proofs (3.60.0). Runs at END.
     var pccLines = ["Custom conditions on the summary line (3.60.0)",
                     "name is the party identity - customs are per-character instances, born in the per-character editor, party-appliable after"]
@@ -3171,7 +3236,7 @@ func run(model: AppModel, character: Character, outDir: String) {
     let restShortLog = model.tableLog.last(where: { $0.title == "Party rest" })?.text ?? "MISSING"
     restLines.append("short rest log: '\(restShortLog)'")
     restLines.append("short rest log exact \(restShortLog == "Short rest cleared Bram Oakfel: Vault-marked \u{00B7} Wren Halloway: Prone")")
-    restLines.append("removal-path lines used \(model.tableLog.contains { $0.title == "Party condition" && $0.text == "Prone removed: Wren Halloway" } && model.tableLog.contains { $0.title == "Party condition" && $0.text == "Vault-marked removed: Bram Oakfel" })")
+    restLines.append("removal-path lines used \(model.tableLog.contains { $0.title == "Party condition" && $0.text == "Prone removed: Wren Halloway" } && model.tableLog.contains { $0.title == "Party condition" && $0.text == "Vault-marked removed: Bram Oakfel (note: vault)" })")
     // LONG REST fixture: Prone 2r on everyone, Bram's custom timed again
     _ = model.applyPartyCondition(.prone, rounds: 2)
     if let b = restBramID { _ = model.applyPartyCustomCondition(name: "Vault-marked", rounds: 5, note: "mark", from: [b]) }
@@ -3253,7 +3318,7 @@ func run(model: AppModel, character: Character, outDir: String) {
     let pcrShortLog = model.tableLog.last(where: { $0.title == "Rest" })?.text ?? "MISSING"
     pcrLines.append("short rest log: '\(pcrShortLog)'")
     pcrLines.append("short rest log exact \(pcrShortLog == "Short rest cleared Wren Halloway: Vault-marked, Prone")")
-    pcrLines.append("removal-path lines used \(model.tableLog.contains { $0.title == "Party condition" && $0.text == "Prone removed: Wren Halloway" } && model.tableLog.contains { $0.title == "Party condition" && $0.text == "Vault-marked removed: Wren Halloway" })")
+    pcrLines.append("removal-path lines used \(model.tableLog.contains { $0.title == "Party condition" && $0.text == "Prone removed: Wren Halloway" } && model.tableLog.contains { $0.title == "Party condition" && $0.text == "Vault-marked removed: Wren Halloway (note: vault)" })")
     // LONG fixture on Wren: Prone 1r + the custom timed again
     if let w = pcrWrenID {
         _ = model.applyPartyCondition(.prone, rounds: 1, from: [w])

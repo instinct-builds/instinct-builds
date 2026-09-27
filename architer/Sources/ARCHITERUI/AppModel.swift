@@ -1554,9 +1554,15 @@ public final class AppModel: ObservableObject {
     @discardableResult
     public func removePartyCondition(_ condition: Condition, from ids: Set<UUID>) -> [String] {
         var removed: [String] = []
+        var removedLogged: [String] = []
         for idx in characters.indices where ids.contains(characters[idx].id) {
             var c = characters[idx]
             guard c.conditions.contains(condition) else { continue }
+            // 3.65.0: capture the holder's note BEFORE it dies with the
+            // condition (3.58.0), so the removal log line carries what the
+            // apply line recorded - the log never makes a reader open a
+            // sheet to learn which noted instance was cleared.
+            let droppedNote = Character.normalizedConditionNote(c.conditionNotes[condition.rawValue] ?? "")
             c.conditions.remove(condition)
             c.conditionDurations.removeValue(forKey: condition.rawValue)
             c.conditionNotes.removeValue(forKey: condition.rawValue) // 3.58.0: the note dies with the condition
@@ -1566,10 +1572,11 @@ public final class AppModel: ObservableObject {
             characters[idx] = c
             try? store.save(c)
             removed.append(c.name)
+            removedLogged.append(c.name + (droppedNote.map { " (note: \($0))" } ?? ""))
         }
         if !removed.isEmpty {
             tableLog.append(TableLogEntry(title: "Party condition",
-                                          text: "\(condition.displayName) removed: \(removed.joined(separator: ", "))"))
+                                          text: "\(condition.displayName) removed: \(removedLogged.joined(separator: ", "))"))
             tableLogStore.save(tableLog)
         }
         return removed
@@ -1679,10 +1686,14 @@ public final class AppModel: ObservableObject {
         let name = rawName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return [] }
         var removed: [String] = []
+        var removedLogged: [String] = []
         for idx in characters.indices where ids.contains(characters[idx].id) {
             var c = characters[idx]
             let matches = c.customConditions.filter { $0.name == name }
             guard !matches.isEmpty else { continue }
+            // 3.65.0: capture-before-removal, same as the built-in path -
+            // the note dies with the condition but rides the log line.
+            let droppedNote = Character.normalizedConditionNote(matches.first.flatMap { c.conditionNotes[$0.id.uuidString] } ?? "")
             for cc in matches {
                 c.conditionDurations.removeValue(forKey: cc.id.uuidString)
                 c.conditionNotes.removeValue(forKey: cc.id.uuidString) // 3.58.0: the note dies with the condition
@@ -1694,10 +1705,11 @@ public final class AppModel: ObservableObject {
             characters[idx] = c
             try? store.save(c)
             removed.append(c.name)
+            removedLogged.append(c.name + (droppedNote.map { " (note: \($0))" } ?? ""))
         }
         if !removed.isEmpty {
             tableLog.append(TableLogEntry(title: "Party condition",
-                                          text: "\(name) removed: \(removed.joined(separator: ", "))"))
+                                          text: "\(name) removed: \(removedLogged.joined(separator: ", "))"))
             tableLogStore.save(tableLog)
         }
         return removed
