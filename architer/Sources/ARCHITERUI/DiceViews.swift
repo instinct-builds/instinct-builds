@@ -1326,9 +1326,21 @@ public struct GroupCheckSectionView: View {
                     }
                     // 3.52.0: the remove sibling - clears the condition and
                     // its clock; Rounds does not apply.
-                    Section("Remove from all") {
+                    // 3.55.0: removal is scoped - "Everyone" (3.52.0) or one
+                    // item per current holder, derived live so names never
+                    // go stale. Section retitled to match.
+                    Section("Remove") {
                         ForEach(Condition.allCases, id: \.self) { cond in
-                            Button(cond.displayName) { model.removePartyCondition(cond) }
+                            Menu(cond.displayName) {
+                                Button("Everyone") { model.removePartyCondition(cond) }
+                                let holders = model.characters.filter { $0.conditions.contains(cond) }
+                                if !holders.isEmpty {
+                                    Divider()
+                                    ForEach(holders) { holder in
+                                        Button(holder.name) { model.removePartyCondition(cond, from: [holder.id]) }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -2526,6 +2526,70 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? tapLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-clickthrough.txt"),
                atomically: true, encoding: .utf8)
+    // Party condition-remove targeting proofs (3.55.0). Runs at END.
+    var subLines = ["Party condition-remove targeting (3.55.0)",
+                    "remove a condition from a chosen subset - the rest of the roster keeps it"]
+    var subOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
+    for c in model.characters { subOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // setup: everyone Prone with 3-round clocks
+    _ = model.applyPartyCondition(.prone, rounds: 3)
+    let subSetup = model.characters.allSatisfy { $0.conditions.contains(.prone) && $0.conditionDurations[Condition.prone.rawValue] == 3 }
+    subLines.append("setup: whole roster Prone (3 rounds) \(subSetup)")
+    // remove from Wren + Sera only
+    let subWren = model.characters.first(where: { $0.name == "Wren Halloway" })
+    let subSera = model.characters.first(where: { $0.name == "Sera Vint" })
+    let subBram = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    let subOutcome = model.removePartyCondition(.prone, from: Set([subWren?.id, subSera?.id].compactMap { $0 }))
+    subLines.append("remove from {Wren, Sera}: cleared [\(subOutcome.joined(separator: ", "))]")
+    let subWrenAfter = model.characters.first(where: { $0.name == "Wren Halloway" })
+    let subSeraAfter = model.characters.first(where: { $0.name == "Sera Vint" })
+    let subBramAfter = model.characters.first(where: { $0.name == "Bram Oakfel" })
+    subLines.append("subset cleared incl. clocks \(subWrenAfter?.conditions.contains(.prone) == false && subSeraAfter?.conditions.contains(.prone) == false && subWrenAfter?.conditionDurations[Condition.prone.rawValue] == nil && subSeraAfter?.conditionDurations[Condition.prone.rawValue] == nil)")
+    subLines.append("Bram untouched: still Prone with clock at 3 \(subBramAfter?.conditions.contains(.prone) == true && subBramAfter?.conditionDurations[Condition.prone.rawValue] == 3)")
+    do {
+        let subReload = try model.store.load(id: subBram?.id ?? UUID())
+        subLines.append("persistence: store reload shows Bram still Prone \(subReload.conditions.contains(.prone))")
+    } catch {
+        subLines.append("persistence: store reload threw \(error)")
+    }
+    let subLog = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "MISSING"
+    subLines.append("table log entry: '\(subLog)'")
+    // undo on Wren restores condition AND clock
+    if let wren = model.characters.first(where: { $0.name == "Wren Halloway" }) {
+        model.selectedID = wren.id
+        model.undo()
+        let wrenAfter = model.characters.first(where: { $0.id == wren.id })
+        subLines.append("undo on Wren: Prone back \(wrenAfter?.conditions.contains(.prone) == true), clock back at \(wrenAfter?.conditionDurations[Condition.prone.rawValue] ?? -1)")
+        model.redo()
+    }
+    // empty subset is a silent no-op
+    let subLogCount = model.tableLog.filter { $0.title == "Party condition" }.count
+    let subEmpty = model.removePartyCondition(.prone, from: [])
+    subLines.append("empty subset: touched \(subEmpty.count), no new log entry \(model.tableLog.filter { $0.title == "Party condition" }.count == subLogCount)")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-remove-subset", outDir: outDir, minHeight: 120, maxHeight: 500)
+    // hygiene: restore every character's original conditions + clocks, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = subOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    subLines.append("hygiene: roster conditions, clocks, log and selection restored")
+    try? subLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-remove-subset.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

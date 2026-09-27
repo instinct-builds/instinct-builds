@@ -1477,8 +1477,17 @@ public final class AppModel: ObservableObject {
     /// AND clock together - the stack snapshots the whole character.
     @discardableResult
     public func removePartyCondition(_ condition: Condition) -> [String] {
+        removePartyCondition(condition, from: Set(characters.map(\.id)))
+    }
+
+    /// Targeted removal (3.55.0): same semantics scoped to a subset of the
+    /// roster. Only actual holders in the subset change (silent skip
+    /// otherwise); the log names exactly those cleared; an empty subset is
+    /// a no-op with no log entry.
+    @discardableResult
+    public func removePartyCondition(_ condition: Condition, from ids: Set<UUID>) -> [String] {
         var removed: [String] = []
-        for idx in characters.indices {
+        for idx in characters.indices where ids.contains(characters[idx].id) {
             var c = characters[idx]
             guard c.conditions.contains(condition) else { continue }
             c.conditions.remove(condition)
