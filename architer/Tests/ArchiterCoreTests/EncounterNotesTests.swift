@@ -31,6 +31,21 @@ import Testing
         #expect(loaded.first?.notes == "focus the casters")
     }
 
+    /// Share text (3.49.0): name, summary, band line when given, note
+    /// when present; both optional lines drop cleanly.
+    @Test func shareTextShape() {
+        let saved = SavedEncounter(name: "Proof Den",
+                                   lines: [EncounterLine(count: 2, cr: 3, label: "Gnolls")],
+                                   notes: "focus the casters")
+        let full = saved.shareText(band: .hard)
+        #expect(full == "Proof Den\n2x Gnolls\nHard vs the current party\nnote: focus the casters")
+        let bare = saved.shareText(band: nil)
+        #expect(!bare.contains("vs the current party"))
+        let noNote = SavedEncounter(name: "A", lines: [EncounterLine(count: 1, cr: 1)], notes: "")
+            .shareText(band: .easy)
+        #expect(!noNote.contains("note:"))
+    }
+
     @Test func partyJournalSearchAttributesAndMatches() throws {
         var wren = SampleContent.demoCharacter()
         wren.name = "Wren Halloway"

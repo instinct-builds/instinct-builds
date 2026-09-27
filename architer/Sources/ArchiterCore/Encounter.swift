@@ -235,6 +235,17 @@ public struct SavedEncounter: Codable, Equatable, Sendable, Identifiable {
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
     }
 
+    /// Share text (3.49.0): name, the row summary, the band line when
+    /// the caller can derive one (vs its current party), and the tactics
+    /// note when present. Derived from the stored fields, never stored.
+    public func shareText(band: EncounterBand?) -> String {
+        var out = [name, summary]
+        if let band { out.append("\(band.displayName) vs the current party") }
+        let note = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !note.isEmpty { out.append("note: \(note)") }
+        return out.joined(separator: "\n")
+    }
+
     /// "2x Gnolls · 1x CR 1/2" - per row, labels first-class.
     public var summary: String {
         lines.filter { $0.count > 0 }.map {

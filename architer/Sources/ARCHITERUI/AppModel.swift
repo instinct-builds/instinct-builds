@@ -929,6 +929,15 @@ public final class AppModel: ObservableObject {
         pb.setString(TableLogExport.text(entries: tableLog), forType: .string)
     }
 
+    /// Copy a saved encounter as one shareable text block (3.49.0) -
+    /// name, rows, band vs the current roster, tactics note. Derived,
+    /// harmless, no confirm.
+    public func copySavedEncounterToPasteboard(_ saved: SavedEncounter) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(saved.shareText(band: savedEncounterBand(saved)), forType: .string)
+    }
+
     /// Copy-filtered export (2.63.0): the filter-visible entries as one
     /// share block, in display order.
     public func copyFilteredJournalToPasteboard(_ entries: [JournalEntry]) {
@@ -1096,6 +1105,19 @@ public final class AppModel: ObservableObject {
     /// Delete one entry - the UI arms an inline confirm first.
     public func deleteTableLogEntry(_ entry: TableLogEntry) {
         tableLog.removeAll { $0.id == entry.id }
+        tableLogStore.save(tableLog)
+    }
+
+    /// Edit one entry in place (3.49.0): title/text update, id and
+    /// createdAt kept - a fix no longer costs the entry its place.
+    /// Blank title AND blank text is a no-op, same guard as add.
+    public func editTableLogEntry(id: UUID, title: String, text: String) {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty || !body.isEmpty else { return }
+        guard let idx = tableLog.firstIndex(where: { $0.id == id }) else { return }
+        tableLog[idx].title = t
+        tableLog[idx].text = body
         tableLogStore.save(tableLog)
     }
 

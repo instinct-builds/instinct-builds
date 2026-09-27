@@ -1806,6 +1806,10 @@ public struct TableLogView: View {
     @State private var titleDraft = ""
     @State private var textDraft = ""
     @State private var deleteArmedID: UUID?
+    /// 3.49.0: which entry is being edited, plus its drafts.
+    @State private var editingID: UUID?
+    @State private var editTitleDraft = ""
+    @State private var editTextDraft = ""
 
     public init() {}
 
@@ -1838,6 +1842,22 @@ public struct TableLogView: View {
             }
             ForEach(model.tableLog.sorted { $0.createdAt > $1.createdAt }) { entry in
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Gap.sm) {
+                    if editingID == entry.id {
+                        // 3.49.0: edit in place, mirroring the encounter-notes
+                        // editor; commit on return from either field.
+                        TextField("Title", text: $editTitleDraft, onCommit: {
+                            model.editTableLogEntry(id: entry.id, title: editTitleDraft, text: editTextDraft)
+                            editingID = nil
+                        })
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(maxWidth: 150)
+                        TextField("Note", text: $editTextDraft, onCommit: {
+                            model.editTableLogEntry(id: entry.id, title: editTitleDraft, text: editTextDraft)
+                            editingID = nil
+                        })
+                        .textFieldStyle(InsetFieldStyle())
+                        .frame(maxWidth: 200)
+                    } else {
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: Theme.Gap.sm) {
                             Text(entry.title.isEmpty ? "Note" : entry.title)
@@ -1854,7 +1874,21 @@ public struct TableLogView: View {
                                 .lineLimit(2)
                         }
                     }
+                    }
                     Spacer()
+                    // 3.49.0: the pencil opens the inline editor.
+                    if editingID != entry.id {
+                        Button {
+                            editTitleDraft = entry.title
+                            editTextDraft = entry.text
+                            editingID = entry.id
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.inkFaint)
+                        .help("Edit this entry in place")
+                    }
                     if deleteArmedID == entry.id {
                         Button("Delete?") {
                             model.deleteTableLogEntry(entry)
@@ -1959,6 +1993,10 @@ public struct EncounterLibraryView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(saved.notes.isEmpty ? Theme.inkFaint : Theme.accent)
                     .help("Edit tactics note")
+                    // 3.49.0: copy the encounter as one text block.
+                    Button("Copy") { model.copySavedEncounterToPasteboard(saved) }
+                        .controlSize(.small)
+                        .help("Copy this encounter as one text block - rows, band vs the current party, note")
                     if loadArmedID == saved.id {
                         Button("Replace \(model.encounterLines.count) rows") {
                             model.loadSavedEncounter(saved)
