@@ -22,7 +22,7 @@ struct KeyboardHost final : MUEWEditorHost {
     void noteOn(int n, float) override { on.push_back(n); }
     void noteOff(int n) override { off.push_back(n); }
 };
-static NSEvent* Key(NSWindow* w, NSEventType type, NSString* text, unsigned short code = 0) {
+static NSEvent* Key(NSWindow* w, NSEventType type, NSString* text, unsigned short code = 0, NSEventModifierFlags modifiers = 0) {
     return [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:0
                           timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber
                            context:nil characters:text charactersIgnoringModifiers:text isARepeat:NO keyCode:code];
@@ -32,7 +32,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.79.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.80.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -135,6 +135,41 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Down(v,w,esc);
     Check(!v->browserOpen && v->browserCursorSlug.empty() && v->currentIndex==committedBefore,
           "Escape cancels pending cursor without loading");
+    // Native field editor receives Tab; the delegate transfers to the result
+    // list. A direct call to the view would not test AppKit's text-command path.
+    [v setBrowserOpen:true];
+    v->search.stringValue=@"";
+    [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
+    Down(v,w,down); Down(v,w,down);
+    const std::string priorSlug=v->browserCursorSlug;
+    [w makeFirstResponder:v->search];
+    Check(!v->browserListFocus && w.firstResponder!=v,"search owns focus before Tab handoff");
+    Snapshot(v,"handoff-search");
+    id editor=w.firstResponder;
+    [editor keyDown:Key(w,NSEventTypeKeyDown,@"\t",48)];
+    Check(w.firstResponder==v && v->browserListFocus && v->browserCursorSlug==priorSlug,
+          "real text-editor Tab transfers focus without replacing cursor");
+    Snapshot(v,"handoff-list");
+    const int oldPos=[v browserCursorPosition];
+    Down(v,w,down);
+    Check([v browserCursorPosition]==std::min(oldPos+1,(int)v->visible.size()-1),
+          "first arrow after Tab advances from prior cursor");
+    NSString* query=@"Bright";
+    [w makeFirstResponder:v->search];
+    v->search.stringValue=query;
+    [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
+    Check(!v->browserListFocus && v->currentIndex==committedBefore,
+          "typed filter has no accidental preset load");
+    editor=w.firstResponder;
+    [editor keyDown:Key(w,NSEventTypeKeyDown,@"\t",48)];
+    Check(w.firstResponder==v && v->browserListFocus && !v->visible.empty(),
+          "Tab from filtered search reaches result list");
+    [v keyDown:Key(w,NSEventTypeKeyDown,@"\t",48,NSEventModifierFlagShift)];
+    Check(w.firstResponder!=v && !v->browserListFocus && [v->search.stringValue isEqualToString:query],
+          "Shift-Tab returns to Search without changing its query");
+    Check(host->on.size()==onBefore+1 && host->off.size()==offBefore+1,
+          "Tab/Shift-Tab and browser arrows never trigger piano notes");
+    Snapshot(v,"handoff-search-return");
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
     fflush(stdout);
     // Bypass runner AppKit teardown after capturing assertions and pixels. The

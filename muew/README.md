@@ -661,3 +661,13 @@ loads that exact visible slug, leaving the browser open. A refilter clears a
 removed cursor rather than picking a different sound. Escape closes and drops
 the proposal. The search field keeps native text navigation; AU keys remain
 host-owned. This editor-only change adds no preset format or AU parameters.
+
+## 0.80.0 Search-to-list keyboard handoff
+
+Tab from the full browser's Search field transfers keyboard focus to the result
+list without selecting or loading a sound. A visible teal list-region outline
+separates this state from Search's own focus ring. Up/Down continue from an
+existing slug-stable amber cursor or choose first/last only when none exists;
+Return still commits only the visible cursor. Shift-Tab returns to Search with
+its query intact. Search keeps native text, arrows, Return and Escape. The AU
+host still owns plugin keys. No DSP, preset format or AU parameter changes.

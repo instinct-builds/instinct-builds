@@ -184,6 +184,7 @@ struct MUEWEditorHost {
     muew::ui::Ratings ratings;
     int bscroll;
     std::string browserCursorSlug; // proposed row, distinct from the loaded preset
+    bool browserListFocus; // editor keyboard focus is on the result list, not Search
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)

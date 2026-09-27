@@ -90,7 +90,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0; browserCursorSlug.clear();
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false;
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -172,7 +172,18 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     [self setNeedsDisplay:YES];
 }
 
-- (void)controlTextDidBeginEditing:(NSNotification*)n { [self setNeedsDisplay:YES]; }
+- (void)controlTextDidBeginEditing:(NSNotification*)n { browserListFocus=false; [self setNeedsDisplay:YES]; }
+- (BOOL)control:(NSControl*)control textView:(NSTextView*)textView doCommandBySelector:(SEL)selector {
+    // Only Tab from the browser's actual Search editor hands focus to the
+    // result list. Other text commands remain wholly native.
+    if (control != search || !browserOpen || !host || !host->playsNotes() ||
+        !self.window.isKeyWindow || self.window.firstResponder != textView ||
+        selector != @selector(insertTab:)) return NO;
+    [self.window makeFirstResponder:self];
+    browserListFocus=true;
+    [self setNeedsDisplay:YES];
+    return YES;
+}
 - (void)controlTextDidEndEditing:(NSNotification*)n { [self setNeedsDisplay:YES]; }
 
 - (void)applySound {
@@ -4307,6 +4318,7 @@ static int SortForColumn(int c) {
     [self releaseHeldKeyboardNotes];
     browserOpen = open;
     browserCursorSlug.clear();
+    browserListFocus = open && [self hasEditorKeyboardFocus];
     wtEdit = -1;
     bscroll = 0;
     NSRect b = [self browserRect];
@@ -4459,7 +4471,12 @@ static int SortForColumn(int c) {
         bool fav = favorites.count(lib.slug(idx)) > 0;
         if (fav) TextA(@"\u2665", NSMakeRect(NSMaxX(row) - 18, y - 1, 14, 14), 10, C(0xf2ab55), NSFontWeightRegular, NSTextAlignmentCenter);
     }
-    if ([self hasEditorKeyboardFocus] && host && host->playsNotes())
+    if (browserListFocus && [self hasEditorKeyboardFocus]) {
+        NSRect list = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
+        NSBezierPath* outline = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(list,.5,.5) xRadius:5 yRadius:5];
+        [C(0x5adac8,.85) setStroke]; outline.lineWidth=1.3; [outline stroke];
+    }
+    if (browserListFocus && [self hasEditorKeyboardFocus] && host && host->playsNotes())
         TextA(cursorPosition >= 0 ? @"RETURN TO LOAD" : @"UP/DOWN TO SELECT", NSMakeRect(530,t-29,182,14),8,
               cursorPosition >= 0 ? C(0xf0b44a) : C(0x8793a3),NSFontWeightSemibold,NSTextAlignmentRight);
     if (visible.empty())
@@ -4594,6 +4611,7 @@ static int SortForColumn(int c) {
 
 - (void)mouseDown:(NSEvent*)e {
     [self releaseHeldKeyboardNotes];
+    browserListFocus=false;
     [self.window makeFirstResponder:self];
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     dragStart = p;
@@ -4927,6 +4945,12 @@ static int NoteForKey(unichar ch) {
     NSString* s = e.charactersIgnoringModifiers;
     if (s.length == 0) return;
     unichar ch = [s characterAtIndex:0];
+    if (browserOpen && ch == '\t' && (e.modifierFlags & NSEventModifierFlagShift)) {
+        browserListFocus=false;
+        [self.window makeFirstResponder:search];
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (ch == 27) { // Escape dismisses the top visible surface without changing the patch.
         [self releaseHeldKeyboardNotes];
         if (outputDetailOpen) outputDetailOpen = false;
@@ -4938,11 +4962,12 @@ static int NoteForKey(unichar ch) {
         [self setNeedsDisplay:YES]; return;
     }
     if (ch == '\r' || ch == '\n' || ch == NSEnterCharacter) {
-        if (browserOpen && !outputDetailOpen) { [self commitBrowserCursor]; return; }
+        if (browserOpen && !outputDetailOpen) { if (browserListFocus) [self commitBrowserCursor]; return; }
         if (outputDetailOpen) { [self releaseHeldKeyboardNotes]; outputDetailOpen = false; [self setNeedsDisplay:YES]; }
         return; // no implicit activation of mouse-only controls
     }
     if (browserOpen && !outputDetailOpen) {
+        if (!browserListFocus) return;
         if (ch == NSDownArrowFunctionKey) [self moveBrowserCursor:1];
         else if (ch == NSUpArrowFunctionKey) [self moveBrowserCursor:-1];
         return;
