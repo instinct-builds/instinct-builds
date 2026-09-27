@@ -678,3 +678,14 @@ The hosted keyboard-focus harness puts the native Search caret inside a filtered
 query, tabs to the list and Shift-Tabs back, then checks the exact text selection
 range. Both Search-focused states are captured beside the list-focused frame.
 No DSP, preset schema or AU parameter IDs change.
+
+## 0.81.0 Browser accessibility pilot
+
+The architecture and limits are mapped in `docs/accessibility-architecture.md`.
+The native Search remains native; the custom-drawn browser exposes a named
+virtual results list with only its visible rows. Row names include exact preset
+name, category, position, and separate proposed/loaded states. Merely querying
+or traversing rows is inert; deliberate row press resolves a current, visible
+slug before loading it. A row held across a refilter is invalid. The macOS
+host harness queries the AppKit tree, states and actions. This is a browser
+results pilot, not a claim that the full instrument supports VoiceOver.

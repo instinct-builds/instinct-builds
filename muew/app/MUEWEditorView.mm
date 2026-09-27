@@ -73,6 +73,17 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     return std::complex<double>(im, re) * (2.0 / win / amp); // y = |H| sin(ph + phase)
 }
 
+// Only visible rows are represented. Retained row elements carry a slug, never
+// a mutable row number; a stale action must not activate a different preset.
+@interface MUEWBrowserAXRow : NSAccessibilityElement
+@property(nonatomic, weak) MUEWEditorView* editor;
+@property(nonatomic, copy) NSString* slug;
+@property(nonatomic) NSUInteger generation;
+@end
+@implementation MUEWBrowserAXRow
+- (BOOL)accessibilityPerformPress { return [self.editor accessibilityActivateBrowserSlug:self.slug generation:self.generation]; }
+@end
+
 @implementation MUEWEditorView
 
 - (instancetype)initWithFrame:(NSRect)f {
@@ -90,7 +101,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0);
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXList = nil; browserAXGeneration = 0;
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -107,6 +118,51 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     return self;
 }
 
+- (NSArray*)accessibilityChildren {
+    if (!browserOpen) return @[search];
+    if (!browserAXList) {
+        browserAXList = [NSAccessibilityElement accessibilityElementWithRole:NSAccessibilityListRole
+            frame:NSZeroRect label:@"Preset results" parent:self];
+    }
+    NSRect listFrame = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
+    browserAXList.accessibilityFrameInParentSpace = listFrame;
+    NSMutableArray* rows = [NSMutableArray array];
+    const ui::Library& lib = ui::library();
+    const int page = [self tableRows];
+    const int count = (int)visible.size();
+    const int first = std::clamp(bscroll, 0, std::max(0,count-page));
+    for (int pos=first; pos<count && pos<first+page; ++pos) {
+        int idx=visible[pos];
+        const Preset& p=lib.at(idx);
+        NSString* slug=S(lib.slug(idx));
+        bool proposed=lib.slug(idx)==browserCursorSlug;
+        bool loaded=idx==currentIndex;
+        NSString* label=[NSString stringWithFormat:@"%@, %@, %d of %d, proposed: %@, loaded: %@",
+                         S(p.info.name),S(p.info.category),pos+1,count,
+                         proposed ? @"yes" : @"no",loaded ? @"yes" : @"no"];
+        NSRect visual=[self tableRow:pos-first];
+        NSRect relative=NSOffsetRect(visual,-listFrame.origin.x,-listFrame.origin.y);
+        MUEWBrowserAXRow* row=[MUEWBrowserAXRow accessibilityElementWithRole:NSAccessibilityButtonRole
+            frame:NSZeroRect label:label parent:browserAXList];
+        row.editor=self; row.slug=slug; row.generation=browserAXGeneration;
+        row.accessibilityFrameInParentSpace=relative;
+        [rows addObject:row];
+    }
+    browserAXList.accessibilityChildren=rows;
+    return @[search,browserAXList];
+}
+- (BOOL)accessibilityActivateBrowserSlug:(NSString*)slug generation:(NSUInteger)generation {
+    if (!browserOpen || !slug || !host || generation != browserAXGeneration) return NO;
+    const std::string target(slug.UTF8String ?: "");
+    for (int idx : visible) {
+        if (ui::library().slug(idx) != target) continue;
+        browserCursorSlug.clear();
+        [self loadPresetIndex:idx];
+        [self revealInTable];
+        return YES;
+    }
+    return NO;
+}
 - (BOOL)acceptsFirstResponder { return host && host->playsNotes(); }
 - (void)releaseHeldKeyboardNotes {
     for (int& pitch : heldKeyboardNotes) {
@@ -153,6 +209,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 
 - (void)refilter {
+    ++browserAXGeneration;
     visible = ui::visiblePresets(filter, favorites, ui::library(), ratings, sortMode);
     if (!browserCursorSlug.empty()) {
         bool stillVisible = false;

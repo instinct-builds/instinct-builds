@@ -32,7 +32,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.80.1-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.81.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -92,6 +92,57 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check(v->currentIndex==original, "Escape on base editor has no effect");
     [v setBrowserOpen:true];
     Check(v->browserCursorSlug.empty(), "browser opens without an implicit keyboard choice");
+    // Query AppKit's exposed tree as a client: the native Search survives,
+    // while rows represent immutable slugs. Reading/traversal is inert.
+    NSArray* ax=[v accessibilityChildren];
+    Check(ax.count==2 && ax[0]==v->search && [[ax[1] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
+          [[ax[1] accessibilityLabel] isEqualToString:@"Preset results"],
+          "accessibility tree exposes native Search and named results list");
+    id list=ax.count>1 ? ax[1] : nil;
+    NSArray* rows=[list accessibilityChildren];
+    Check(rows.count>1 && [[rows[0] accessibilityRole] isEqualToString:NSAccessibilityButtonRole] &&
+          [[rows[0] accessibilityLabel] containsString:@"1 of 108"] &&
+          [[rows[0] accessibilityLabel] containsString:@"proposed: no, loaded: yes"],
+          "accessible row states and exact position are separate from focus");
+    int axLoaded=v->currentIndex, axPatches=host->patches;
+    [v accessibilityChildren]; [list accessibilityChildren]; [rows[0] accessibilityLabel];
+    Check(v->currentIndex==axLoaded && host->patches==axPatches && v->browserCursorSlug.empty(),
+          "accessibility traversal never loads or proposes a sound");
+    id stale=rows[0]; NSString* staleSlug=[stale slug];
+    v->filter.query="no-such-sound-987"; [v refilter];
+    Check([[list accessibilityChildren] count]==0 && ![stale accessibilityPerformPress] &&
+          v->currentIndex==axLoaded && host->patches==axPatches,
+          "retained row from removed filter cannot retarget or activate");
+    v->filter.query=""; [v refilter];
+    v->sortMode=muew::ui::SortName; [v refilter];
+    rows=[list accessibilityChildren];
+    Check(rows.count>1 && [[rows[0] accessibilityLabel] containsString:@"1 of 108"] &&
+          ![[rows[0] slug] isEqualToString:staleSlug],
+          "accessible rows follow sort while retaining individual slug identity");
+    v->sortMode=muew::ui::SortBank; [v refilter];
+    rows=[list accessibilityChildren];
+    Check(![stale accessibilityPerformPress] && v->currentIndex==axLoaded,
+          "old row stays inert even when its slug reappears after refilter");
+    const size_t axNotes=host->on.size();
+    unichar axDown=NSDownArrowFunctionKey;
+    Down(v,w,[NSString stringWithCharacters:&axDown length:1]);
+    Down(v,w,[NSString stringWithCharacters:&axDown length:1]);
+    rows=[list accessibilityChildren];
+    id target=rows[1]; NSString* targetSlug=[target slug];
+    Check([[target accessibilityLabel] containsString:@"proposed: yes"] &&
+          v->currentIndex==axLoaded && host->patches==axPatches && host->on.size()==axNotes,
+          "accessible proposed state tracks keyboard cursor without loading or notes");
+    Check([target accessibilityPerformPress] && v->currentIndex==muew::ui::indexOfSlug(targetSlug.UTF8String) &&
+          host->patches==axPatches+1 && v->browserCursorSlug.empty() && host->on.size()==axNotes,
+          "deliberate accessible press loads exact visible slug once");
+    rows=[list accessibilityChildren];
+    Check([[rows[1] accessibilityLabel] containsString:@"proposed: no, loaded: yes"],
+          "accessible loaded state updates after activation");
+    [v setBrowserOpen:false];
+    Check([v accessibilityChildren].count==1 && ![target accessibilityPerformPress],
+          "closed browser hides the list and retained row cannot act");
+    [v setBrowserOpen:true];
+    [v loadPresetIndex:original];
     const int loaded=v->currentIndex, loads=host->patches;
     Down(v,w,@"\r"); Check(v->currentIndex==loaded && host->patches==loads,"Return without cursor does not load");
     Down(v,w,arrow);

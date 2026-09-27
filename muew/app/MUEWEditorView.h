@@ -186,6 +186,8 @@ struct MUEWEditorHost {
     std::string browserCursorSlug; // proposed row, distinct from the loaded preset
     bool browserListFocus; // editor keyboard focus is on the result list, not Search
     NSRange browserSearchSelection; // caret/range to restore on Shift-Tab from result list
+    NSAccessibilityElement* browserAXList; // virtual list, never a replacement for native Search
+    NSUInteger browserAXGeneration; // invalidate retained row actions after refilter
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)
@@ -200,6 +202,7 @@ struct MUEWEditorHost {
 // Browser keyboard cursor queries also used by the macOS hosted interaction proof.
 - (void)refilter;
 - (int)browserCursorPosition;
+- (BOOL)accessibilityActivateBrowserSlug:(NSString*)slug generation:(NSUInteger)generation;
 - (BOOL)importPresetFile:(NSString*)path;
 // 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
 - (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus;
