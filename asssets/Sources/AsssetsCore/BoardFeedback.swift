@@ -12,6 +12,10 @@ public struct FeedbackPreview: Equatable, Sendable {
         public var skipped: String? = nil
         public var favorite: Bool
         public var note: String
+        /// Current gallery/reviewer pick that this file removes.
+        public var withdrawsPick: Bool = false
+        /// A withdrawal remains visible in Client Picks due to another tracked reviewer or a preserved tag.
+        public var remainsPicked: Bool = false
         /// Status of the asset's card on the round's board now; nil when there is no board or no card.
         public var from: CardStatus?
         /// What the client asked for with Approve / Request changes.
@@ -29,6 +33,10 @@ public struct FeedbackPreview: Equatable, Sendable {
     public var rows: [Row]
     public var rosterIssue: String? = nil
     public var skippedCount: Int { rows.filter { !$0.known }.count }
+    public var withdrawals: Int { rows.filter(\.withdrawsPick).count }
+    public var additions: Int { rows.filter { $0.known && $0.favorite && !$0.withdrawsPick }.count }
+    public var hasVerifiedEntry: Bool { rows.contains { $0.known && !$0.withdrawsPick } }
+    public var canImport: Bool { rosterIssue == nil && (withdrawals > 0 || !isEmpty || (replaces && (rows.isEmpty || hasVerifiedEntry))) }
 
     public var picks: Int { rows.filter { $0.known && $0.favorite }.count }
     public var notes: Int { rows.filter { $0.known && !$0.note.isEmpty }.count }
@@ -51,6 +59,18 @@ extension StudioCatalog {
         let b = bid.flatMap { board($0) }
         let byID = Dictionary(assets.map { ($0.id.uuidString.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
         var seen = Set<UUID>()
+        let prior = Set(feedbackRound(gallery: f.gallery, reviewer: reviewer)?.assets ?? [])
+        var validSeen = Set<UUID>()
+        let valid = f.items.compactMap { e -> UUID? in
+            guard let id = UUID(uuidString: e.id), roster?.allows(id) == true,
+                  byID[e.id.uppercased()] != nil, validSeen.insert(id).inserted else { return nil }
+            return id
+        }
+        let intentional = issue == nil && (f.items.isEmpty || !valid.isEmpty)
+        let nextPicks = Set(scopedFeedback(f).feedback.items.compactMap { e -> UUID? in
+            guard e.favorite else { return nil }
+            return UUID(uuidString: e.id)
+        })
         let rows = f.items.map { e -> FeedbackPreview.Row in
             let id = UUID(uuidString: e.id)
             var reason: String? = issue
@@ -71,11 +91,32 @@ extension StudioCatalog {
                                        favorite: e.favorite, note: e.note.trimmingCharacters(in: .whitespacesAndNewlines),
                                        from: card.map { b!.status(of: $0.id) }, to: card == nil ? nil : e.cardStatus)
             row.skipped = reason
+            if reason == nil, let id, intentional, prior.contains(id), !nextPicks.contains(id) {
+                row.withdrawsPick = true
+                row.remainsPicked = preservedPickTags.contains(id) || feedbackPickLedger.contains {
+                    ($0.gallery != f.gallery.lowercased() || $0.reviewer.lowercased() != reviewer.lowercased()) && $0.assets.contains(id)
+                }
+            }
             return row
         }
-        let replaces = b?.reviews.contains { $0.gallery == f.gallery && $0.reviewer == reviewer } ?? false
+        let replaces = feedbackRound(gallery: f.gallery, reviewer: reviewer) != nil ||
+            (b?.reviews.contains { $0.gallery == f.gallery && $0.reviewer == reviewer } ?? false) ||
+            assets.contains { asset in asset.clientNotes.contains { $0.gallery == f.gallery && $0.reviewer == reviewer } }
         var preview = FeedbackPreview(reviewer: reviewer, title: f.title, board: b == nil ? nil : bid, boardName: b?.name, replaces: replaces, rows: rows)
         preview.rosterIssue = issue
+        if issue == nil && intentional {
+            let vanished = prior.subtracting(Set(valid))
+            for id in vanished {
+                var row = FeedbackPreview.Row(id: id.uuidString, asset: id,
+                    title: assets.first(where: { $0.id == id })?.title ?? "Removed asset",
+                    favorite: false, note: "", from: nil, to: nil)
+                row.withdrawsPick = true
+                row.remainsPicked = preservedPickTags.contains(id) || feedbackPickLedger.contains {
+                    ($0.gallery != f.gallery.lowercased() || $0.reviewer.lowercased() != reviewer.lowercased()) && $0.assets.contains(id)
+                }
+                preview.rows.append(row)
+            }
+        }
         return preview
     }
 }

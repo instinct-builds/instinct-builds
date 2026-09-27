@@ -323,6 +323,7 @@ final class StudioLibrary: ObservableObject {
 
     @Published var galleryRunning = false
     private var galleryDemoFailure: String?
+    private var feedbackDemoSaveFailure = false
 
     /// Writes "<title> Review" (index.html, images/, thumbs/) and a zip of it into a folder the user picks.
     func exportGallery(_ ids: [UUID]? = nil, title: String? = nil, to fixedDir: URL? = nil, board: (png: Data, width: Int, height: Int, layout: Moodboard)? = nil, summaryPDF: URL? = nil, checked: Bool = false, ticket: RightsExportTicket? = nil) {
@@ -741,8 +742,11 @@ final class StudioLibrary: ObservableObject {
                 notice: changed ? "A feedback file or library state changed. Review this updated preview, then press Import again." : nil)
             if changed { return }
         }
-        pendingFeedback = nil
+        let beforeImport = catalog
         importFeedback(feedback: updated.map(\.feedback), unreadable: p.unreadable)
+        // Failure leaves the reviewed files available for a retry, rather than
+        // dropping the preview with a memory-only or unverified result.
+        if catalog != beforeImport { pendingFeedback = nil }
     }
 
     func importFeedback(_ urls: [URL]) {
@@ -754,28 +758,45 @@ final class StudioLibrary: ObservableObject {
     }
 
     func importFeedback(feedback list: [ReviewGallery.Feedback], unreadable bad: Int) {
-        var total = StudioCatalog.FeedbackResult(), reviewers: [String] = []
+        guard !cleanupEntryExists(cleanupJournalURL) else { flash("Catalog recovery is pending; feedback was not saved."); return }
+        var next = catalog, total = StudioCatalog.FeedbackResult(), reviewers: [String] = []
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let today = df.string(from: Date())
-        var seenReviews = Set<String>()
+        var seenReviews = Set<String>(), applied = false
         for f in list {
-            let key = f.gallery.lowercased() + "|" + f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard seenReviews.insert(key).inserted else { total.unknown += f.items.count; continue }
-            var r = StudioCatalog.FeedbackResult()
-            mutate { r = $0.applyFeedback(f, imported: today) }
-            total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown; total.statuses += r.statuses
+            let key = f.gallery.lowercased() + "|" + StudioCatalog.feedbackReviewer(f.reviewer).lowercased()
+            guard seenReviews.insert(key).inserted else {
+                flash("Two feedback files claim the same gallery and reviewer. Nothing imported."); return
+            }
+            let preview = next.previewFeedback(f)
+            guard preview.rosterIssue == nil else { total.unknown += f.items.count; continue }
+            let r = next.applyFeedback(f, imported: today)
+            if r.favorites + r.notes + r.statuses + r.withdrawn > 0 ||
+                (preview.replaces && (f.items.isEmpty || preview.hasVerifiedEntry)) { applied = true }
+            total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown
+            total.statuses += r.statuses; total.withdrawn += r.withdrawn
             total.smartCollection = r.smartCollection ?? total.smartCollection
             total.board = r.board ?? total.board
-            let who = f.reviewer.trimmingCharacters(in: .whitespaces); if !who.isEmpty && !reviewers.contains(who) { reviewers.append(who) }
+            let who = StudioCatalog.feedbackReviewer(f.reviewer)
+            if !reviewers.contains(who) { reviewers.append(who) }
         }
-        if total.favorites + total.notes + total.statuses == 0 && total.board == nil {
-            flash(bad > 0 && list.isEmpty ? "That isn't an ASSSETS review feedback file" : "No favorites, notes or decisions in that feedback"); return
+        guard applied else {
+            flash(bad > 0 && list.isEmpty ? "That isn't an ASSSETS review feedback file" :
+                "No verified picks, notes, decisions or withdrawals in that feedback"); return
         }
+        guard !feedbackDemoSaveFailure,
+              let data = try? next.encoded(),
+              (try? data.write(to: catalogURL, options: .atomic)) != nil,
+              let disk = try? Data(contentsOf: catalogURL), disk == data,
+              let decoded = StudioCatalog.decode(disk), decoded == next else {
+            flash("Feedback save could not be verified. No in-memory changes were applied; check the catalog before retrying."); return
+        }
+        catalog = next
         var msg = "\(total.favorites) client \(total.favorites == 1 ? "pick" : "picks"), \(total.notes) \(total.notes == 1 ? "note" : "notes")"
+        if total.withdrawn > 0 { msg += ", \(total.withdrawn) \(total.withdrawn == 1 ? "pick" : "picks") withdrawn" }
         if total.statuses > 0 { msg += ", \(total.statuses) \(total.statuses == 1 ? "status" : "statuses") updated" }
         if !reviewers.isEmpty { msg += " from " + reviewers.joined(separator: ", ") }
         if total.unknown > 0 { msg += " · \(total.unknown) skipped (outside gallery, duplicate, missing or legacy)" }
         if let b = total.board, let name = catalog.board(b)?.name {
-            // Shared from a board: the round lands back on it as pins.
             flash(msg + " · pinned on \(name)")
             show(board: b); boardReviewer = nil; boardShowComments = true
         } else {
@@ -3627,12 +3648,12 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
-        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed":
+        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
             let ids = Array(mocks.prefix(2).map(\.id))
             let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
-            if demo == "feedback-roster" || demo == "feedback-changed" {
+            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" {
                 if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
                     mutate { _ = $0.recordGallery(roster) }
                 }
@@ -3665,6 +3686,27 @@ final class StudioLibrary: ObservableObject {
                 applyPendingFeedback()
                 let marker = "done blocked=\(pendingFeedback?.notice != nil) picked=\(catalog.assets.first(where: { $0.id == ids[0] })?.tags.contains(ReviewGallery.clientPickTag) ?? false)"
                 try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-changed.txt"), atomically: true, encoding: .utf8)
+            }
+            if demo == "feedback-withdraw" || demo == "feedback-save-fail" {
+                // Set up a ledger-owned pick, then preview a valid empty replacement.
+                importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan",
+                    items: [.init(id: ids[0].uuidString, favorite: true, note: "")])], unreadable: 0)
+                let empty = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [])
+                if let data = try? JSONEncoder().encode(empty) { try? data.write(to: url, options: .atomic) }
+                previewFeedback([url])
+                if demo == "feedback-save-fail" {
+                    // Fault-inject a catalog write failure after the reviewed replacement.
+                    feedbackDemoSaveFailure = true
+                    applyPendingFeedback()
+                    feedbackDemoSaveFailure = false
+                    let disk = (try? Data(contentsOf: catalogURL)).flatMap(StudioCatalog.decode)
+                    let marker = "done preview=\(pendingFeedback?.files.first?.preview.withdrawals ?? -1) saved=\(disk?.feedbackRound(gallery: gallery, reviewer: "Jordan")?.assets.isEmpty ?? false) picked=\(catalog.assets.first(where: { $0.id == ids[0] })?.tags.contains(ReviewGallery.clientPickTag) ?? false)"
+                    try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-save-fail.txt"), atomically: true, encoding: .utf8)
+                } else {
+                    let p = pendingFeedback?.files.first?.preview
+                    let marker = "done withdrawals=\(p?.withdrawals ?? -1) actionable=\(p?.canImport ?? false)"
+                    try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-withdraw.txt"), atomically: true, encoding: .utf8)
+                }
             }
             if demo == "feedback-roster" {
                 let p = pendingFeedback?.files.first?.preview
@@ -12432,7 +12474,7 @@ struct FeedbackPreviewSheet: View {
                 Spacer()
                 Button("Cancel") { model.pendingFeedback = nil }.keyboardShortcut(.cancelAction)
                 Button("Import") { model.applyPendingFeedback() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).tint(Theme.accent)
-                    .disabled((model.pendingFeedback?.files ?? pending.files).allSatisfy { $0.preview.isEmpty } ||
+                    .disabled(!(model.pendingFeedback?.files ?? pending.files).contains { $0.preview.canImport } ||
                               (model.pendingFeedback?.notice ?? "").contains("Choose"))
             }
         }
@@ -12458,6 +12500,7 @@ struct FeedbackPreviewSheet: View {
                 }
                 Spacer()
                 chip("\(p.picks)", "heart.fill", Color(red: 1, green: 0.36, blue: 0.54))
+                if p.withdrawals > 0 { chip("-\(p.withdrawals)", "heart.slash", Theme.warning) }
                 chip("\(p.approvals)", CardThreadBadge.symbol(.approved), CardThreadBadge.color(.approved))
                 chip("\(p.changeRequests)", CardThreadBadge.symbol(.changes), CardThreadBadge.color(.changes))
                 chip("\(p.notes)", "text.bubble.fill", Color(white: 0.75))
@@ -12469,7 +12512,7 @@ struct FeedbackPreviewSheet: View {
             }
             if p.skippedCount > 0 { Text("\(p.skippedCount) skipped or unverified item(s)").font(.caption2).foregroundStyle(Theme.warning) }
             if p.replaces {
-                Label("\(p.reviewer) already sent feedback on this round. Importing replaces their earlier picks and notes.", systemImage: "arrow.triangle.2.circlepath")
+                Label("Replacing \(p.reviewer)'s earlier feedback. \(p.withdrawals) prior \(p.withdrawals == 1 ? "pick" : "picks") withdrawn; other reviewers' or older untracked picks stay.", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2).foregroundStyle(Theme.warning)
             }
             VStack(spacing: 0) {
@@ -12507,6 +12550,10 @@ struct FeedbackPreviewSheet: View {
                 }
                 if !r.note.isEmpty {
                     Text("\u{201C}\(r.note)\u{201D}").font(.caption2).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+                if r.withdrawsPick {
+                    Text(r.remainsPicked ? "Withdraw this reviewer's pick · kept by another or older pick" : "Withdraw this reviewer's pick · leaves Client Picks")
+                        .font(.caption2).foregroundStyle(Theme.warning)
                 }
                 if let reason = r.skipped { Text("Skipped: " + reason).font(.caption2).foregroundStyle(Theme.warning) }
             }

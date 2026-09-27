@@ -1017,3 +1017,23 @@ The recovery ticket is not retained after quitting: if the catalog is still
 unwritable, do not send the gallery. Native CI simulates a catalog-save failure
 and captures the compact recovery review while checking that folder and ZIP
 landed but no success marker was written.
+
+## 1.68.0: honest replacement of client picks
+
+A new per-gallery/reviewer pick ledger records only feedback accepted from this
+version onward. Re-import replaces that reviewer's tracked set. An empty
+replacement explicitly withdraws prior picks; a file with only unrecognized or
+outside-gallery IDs does not. Other tracked reviewers' picks keep an asset in
+Client Picks. Existing `client-pick` tags from older catalogs are preserved as
+an unattributed baseline and never assigned to a reviewer. The ledger removes
+only tags it added. Old tags cannot be attributed after the fact, and a manual
+re-add that happens unseen while a ledger-owned tag is present cannot be
+separated from the ledger's tag. Withdrawal never resets board approval status.
+The preview shows each withdrawal and whether another/older pick keeps the
+asset in Client Picks; an empty replacement remains actionable.
+
+The app applies all selected feedback to a catalog copy, writes it once, reads
+it back, and reports success only if the saved catalog matches. A failed save
+keeps the reviewed preview for retry without changing the in-memory catalog.
+Native proof captures an empty replacement and an injected catalog-write failure; core tests
+cover reviewer overlap, withdrawal, older tags and ledger persistence.

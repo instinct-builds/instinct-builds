@@ -243,7 +243,7 @@ if(q.get('demo')==='approve-grid')M.board=null;render();if(q.get('demo')==='ligh
 
 extension StudioCatalog {
     public struct FeedbackResult: Equatable, Sendable {
-        public var favorites = 0, notes = 0, unknown = 0
+        public var favorites = 0, notes = 0, unknown = 0, withdrawn = 0
         /// Board cards whose status the client's Approve / Request changes moved (1.23).
         public var statuses = 0
         public var smartCollection: UUID?
@@ -263,6 +263,8 @@ extension StudioCatalog {
         let scope = scopedFeedback(f)
         r.unknown = scope.skipped.count
         let scoped = scope.feedback
+        // An outsider-only file is not an intentional withdrawal of a previous round.
+        if !f.items.isEmpty && scoped.items.isEmpty { return r }
         if !roster.recovered, let b = roster.board, let board = board(b) {
             // Board cards are mutable. If an asset now has several cards, an ID-only review
             // cannot tell which card was shared, so leave all its board effects alone.
@@ -274,18 +276,27 @@ extension StudioCatalog {
                 items: scoped.items.filter { UUID(uuidString: $0.id).map(allowed.contains) ?? false })
             r.statuses = previewFeedback(boardFeedback).statusChanges
             var pinned = false
-            _ = updateBoard(b) { pinned = $0.recordReview(boardFeedback, imported: imported) }
+            // A valid empty replacement clears this reviewer's round; an all-outside
+            // board subset cannot erase it merely because card membership moved.
+            if f.items.isEmpty || !boardFeedback.items.isEmpty {
+                _ = updateBoard(b) { pinned = $0.recordReview(boardFeedback, imported: imported) }
+            }
             if pinned { r.board = b }
         }
-        let reviewer = f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Client" : f.reviewer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let reviewer = Self.feedbackReviewer(f.reviewer)
+        r.withdrawn = replaceFeedbackPicks(gallery: f.gallery, reviewer: reviewer,
+            with: scoped.items.filter(\.favorite).compactMap { UUID(uuidString: $0.id) })
         let index = Dictionary(uniqueKeysWithValues: assets.enumerated().map { ($1.id.uuidString.uppercased(), $0) })
+        // A replacement drops this reviewer's previous notes even when a formerly
+        // shared asset is no longer present in the new feedback file.
+        for i in assets.indices {
+            assets[i].clientNotes.removeAll { $0.reviewer == reviewer && $0.gallery == f.gallery }
+        }
         for e in scoped.items {
             guard let i = index[e.id.uppercased()] else { r.unknown += 1; continue }
             if e.favorite {
                 r.favorites += 1
-                if !assets[i].tags.contains(ReviewGallery.clientPickTag) { assets[i].tags.append(ReviewGallery.clientPickTag) }
             }
-            assets[i].clientNotes.removeAll { $0.reviewer == reviewer && $0.gallery == f.gallery }
             let text = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty { r.notes += 1; assets[i].clientNotes.append(ClientNote(reviewer: reviewer, text: String(text.prefix(4000)), gallery: f.gallery)) }
         }

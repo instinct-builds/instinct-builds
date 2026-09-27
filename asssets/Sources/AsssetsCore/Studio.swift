@@ -169,8 +169,12 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
     public var sourceRefreshHistory: [SourceRefreshRecord] = []
     /// Gallery membership captured only after a successful publish (1.65).
     public var galleryRosters: [GalleryRoster] = []
+    /// 1.68 owns only picks created by this ledger, never tags from older catalogs.
+    public var feedbackPickLedger: [FeedbackPickRound] = []
+    public var ledgerOwnedPickTags: Set<UUID> = []
+    public var preservedPickTags: Set<UUID> = []
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates, licenseDocs, rightsPresets, placementPresets, sourceRefreshHistory, galleryRosters }
+    enum CodingKeys: String, CodingKey { case schemaVersion, assets, userCollections, starterFingerprint, dismissedKeys, smartCollections, smartSeeded, rightsSeeded, watchFolders, viewSorts, recentColors, boards, templates, licenseDocs, rightsPresets, placementPresets, sourceRefreshHistory, galleryRosters, feedbackPickLedger, ledgerOwnedPickTags, preservedPickTags }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? StudioCatalog.currentSchema
@@ -191,6 +195,9 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
         placementPresets = (try? c.decodeIfPresent([PlacementPreset].self, forKey: .placementPresets)) ?? []
         sourceRefreshHistory = (try? c.decodeIfPresent([SourceRefreshRecord].self, forKey: .sourceRefreshHistory)) ?? []
         galleryRosters = (try? c.decodeIfPresent([GalleryRoster].self, forKey: .galleryRosters)) ?? []
+        feedbackPickLedger = (try? c.decodeIfPresent([FeedbackPickRound].self, forKey: .feedbackPickLedger)) ?? []
+        ledgerOwnedPickTags = (try? c.decodeIfPresent(Set<UUID>.self, forKey: .ledgerOwnedPickTags)) ?? []
+        preservedPickTags = (try? c.decodeIfPresent(Set<UUID>.self, forKey: .preservedPickTags)) ?? []
     }
 
     public init(assets: [StudioAsset] = [], userCollections: [String] = [], starterFingerprint: String? = nil) {
