@@ -143,6 +143,8 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Down(v,w,down); Down(v,w,down);
     const std::string priorSlug=v->browserCursorSlug;
     [w makeFirstResponder:v->search];
+    std::printf("handoff pre: first=%s list=%d current=%d expected=%d cursor=%s\n",
+                object_getClassName(w.firstResponder),v->browserListFocus,v->currentIndex,committedBefore,v->browserCursorSlug.c_str());
     Check(!v->browserListFocus && w.firstResponder!=v,"search owns focus before Tab handoff");
     Snapshot(v,"handoff-search");
     id editor=w.firstResponder;
@@ -158,6 +160,8 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [w makeFirstResponder:v->search];
     v->search.stringValue=query;
     [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
+    std::printf("handoff filter: first=%s list=%d current=%d expected=%d query=%s\n",
+                object_getClassName(w.firstResponder),v->browserListFocus,v->currentIndex,committedBefore,v->search.stringValue.UTF8String);
     Check(!v->browserListFocus && v->currentIndex==committedBefore,
           "typed filter has no accidental preset load");
     editor=w.firstResponder;
@@ -165,6 +169,8 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check(w.firstResponder==v && v->browserListFocus && !v->visible.empty(),
           "Tab from filtered search reaches result list");
     [v keyDown:Key(w,NSEventTypeKeyDown,@"\t",48,NSEventModifierFlagShift)];
+    std::printf("handoff back: first=%s list=%d query=%s expected=%s\n",
+                object_getClassName(w.firstResponder),v->browserListFocus,v->search.stringValue.UTF8String,query.UTF8String);
     Check(w.firstResponder!=v && !v->browserListFocus && [v->search.stringValue isEqualToString:query],
           "Shift-Tab returns to Search without changing its query");
     Check(host->on.size()==onBefore+1 && host->off.size()==offBefore+1,
