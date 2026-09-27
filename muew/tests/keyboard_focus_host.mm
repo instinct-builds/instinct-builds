@@ -23,7 +23,7 @@ struct KeyboardHost final : MUEWEditorHost {
     void noteOff(int n) override { off.push_back(n); }
 };
 static NSEvent* Key(NSWindow* w, NSEventType type, NSString* text, unsigned short code = 0, NSEventModifierFlags modifiers = 0) {
-    return [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:0
+    return [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:modifiers
                           timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber
                            context:nil characters:text charactersIgnoringModifiers:text isARepeat:NO keyCode:code];
 }

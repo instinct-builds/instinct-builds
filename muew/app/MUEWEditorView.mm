@@ -116,6 +116,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 - (BOOL)resignFirstResponder {
     [self releaseHeldKeyboardNotes];
+    browserListFocus = false; // search or another responder owns keys after this handoff
     [self setNeedsDisplay:YES];
     return [super resignFirstResponder];
 }
