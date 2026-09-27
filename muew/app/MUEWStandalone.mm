@@ -62,6 +62,25 @@ struct StandaloneHost : MUEWEditorHost {
     // Only the AX IPC proof launch opts into an open browser. Normal launches
     // and AU embedding retain their existing initial state.
     if (getenv("MUEW_AX_PROOF")) [v setBrowserOpen:true];
+    const char* axControl=getenv("MUEW_AX_CONTROL");
+    if (axControl && *axControl) {
+        NSString* request=[NSString stringWithUTF8String:axControl];
+        NSString* response=[request stringByAppendingString:@".ack"];
+        __block NSString* last=@"";
+        [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer*) {
+            NSString* line=[NSString stringWithContentsOfFile:request encoding:NSUTF8StringEncoding error:nil];
+            if (!line || [line isEqualToString:last]) return;
+            last=line;
+            if ([line hasSuffix:@" filter-none"]) {
+                v->filter.query="no-such-sound-987"; [v refilter];
+            } else if ([line hasSuffix:@" filter-clear"]) {
+                v->filter.query=""; [v refilter];
+            } else if ([line hasSuffix:@" cursor-down"]) {
+                [v moveBrowserCursor:1];
+            }
+            [line writeToFile:response atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        }];
+    }
     [w center]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
     engine = [AVAudioEngine new];
     AVAudioFormat* fmt = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100 channels:2];

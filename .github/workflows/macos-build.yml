@@ -586,12 +586,13 @@ jobs:
           cd muew
           clang++ -std=c++17 -O2 -fobjc-arc -isysroot "$(xcrun --show-sdk-path)" \
             tests/ax_ipc_client.mm -framework AppKit -framework ApplicationServices -o build/ax_ipc_client
-          MUEW_AX_PROOF=1 out/MUEW.app/Contents/MacOS/MUEW > out/ax_ipc_app.log 2>&1 &
+          control="$RUNNER_TEMP/muew-ax-control-$$"
+          MUEW_AX_PROOF=1 MUEW_AX_CONTROL="$control" out/MUEW.app/Contents/MacOS/MUEW > out/ax_ipc_app.log 2>&1 &
           app_pid=$!
           trap 'kill "$app_pid" 2>/dev/null || true' EXIT
           sleep 3
           set +e
-          ./build/ax_ipc_client "$app_pid" 2>&1 | tee out/ax_ipc_client.log
+          ./build/ax_ipc_client "$app_pid" "$control" 2>&1 | tee out/ax_ipc_client.log
           status=${PIPESTATUS[0]}
           set -e
           if [ "$status" -eq 77 ]; then

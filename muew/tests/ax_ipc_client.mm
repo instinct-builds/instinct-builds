@@ -35,9 +35,28 @@ static AXUIElementRef Find(AXUIElementRef root, NSString* role, NSString* label,
     return nullptr;
 }
 static void Log(const char* what, AXError code) { printf("AX IPC %s: %d\n",what,(int)code); fflush(stdout); }
+static void Observe(AXObserverRef, AXUIElementRef, CFStringRef notification, void* context) {
+    NSMutableDictionary* counts=(__bridge NSMutableDictionary*)context;
+    NSString* key=(__bridge NSString*)notification;
+    counts[key]=@([counts[key] integerValue]+1);
+    printf("AX IPC notification=%s count=%ld\n",key.UTF8String,(long)[counts[key] integerValue]);
+    fflush(stdout);
+}
+static bool Control(NSString* path,int serial,NSString* command) {
+    NSString* request=[NSString stringWithFormat:@"%d %@",serial,command];
+    NSString* ack=[path stringByAppendingString:@".ack"];
+    if (![request writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil]) return false;
+    for (int i=0;i<40;++i) {
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+        NSString* got=[NSString stringWithContentsOfFile:ack encoding:NSUTF8StringEncoding error:nil];
+        if ([got isEqualToString:request]) return true;
+    }
+    return false;
+}
+
 int main(int argc,const char** argv) {
  @autoreleasepool {
-    if (argc!=2) { fprintf(stderr,"usage: ax_ipc_client PID\n"); return 2; }
+    if (argc!=2 && argc!=3) { fprintf(stderr,"usage: ax_ipc_client PID [proof-control-file]\n"); return 2; }
     pid_t pid=(pid_t)atoi(argv[1]);
     printf("AX IPC trusted=%d target_pid=%d\n",(int)AXIsProcessTrusted(),(int)pid);
     AXUIElementRef app=AXUIElementCreateApplication(pid);
@@ -61,6 +80,24 @@ int main(int argc,const char** argv) {
     AXUIElementRef list=Find(window,@"AXList",@"Preset results");
     printf("AX IPC native_search=%d named_list=%d\n",!!search,!!list);
     bool ok=(search != nullptr) && (list != nullptr) && [windowTitle isEqualToString:@"MUEW"];
+    NSString* control=argc>2 ? [NSString stringWithUTF8String:argv[2]] : nil;
+    NSMutableDictionary* counts=[NSMutableDictionary dictionary];
+    AXObserverRef observer=nullptr;
+    if (list && control) {
+        AXError oe=AXObserverCreate(pid,Observe,&observer);
+        Log("observer_create",oe);
+        ok=ok && oe==kAXErrorSuccess;
+        if (observer) {
+            for (NSString* name in @[(NSString*)kAXLayoutChangedNotification,
+                                     (NSString*)kAXSelectedChildrenChangedNotification,
+                                     (NSString*)kAXValueChangedNotification]) {
+                oe=AXObserverAddNotification(observer,list,(__bridge CFStringRef)name,(__bridge void*)counts);
+                Log("observer_add",oe);
+                ok=ok && oe==kAXErrorSuccess;
+            }
+            CFRunLoopAddSource(CFRunLoopGetCurrent(),AXObserverGetRunLoopSource(observer),kCFRunLoopDefaultMode);
+        }
+    }
     if (list) {
         NSArray* rows=Children(list);
         NSString* first=rows.count ? String((__bridge AXUIElementRef)rows[0],kAXDescriptionAttribute) : @"";
@@ -97,8 +134,31 @@ int main(int argc,const char** argv) {
             if (!loaded.length && after.count>1) loaded=String((__bridge AXUIElementRef)after[1],kAXTitleAttribute);
             printf("AX IPC press_selected=%s after=%s\n",chosen.UTF8String,loaded.UTF8String);
             ok=ok && err==kAXErrorSuccess && [loaded containsString:@"loaded: yes"];
+            if (control) {
+                bool filtered=Control(control,1,@"filter-none");
+                NSArray* empty=Children(list);
+                AXError stale=AXUIElementPerformAction(row,kAXPressAction);
+                printf("AX IPC refilter_ack=%d empty=%lu stale_press=%d\n",filtered,(unsigned long)empty.count,(int)stale);
+                bool cleared=Control(control,2,@"filter-clear");
+                NSArray* restored=Children(list);
+                NSString* restoredLabel=restored.count>1 ? String((__bridge AXUIElementRef)restored[1],kAXDescriptionAttribute) : @"";
+                bool cursor=Control(control,3,@"cursor-down");
+                NSArray* proposed=Children(list);
+                bool proposedFound=false;
+                for (id element in proposed) if ([String((__bridge AXUIElementRef)element,kAXDescriptionAttribute) containsString:@"proposed: yes"]) proposedFound=true;
+                printf("AX IPC restored_ack=%d count=%lu second=%s cursor_ack=%d proposed=%d\n",cleared,(unsigned long)restored.count,restoredLabel.UTF8String,cursor,proposedFound);
+                [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.25]];
+                NSInteger layout=[counts[(__bridge NSString*)kAXLayoutChangedNotification] integerValue];
+                NSInteger selection=[counts[(__bridge NSString*)kAXSelectedChildrenChangedNotification] integerValue];
+                NSInteger value=[counts[(__bridge NSString*)kAXValueChangedNotification] integerValue];
+                printf("AX IPC notifications layout=%ld selection=%ld value=%ld\n",(long)layout,(long)selection,(long)value);
+                ok=ok && filtered && empty.count==0 && stale!=kAXErrorSuccess && cleared && restored.count>1 &&
+                   [restoredLabel containsString:@"loaded: yes"] && cursor && proposedFound &&
+                   layout>0 && selection>0 && value>0;
+            }
         }
     }
+    if (observer) CFRelease(observer);
     if (search) CFRelease(search); if (list) CFRelease(list);
     CFRelease(windows); CFRelease(app);
     printf("AX IPC %s\n",ok ? "PASS" : "FAIL");
