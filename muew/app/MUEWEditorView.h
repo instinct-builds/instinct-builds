@@ -185,6 +185,7 @@ struct MUEWEditorHost {
     int bscroll;
     std::string browserCursorSlug; // proposed row, distinct from the loaded preset
     bool browserListFocus; // editor keyboard focus is on the result list, not Search
+    NSRange browserSearchSelection; // caret/range to restore on Shift-Tab from result list
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)

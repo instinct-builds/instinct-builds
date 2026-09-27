@@ -90,7 +90,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false;
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0);
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -180,6 +180,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     if (control != search || !browserOpen || !host || !host->playsNotes() ||
         !self.window.isKeyWindow || self.window.firstResponder != textView ||
         selector != @selector(insertTab:)) return NO;
+    browserSearchSelection = textView.selectedRange;
     [self.window makeFirstResponder:self];
     browserListFocus=true;
     [self setNeedsDisplay:YES];
@@ -4319,6 +4320,7 @@ static int SortForColumn(int c) {
     [self releaseHeldKeyboardNotes];
     browserOpen = open;
     browserCursorSlug.clear();
+    browserSearchSelection = NSMakeRange(NSNotFound,0);
     browserListFocus = open && [self hasEditorKeyboardFocus];
     wtEdit = -1;
     bscroll = 0;
@@ -4949,6 +4951,12 @@ static int NoteForKey(unichar ch) {
     if (browserOpen && ch == '\t' && (e.modifierFlags & NSEventModifierFlagShift)) {
         browserListFocus=false;
         [self.window makeFirstResponder:search];
+        id editor=self.window.firstResponder;
+        if ([editor isKindOfClass:[NSTextView class]] && [(NSTextView*)editor delegate] == search &&
+            browserSearchSelection.location != NSNotFound &&
+            NSMaxRange(browserSearchSelection) <= [(NSTextView*)editor string].length)
+            [(NSTextView*)editor setSelectedRange:browserSearchSelection];
+        browserSearchSelection = NSMakeRange(NSNotFound,0);
         [self setNeedsDisplay:YES];
         return;
     }
