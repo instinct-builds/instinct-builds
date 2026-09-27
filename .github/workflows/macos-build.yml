@@ -264,6 +264,9 @@ jobs:
           shoot feedback-reviewer-case 1024x768 feedback-reviewer-case demo-feedback-reviewer-case.txt
           grep -q '^done name=Jordan withdrawn=2 removed=1 replaced=1 other=true$' "$SUP/demo-feedback-reviewer-case.txt"
           cp "$SUP/demo-feedback-reviewer-case.txt" "ASSSETS-$ASSSETS_VERSION-feedback-reviewer-case.txt"
+          DELAY=6 shoot feedback-receipt 1024x768 feedback-receipt demo-feedback-receipt.txt
+          grep -q '^done saved=true receipt=0 client picks, 1 note, 2 notes removed, 1 note replaced from Jordan, Sam$' "$SUP/demo-feedback-receipt.txt"
+          cp "$SUP/demo-feedback-receipt.txt" "ASSSETS-$ASSSETS_VERSION-feedback-receipt.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
@@ -469,6 +472,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-save-fail.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-note-removal.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-reviewer-case.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-receipt.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt

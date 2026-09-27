@@ -1060,3 +1060,14 @@ other reviewers' notes and picks remain. A persisted-catalog test covers the
 replacement and a case-variant empty withdrawal. Native proof captures the
 1024x768 preview. This matches stored review rounds by their normalized key;
 it does not authenticate who supplied the feedback file.
+
+## 1.71.0: replacement counts in the saved import result
+
+After a verified feedback batch save, the result message now includes notes
+removed and notes replaced, separately from incoming notes and withdrawn
+picks. The counts come from each accepted file's pre-apply preview on the
+same evolving catalog copy; an empty replacement can report removals with
+zero incoming notes. A save failure still has no success receipt. Core tests
+cover shorter, empty, outsider-only and sequential two-reviewer batches.
+Native proof captures the result message at 1024x768 and checks the saved
+catalog and exact batch counts.

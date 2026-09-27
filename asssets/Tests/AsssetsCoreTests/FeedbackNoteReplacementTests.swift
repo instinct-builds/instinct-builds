@@ -22,12 +22,14 @@ struct FeedbackNoteReplacementTests {
         #expect(p.noteRemovals == 1 && p.noteReplacements == 1 && p.canImport)
         #expect(p.rows[0].removedNote == "Keep crop" && p.rows[0].replacesNote)
         #expect(p.rows.last?.asset == b && p.rows.last?.removedNote == "Use warmer" && !p.rows.last!.replacesNote)
-        _ = c.applyFeedback(shortened)
+        let changed = c.applyFeedback(shortened)
+        #expect(changed.notesRemoved == 1 && changed.notesReplaced == 1 && changed.notes == 1)
         #expect(c.assets.first { $0.id == a }!.clientNotes.map(\.text) == ["Keep crop updated"])
         #expect(c.assets.first { $0.id == b }!.clientNotes.map(\.text) == ["Mine stays"])
         let empty = f("Mara", [])
         #expect(c.previewFeedback(empty).noteRemovals == 1 && c.previewFeedback(empty).canImport)
-        _ = c.applyFeedback(empty)
+        let cleared = c.applyFeedback(empty)
+        #expect(cleared.notesRemoved == 1 && cleared.notesReplaced == 0 && cleared.notes == 0)
         #expect(c.assets.first { $0.id == a }!.clientNotes.isEmpty)
         #expect(c.assets.first { $0.id == b }!.clientNotes.map(\.text) == ["Mine stays"])
         let back = StudioCatalog.decode(try c.encoded())!
@@ -42,7 +44,8 @@ struct FeedbackNoteReplacementTests {
         let outsider = ReviewGallery.Feedback(gallery: g, title: "Round", reviewer: "Mara", items: [.init(id: UUID().uuidString, favorite: false, note: "Outside")])
         let preview = c.previewFeedback(outsider)
         #expect(preview.noteRemovals == 0 && !preview.canImport)
-        _ = c.applyFeedback(outsider)
+        let skipped = c.applyFeedback(outsider)
+        #expect(skipped.notesRemoved == 0 && skipped.notesReplaced == 0)
         #expect(c.assets.first { $0.id == a }!.clientNotes.map(\.text) == ["Keep"])
     }
 }

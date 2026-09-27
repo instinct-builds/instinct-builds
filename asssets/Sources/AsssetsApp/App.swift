@@ -774,6 +774,7 @@ final class StudioLibrary: ObservableObject {
                 (preview.replaces && (f.items.isEmpty || preview.hasVerifiedEntry)) { applied = true }
             total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown
             total.statuses += r.statuses; total.withdrawn += r.withdrawn
+            total.notesRemoved += r.notesRemoved; total.notesReplaced += r.notesReplaced
             total.smartCollection = r.smartCollection ?? total.smartCollection
             total.board = r.board ?? total.board
             let who = next.feedbackDisplayReviewer(gallery: f.gallery, reviewer: f.reviewer)
@@ -793,6 +794,8 @@ final class StudioLibrary: ObservableObject {
         catalog = next
         var msg = "\(total.favorites) client \(total.favorites == 1 ? "pick" : "picks"), \(total.notes) \(total.notes == 1 ? "note" : "notes")"
         if total.withdrawn > 0 { msg += ", \(total.withdrawn) \(total.withdrawn == 1 ? "pick" : "picks") withdrawn" }
+        if total.notesRemoved > 0 { msg += ", \(total.notesRemoved) \(total.notesRemoved == 1 ? "note" : "notes") removed" }
+        if total.notesReplaced > 0 { msg += ", \(total.notesReplaced) \(total.notesReplaced == 1 ? "note" : "notes") replaced" }
         if total.statuses > 0 { msg += ", \(total.statuses) \(total.statuses == 1 ? "status" : "statuses") updated" }
         if !reviewers.isEmpty { msg += " from " + reviewers.joined(separator: ", ") }
         if total.unknown > 0 { msg += " · \(total.unknown) skipped (outside gallery, duplicate, missing or legacy)" }
@@ -3648,12 +3651,12 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
-        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal", "feedback-reviewer-case":
+        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal", "feedback-reviewer-case", "feedback-receipt":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
             let ids = Array(mocks.prefix(2).map(\.id))
             let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
-            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" || demo == "feedback-reviewer-case" {
+            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" || demo == "feedback-reviewer-case" || demo == "feedback-receipt" {
                 if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
                     mutate { _ = $0.recordGallery(roster) }
                 }
@@ -3739,6 +3742,37 @@ final class StudioLibrary: ObservableObject {
                 let p = pendingFeedback?.files.first?.preview
                 let marker = "done name=\(p?.reviewer ?? "missing") withdrawn=\(p?.withdrawals ?? -1) removed=\(p?.noteRemovals ?? -1) replaced=\(p?.noteReplacements ?? -1) other=\(catalog.assets.first(where: { $0.id == ids[1] })?.clientNotes.contains(where: { $0.reviewer == "Sam" }) ?? false)"
                 try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-reviewer-case.txt"), atomically: true, encoding: .utf8)
+            }
+            if demo == "feedback-receipt" {
+                let first = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: "Old crop"),
+                    .init(id: ids[1].uuidString, favorite: false, note: "Old lighting")])
+                importFeedback(feedback: [first], unreadable: 0)
+                let other = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Sam", items: [
+                    .init(id: ids[1].uuidString, favorite: false, note: "Sam stays")])
+                importFeedback(feedback: [other], unreadable: 0)
+                let changed = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: "New crop")])
+                let cleared = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Sam", items: [])
+                // Two file-backed previews land through the normal verified batch path.
+                // Sam's zero-note replacement makes a removal-only member observable.
+                let changedURL = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-receipt-Jordan.json")
+                let clearedURL = FileManager.default.temporaryDirectory.appendingPathComponent("ASSSETS-receipt-Sam.json")
+                guard let changedData = try? JSONEncoder().encode(changed),
+                      let clearedData = try? JSONEncoder().encode(cleared),
+                      (try? changedData.write(to: changedURL, options: .atomic)) != nil,
+                      (try? clearedData.write(to: clearedURL, options: .atomic)) != nil else {
+                    flash("Could not prepare feedback receipt proof"); return
+                }
+                previewFeedback([changedURL, clearedURL])
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+                    self.applyPendingFeedback()
+                    let saved = (try? Data(contentsOf: self.catalogURL)).flatMap(StudioCatalog.decode)
+                    let jordan = saved?.assets.first(where: { $0.id == ids[0] })?.clientNotes.map(\.text) == ["New crop"]
+                    let noOld = saved?.assets.first(where: { $0.id == ids[1] })?.clientNotes.isEmpty == true
+                    let marker = "done saved=\(jordan && noOld) receipt=\(self.toast ?? "missing")"
+                    try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-receipt.txt"), atomically: true, encoding: .utf8)
+                }
             }
             if demo == "feedback-roster" {
                 let p = pendingFeedback?.files.first?.preview

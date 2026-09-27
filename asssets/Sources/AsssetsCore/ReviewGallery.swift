@@ -244,6 +244,8 @@ if(q.get('demo')==='approve-grid')M.board=null;render();if(q.get('demo')==='ligh
 extension StudioCatalog {
     public struct FeedbackResult: Equatable, Sendable {
         public var favorites = 0, notes = 0, unknown = 0, withdrawn = 0
+        /// Prior notes removed outright or replaced by a different incoming note.
+        public var notesRemoved = 0, notesReplaced = 0
         /// Board cards whose status the client's Approve / Request changes moved (1.23).
         public var statuses = 0
         public var smartCollection: UUID?
@@ -265,6 +267,9 @@ extension StudioCatalog {
         let scoped = scope.feedback
         // An outsider-only file is not an intentional withdrawal of a previous round.
         if !f.items.isEmpty && scoped.items.isEmpty { return r }
+        let notePreview = previewFeedback(f)
+        r.notesRemoved = notePreview.noteRemovals
+        r.notesReplaced = notePreview.noteReplacements
         if !roster.recovered, let b = roster.board, let board = board(b) {
             // Board cards are mutable. If an asset now has several cards, an ID-only review
             // cannot tell which card was shared, so leave all its board effects alone.
