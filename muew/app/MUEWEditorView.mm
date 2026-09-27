@@ -108,7 +108,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXList = nil; browserAXGeneration = 0;
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -138,6 +138,11 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 }
 - (NSArray*)browserAccessibilityRows {
     if (!browserOpen) return @[];
+    // AX IPC issues several calls on a row proxy. Keep objects stable until
+    // the underlying list, cursor, loaded preset or scroll really changes.
+    if (browserAXRows && browserAXRowsGeneration == browserAXGeneration &&
+        browserAXRowsCursorSlug == browserCursorSlug && browserAXRowsCurrentIndex == currentIndex &&
+        browserAXRowsScroll == bscroll) return browserAXRows;
     NSRect listFrame = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
     NSMutableArray* rows = [NSMutableArray array];
     const ui::Library& lib = ui::library();
@@ -161,7 +166,12 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         row.accessibilityFrameInParentSpace=relative;
         [rows addObject:row];
     }
-    return rows;
+    browserAXRows = [rows copy];
+    browserAXRowsGeneration = browserAXGeneration;
+    browserAXRowsCursorSlug = browserCursorSlug;
+    browserAXRowsCurrentIndex = currentIndex;
+    browserAXRowsScroll = bscroll;
+    return browserAXRows;
 }
 - (BOOL)accessibilityActivateBrowserSlug:(NSString*)slug generation:(NSUInteger)generation {
     if (!browserOpen || !slug || !host || generation != browserAXGeneration) return NO;

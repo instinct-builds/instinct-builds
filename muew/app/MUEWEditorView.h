@@ -188,6 +188,11 @@ struct MUEWEditorHost {
     NSRange browserSearchSelection; // caret/range to restore on Shift-Tab from result list
     NSAccessibilityElement* browserAXList; // virtual list, never a replacement for native Search
     NSUInteger browserAXGeneration; // invalidate retained row actions after refilter
+    NSArray* browserAXRows; // stable row identity until source state changes
+    NSUInteger browserAXRowsGeneration;
+    std::string browserAXRowsCursorSlug;
+    int browserAXRowsCurrentIndex;
+    int browserAXRowsScroll;
 }
 - (void)loadPresetIndex:(int)i;
 // Show a sound that came from the engine side (host recall, host preset menu)
