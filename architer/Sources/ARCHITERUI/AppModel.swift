@@ -1520,6 +1520,12 @@ public final class AppModel: ObservableObject {
         if !names.isEmpty {
             let base = condition.displayName + (rounds.flatMap { $0 > 0 ? " (\($0) rounds)" : nil } ?? "")
             var text = "\(base) -> \(names.joined(separator: ", "))"
+            // 3.64.0: a typed note rides the apply log line (normalized the
+            // same way it is stored), so the table log says what a reader
+            // needs without opening sheets.
+            if let appliedNote = Character.normalizedConditionNote(note ?? "") {
+                text += " (note: \(appliedNote))"
+            }
             if !applied.isEmpty && !refreshed.isEmpty {
                 text += " (new: \(applied.joined(separator: ", ")); refreshed: \(refreshed.joined(separator: ", ")))"
             }
@@ -1641,6 +1647,12 @@ public final class AppModel: ObservableObject {
         if !names.isEmpty {
             let base = name + (rounds.flatMap { $0 > 0 ? " (\($0) rounds)" : nil } ?? "")
             var text = "\(base) -> \(names.joined(separator: ", "))"
+            // 3.64.0: a typed note rides the apply log line (normalized the
+            // same way it is stored), so the table log says what a reader
+            // needs without opening sheets.
+            if let appliedNote = Character.normalizedConditionNote(note ?? "") {
+                text += " (note: \(appliedNote))"
+            }
             if !applied.isEmpty && !refreshed.isEmpty {
                 text += " (new: \(applied.joined(separator: ", ")); refreshed: \(refreshed.joined(separator: ", ")))"
             }

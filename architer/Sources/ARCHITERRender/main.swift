@@ -2952,6 +2952,71 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? pcnLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-notes.txt"),
                atomically: true, encoding: .utf8)
+    // Party-note log lines (3.64.0): a note typed in the header apply sheet
+    // rides the apply log line, per holder, on subset and Everyone paths.
+    // State is set explicitly and restored at the end of the block.
+    var pnlLines = ["Party-note log lines (3.64.0)",
+                    "the apply log gains the typed note: 'Condition -> A, B (note: ...)'; blank-note applies log no suffix"]
+    var pnlOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int], notes: [String: String])] = [:]
+    for c in model.characters { pnlOrig[c.id] = (c.conditions, c.conditionDurations, c.conditionNotes) }
+    if let w = model.characters.first(where: { $0.name == "Wren Halloway" })?.id {
+        // Subset apply with note: the note lands per holder and rides the log.
+        _ = model.applyPartyCondition(.blinded, rounds: 2, note: "the trap's flash", from: [w])
+        let pnlLast = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+        pnlLines.append("subset apply with note: '\(pnlLast)'")
+        pnlLines.append("subset log string exact \(pnlLast == "Blinded (2 rounds) -> Wren Halloway (note: the trap's flash)")")
+        pnlLines.append("note stored per holder \(model.characters.first(where: { $0.id == w })?.conditionNotes[Condition.blinded.rawValue] == "the trap's flash")")
+        // Blank-note re-apply (different rounds so it logs): no note suffix,
+        // the stored note is kept (3.58.0's blank-keeps rule per holder).
+        _ = model.applyPartyCondition(.blinded, rounds: 3, from: [w])
+        let pnlBlank = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+        pnlLines.append("blank-note re-apply: '\(pnlBlank)'")
+        pnlLines.append("blank apply logs no note suffix \(pnlBlank == "Blinded (3 rounds) -> Wren Halloway"), note kept \(model.characters.first(where: { $0.id == w })?.conditionNotes[Condition.blinded.rawValue] == "the trap's flash")")
+        // Typed-note re-apply replaces the stored note AND the log names the new one.
+        _ = model.applyPartyCondition(.blinded, rounds: 3, note: "smoke", from: [w])
+        let pnlReplaced = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+        pnlLines.append("typed re-apply replaces: '\(pnlReplaced)', stored now '\(model.characters.first(where: { $0.id == w })?.conditionNotes[Condition.blinded.rawValue] ?? "<missing>")'")
+        pnlLines.append("typed replace exact \(pnlReplaced == "Blinded (3 rounds) -> Wren Halloway (note: smoke)" && model.characters.first(where: { $0.id == w })?.conditionNotes[Condition.blinded.rawValue] == "smoke")")
+    }
+    // Everyone-apply with note: one line names the whole roster.
+    _ = model.applyPartyCondition(.frightened, rounds: nil, note: "the howl")
+    let pnlAll = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    pnlLines.append("party apply with note: '\(pnlAll)'")
+    pnlLines.append("party log exact \(pnlAll == "Frightened -> Wren Halloway, Bram Oakfel, Sera Vint (note: the howl)")")
+    pnlLines.append("note landed on every holder \(model.characters.allSatisfy { $0.conditionNotes[Condition.frightened.rawValue] == "the howl" })")
+    // PNG: the summary line carrying party-applied notes.
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: width, name: "party-note-log", outDir: outDir, minHeight: 200, maxHeight: 700)
+    // Persistence: the party-applied notes round-trip through the store.
+    let pnlPersist = model.characters.allSatisfy { c in
+        (try? model.store.load(id: c.id))?.conditionNotes == c.conditionNotes
+    }
+    pnlLines.append("persistence: party notes round-trip \(pnlPersist)")
+    // Removal takes the note with the condition (3.58.0 discipline, party path).
+    _ = model.removePartyCondition(.frightened)
+    pnlLines.append("party removal drops the notes \(model.characters.allSatisfy { $0.conditionNotes[Condition.frightened.rawValue] == nil })")
+    // Hygiene: restore conditions/clocks/notes, drop this block's log entries.
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = pnlOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations || c.conditionNotes != orig.notes {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            restored.conditionNotes = orig.notes
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    pnlLines.append("hygiene: conditions, clocks, notes and the log restored")
+    try? pnlLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-note-log.txt"),
+               atomically: true, encoding: .utf8)
     // Custom conditions on the summary line proofs (3.60.0). Runs at END.
     var pccLines = ["Custom conditions on the summary line (3.60.0)",
                     "name is the party identity - customs are per-character instances, born in the per-character editor, party-appliable after"]
