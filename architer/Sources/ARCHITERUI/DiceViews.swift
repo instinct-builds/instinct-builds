@@ -1294,11 +1294,11 @@ public struct GroupCheckSectionView: View {
                 Button("Short rest (party)") { model.restParty(long: false) }
                     .controlSize(.small)
                     .disabled(model.characters.isEmpty)
-                    .help("Short rest for all \(model.characters.count) roster characters - pact slots and short-rest features recharge")
+                    .help("Short rest for all \(model.characters.count) roster characters - pact slots and short-rest features recharge; timed conditions run out")
                 Button("Long rest (party)") { model.restParty(long: true) }
                     .controlSize(.small)
                     .disabled(model.characters.isEmpty)
-                    .help("Long rest for all \(model.characters.count) roster characters - HP, slots, hit dice, exhaustion per the era preset")
+                    .help("Long rest for all \(model.characters.count) roster characters - HP, slots, hit dice, exhaustion per the era preset; timed conditions clear")
             }
             // Party damage/heal (3.47.0): "the fireball hits everyone for
             // 26". The rest row's exact discipline - own undo stacks,

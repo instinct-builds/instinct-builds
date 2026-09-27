@@ -1392,6 +1392,14 @@ public final class AppModel: ObservableObject {
     /// not one character at a time. Each member rests through the award
     /// path - their own undo stack and save - so one member's undo
     /// restores just them. Returns the names of members whose state moved.
+    /// 3.61.0: the rest also runs out every TIMED condition on every member,
+    /// built-in or custom - an hour outlasts any round-scale clock, and the
+    /// long rest is the overnight reset; untimed conditions stay. Clearing
+    /// goes through the existing scoped removal paths (notes die with their
+    /// conditions, the summary line refreshes, persistence rides the same
+    /// saves), applies to every member even when their vitals did not move,
+    /// and one "Party rest" log line says what the rest cleared per
+    /// character. Vitals behavior is unchanged.
     @discardableResult
     public func restParty(long: Bool) -> [String] {
         var rested: [String] = []
@@ -1405,6 +1413,30 @@ public final class AppModel: ObservableObject {
             characters[idx] = c
             try? store.save(c)
             rested.append(c.name)
+        }
+        var clearedByName: [String: [String]] = [:]
+        for idx in characters.indices {
+            let c = characters[idx]
+            let holder: Set<UUID> = [c.id]
+            for key in c.restClearedConditionKeys {
+                if let builtIn = Condition(rawValue: key) {
+                    if !removePartyCondition(builtIn, from: holder).isEmpty {
+                        clearedByName[c.name, default: []].append(builtIn.displayName)
+                    }
+                } else if let custom = c.customConditions.first(where: { $0.id.uuidString == key }) {
+                    if !removePartyCustomCondition(name: custom.name, from: holder).isEmpty {
+                        clearedByName[c.name, default: []].append(custom.name)
+                    }
+                }
+            }
+        }
+        if !clearedByName.isEmpty {
+            let restName = long ? "Long rest" : "Short rest"
+            let perCharacter = clearedByName.keys.sorted().map { name in
+                "\(name): \(clearedByName[name, default: []].joined(separator: ", "))"
+            }.joined(separator: " \u{00B7} ")
+            tableLog.append(TableLogEntry(title: "Party rest", text: "\(restName) cleared \(perCharacter)"))
+            tableLogStore.save(tableLog)
         }
         return rested
     }

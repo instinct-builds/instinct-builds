@@ -1330,6 +1330,16 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         return ended
     }
 
+    /// Rest clearing (3.61.0): a rest - short or long - runs out every TIMED
+    /// condition, built-in or custom, regardless of rounds left: an hour
+    /// outlasts any round-scale clock, and the long rest is the overnight
+    /// reset. Untimed conditions stay. Keys are conditionDurations keys (a
+    /// built-in rawValue or a custom instance's UUID string), sorted so the
+    /// caller's removal order is deterministic.
+    public var restClearedConditionKeys: [String] {
+        conditionDurations.keys.sorted()
+    }
+
     /// Note hygiene (3.58.0): one line, trimmed, capped at 24 characters -
     /// the summary row stays a glance at table density. Blank normalizes to
     /// nil, which callers read as "leave any existing note alone".

@@ -2988,6 +2988,92 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? pccLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-custom-conditions.txt"),
                atomically: true, encoding: .utf8)
+
+    // Rests run out timed conditions proofs (3.61.0). Runs at END.
+    var restLines = ["Rests run out timed conditions (3.61.0)",
+                     "short or long, every timed clock dies with its notes; untimed stays - the table's reset"]
+    // fixture control (the standing 3.60.0 drill): strip the sample-seeded
+    // roster custom so the fixture is explicit; hygiene restores everything.
+    var restOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int], notes: [String: String], customs: [CustomCondition])] = [:]
+    let restBuiltInKeys = Set(Condition.allCases.map(\.rawValue))
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        restOrig[c.id] = (c.conditions, c.conditionDurations, c.conditionNotes, c.customConditions)
+        var stripped = c
+        stripped.customConditions = []
+        stripped.conditionDurations = c.conditionDurations.filter { restBuiltInKeys.contains($0.key) }
+        stripped.conditionNotes = c.conditionNotes.filter { restBuiltInKeys.contains($0.key) }
+        if stripped != c {
+            model.characters[idx] = stripped
+            try? model.store.save(stripped)
+        }
+    }
+    restLines.append("fixture control: roster customs stripped (the sample seeds one on Wren) \(model.characters.allSatisfy { $0.customConditions.isEmpty })")
+    let restWrenID = model.characters.first(where: { $0.name == "Wren Halloway" })?.id
+    let restBramID = model.characters.first(where: { $0.name == "Bram Oakfel" })?.id
+    let restSeraID = model.characters.first(where: { $0.name == "Sera Vint" })?.id
+    // fixture: Wren Prone 3r (Poisoned untimed rides the sample fixture);
+    // Bram a TIMED custom with a note; Sera the SAME custom untimed - the
+    // partial-holder case name-scoped removal must not touch
+    if let w = restWrenID { _ = model.applyPartyCondition(.prone, rounds: 3, from: [w]) }
+    if let b = restBramID { _ = model.applyPartyCustomCondition(name: "Vault-marked", rounds: 2, note: "vault", from: [b]) }
+    if let s = restSeraID { _ = model.applyPartyCustomCondition(name: "Vault-marked", rounds: nil, from: [s]) }
+    restLines.append("before short rest: '\(partyConditionSummary(model.characters))'")
+    restLines.append("before short exact \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned, Prone 3r \u{00B7} Bram Oakfel: Vault-marked 2r (vault) \u{00B7} Sera Vint: Vault-marked")")
+    // SHORT REST: an hour passes - every round-scale clock runs out
+    let restShortRested = model.restParty(long: false)
+    restLines.append("short rest vitals moved \(restShortRested.count) member(s)")
+    restLines.append("after short rest: '\(partyConditionSummary(model.characters))'")
+    restLines.append("after short exact \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned \u{00B7} Sera Vint: Vault-marked")")
+    restLines.append("untimed Poisoned stays \(model.characters.first(where: { $0.id == restWrenID })?.conditions.contains(.poisoned) == true)")
+    restLines.append("partial-holder custom survives on Sera \(model.characters.first(where: { $0.id == restSeraID })?.customConditions.count == 1)")
+    if let b = restBramID, let reloaded = try? model.store.load(id: b) {
+        restLines.append("persistence: Bram's custom, clock and note gone \(reloaded.customConditions.isEmpty && reloaded.conditionDurations.isEmpty && reloaded.conditionNotes.isEmpty)")
+    }
+    let restShortLog = model.tableLog.last(where: { $0.title == "Party rest" })?.text ?? "MISSING"
+    restLines.append("short rest log: '\(restShortLog)'")
+    restLines.append("short rest log exact \(restShortLog == "Short rest cleared Bram Oakfel: Vault-marked \u{00B7} Wren Halloway: Prone")")
+    restLines.append("removal-path lines used \(model.tableLog.contains { $0.title == "Party condition" && $0.text == "Prone removed: Wren Halloway" } && model.tableLog.contains { $0.title == "Party condition" && $0.text == "Vault-marked removed: Bram Oakfel" })")
+    // LONG REST fixture: Prone 2r on everyone, Bram's custom timed again
+    _ = model.applyPartyCondition(.prone, rounds: 2)
+    if let b = restBramID { _ = model.applyPartyCustomCondition(name: "Vault-marked", rounds: 5, note: "mark", from: [b]) }
+    restLines.append("before long rest: '\(partyConditionSummary(model.characters))'")
+    restLines.append("before long exact \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned, Prone 2r \u{00B7} Bram Oakfel: Prone 2r, Vault-marked 5r (mark) \u{00B7} Sera Vint: Prone 2r, Vault-marked")")
+    let restLongRested = model.restParty(long: true)
+    restLines.append("long rest vitals moved \(restLongRested.count) member(s)")
+    restLines.append("after long rest: '\(partyConditionSummary(model.characters))'")
+    restLines.append("after long exact \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned \u{00B7} Sera Vint: Vault-marked")")
+    let restLongLog = model.tableLog.last(where: { $0.title == "Party rest" })?.text ?? "MISSING"
+    restLines.append("long rest log: '\(restLongLog)'")
+    restLines.append("long rest log exact \(restLongLog == "Long rest cleared Bram Oakfel: Vault-marked, Prone \u{00B7} Sera Vint: Prone \u{00B7} Wren Halloway: Prone")")
+    restLines.append("untimed still untouched: Poisoned \(model.characters.first(where: { $0.id == restWrenID })?.conditions.contains(.poisoned) == true), Sera's custom \(model.characters.first(where: { $0.id == restSeraID })?.customConditions.count == 1)")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 1024, name: "party-rest-conditions", outDir: outDir, minHeight: 768, maxHeight: 768)
+    // hygiene: restore every character's original conditions, clocks, notes
+    // and customs; drop the block's log entries; hand selection back
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = restOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations || c.conditionNotes != orig.notes || c.customConditions != orig.customs {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            restored.conditionNotes = orig.notes
+            restored.customConditions = orig.customs
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" || $0.title == "Party rest" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    restLines.append("hygiene: roster conditions, clocks, notes, customs, log and selection restored")
+    try? restLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-rest-conditions.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
