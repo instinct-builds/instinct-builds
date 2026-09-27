@@ -640,3 +640,11 @@ The bottom kind strip of each active ON pattern cell shows a signed semitone
 offset when nonzero, in cyan. A neutral ON cell looks exactly as before.
 REST/TIE keep their kind marks, even if hidden pitch data is stored. No
 sound, preset format, AU parameter or click-target changes.
+
+
+## 0.77.0 ARP dormant-step inspector
+
+An out-of-LEN selected step says OUTSIDE LEN and presents dim, inert rails
+instead of showing or changing its hidden gate and pitch. Changing LEN later
+reveals the original step fields intact. This is editor-only behavior; no
+sound, preset format, or AU parameter changes.

@@ -2688,6 +2688,52 @@ int main() {
             Click(view,w,NSMakePoint(492+30,top-20.5));
             fflush(stdout);
         });
+        After(7.08998, ^{ // 0.77.0 dormant step inspector guards hidden values
+            muew::Preset before;State(before);muew::Preset setup=before;
+            setup.voice.arpOn=true;setup.voice.arpPatOn=true;setup.voice.arpPatLen=8;
+            setup.voice.arpPatKind[15]=muew::arp::StepOn;
+            setup.voice.arpPatVel[15]=87;setup.voice.arpPatRatchet[15]=3;setup.voice.arpPatOctave[15]=1;
+            setup.voice.arpPatChance[15]=25;setup.voice.arpPatGate[15]=73;setup.voice.arpPatPitch[15]=-7;
+            NSString* text=[NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            CGFloat top=view.bounds.size.height-100;
+            NSString* page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("page=2 ")!=0)Click(view,w,NSMakePoint(655,top-20.5));
+            page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("stepEdit=1")==std::string::npos)Click(view,w,NSMakePoint(730,top-126));
+            page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("actions=1")!=std::string::npos)Click(view,w,NSMakePoint(655,top-126));
+            const NSPoint dormantCell=NSMakePoint(492+(15+.5)*276.0/16,top-224);
+            Click(view,w,dormantCell);
+            NSString* selected=[view valueForKey:@"muewArpText"];
+            RenderBlock();Snapshot(view,"MUEW_DORMANT77_PNG","ARP out-of-LEN step inspector snapshot written");
+            muew::Preset baseline;bool ok0=State(baseline);
+            Click(view,w,NSMakePoint(492+42,top-148)); // INHERIT
+            Click(view,w,NSMakePoint(492+104+112,top-148)); // GATE
+            Click(view,w,NSMakePoint(492+42,top-184+20)); // RESET 0
+            Click(view,w,NSMakePoint(492+104+112,top-184+20)); // PITCH
+            muew::Preset unchanged;bool ok1=State(unchanged);
+            bool same=ok0&&ok1;
+            for(int i=0;i<muew::arp::kPatSteps;++i)same&=muew::arp::readStep(baseline.voice,i)==muew::arp::readStep(unchanged.voice,i);
+            Check(same&&unchanged.voice.arpPatLen==8&&muew::arp::readStep(unchanged.voice,15)==muew::arp::readStep(setup.voice,15)
+                  &&std::string(selected.UTF8String ?: "").find("selected=16")!=std::string::npos,
+                  "out-of-LEN step 16 remains byte-identical after all inspector clicks");
+            // Expand LEN eight times without moving the selected cell.
+            for(int i=0;i<8;++i)Click(view,w,NSMakePoint(560+60,top-205+9));
+            muew::Preset revealed;bool ok2=State(revealed);
+            RenderBlock();Snapshot(view,"MUEW_ACTIVE77_PNG","ARP revealed step 16 inspector snapshot written");
+            Check(ok2&&revealed.voice.arpPatLen==16&&muew::arp::readStep(revealed.voice,15)==muew::arp::readStep(setup.voice,15),
+                  "LEN expansion reveals original dormant gate, pitch and complete tuple");
+            NSString* reset=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef restore=(__bridge CFStringRef)reset;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&restore,sizeof(restore));
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            Click(view,w,NSMakePoint(730,top-126));Click(view,w,NSMakePoint(492+30,top-20.5));
+            fflush(stdout);
+        });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;

@@ -425,7 +425,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 - (NSRect)arpStepPitchBar { NSRect g = [self arpGrid]; return NSMakeRect(g.origin.x + 104, g.origin.y + 13, 116, 14); }
 - (void)setArpStepGateAt:(NSPoint)p {
     const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
-    if (current.voice.arpPatKind[i] != arp::StepOn) return;
+    if (i >= std::clamp(current.voice.arpPatLen, 1, arp::kPatSteps) || current.voice.arpPatKind[i] != arp::StepOn) return;
     NSRect r = [self arpStepGateBar];
     const double x = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
     current.voice.arpPatGate[i] = 5 + (int)std::lround(x * 95);
@@ -433,7 +433,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 }
 - (void)setArpStepPitchAt:(NSPoint)p {
     const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
-    if (current.voice.arpPatKind[i] != arp::StepOn) return;
+    if (i >= std::clamp(current.voice.arpPatLen, 1, arp::kPatSteps) || current.voice.arpPatKind[i] != arp::StepOn) return;
     NSRect r = [self arpStepPitchBar];
     const double x = std::clamp((p.x - r.origin.x) / r.size.width, 0.0, 1.0);
     current.voice.arpPatPitch[i] = std::clamp((int)std::lround(x * 24) - 12, -12, 12);
@@ -444,7 +444,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     NSRect g = [self arpGrid];
     FillRound(g, 5, C(0x0f141b));
     const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
-    const bool note = v.arpPatKind[i] == arp::StepOn;
+    const bool dormant = i >= std::clamp(v.arpPatLen, 1, arp::kPatSteps);
+    const bool note = !dormant && v.arpPatKind[i] == arp::StepOn;
     const int gate = v.arpPatGate[i] ? v.arpPatGate[i] : (int)std::lround(v.arpGate * 100);
     const int pitch = std::clamp(v.arpPatPitch[i], -12, 12);
     Text([NSString stringWithFormat:@"STEP %d / %d", i + 1, std::clamp(v.arpPatLen, 1, arp::kPatSteps)],
@@ -464,7 +465,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         NSColor* disabled = C(0x27303a);
         FillRound(NSMakeRect(gb.origin.x, NSMidY(gb) - 2, gb.size.width, 4), 2, disabled);
         FillRound(NSMakeRect(pb.origin.x, NSMidY(pb) - 2, pb.size.width, 4), 2, disabled);
-        NSString* kind = v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE";
+        NSString* kind = dormant ? @"-" : v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE";
         TextA(kind, NSMakeRect(NSMaxX(gb) + 4, gb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
         TextA(kind, NSMakeRect(NSMaxX(pb) + 4, pb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
     } else {
@@ -482,8 +483,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
         TextA([NSString stringWithFormat:@"%+d st", pitch],
               NSMakeRect(NSMaxX(pb) + 4, pb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
     }
-    if (!note) Text(v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE",
-                    NSMakeRect(g.origin.x + 130, NSMaxY(g) - 15, 44, 11), 7, C(0x8793a3), NSFontWeightBold);
+    if (!note) Text(dormant ? @"OUTSIDE LEN" : v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE",
+                    NSMakeRect(g.origin.x + 130, NSMaxY(g) - 15, dormant ? 83 : 44, 11), 7, C(0x8793a3), NSFontWeightBold);
 }
 - (void)drawArpGrid {
     const VoiceParams& v = current.voice;
@@ -582,7 +583,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     }
     if (arpStepEdit && NSPointInRect(p, [self arpGrid])) {
         const int i = std::clamp(arpSelectedStep, 0, arp::kPatSteps - 1);
-        if (current.voice.arpPatKind[i] != arp::StepOn) return YES;
+        if (i >= std::clamp(current.voice.arpPatLen, 1, arp::kPatSteps) || current.voice.arpPatKind[i] != arp::StepOn) return YES;
         if (NSPointInRect(p, NSInsetRect([self arpStepInherit], -3, -3))) {
             current.voice.arpPatGate[i] = 0; [self voiceParamEdited:-1]; return YES;
         }
