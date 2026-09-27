@@ -409,8 +409,8 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     FillRound(u, 4, depth ? C(0x35273a) : C(0x1b202a));
     TextA(@"UNDO", NSInsetRect(u, 2, 3), 6.5, depth ? C(0xf06fb0) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
     Text(arpActions.canPaste()
-          ? [NSString stringWithFormat:@"COPIED %d  \u00b7  %d UNDOS", arpActions.copiedSourceStep(), depth]
-          : [NSString stringWithFormat:@"COPY A STEP  \u00b7  %d UNDOS", depth],
+          ? [NSString stringWithFormat:@"COPIED %d  \u00b7  %d %@", arpActions.copiedSourceStep(), depth, depth == 1 ? @"UNDO" : @"UNDOS"]
+          : [NSString stringWithFormat:@"COPY A STEP  \u00b7  %d %@", depth, depth == 1 ? @"UNDO" : @"UNDOS"],
          NSMakeRect(g.origin.x + 78, g.origin.y + 10, 160, 10), 7, C(0x8793a3), NSFontWeightSemibold);
 }
 - (NSRect)arpStepEditToggle { NSRect g = [self arpGrid]; return NSMakeRect(NSMaxX(g) - 76, NSMaxY(g) - 16, 72, 14); }
