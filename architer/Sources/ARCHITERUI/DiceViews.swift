@@ -1336,6 +1336,15 @@ public struct GroupCheckSectionView: View {
                 .disabled(model.characters.isEmpty)
                 .help("Apply a condition to all \(model.characters.count) roster characters - never stacks; rounds refresh timers, blank rounds keeps them; undo restores")
             }
+            // Party condition summary (3.53.0): who's holding what plus
+            // clocks, at a glance. Read-only, derived from stored state;
+            // hidden when the roster holds nothing.
+            let partyCondSummary = partyConditionSummary(model.characters)
+            if !partyCondSummary.isEmpty {
+                Text(partyCondSummary)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkMuted)
+            }
             if let outcome = model.lastGroupCheck {
                 VStack(alignment: .leading, spacing: Theme.Gap.xs) {
                     ForEach(outcome.lines, id: \.name) { line in

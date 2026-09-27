@@ -2413,6 +2413,65 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? rmLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-remove.txt"),
                atomically: true, encoding: .utf8)
+    // Party condition-summary proofs (3.53.0). Runs at END.
+    var sumLines = ["Party condition summary (3.53.0)",
+                    "who's holding what plus clocks - one read-only glance line"]
+    var sumOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int])] = [:]
+    for c in model.characters { sumOrig[c.id] = (c.conditions, c.conditionDurations) }
+    // setup: Prone 3 on everyone via the 3.51.0 party apply; Wren also
+    // holds Poisoned (untimed) so the line shows a clock next to no-clock
+    _ = model.applyPartyCondition(.prone, rounds: 3)
+    if let idx = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
+        var w = model.characters[idx]
+        w.conditions.insert(.poisoned)
+        model.characters[idx] = w
+        try? model.store.save(w)
+    }
+    let sumExpect = "Wren Halloway: Poisoned, Prone 3r \u{00B7} Bram Oakfel: Prone 3r \u{00B7} Sera Vint: Prone 3r"
+    sumLines.append("summary: '\(partyConditionSummary(model.characters))'")
+    sumLines.append("matches expected exact string \(partyConditionSummary(model.characters) == sumExpect)")
+    // a non-holder is not named: clear Sera, re-read the line
+    if let idx = model.characters.firstIndex(where: { $0.name == "Sera Vint" }) {
+        var s = model.characters[idx]
+        s.conditions.remove(.prone)
+        s.conditionDurations.removeValue(forKey: Condition.prone.rawValue)
+        model.characters[idx] = s
+    }
+    sumLines.append("non-holder Sera not named \(!partyConditionSummary(model.characters).contains("Sera"))")
+    sumLines.append("holders Wren and Bram still named \(partyConditionSummary(model.characters).contains("Wren") && partyConditionSummary(model.characters).contains("Bram"))")
+    _ = model.applyPartyCondition(.prone, rounds: 3) // Sera back in for the render
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-condition-summary", outDir: outDir, minHeight: 120, maxHeight: 500)
+    // negative: nobody holds anything -> empty line, row hides
+    for idx in model.characters.indices {
+        var c = model.characters[idx]
+        c.conditions = []
+        c.conditionDurations = [:]
+        model.characters[idx] = c
+    }
+    sumLines.append("empty when nobody holds anything \(partyConditionSummary(model.characters).isEmpty)")
+    // hygiene: restore every character's original conditions + clocks, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = sumOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    sumLines.append("hygiene: roster conditions, clocks, log and selection restored")
+    try? sumLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-summary.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
