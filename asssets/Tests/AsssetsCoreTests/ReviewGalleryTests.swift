@@ -78,8 +78,9 @@ struct ReviewGalleryTests {
             var a = asset(item.title); a.id = id; return a
         }
         #expect(catalog.assets.count == manifest.items.count && !catalog.assets.isEmpty)
-        #expect(catalog.recordGallery(GalleryRoster(gallery: manifest.gallery, title: manifest.title,
-            created: manifest.created, assets: catalog.assets.map(\.id))!))
+        let recorded = catalog.recordGallery(GalleryRoster(gallery: manifest.gallery, title: manifest.title,
+            created: manifest.created, assets: catalog.assets.map(\.id))!)
+        #expect(recorded)
         func read(_ file: String) throws -> ReviewGallery.Feedback {
             try #require(ReviewGallery.decodeFeedback(Data(contentsOf: root.appendingPathComponent(file))))
         }
