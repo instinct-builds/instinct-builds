@@ -2521,11 +2521,19 @@ int main() {
             auto cell=[&](int i){return NSMakePoint(492+(i+.5)*276.0/16,top-224);};
             auto button=[&](int b){return NSMakePoint(492+8+b*65+30,top-184+38);};
             Click(view,w,cell(1));Click(view,w,button(0)); // COPY a REST including hidden values
+            NSString* copied=[view valueForKey:@"muewArpText"];
+            Check(std::string(copied.UTF8String ?: "").find("copied=1")!=std::string::npos
+                  &&std::string(copied.UTF8String ?: "").find("source=2")!=std::string::npos,
+                  "COPY footer source tracks the copied step");
             Click(view,w,cell(2));Click(view,w,button(1)); // PASTE over TIE
             muew::Preset pasted;bool okp=State(pasted);
             auto src=muew::arp::readStep(setup.voice,1),dst=muew::arp::readStep(pasted.voice,2);
             Check(okp&&src==dst&&pasted.voice.arpPatLen==4,
                   "COPY/PASTE carries all seven REST fields through AU state");
+            NSString* pastedText=[view valueForKey:@"muewArpText"];
+            Check(std::string(pastedText.UTF8String ?: "").find("undo=1 copied=1")!=std::string::npos
+                  &&std::string(pastedText.UTF8String ?: "").find("source=2")!=std::string::npos,
+                  "PASTE keeps copy source and adds one undo");
             Click(view,w,button(3)); // ROTATE >
             RenderBlock();Snapshot(view,"MUEW_ACTIONS72_PNG","ARP pattern actions snapshot written");
             muew::Preset rotated;bool okr=State(rotated);
@@ -2556,6 +2564,44 @@ int main() {
             NSString* cleared=[view valueForKey:@"muewArpText"];
             Check(std::string(cleared.UTF8String ?: "").find("undo=0 copied=0")!=std::string::npos,
                   "external preset switch clears action clipboard and history");
+            Check(std::string(cleared.UTF8String ?: "").find("source=0")!=std::string::npos,
+                  "preset switch clears the source indicator");
+            Click(view,w,NSMakePoint(730,top-126));Click(view,w,NSMakePoint(492+30,top-20.5));
+            fflush(stdout);
+        });
+        After(7.0898, ^{ // 0.74.0: actions footer snapshot with copied source and undo count
+            muew::Preset before;State(before);muew::Preset setup=before;
+            setup.voice.arpOn=true;setup.voice.arpPatOn=true;setup.voice.arpPatLen=16;
+            for(int i=0;i<16;++i)setup.voice.arpPatVel[i]=40+i;
+            NSString* text=[NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            CGFloat top=view.bounds.size.height-100;
+            NSString* page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("page=2 ")!=0)Click(view,w,NSMakePoint(655,top-20.5));
+            page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("stepEdit=1") == std::string::npos)Click(view,w,NSMakePoint(730,top-126));
+            page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("actions=1") == std::string::npos)Click(view,w,NSMakePoint(655,top-126));
+            auto cell=[&](int i){return NSMakePoint(492+(i+.5)*276.0/16,top-224);};
+            NSString* empty=[view valueForKey:@"muewArpText"];
+            Check(std::string(empty.UTF8String ?: "").find("undo=0 copied=0")!=std::string::npos
+                  &&std::string(empty.UTF8String ?: "").find("source=0")!=std::string::npos,
+                  "ACTIONS footer starts with an empty clipboard");
+            Click(view,w,cell(15));Click(view,w,NSMakePoint(492+38,top-184+38)); // COPY 16
+            Click(view,w,cell(0));Click(view,w,NSMakePoint(492+8+65+30,top-184+38)); // PASTE on 1
+            NSString* debug=[view valueForKey:@"muewArpText"];
+            RenderBlock();Snapshot(view,"MUEW_ACTIONS74_PNG","ARP copied-source footer snapshot written");
+            Check(std::string(debug.UTF8String ?: "").find("len=16")!=std::string::npos
+                  &&std::string(debug.UTF8String ?: "").find("undo=1 copied=1")!=std::string::npos
+                  &&std::string(debug.UTF8String ?: "").find("source=16")!=std::string::npos,
+                  "ACTIONS footer retains source step 16 after pasting to step 1");
+            NSString* reset=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef restore=(__bridge CFStringRef)reset;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&restore,sizeof(restore));
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
             Click(view,w,NSMakePoint(730,top-126));Click(view,w,NSMakePoint(492+30,top-20.5));
             fflush(stdout);
         });

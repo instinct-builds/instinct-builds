@@ -408,7 +408,9 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     NSRect u = [self arpUndoButton]; const int depth = arpActions.undoDepth();
     FillRound(u, 4, depth ? C(0x35273a) : C(0x1b202a));
     TextA(@"UNDO", NSInsetRect(u, 2, 3), 6.5, depth ? C(0xf06fb0) : C(0x5f6b7b), NSFontWeightBold, NSTextAlignmentCenter);
-    Text([NSString stringWithFormat:@"%d STEP%@ TO UNDO", depth, depth == 1 ? @"" : @"S"],
+    Text(arpActions.canPaste()
+          ? [NSString stringWithFormat:@"COPIED %d  \u00b7  %d UNDOS", arpActions.copiedSourceStep(), depth]
+          : [NSString stringWithFormat:@"COPY A STEP  \u00b7  %d UNDOS", depth],
          NSMakeRect(g.origin.x + 78, g.origin.y + 10, 160, 10), 7, C(0x8793a3), NSFontWeightSemibold);
 }
 - (NSRect)arpStepEditToggle { NSRect g = [self arpGrid]; return NSMakeRect(NSMaxX(g) - 76, NSMaxY(g) - 16, 72, 14); }
@@ -842,7 +844,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%d", i ? "," : "", v.arpPatGate[i]];
     [s appendFormat:@" pitches="];
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%+d", i ? "," : "", v.arpPatPitch[i]];
-    [s appendFormat:@" chanceLive=%d chances=", v.arpChanceLive ? 1 : 0];
+    [s appendFormat:@" source=%d chanceLive=%d chances=", arpActions.copiedSourceStep(), v.arpChanceLive ? 1 : 0];
     for (int i = 0; i < v.arpPatLen; ++i) [s appendFormat:@"%s%d", i ? "," : "", v.arpPatChance[i]];
     return s;
 }

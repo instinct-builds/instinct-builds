@@ -615,3 +615,11 @@ sweeps align, at 50% the existing quarter-cycle offset is unchanged, and at
 100% the right sweep is half a cycle ahead. A double-click returns to 50%.
 Only a nondefault value writes `phaserspread <0..1>` to the preset; old files
 retain their text and sound, and no AU parameter ID is added.
+
+
+## 0.74.0 ARP ACTIONS feedback
+
+The ACTIONS footer shows the copied source cell and undo count. COPY A STEP
+means the clipboard is empty; COPY preserves the original source number after
+PASTE or ROTATE. Preset switches and external state adoption clear both the
+clipboard and its source number. No sound, preset or AU parameter changes.

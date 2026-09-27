@@ -33,7 +33,7 @@ class Actions {
 public:
     bool copy(const VoiceParams& v,int i) {
         if(i<0||i>=std::clamp(v.arpPatLen,1,kPatSteps))return false;
-        copied_=readStep(v,i);hasCopy_=true;return true;
+        copied_=readStep(v,i);hasCopy_=true;sourceStep_=i+1;return true;
     }
     bool paste(VoiceParams& v,int i) {
         if(!hasCopy_||i<0||i>=std::clamp(v.arpPatLen,1,kPatSteps)||readStep(v,i)==copied_)return false;
@@ -56,11 +56,12 @@ public:
     }
     bool canPaste()const{return hasCopy_;}
     int undoDepth()const{return (int)undo_.size();}
-    void clear(){undo_.clear();hasCopy_=false;}
+    int copiedSourceStep()const{return hasCopy_?sourceStep_:0;}
+    void clear(){undo_.clear();hasCopy_=false;sourceStep_=0;}
     void clearHistory(){undo_.clear();}
     void discardUndo(){if(!undo_.empty())undo_.pop_back();}
 private:
     void remember(const VoiceParams& v){if(undo_.size()>=48)undo_.erase(undo_.begin());undo_.push_back(snapshot(v));}
-    StepData copied_{};bool hasCopy_=false;std::vector<PatternSnapshot> undo_;
+    StepData copied_{};bool hasCopy_=false;int sourceStep_=0;std::vector<PatternSnapshot> undo_;
 };
 } // namespace muew::arp
