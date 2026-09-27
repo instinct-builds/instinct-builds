@@ -47,7 +47,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check(host->off.size()==1 && !host->off.empty() && host->off.back()==48, "keyUp releases original note after octave changes");
     v->octave=0;
     Down(v,w,@"s"); [w makeFirstResponder:v->search];
-    Check(!host->on.empty() && !host->off.empty() && host->on.back()==49 && host->off.back()==49 && w.firstResponder != v, "changing to search releases held note");
+    Check(!host->on.empty() && !host->off.empty() && host->on.back()==50 && host->off.back()==50 && w.firstResponder != v, "changing to search releases held note");
     const size_t onBefore=host->on.size(), offBefore=host->off.size();
     const int patchBefore=v->currentIndex;
     v->search.stringValue=@"awsedftgyhujk zx";
