@@ -6,6 +6,8 @@
 #include <utility>
 #include <string>
 #include <cstdlib>
+#import <dispatch/dispatch.h>
+#import <objc/runtime.h>
 
 static int failures = 0;
 static void Check(bool ok, const char* why) {
@@ -36,31 +38,17 @@ static void Snapshot(MUEWEditorView* v, const char* name) {
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
     Check(data.length > 10000 && [data writeToFile:path atomically:YES], name);
 }
-int main() {
- @autoreleasepool {
-    setvbuf(stdout, nullptr, _IONBF, 0); // retain the last passing assertion on a runner crash
-    std::fprintf(stderr, "focus: boot\n");
-    NSApplication* app = [NSApplication sharedApplication];
-    app.activationPolicy = NSApplicationActivationPolicyRegular;
-    NSWindow* w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,1000,680)
-                 styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
-    w.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
-    MUEWEditorView* v = [[MUEWEditorView alloc] initWithFrame:NSMakeRect(0,0,1000,680)];
-    KeyboardHost host; v->host = &host; w.contentView = v;
-    [v loadPresetIndex:0]; [w center]; [w makeKeyAndOrderFront:nil];
-    [app activateIgnoringOtherApps:YES];
-    [w makeFirstResponder:v];
-    std::fprintf(stderr, "focus: window ready\n");
+static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check(w.isKeyWindow && w.firstResponder == v, "editor is the standalone key responder");
     const int original = v->currentIndex;
     Down(v,w,@"a"); Down(v,w,@"a");
-    Check(host.on.size()==1 && host.on.back()==48, "repeat/double keyDown cannot trigger duplicate note-on");
+    Check(host->on.size()==1 && !host->on.empty() && host->on.back()==48, "repeat/double keyDown cannot trigger duplicate note-on");
     v->octave=2; Up(v,w,@"a");
-    Check(host.off.size()==1 && host.off.back()==48, "keyUp releases original note after octave changes");
+    Check(host->off.size()==1 && !host->off.empty() && host->off.back()==48, "keyUp releases original note after octave changes");
     v->octave=0;
     Down(v,w,@"s"); [w makeFirstResponder:v->search];
-    Check(!host.on.empty() && !host.off.empty() && host.on.back()==49 && host.off.back()==49 && w.firstResponder != v, "changing to search releases held note");
-    const size_t onBefore=host.on.size(), offBefore=host.off.size();
+    Check(!host->on.empty() && !host->off.empty() && host->on.back()==49 && host->off.back()==49 && w.firstResponder != v, "changing to search releases held note");
+    const size_t onBefore=host->on.size(), offBefore=host->off.size();
     const int patchBefore=v->currentIndex;
     v->search.stringValue=@"awsedftgyhujk zx";
     [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
@@ -70,16 +58,16 @@ int main() {
     NSString* arrow = [NSString stringWithCharacters:&rightArrow length:1];
     NSString* esc = [NSString stringWithCharacters:&escape length:1];
     Down(v,w,arrow);
-    Check(host.on.size()==onBefore && host.off.size()==offBefore && v->octave==0 && v->currentIndex==patchBefore,
+    Check(host->on.size()==onBefore && host->off.size()==offBefore && v->octave==0 && v->currentIndex==patchBefore,
           "text focus blocks notes, octave and preset shortcuts");
     Snapshot(v,"text");
     [w makeFirstResponder:v];
     Down(v,w,@"a");
     [[NSNotificationCenter defaultCenter] postNotificationName:NSWindowDidResignKeyNotification object:w];
-    Check(host.on.size()==onBefore+1 && host.off.size()==offBefore+1 && !host.off.empty() && host.off.back()==48,
+    Check(host->on.size()==onBefore+1 && host->off.size()==offBefore+1 && !host->off.empty() && host->off.back()==48,
           "window losing key focus releases held note");
     Up(v,w,@"a");
-    Check(host.off.size()==offBefore+1, "late keyUp does not release twice");
+    Check(host->off.size()==offBefore+1, "late keyUp does not release twice");
 
     v->outputDetailOpen=true; [v setNeedsDisplay:YES]; Snapshot(v,"output-detail");
     Down(v,w,@"\r"); Check(!v->outputDetailOpen && v->currentIndex==original, "Return closes read-only output detail only");
@@ -97,11 +85,31 @@ int main() {
     Check(v->fxDetail<0 && v->currentIndex==original, "Escape closes small panel without a sound edit");
     Down(v,w,esc);
     Check(v->currentIndex==original, "Escape on base editor has no effect");
-    // Drop host binding before asynchronous AppKit window release; the destructor
-    // must not call through a stack host that has already gone out of scope.
-    v->host = nullptr;
-    [w close];
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
-    return failures ? 1 : 0;
+    fflush(stdout);
+    // Bypass runner AppKit teardown after capturing assertions and pixels. The
+    // original harness crashed in objc_release after printing its final result.
+    _Exit(failures ? 1 : 0);
+}
+int main() {
+ @autoreleasepool {
+    setvbuf(stdout, nullptr, _IONBF, 0); // retain the last passing assertion on a runner crash
+    std::fprintf(stderr, "focus: boot\n");
+    NSApplication* app = [NSApplication sharedApplication];
+    app.activationPolicy = NSApplicationActivationPolicyRegular;
+    NSWindow* w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,1000,680)
+                 styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
+    w.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    MUEWEditorView* v = [[MUEWEditorView alloc] initWithFrame:NSMakeRect(0,0,1000,680)];
+    KeyboardHost* host = new KeyboardHost; v->host = host; w.contentView = v;
+    [v loadPresetIndex:0]; [w center]; [w makeKeyAndOrderFront:nil];
+    [app activateIgnoringOtherApps:YES];
+    [w makeFirstResponder:v];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        std::fprintf(stderr, "focus: window ready, key=%d responder=%s\n", w.isKeyWindow, object_getClassName(w.firstResponder));
+        RunChecks(v,w,host);
+    });
+    [app run];
+    return 2; // normally unreachable
  }
 }
