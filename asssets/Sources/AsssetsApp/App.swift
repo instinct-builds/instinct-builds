@@ -3648,12 +3648,12 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
-        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail":
+        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
             let ids = Array(mocks.prefix(2).map(\.id))
             let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
-            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" {
+            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" {
                 if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
                     mutate { _ = $0.recordGallery(roster) }
                 }
@@ -3707,6 +3707,22 @@ final class StudioLibrary: ObservableObject {
                     let marker = "done withdrawals=\(p?.withdrawals ?? -1) actionable=\(p?.canImport ?? false)"
                     try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-withdraw.txt"), atomically: true, encoding: .utf8)
                 }
+            }
+            if demo == "feedback-note-removal" {
+                let first = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: "Try a warmer backdrop"),
+                    .init(id: ids[1].uuidString, favorite: false, note: "Keep the lighting")])
+                importFeedback(feedback: [first], unreadable: 0)
+                let second = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Sam", items: [
+                    .init(id: ids[1].uuidString, favorite: false, note: "My note stays")])
+                importFeedback(feedback: [second], unreadable: 0)
+                let shortened = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: "Warmer background approved")])
+                if let data = try? JSONEncoder().encode(shortened) { try? data.write(to: url, options: .atomic) }
+                previewFeedback([url])
+                let p = pendingFeedback?.files.first?.preview
+                let marker = "done removed=\(p?.noteRemovals ?? -1) replaced=\(p?.noteReplacements ?? -1) other=\(catalog.assets.first(where: { $0.id == ids[1] })?.clientNotes.contains(where: { $0.reviewer == "Sam" }) ?? false)"
+                try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-note-removal.txt"), atomically: true, encoding: .utf8)
             }
             if demo == "feedback-roster" {
                 let p = pendingFeedback?.files.first?.preview
@@ -12501,6 +12517,8 @@ struct FeedbackPreviewSheet: View {
                 Spacer()
                 chip("\(p.picks)", "heart.fill", Color(red: 1, green: 0.36, blue: 0.54))
                 if p.withdrawals > 0 { chip("-\(p.withdrawals)", "heart.slash", Theme.warning) }
+                if p.noteRemovals > 0 { chip("-\(p.noteRemovals)", "text.bubble", Theme.warning) }
+                if p.noteReplacements > 0 { chip("↻\(p.noteReplacements)", "text.bubble", Theme.warning) }
                 chip("\(p.approvals)", CardThreadBadge.symbol(.approved), CardThreadBadge.color(.approved))
                 chip("\(p.changeRequests)", CardThreadBadge.symbol(.changes), CardThreadBadge.color(.changes))
                 chip("\(p.notes)", "text.bubble.fill", Color(white: 0.75))
@@ -12512,7 +12530,7 @@ struct FeedbackPreviewSheet: View {
             }
             if p.skippedCount > 0 { Text("\(p.skippedCount) skipped or unverified item(s)").font(.caption2).foregroundStyle(Theme.warning) }
             if p.replaces {
-                Label("Replacing \(p.reviewer)'s earlier feedback. \(p.withdrawals) prior \(p.withdrawals == 1 ? "pick" : "picks") withdrawn; other reviewers' or older untracked picks stay.", systemImage: "arrow.triangle.2.circlepath")
+                Label("Replacing \(p.reviewer)'s earlier feedback: \(p.withdrawals) picks withdrawn, \(p.noteRemovals) notes removed, \(p.noteReplacements) notes replaced. Other reviewers' notes and picks stay.", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2).foregroundStyle(Theme.warning)
             }
             VStack(spacing: 0) {
@@ -12550,6 +12568,11 @@ struct FeedbackPreviewSheet: View {
                 }
                 if !r.note.isEmpty {
                     Text("\u{201C}\(r.note)\u{201D}").font(.caption2).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+                if let old = r.removedNote {
+                    Text(r.replacesNote ? "Replace this reviewer's prior note: \(old)" : "Remove this reviewer's prior note: \(old)")
+                        .font(.caption2).foregroundStyle(Theme.warning)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if r.withdrawsPick {
                     Text(r.remainsPicked ? "Withdraw this reviewer's pick · kept by another or older pick" : "Withdraw this reviewer's pick · leaves Client Picks")

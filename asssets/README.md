@@ -1037,3 +1037,15 @@ it back, and reports success only if the saved catalog matches. A failed save
 keeps the reviewed preview for retry without changing the in-memory catalog.
 Native proof captures an empty replacement and an injected catalog-write failure; core tests
 cover reviewer overlap, withdrawal, older tags and ledger persistence.
+
+## 1.69.0: show removed client comments before replacement
+
+Replacing one gallery/reviewer's feedback now previews prior notes that will
+be removed, with the old text and asset title. A changed note is labeled as a
+replacement with its incoming text; an omitted or empty note is labeled as a
+removal. The count is separate from the incoming note count and pick
+withdrawals. Other reviewers' comments stay and do not appear as removals.
+A file with only invalid or outside-gallery asset IDs does not clear notes or
+picks. An empty file can still explicitly clear the previous reviewer's notes.
+Core tests cover shorter and empty replacements, two reviewers, and an
+outsider-only file. Native proof captures the compact replacement preview.

@@ -16,6 +16,9 @@ public struct FeedbackPreview: Equatable, Sendable {
         public var withdrawsPick: Bool = false
         /// A withdrawal remains visible in Client Picks due to another tracked reviewer or a preserved tag.
         public var remainsPicked: Bool = false
+        /// Prior note for this gallery/reviewer; shown when removed or replaced.
+        public var removedNote: String? = nil
+        public var replacesNote: Bool = false
         /// Status of the asset's card on the round's board now; nil when there is no board or no card.
         public var from: CardStatus?
         /// What the client asked for with Approve / Request changes.
@@ -34,9 +37,11 @@ public struct FeedbackPreview: Equatable, Sendable {
     public var rosterIssue: String? = nil
     public var skippedCount: Int { rows.filter { !$0.known }.count }
     public var withdrawals: Int { rows.filter(\.withdrawsPick).count }
+    public var noteRemovals: Int { rows.filter { $0.removedNote != nil && !$0.replacesNote }.count }
+    public var noteReplacements: Int { rows.filter(\.replacesNote).count }
     public var additions: Int { rows.filter { $0.known && $0.favorite && !$0.withdrawsPick }.count }
     public var hasVerifiedEntry: Bool { rows.contains { $0.known && !$0.withdrawsPick } }
-    public var canImport: Bool { rosterIssue == nil && (withdrawals > 0 || !isEmpty || (replaces && (rows.isEmpty || hasVerifiedEntry))) }
+    public var canImport: Bool { rosterIssue == nil && (withdrawals > 0 || noteRemovals > 0 || noteReplacements > 0 || !isEmpty || (replaces && (rows.isEmpty || hasVerifiedEntry))) }
 
     public var picks: Int { rows.filter { $0.known && $0.favorite }.count }
     public var notes: Int { rows.filter { $0.known && !$0.note.isEmpty }.count }
@@ -67,7 +72,17 @@ extension StudioCatalog {
             return id
         }
         let intentional = issue == nil && (f.items.isEmpty || !valid.isEmpty)
-        let nextPicks = Set(scopedFeedback(f).feedback.items.compactMap { e -> UUID? in
+        let scope = scopedFeedback(f).feedback
+        let nextNotes = Dictionary(uniqueKeysWithValues: scope.items.compactMap { e -> (UUID, String)? in
+            guard let id = UUID(uuidString: e.id) else { return nil }
+            let text = e.note.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : (id, String(text.prefix(4000)))
+        })
+        let priorNotes = Dictionary(uniqueKeysWithValues: assets.compactMap { asset -> (UUID, String)? in
+            guard let note = asset.clientNotes.first(where: { $0.gallery == f.gallery && $0.reviewer == reviewer }) else { return nil }
+            return (asset.id, note.text)
+        })
+        let nextPicks = Set(scope.items.compactMap { e -> UUID? in
             guard e.favorite else { return nil }
             return UUID(uuidString: e.id)
         })
@@ -91,6 +106,10 @@ extension StudioCatalog {
                                        favorite: e.favorite, note: e.note.trimmingCharacters(in: .whitespacesAndNewlines),
                                        from: card.map { b!.status(of: $0.id) }, to: card == nil ? nil : e.cardStatus)
             row.skipped = reason
+            if reason == nil, let id, intentional, let old = priorNotes[id], old != nextNotes[id] {
+                row.removedNote = old
+                row.replacesNote = nextNotes[id] != nil
+            }
             if reason == nil, let id, intentional, prior.contains(id), !nextPicks.contains(id) {
                 row.withdrawsPick = true
                 row.remainsPicked = preservedPickTags.contains(id) || feedbackPickLedger.contains {
@@ -105,12 +124,13 @@ extension StudioCatalog {
         var preview = FeedbackPreview(reviewer: reviewer, title: f.title, board: b == nil ? nil : bid, boardName: b?.name, replaces: replaces, rows: rows)
         preview.rosterIssue = issue
         if issue == nil && intentional {
-            let vanished = prior.subtracting(Set(valid))
-            for id in vanished {
+            let vanished = prior.union(Set(priorNotes.keys)).subtracting(Set(valid))
+            for id in vanished.sorted(by: { $0.uuidString < $1.uuidString }) {
                 var row = FeedbackPreview.Row(id: id.uuidString, asset: id,
                     title: assets.first(where: { $0.id == id })?.title ?? "Removed asset",
                     favorite: false, note: "", from: nil, to: nil)
-                row.withdrawsPick = true
+                row.withdrawsPick = prior.contains(id)
+                row.removedNote = priorNotes[id]
                 row.remainsPicked = preservedPickTags.contains(id) || feedbackPickLedger.contains {
                     ($0.gallery != f.gallery.lowercased() || $0.reviewer.lowercased() != reviewer.lowercased()) && $0.assets.contains(id)
                 }
