@@ -2605,6 +2605,62 @@ int main() {
             Click(view,w,NSMakePoint(730,top-126));Click(view,w,NSMakePoint(492+30,top-20.5));
             fflush(stdout);
         });
+        After(7.0899, ^{ // 0.75.0 REST/TIE inspector is inert without deleting stored tuple fields
+            muew::Preset before;State(before);muew::Preset setup=before;
+            setup.voice.arpOn=true;setup.voice.arpPatOn=true;setup.voice.arpPatLen=8;
+            setup.voice.arpPatKind[1]=muew::arp::StepRest;
+            setup.voice.arpPatVel[1]=63;setup.voice.arpPatRatchet[1]=4;setup.voice.arpPatOctave[1]=-1;
+            setup.voice.arpPatChance[1]=25;setup.voice.arpPatGate[1]=74;setup.voice.arpPatPitch[1]=-5;
+            setup.voice.arpPatKind[2]=muew::arp::StepTie;
+            setup.voice.arpPatVel[2]=91;setup.voice.arpPatRatchet[2]=3;setup.voice.arpPatOctave[2]=1;
+            setup.voice.arpPatChance[2]=50;setup.voice.arpPatGate[2]=42;setup.voice.arpPatPitch[2]=7;
+            NSString* text=[NSString stringWithUTF8String:setup.serialize().c_str()];
+            CFStringRef cf=(__bridge CFStringRef)text;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&cf,sizeof(cf));
+            SEL sync=NSSelectorFromString(@"syncFromAU:");
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            CGFloat top=view.bounds.size.height-100;
+            NSString* page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("page=2 ")!=0)Click(view,w,NSMakePoint(655,top-20.5));
+            page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("stepEdit=1")==std::string::npos)Click(view,w,NSMakePoint(730,top-126));
+            page=[view valueForKey:@"muewArpText"];
+            if(std::string(page.UTF8String ?: "").find("actions=1")!=std::string::npos)Click(view,w,NSMakePoint(655,top-126));
+            auto cell=[&](int i){return NSMakePoint(492+(i+.5)*276.0/16,top-224);};
+            auto verify=[&](int i,const char* env,const char* label){
+                Click(view,w,cell(i));
+                RenderBlock();Snapshot(view,env,label);
+                muew::Preset prior;const bool hadPrior=State(prior);
+                Click(view,w,NSMakePoint(492+42,top-148));  // INHERIT
+                Click(view,w,NSMakePoint(492+104+112,top-148)); // GATE rail
+                Click(view,w,NSMakePoint(492+42,top-184+20)); // RESET 0
+                Click(view,w,NSMakePoint(492+104+112,top-184+20)); // PITCH rail
+                muew::Preset after;const bool hadAfter=State(after);
+                bool unchanged=hadPrior&&hadAfter;
+                for(int j=0;j<muew::arp::kPatSteps;++j)
+                    unchanged&=muew::arp::readStep(prior.voice,j)==muew::arp::readStep(after.voice,j);
+                Check(unchanged&&muew::arp::readStep(after.voice,i)==muew::arp::readStep(setup.voice,i),
+                      i==1?"REST inspector clicks retain all seven hidden fields":"TIE inspector clicks retain all seven hidden fields");
+            };
+            verify(1,"MUEW_REST75_PNG","ARP REST read-only inspector snapshot written");
+            verify(2,"MUEW_TIE75_PNG","ARP TIE read-only inspector snapshot written");
+            // The 0.72 test covers all-seven-field REST copy/paste via the
+            // hosted editor. Also prove the TIE's hidden fields survive the
+            // actual editor clipboard path, not just serialization.
+            Click(view,w,NSMakePoint(655,top-126)); // ACTIONS
+            Click(view,w,NSMakePoint(492+8+30,top-184+38)); // COPY selected TIE
+            Click(view,w,cell(3));
+            Click(view,w,NSMakePoint(492+8+65+30,top-184+38)); // PASTE on cell 4
+            muew::Preset pasted;bool ok=State(pasted);
+            Check(ok&&muew::arp::readStep(pasted.voice,3)==muew::arp::readStep(setup.voice,2),
+                  "TIE COPY/PASTE retains every hidden step field");
+            NSString* reset=[NSString stringWithUTF8String:before.serialize().c_str()];
+            CFStringRef restore=(__bridge CFStringRef)reset;
+            AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&restore,sizeof(restore));
+            if([view respondsToSelector:sync])((void (*)(id,SEL,BOOL))[view methodForSelector:sync])(view,sync,YES);
+            Click(view,w,NSMakePoint(730,top-126));Click(view,w,NSMakePoint(492+30,top-20.5));
+            fflush(stdout);
+        });
         After(7.09, ^{ // 0.29.0 Quality: DIST QUALITY HQ 4X row and the MULTIBAND AUTO GAIN pill
             CGFloat t = view.bounds.size.height - 100;
             CGFloat h = (t - 286 - 44 - 58 - 6) / 2;

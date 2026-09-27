@@ -448,24 +448,35 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
     NSRect inh = [self arpStepInherit], reset = [self arpStepPitchReset];
     FillRound(inh, 4, note && !v.arpPatGate[i] ? C(0x413044) : C(0x1b202a));
     FillRound(reset, 4, note && pitch == 0 ? C(0x413044) : C(0x1b202a));
-    TextA(@"INHERIT", NSInsetRect(inh, 2, 3), 6.5, note && !v.arpPatGate[i] ? ink : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
-    TextA(@"RESET 0", NSInsetRect(reset, 2, 3), 6.5, note && pitch == 0 ? ink : C(0x8793a3), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA(@"INHERIT", NSInsetRect(inh, 2, 3), 6.5, note && !v.arpPatGate[i] ? ink : note ? C(0x8793a3) : C(0x4a5462), NSFontWeightBold, NSTextAlignmentCenter);
+    TextA(@"RESET 0", NSInsetRect(reset, 2, 3), 6.5, note && pitch == 0 ? ink : note ? C(0x8793a3) : C(0x4a5462), NSFontWeightBold, NSTextAlignmentCenter);
     NSRect gb = [self arpStepGateBar], pb = [self arpStepPitchBar];
     Text(@"GATE", NSMakeRect(g.origin.x + 76, gb.origin.y + 2, 28, 10), 6.5, C(0x8793a3), NSFontWeightBold);
     Text(@"PITCH", NSMakeRect(g.origin.x + 76, pb.origin.y + 2, 28, 10), 6.5, C(0x8793a3), NSFontWeightBold);
-    FillRound(NSMakeRect(gb.origin.x, NSMidY(gb) - 2, gb.size.width, 4), 2, C(0x303947));
-    CGFloat gw = gb.size.width * (std::clamp(gate, 5, 100) - 5) / 95.0;
-    FillRound(NSMakeRect(gb.origin.x, NSMidY(gb) - 2, gw, 4), 2, note ? ink : C(0x4a5462));
-    FillRound(NSMakeRect(gb.origin.x + gw - 4, NSMidY(gb) - 4, 8, 8), 4, note ? C(0xe5e8ee) : C(0x697683));
-    FillRound(NSMakeRect(pb.origin.x, NSMidY(pb) - 2, pb.size.width, 4), 2, C(0x303947));
-    FillRound(NSMakeRect(NSMidX(pb) - 0.5, NSMidY(pb) - 5, 1, 10), 0.5, C(0x697683));
-    CGFloat px = pb.origin.x + pb.size.width * (pitch + 12) / 24.0;
-    FillRound(NSMakeRect(std::min(NSMidX(pb), px), NSMidY(pb) - 2, std::fabs(px - NSMidX(pb)), 4), 2, note ? ink : C(0x4a5462));
-    FillRound(NSMakeRect(px - 4, NSMidY(pb) - 4, 8, 8), 4, note ? C(0xe5e8ee) : C(0x697683));
-    TextA(note ? (gate == 100 ? @"TIE" : [NSString stringWithFormat:@"%d%%", gate]) : @"-",
-          NSMakeRect(NSMaxX(gb) + 4, gb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
-    TextA(note ? [NSString stringWithFormat:@"%+d st", pitch] : @"-",
-          NSMakeRect(NSMaxX(pb) + 4, pb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
+    if (!note) {
+        // REST/TIE keep their complete stored tuples for COPY, but their
+        // inspector never edits them. Show inert rails, not live-looking thumbs.
+        NSColor* disabled = C(0x27303a);
+        FillRound(NSMakeRect(gb.origin.x, NSMidY(gb) - 2, gb.size.width, 4), 2, disabled);
+        FillRound(NSMakeRect(pb.origin.x, NSMidY(pb) - 2, pb.size.width, 4), 2, disabled);
+        NSString* kind = v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE";
+        TextA(kind, NSMakeRect(NSMaxX(gb) + 4, gb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
+        TextA(kind, NSMakeRect(NSMaxX(pb) + 4, pb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
+    } else {
+        FillRound(NSMakeRect(gb.origin.x, NSMidY(gb) - 2, gb.size.width, 4), 2, C(0x303947));
+        CGFloat gw = gb.size.width * (std::clamp(gate, 5, 100) - 5) / 95.0;
+        FillRound(NSMakeRect(gb.origin.x, NSMidY(gb) - 2, gw, 4), 2, ink);
+        FillRound(NSMakeRect(gb.origin.x + gw - 4, NSMidY(gb) - 4, 8, 8), 4, C(0xe5e8ee));
+        FillRound(NSMakeRect(pb.origin.x, NSMidY(pb) - 2, pb.size.width, 4), 2, C(0x303947));
+        FillRound(NSMakeRect(NSMidX(pb) - 0.5, NSMidY(pb) - 5, 1, 10), 0.5, C(0x697683));
+        CGFloat px = pb.origin.x + pb.size.width * (pitch + 12) / 24.0;
+        FillRound(NSMakeRect(std::min(NSMidX(pb), px), NSMidY(pb) - 2, std::fabs(px - NSMidX(pb)), 4), 2, ink);
+        FillRound(NSMakeRect(px - 4, NSMidY(pb) - 4, 8, 8), 4, C(0xe5e8ee));
+        TextA(gate == 100 ? @"TIE" : [NSString stringWithFormat:@"%d%%", gate],
+              NSMakeRect(NSMaxX(gb) + 4, gb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
+        TextA([NSString stringWithFormat:@"%+d st", pitch],
+              NSMakeRect(NSMaxX(pb) + 4, pb.origin.y + 2, 44, 11), 8, ink, NSFontWeightBold, NSTextAlignmentRight);
+    }
     if (!note) Text(v.arpPatKind[i] == arp::StepRest ? @"REST" : @"TIE",
                     NSMakeRect(g.origin.x + 130, NSMaxY(g) - 15, 44, 11), 7, C(0x8793a3), NSFontWeightBold);
 }

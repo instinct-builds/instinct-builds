@@ -623,3 +623,12 @@ The ACTIONS footer shows the copied source cell and undo count. COPY A STEP
 means the clipboard is empty; COPY preserves the original source number after
 PASTE or ROTATE. Preset switches and external state adoption clear both the
 clipboard and its source number. No sound, preset or AU parameter changes.
+
+
+## 0.75.0 ARP REST/TIE read-only inspector
+
+Selecting REST or TIE in STEP EDIT shows dim GATE/PITCH rails without
+slider thumbs, and labels both right-hand value slots with the step kind.
+Buttons are muted; clicks remain inert. The seven stored fields are not
+removed or reset, so a later COPY/PASTE still transports hidden data.
+ON steps retain the original live two-row inspector.
