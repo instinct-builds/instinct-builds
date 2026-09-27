@@ -1002,3 +1002,18 @@ that batch lands. Files claiming the same gallery and reviewer cannot be
 silently merged. The app's built-in demo covers a changed file with no picks
 applied, and captures the original-gallery recovery confirmation at 1024x768.
 This guards the review-to-import handoff, not the authenticity of feedback.
+
+## 1.67.0: recover a landed gallery without a saved roster
+
+If a newly exported review-gallery folder and ZIP both land but the local
+catalog cannot save their roster, ASSSETS no longer calls them ready. It offers
+a review of the exact folder, ZIP, title, date and asset list from this export.
+The Save Roster action rechecks every published file's identity and SHA-256,
+the ZIP's identity and SHA-256, and the manifest before trying the catalog
+write again. Changed, missing or conflicting material stops recovery without
+replacing the files or merging a roster. The user can reveal the files and
+retry during the same app session from the File menu if they dismiss the sheet.
+The recovery ticket is not retained after quitting: if the catalog is still
+unwritable, do not send the gallery. Native CI simulates a catalog-save failure
+and captures the compact recovery review while checking that folder and ZIP
+landed but no success marker was written.

@@ -164,6 +164,13 @@ jobs:
           test "$(find "$SUP/demo-gallery-fail" -maxdepth 1 -name '*Review' | wc -l | tr -d ' ')" -eq 0
           test "$(find "$SUP/demo-gallery-fail" -maxdepth 1 -name '*Review.zip' | wc -l | tr -d ' ')" -eq 0
           cp "$SUP/demo-gallery-fail/gallery-done.txt" "ASSSETS-$ASSSETS_VERSION-gallery-partial.txt"
+          DELAY=16 shoot gallery-roster-fail 1024x768 gallery-roster-fail demo-gallery-roster-fail/gallery-done.txt
+          grep -q '^done landed=true saved=false recovery=true$' "$SUP/demo-gallery-roster-fail/gallery-done.txt"
+          GR=$(ls -d "$SUP/demo-gallery-roster-fail/"*Review | head -1); test -f "$GR/index.html"; test -s "$GR.zip"
+          cp "$SUP/demo-gallery-roster-fail/gallery-done.txt" "ASSSETS-$ASSSETS_VERSION-gallery-roster-fail.txt"
+          DELAY=16 shoot gallery-roster-recovered 1024x768 gallery-roster-recovered demo-gallery-roster-recovered/gallery-recovered.txt
+          grep -q '^done saved=true recoverable=false$' "$SUP/demo-gallery-roster-recovered/gallery-recovered.txt"
+          cp "$SUP/demo-gallery-roster-recovered/gallery-recovered.txt" "ASSSETS-$ASSSETS_VERSION-gallery-roster-recovered.txt"
           CH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; test -x "$CH"
           U=$(python3 -c 'import sys,pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$G/index.html")
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-web.png" "$U?demo=grid" || true
@@ -437,6 +444,8 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-single-export-proof.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-partial.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-roster-fail.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-roster-recovered.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-roster.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-changed.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt

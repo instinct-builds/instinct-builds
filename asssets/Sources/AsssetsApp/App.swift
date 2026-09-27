@@ -70,6 +70,8 @@ struct ASSSETSApp: App {
                     .keyboardShortcut("g", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
                 Button("Export Current View as Review Gallery…") { library.exportGallery(library.filtered.map(\.id), title: library.browsingTitle) }
                 Button("Import Client Feedback…") { library.importFeedback() }
+                Button("Recover Last Published Gallery…") { library.reopenPublicationRecovery() }
+                    .disabled(!library.hasPublicationRecovery)
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
                 Button("Reveal in Finder") { library.reveal(library.selection) }
                     .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
@@ -158,6 +160,8 @@ final class StudioLibrary: ObservableObject {
     /// Client feedback read but not applied yet (1.23): the import preview sheet shows it.
     @Published var pendingFeedback: PendingFeedback?
     @Published var galleryRecovery: GalleryRecovery?
+    @Published var publicationRecovery: GalleryPublicationRecovery?
+    private var lastPublicationRecovery: GalleryPublicationRecovery?
     /// Licenses that ended since the last launch (1.26); shown once as a banner.
     @Published var rightsNotice: [RightsIssue]?
     /// Warning shown before expired or editorial-only assets go into client work (1.25).
@@ -386,6 +390,8 @@ final class StudioLibrary: ObservableObject {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let created = df.string(from: Date())
         let galleryCredits = creditLines, galleryLicenses = licenseCopies
         let demoFailure = isDemo ? galleryDemoFailure : nil
+        lastPublicationRecovery = nil
+        publicationRecovery = nil
         galleryRunning = true
         flash("Building gallery for \(assets.count) assets…")
         Task.detached(priority: .userInitiated) {
@@ -502,9 +508,31 @@ final class StudioLibrary: ObservableObject {
                     guard let roster = GalleryRoster(gallery: galleryID, title: name, created: created, assets: expected, board: boardID, cards: cards) else {
                         self.flash("Gallery files landed, but their roster could not be saved. Do not send yet."); return
                     }
-                    guard self.persistRoster(roster, sharedFrom: boardID) else {
-                        self.flash("Gallery files landed, but their roster was not saved. Do not send yet."); return
+                    // Capture only this just-published folder and ZIP. If catalog saving fails,
+                    // a reviewed retry can restore the original roster, not infer it later.
+                    let published = self.publicationSnapshot(folder: folder, zip: zip, roster: roster)
+                    if demoFailure == "roster" || !self.persistRoster(roster, sharedFrom: boardID) {
+                        self.lastPublicationRecovery = published
+                        self.publicationRecovery = published
+                        self.flash(published == nil
+                            ? "Gallery files landed, but their roster was not saved. Do not send; verify files manually."
+                            : "Gallery files landed, but their roster was not saved. Review recovery before sending.")
+                        if fixedDir != nil {
+                            try? "done landed=true saved=false recovery=\(published != nil)".write(
+                                to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8)
+                        }
+                        if ProcessInfo.processInfo.arguments.contains("gallery-roster-recovered"), published != nil {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                self.acceptPublicationRecovery()
+                                let disk = (try? Data(contentsOf: self.catalogURL)).flatMap(StudioCatalog.decode)
+                                let saved = disk?.roster(for: galleryID) == roster
+                                try? "done saved=\(saved) recoverable=\(self.publicationRecovery != nil)".write(
+                                    to: parent.appendingPathComponent("gallery-recovered.txt"), atomically: true, encoding: .utf8)
+                            }
+                        }
+                        return
                     }
+                    self.lastPublicationRecovery = nil
                     self.flash("Gallery ready: \(items.count) of \(jobs.count) assets\(summaryPDF != nil ? " + round summary" : ""), zipped")
                     if fixedDir == nil { NSWorkspace.shared.activateFileViewerSelecting([zip]) }
                     else { try? "\(items.count)".write(to: parent.appendingPathComponent("gallery-done.txt"), atomically: true, encoding: .utf8) }
@@ -518,6 +546,69 @@ final class StudioLibrary: ObservableObject {
                 await fail(landed.isEmpty ? "Nothing shareable was published." : "\(landed.count) of 2 parts landed; inspect \(stage.path). Do not send yet.")
             }
         }
+    }
+
+    /// A snapshot of this run's output only: no arbitrary folder-picker recovery.
+    private func publicationSnapshot(folder: URL, zip: URL, roster: GalleryRoster) -> GalleryPublicationRecovery? {
+        let fm = FileManager.default
+        var rootStat = stat()
+        guard lstat(folder.path, &rootStat) == 0, (rootStat.st_mode & 0o170000) == 0o040000,
+              let entries = try? fm.subpathsOfDirectory(atPath: folder.path),
+              !entries.isEmpty, entries.count <= 20_000,
+              let index = try? String(contentsOf: folder.appendingPathComponent("index.html"), encoding: .utf8),
+              let manifest = ReviewGallery.manifest(fromHTML: index),
+              manifest.gallery.lowercased() == roster.gallery, manifest.title == roster.title,
+              manifest.created == roster.created, manifest.items.compactMap({ UUID(uuidString: $0.id) }) == roster.assets,
+              GalleryCompleteness.valid(requested: roster.assets, manifest: manifest, files: Set(entries),
+                                        requiredLicenses: entries.filter { $0.hasPrefix("licenses/") && !$0.hasSuffix("/") },
+                                        needsBoard: manifest.board != nil, needsSummary: manifest.summary != nil),
+              let zipFile = fileIdentity(zip), zipFile.bytes > 0 else { return nil }
+        var files: [String: LicenseCleanupReview.File] = [:]
+        for relative in entries.sorted() {
+            let url = folder.appendingPathComponent(relative)
+            // Never follow a link in either a file or directory position.
+            guard let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey]),
+                  values.isSymbolicLink != true else { return nil }
+            if values.isDirectory == true { continue }
+            guard let identity = fileIdentity(url), identity.bytes > 0 else { return nil }
+            files[relative] = identity
+        }
+        guard files["index.html"] != nil,
+              files.keys.contains(where: { $0.hasPrefix("images/") }) else { return nil }
+        var afterRoot = stat()
+        guard lstat(folder.path, &afterRoot) == 0,
+              rootStat.st_dev == afterRoot.st_dev, rootStat.st_ino == afterRoot.st_ino else { return nil }
+        return GalleryPublicationRecovery(folder: folder.path, zip: zip.path, roster: roster,
+                                          files: files, zipFile: zipFile,
+                                          folderDevice: UInt64(afterRoot.st_dev), folderInode: UInt64(afterRoot.st_ino))
+    }
+
+    var hasPublicationRecovery: Bool { lastPublicationRecovery != nil }
+    func reopenPublicationRecovery() {
+        guard let candidate = lastPublicationRecovery else { return }
+        publicationRecovery = candidate
+    }
+
+    func acceptPublicationRecovery() {
+        guard let review = publicationRecovery else { return }
+        let folder = URL(fileURLWithPath: review.folder, isDirectory: true)
+        let zip = URL(fileURLWithPath: review.zip)
+        guard let fresh = publicationSnapshot(folder: folder, zip: zip, roster: review.roster),
+              fresh.files == review.files, fresh.zipFile == review.zipFile,
+              fresh.folderDevice == review.folderDevice, fresh.folderInode == review.folderInode else {
+            publicationRecovery = nil
+            lastPublicationRecovery = nil
+            flash("Published gallery files changed or are missing. Recovery stopped; do not send.")
+            return
+        }
+        guard persistRoster(review.roster, sharedFrom: review.roster.board) else {
+            flash("Gallery roster still could not be saved. Do not send.")
+            return
+        }
+        publicationRecovery = nil
+        lastPublicationRecovery = nil
+        flash("Gallery roster saved for \(review.roster.assets.count) published assets. Gallery ready.")
+        NSWorkspace.shared.activateFileViewerSelecting([zip])
     }
 
     func importFeedback() {
@@ -3349,11 +3440,11 @@ final class StudioLibrary: ObservableObject {
                 markCompare(.keep); markCompare(.reject)
                 compareZoom.zoom(by: 2.5, anchorX: 0.3, anchorY: 0.35)
             } else { swipeSplit = 0.46; compareSwipe = true }
-        case "gallery", "gallery-render-fail", "gallery-publish-fail":
-            galleryDemoFailure = demo == "gallery-render-fail" ? "render" : demo == "gallery-publish-fail" ? "publish" : nil
+        case "gallery", "gallery-render-fail", "gallery-publish-fail", "gallery-roster-fail", "gallery-roster-recovered":
+            galleryDemoFailure = demo == "gallery-render-fail" ? "render" : demo == "gallery-publish-fail" ? "publish" : (demo == "gallery-roster-fail" || demo == "gallery-roster-recovered") ? "roster" : nil
             let ids = catalog.assets.filter { $0.collection == "Device Mockups" }.prefix(12).map(\.id)
             show(collection: "Device Mockups")
-            let out = supportRoot.appendingPathComponent(demo == "gallery" ? "demo-gallery" : "demo-gallery-fail", isDirectory: true)
+            let out = supportRoot.appendingPathComponent(demo == "gallery" ? "demo-gallery" : demo == "gallery-roster-fail" ? "demo-gallery-roster-fail" : demo == "gallery-roster-recovered" ? "demo-gallery-roster-recovered" : "demo-gallery-fail", isDirectory: true)
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             exportGallery(Array(ids), title: "Launch Mockups", to: out)
@@ -7405,6 +7496,9 @@ struct Sidebar: View {
             Button("Cancel", role: .cancel) { model.savingTemplate = nil }
         } message: { Text("Sections, headings, notes, palettes and arrows are kept. Every image becomes an empty slot of the same size.") }
         .sheet(isPresented: $model.templatePickerOpen) { TemplatePickerSheet().environmentObject(model) }
+        .sheet(item: $model.publicationRecovery) { review in
+            GalleryPublicationRecoverySheet(review: review).environmentObject(model)
+        }
         .sheet(item: $model.pendingFeedback) { p in
             Group {
                 if let recovery = model.galleryRecovery { GalleryRecoverySheet(recovery: recovery) }
@@ -12157,6 +12251,17 @@ struct TemplatePickerSheet: View {
 }
 
 /// Feedback files read but not applied (1.23).
+struct GalleryPublicationRecovery: Identifiable {
+    let id = UUID()
+    let folder: String
+    let zip: String
+    let roster: GalleryRoster
+    let files: [String: LicenseCleanupReview.File]
+    let zipFile: LicenseCleanupReview.File
+    let folderDevice: UInt64
+    let folderInode: UInt64
+}
+
 struct GalleryRecovery: Identifiable {
     let id = UUID()
     let fileID: UUID
@@ -12235,6 +12340,38 @@ struct ArrangeMenu: View {
         case .matchWidth: return "arrow.left.and.right"
         case .matchHeight: return "arrow.up.and.down"
         }
+    }
+}
+
+/// A retry for exactly the folder and ZIP produced by this export, not an arbitrary gallery.
+struct GalleryPublicationRecoverySheet: View {
+    @EnvironmentObject var model: StudioLibrary
+    let review: GalleryPublicationRecovery
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Recover Published Gallery").font(.title3.weight(.bold))
+            Label("Folder and ZIP landed, but the roster did not save. Do not send this gallery yet.", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(Theme.warning)
+            Text(URL(fileURLWithPath: review.folder).lastPathComponent)
+                .font(.callout.weight(.semibold))
+            Text("\(review.roster.title) · \(review.roster.assets.count) assets · \(review.roster.created)")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("Review the exact published folder and ZIP. Recovery rechecks every file and its digest, then saves the original roster. It will not replace or merge a conflicting roster. The files do not verify a client's identity.")
+                .font(.caption).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(review.roster.assets, id: \.self) { id in
+                        Text(model.catalog.assets.first(where: { $0.id == id })?.title ?? "Missing asset · \(id.uuidString)")
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack {
+                Button("Reveal Files") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: review.zip)]) }
+                Spacer()
+                Button("Cancel") { model.publicationRecovery = nil }
+                Button("Save Roster") { model.acceptPublicationRecovery() }.buttonStyle(.borderedProminent)
+            }
+        }.padding(20).frame(width: 650, height: 460).background(Theme.panel)
     }
 }
 
