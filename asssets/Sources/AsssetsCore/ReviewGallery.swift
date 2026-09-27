@@ -137,9 +137,13 @@ public enum ReviewGallery {
 <style>
 :root{--ink:#090a11;--panel:#0e0f17;--raised:rgba(255,255,255,.055);--line:rgba(255,255,255,.085);--text:#f2f2f7;--dim:rgba(242,242,247,.62);--faint:rgba(242,242,247,.38);--accent:#8c61ff;--pick:#ff5c8a}
 *{box-sizing:border-box}html,body{margin:0;background:linear-gradient(#0b0d14,#130d1d) fixed;color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",sans-serif}
-header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:18px;padding:18px 32px;background:rgba(9,10,17,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:14px 24px;background:rgba(9,10,17,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
 .brand{font-weight:800;letter-spacing:.32em;font-size:12px;color:var(--accent)}h1{margin:0;font-size:22px;letter-spacing:-.01em}.sub{color:var(--dim);font-size:12.5px}
-.spacer{flex:1}input.name{background:var(--raised);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 11px;width:190px;font:inherit}
+.spacer{flex:1}input.name{background:var(--raised);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 11px;width:150px;font:inherit}
+.reviewer-tools{display:flex;gap:5px}.reviewer-tools button{border:1px solid var(--line);background:var(--raised);color:var(--dim);border-radius:8px;padding:7px 9px;font-size:12px}
+.reviewer-tools button:hover{color:var(--text)}#download{margin-left:auto}
+.review-modal{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;padding:20px}.review-modal.open{display:flex}
+.review-dialog{width:min(480px,100%);background:#171822;border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 30px 80px #0008}.review-dialog h2{margin:0 0 8px;font-size:19px}.review-dialog p{margin:0 0 16px;color:var(--dim);font-size:13px}.review-dialog select,.review-dialog input{width:100%;background:var(--raised);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px;font:inherit}.review-dialog label{display:block;color:var(--dim);font-size:12px;margin:10px 0 5px}.review-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:18px}.review-actions button{background:var(--raised);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 12px}.review-actions .primary{background:var(--accent)}
 button{font:inherit;cursor:pointer}.primary{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600}
 .filter{background:var(--raised);color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 12px}.filter.on{color:#fff;border-color:var(--pick);background:rgba(255,92,138,.14)}a.filter{text-decoration:none;font-size:13px}a.filter[hidden]{display:none}
 main{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px;padding:26px 32px 60px}
@@ -175,6 +179,7 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 </style></head><body>
 <header><div><div class="brand">ASSSETS</div><h1 id="title"></h1><div class="sub" id="sub"></div></div><div class="spacer"></div>
 <a class="filter" id="summary" target="_blank" hidden>Round summary (PDF)</a><button class="filter" id="creditsBtn" hidden>Credits</button><button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
+<span class="reviewer-tools"><button id="renameReviewer">Rename</button><button id="switchReviewer">Switch reviewer</button></span>
 <button class="primary" id="download">Download feedback</button></header>
 <section id="credits"><h2>Credits</h2><div class="cs" id="creditsSub"></div><div id="creditRows"></div></section>
 <section id="board"><div class="lbl">BOARD · CLICK ANY IMAGE TO REVIEW IT</div><div class="bwrap" id="bwrap"></div></section>
@@ -185,26 +190,57 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 <div class="lbl">TAGS</div><div class="tags" id="lbtags"></div><div class="nav"><button id="prev">← Prev</button><button id="next">Next →</button></div>
 <div class="hint">← → browse · F favorite · A approve · C changes · Esc close. Your picks and notes stay in this browser until you download them.</div></aside></div>
 <footer>Made with ASSSETS · send the downloaded feedback file back to the person who shared this gallery</footer>
+<div class="review-modal" id="reviewModal" role="dialog" aria-modal="true" aria-labelledby="reviewModalTitle"><div class="review-dialog"><h2 id="reviewModalTitle"></h2><p id="reviewModalText"></p>
+<div id="switchFields"><label for="knownReviewers">Saved drafts</label><select id="knownReviewers"></select><label for="newReviewer">Or start a new reviewer draft</label><input id="newReviewer" placeholder="Reviewer name"></div>
+<div id="legacyFields"><label for="legacyInput">Name for this earlier draft (edit if needed)</label><input id="legacyInput" placeholder="Reviewer name"></div>
+<div id="renameFields"><label for="renameInput">Name for this draft</label><input id="renameInput" placeholder="Reviewer name"></div>
+<div class="review-actions" id="reviewModalActions"></div></div></div>
 <script type="application/json" id="manifest">__MANIFEST__</script>
 <script>
 const M=JSON.parse(document.getElementById('manifest').textContent);const KEY='asssets-review-'+M.gallery;
-let S={reviewer:'',items:{}};try{S=Object.assign(S,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){}
+const DKEY=KEY+'-drafts-v2',ACTIVE=KEY+'-active-v2';
+const norm=n=>(n||'').trim().toLocaleLowerCase();const empty=n=>({reviewer:n,items:{}});
+const read=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
+let drafts=read(DKEY);if(!drafts||typeof drafts!=='object'||Array.isArray(drafts))drafts={};
+const active=read(ACTIVE);let S=empty('');let legacy=read(KEY);
+const $=id=>document.getElementById(id);let only=false,cur=-1;
+const validDraft=d=>d&&typeof d==='object'&&d.items&&typeof d.items==='object'&&!Array.isArray(d.items);
+function put(){if(!norm(S.reviewer))return;drafts[norm(S.reviewer)]={reviewer:S.reviewer.trim(),items:S.items};try{localStorage.setItem(DKEY,JSON.stringify(drafts));localStorage.setItem(ACTIVE,JSON.stringify(norm(S.reviewer)))}catch(e){}}
+function save(){put()};
+function take(name){const d=drafts[norm(name)];S=validDraft(d)?{reviewer:d.reviewer,items:d.items}:empty(name);$('reviewer').value=S.reviewer;closeReviewerModal();if(cur>=0)close();else render();put()}
+function closeReviewerModal(){$('reviewModal').classList.remove('open')}
+function modal(title,text,buttons,kind){$('reviewModalTitle').textContent=title;$('reviewModalText').textContent=text;
+$('switchFields').hidden=kind!=='switch';$('renameFields').hidden=kind!=='rename';$('legacyFields').hidden=kind!=='legacy';const actions=$('reviewModalActions');actions.innerHTML='';
+buttons.forEach(([label,fn,primary])=>{const b=document.createElement('button');b.textContent=label;if(primary)b.className='primary';b.onclick=fn;actions.appendChild(b)});$('reviewModal').classList.add('open')}
+function listNames(){const select=$('knownReviewers');select.innerHTML='';Object.values(drafts).filter(validDraft).forEach(d=>{const opt=document.createElement('option');opt.value=d.reviewer;opt.textContent=d.reviewer;select.appendChild(opt)});const fresh=document.createElement('option');fresh.value='';fresh.textContent='New reviewer';select.appendChild(fresh);select.value='';$('newReviewer').value=''}
+function switchReviewer(){put();listNames();modal('Switch reviewer','The current draft stays in this browser. Switching loads only the selected reviewer’s picks, notes and decisions.',[
+...(norm(S.reviewer)?[['Cancel',closeReviewerModal]]:[]),['Switch',()=>{const fresh=$('newReviewer').value.trim(),name=fresh||$('knownReviewers').value;if(!name)return;if(fresh&&drafts[norm(fresh)]){alert('That name already has a draft. Choose it from Saved drafts.');return}if(norm(name)===norm(S.reviewer)){closeReviewerModal();return}take(name)},true]],'switch')}
+function renameReviewer(){if(!norm(S.reviewer))return;$('renameInput').value=S.reviewer;modal('Rename this reviewer','Change the name on this draft without creating or copying another draft. Feedback already downloaded under the old name will not change.',[
+['Cancel',closeReviewerModal],['Rename',()=>{const name=$('renameInput').value.trim(),before=norm(S.reviewer),after=norm(name);if(!after)return;
+if(after!==before&&drafts[after]){alert('A different reviewer already has a draft under that name. Use Switch reviewer.');return}
+if(before&&after!==before)delete drafts[before];S.reviewer=name;put();$('reviewer').value=name;closeReviewerModal()},true]],'rename')}
+$('switchReviewer').onclick=switchReviewer;$('renameReviewer').onclick=renameReviewer;
+$('reviewer').readOnly=true;$('reviewer').onclick=switchReviewer;
+if(!qForDemo()&&validDraft(legacy)&&!localStorage.getItem(KEY+'-legacy-choice-v2')){
+const legacyName=(legacy.reviewer||'').trim();$('legacyInput').value=legacyName;modal('Earlier draft found','This browser has an older single draft. Choose whether to keep it under its displayed name or start a fresh draft. No draft is deleted automatically.',[
+['Continue earlier draft',()=>{const name=$('legacyInput').value.trim();if(!name)return;const key=norm(name);if(drafts[key]){alert('A saved draft already uses that name. Choose a different name for the earlier draft.');return}S={reviewer:name.trim(),items:legacy.items};put();localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('continued'));closeReviewerModal();$('reviewer').value=S.reviewer;render()}],
+['Start fresh',()=>{localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('fresh'));if(active&&validDraft(drafts[active]))take(drafts[active].reviewer);else switchReviewer()},true]],'legacy')
+}else if(active&&validDraft(drafts[active]))S={reviewer:drafts[active].reviewer,items:drafts[active].items};
+function qForDemo(){return new URLSearchParams(location.search).has('demo')}
 const q=new URLSearchParams(location.search);
 if((q.get('demo')||'').startsWith('approve')){S.reviewer='Mara Quinn';const plan=[['approved','Brass plinth is the one. Approved for the lobby.'],['changes','Too tech for us - can the screen show the stone frame?'],['approved',''],['',''],['changes','Warmer, please.'],['approved','']];
 M.items.forEach((it,i)=>{const p=plan[i%plan.length];S.items[it.id]={favorite:i===0||i===2,note:p[1],status:p[0]}})}
 else if(q.get('demo')){S.reviewer='Jordan (client)';M.items.forEach((it,i)=>{if(i%3===0)S.items[it.id]={favorite:true,note:i===0?'Love this one. Can we try it with the warmer backdrop?':''}})}
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};const st=id=>S.items[id]||(S.items[id]={favorite:false,note:'',status:''});
-const LBL={approved:'✓ Approved',changes:'↺ Changes'};const decide=(id,v)=>{const s=st(id);s.status=s.status===v?'':v;save()};
-const $=id=>document.getElementById(id);let only=false,cur=-1;
+const st=id=>S.items[id]||(S.items[id]={favorite:false,note:'',status:''});
+const LBL={approved:'✓ Approved',changes:'↺ Changes'};const decide=(id,v)=>{if($('reviewModal').classList.contains('open'))return;const s=st(id);s.status=s.status===v?'':v;save()};
 $('title').textContent=M.title;document.title=M.title+' · Review';$('reviewer').value=S.reviewer;
-$('reviewer').oninput=e=>{S.reviewer=e.target.value;save()};
 function sub(){const f=M.items.filter(it=>st(it.id).favorite).length,n=M.items.filter(it=>(st(it.id).note||'').trim()).length,a=M.items.filter(it=>st(it.id).status==='approved').length,c=M.items.filter(it=>st(it.id).status==='changes').length;
 $('sub').textContent=M.items.length+' assets · '+f+' favorites · '+a+' approved · '+c+' changes · '+n+' notes · shared '+M.created}
 function swatches(el,p){el.innerHTML='';p.slice(0,5).forEach(h=>{const i=document.createElement('i');i.style.background=h;el.appendChild(i)})}
 function render(){const g=$('grid');g.innerHTML='';M.items.forEach((it,i)=>{const s=st(it.id);if(only&&!s.favorite)return;
 const c=document.createElement('div');c.className='card'+(s.favorite?' picked':'')+(s.status?' '+s.status:'');
 const th=document.createElement('div');th.className='thumb';const im=document.createElement('img');im.src=it.thumb;im.alt=it.title;im.loading='lazy';th.appendChild(im);th.onclick=()=>open(i);
-const h=document.createElement('button');h.className='heart';h.textContent=s.favorite?'♥':'♡';h.title='Favorite';h.onclick=e=>{e.stopPropagation();s.favorite=!s.favorite;save();render()};th.appendChild(h);
+const h=document.createElement('button');h.className='heart';h.textContent=s.favorite?'♥':'♡';h.title='Favorite';h.onclick=e=>{e.stopPropagation();if($('reviewModal').classList.contains('open'))return;s.favorite=!s.favorite;save();render()};th.appendChild(h);
 if((s.note||'').trim()){const n=document.createElement('div');n.className='noted';n.textContent='✎ Note';th.appendChild(n)}
 if(s.status){const k=document.createElement('div');k.className='chip '+s.status;k.textContent=LBL[s.status];th.appendChild(k)}
 const m=document.createElement('div');m.className='meta';const t=document.createElement('div');t.className='t';t.textContent=it.title;const r=document.createElement('div');r.className='r';r.textContent=it.kind+' · '+it.resolution;
@@ -216,7 +252,7 @@ M.board.spots.forEach(sp=>{const i=M.items.findIndex(it=>it.id===sp.id);if(i<0)r
 d.style.left=(sp.x*100)+'%';d.style.top=(sp.y*100)+'%';d.style.width=(sp.w*100)+'%';d.style.height=(sp.h*100)+'%';d.title=M.items[i].title;d.onclick=()=>open(i);
 if(s.favorite){const h=document.createElement('span');h.className='heart';h.textContent='♥';d.appendChild(h)}
 if(s.status){const k=document.createElement('span');k.className='chip '+s.status;k.textContent=LBL[s.status];d.appendChild(k)}w.appendChild(d)})}
-function open(i){cur=i;const it=M.items[i],s=st(it.id);$('lbimg').src=it.image;$('lbtitle').textContent=it.title;$('lbres').textContent=it.kind+' · '+it.resolution;swatches($('lbsw'),it.palette);$('lbcredit').textContent=it.credit?'Credit: '+it.credit:'';
+function open(i){if($('reviewModal').classList.contains('open'))return;cur=i;const it=M.items[i],s=st(it.id);$('lbimg').src=it.image;$('lbtitle').textContent=it.title;$('lbres').textContent=it.kind+' · '+it.resolution;swatches($('lbsw'),it.palette);$('lbcredit').textContent=it.credit?'Credit: '+it.credit:'';
 $('lbtags').innerHTML='';it.tags.slice(0,12).forEach(t=>{const s2=document.createElement('span');s2.textContent=t;$('lbtags').appendChild(s2)});
 $('lbnote').value=s.note||'';$('lbap').className='ap'+(s.status==='approved'?' on':'');$('lbch').className='ch'+(s.status==='changes'?' on':'');$('lbpick').className='pickbtn'+(s.favorite?' on':'');$('lbpick').textContent=s.favorite?'♥ Favorited':'♥ Favorite';$('lb').classList.add('open')}
 function close(){$('lb').classList.remove('open');cur=-1;render()}
@@ -224,8 +260,8 @@ function step(d){if(cur<0)return;open((cur+d+M.items.length)%M.items.length)}
 $('lbpick').onclick=()=>{const s=st(M.items[cur].id);s.favorite=!s.favorite;save();open(cur)};$('lbap').onclick=()=>{decide(M.items[cur].id,'approved');open(cur)};$('lbch').onclick=()=>{decide(M.items[cur].id,'changes');open(cur)};$('lbnote').oninput=e=>{st(M.items[cur].id).note=e.target.value;save()};
 $('close').onclick=close;$('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);
 $('onlyPicks').onclick=()=>{only=!only;$('onlyPicks').classList.toggle('on',only);render()};
-document.addEventListener('keydown',e=>{if(cur<0||e.target.tagName==='TEXTAREA')return;if(e.key==='Escape')close();else if(e.key==='ArrowRight')step(1);else if(e.key==='ArrowLeft')step(-1);else if(e.key==='f'){$('lbpick').click()}else if(e.key==='a'){$('lbap').click()}else if(e.key==='c'){$('lbch').click()}});
-$('download').onclick=()=>{const out={format:'asssets-review-feedback',gallery:M.gallery,title:M.title,reviewer:S.reviewer.trim(),
+document.addEventListener('keydown',e=>{if(cur<0||$('reviewModal').classList.contains('open')||e.target.tagName==='TEXTAREA')return;if(e.key==='Escape')close();else if(e.key==='ArrowRight')step(1);else if(e.key==='ArrowLeft')step(-1);else if(e.key==='f'){$('lbpick').click()}else if(e.key==='a'){$('lbap').click()}else if(e.key==='c'){$('lbch').click()}});
+$('download').onclick=()=>{if($('reviewModal').classList.contains('open'))return;const who=S.reviewer.trim();if(!who){switchReviewer();return}put();const out={format:'asssets-review-feedback',gallery:M.gallery,title:M.title,reviewer:who,
 items:M.items.map(it=>{const s=st(it.id),x={id:it.id,favorite:!!s.favorite,note:(s.note||'').trim()};if(s.status==='approved'||s.status==='changes')x.status=s.status;return x}).filter(x=>x.favorite||x.note||x.status)};
 const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));
 a.download=(M.title+' feedback'+(out.reviewer?' - '+out.reviewer:'')).replace(/[\/:\\]/g,'-')+'.json';document.body.appendChild(a);a.click();a.remove()};
@@ -236,7 +272,7 @@ M.credits.forEach(c=>{const r=document.createElement('div');r.className='cr';con
 const w=document.createElement('div');w.className='what';w.textContent=c.titles.join(', ');r.append(a,l,w);$('creditRows').appendChild(r)});
 b.onclick=()=>{const on=$('credits').classList.toggle('on');b.classList.toggle('on',on);if(on)$('credits').scrollIntoView({behavior:'smooth'})};
 if(q.get('demo')==='credits'){$('credits').classList.add('on');b.classList.add('on')}}
-if(q.get('demo')==='approve-grid')M.board=null;render();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
+if(q.get('demo')==='approve-grid')M.board=null;render();if(!norm(S.reviewer)&&!q.get('demo')&&!$('reviewModal').classList.contains('open'))switchReviewer();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
 </script></body></html>
 """#
 }

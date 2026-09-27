@@ -190,6 +190,10 @@ jobs:
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-web.png" "$U?demo=grid" || true
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-lightbox.png" "$U?demo=lightbox" || true
           test -s "ASSSETS-$ASSSETS_VERSION-gallery-web.png"
+          python3 ../Tests/browser/reviewer-drafts.py "$G/index.html" "$PWD/reviewer-browser" "$CH" | tee "ASSSETS-$ASSSETS_VERSION-reviewer-browser.txt"
+          (cd .. && ASSSETS_REVIEW_BROWSER_RESULTS="$PWD/out/reviewer-browser" swift test --filter downloadedBrowserDraftsImportSeparately)
+          "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1024,768 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-reviewer-switch.png" "$U" || true
+          test -s "ASSSETS-$ASSSETS_VERSION-reviewer-switch.png"
           shoot gallery-import 1920x1200 gallery-import
           shoot stacks 1920x1200 stacks
           shoot stack-compare 1920x1200 stack-compare
@@ -480,6 +484,8 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-export-presets.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-single-export-proof.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-listing.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-reviewer-browser.txt
+            asssets/out/reviewer-browser/*.json
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-partial.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-roster-fail.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-gallery-roster-recovered.txt

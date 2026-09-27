@@ -375,10 +375,14 @@ Phase 3: connectors the user authorizes to their own licensed sources.
   Current View as Review Gallery… does the same for whatever is on screen.
 - The page is one offline file in the ASSSETS dark style: a grid with
   palettes, a lightbox with tags, a heart per asset, a notes box, a
-  Favorites-only filter and a name field. No server, CDN, fonts or
-  tracking; it opens from the zip in any browser. Progress is kept in the
-  browser until the client presses Download feedback, which saves a small
-  JSON file.
+  Favorites-only filter and separate Switch reviewer / Rename controls.
+  No server, CDN, fonts or tracking; it opens from the zip in any browser.
+  Picks, notes and decisions are saved as separate reviewer drafts in that
+  browser. A previous single draft requires an explicit Continue earlier
+  draft or Start fresh choice. Download feedback saves the displayed
+  reviewer's draft as a small JSON file. Names label local drafts, not
+  verified identities; a name change does not rename already downloaded
+  or imported feedback.
 - File > Import Client Feedback… reads one or more of those files.
   Favorites get the `client-pick` tag and land in a Client Picks smart
   collection; notes show in the inspector under CLIENT NOTES with the
@@ -1110,3 +1114,15 @@ Core tests cover the exact boundary, a tail-only change, composed Unicode,
 board pins and catalog persistence. Native 1024x768 proof shows the warning
 and checks that a 4,001-character submission previews 4,000 saved characters
 without a false replacement.
+
+## 1.75.0: separate offline reviewer drafts
+
+Switch reviewer loads only the selected reviewer's local picks, decisions and
+notes. Rename changes the current draft name without overwriting another
+reviewer. A legacy single draft is not silently assigned to its old name:
+Continue earlier draft (with an editable name) or Start fresh appears first.
+The old browser entry is retained. Download still uses the existing JSON
+format and the active displayed name. These names are labels, not identity
+checks. Chrome interaction proof clicks through distinct drafts, both legacy
+choices, and exports real feedback JSON; a native core import test reads those
+separate browser downloads to verify the import shape and independent notes.

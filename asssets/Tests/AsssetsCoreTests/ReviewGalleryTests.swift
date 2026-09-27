@@ -66,6 +66,42 @@ struct ReviewGalleryTests {
         #expect(h.contains(".filter(x=>x.favorite||x.note||x.status)"))
     }
 
+    @Test func downloadedBrowserDraftsImportSeparately() throws {
+        // CI writes these from actual Chrome clicks on the exported offline gallery, not hand-authored feedback.
+        guard let folder = ProcessInfo.processInfo.environment["ASSSETS_REVIEW_BROWSER_RESULTS"] else { return }
+        let root = URL(fileURLWithPath: folder, isDirectory: true)
+        let manifest = try JSONDecoder().decode(ReviewGallery.Manifest.self,
+            from: Data(contentsOf: root.appendingPathComponent("manifest.json")))
+        var catalog = StudioCatalog()
+        catalog.assets = manifest.items.compactMap { item in
+            guard let id = UUID(uuidString: item.id) else { return nil }
+            var a = asset(item.title); a.id = id; return a
+        }
+        #expect(catalog.assets.count == manifest.items.count && !catalog.assets.isEmpty)
+        #expect(catalog.recordGallery(GalleryRoster(gallery: manifest.gallery, title: manifest.title,
+            created: manifest.created, assets: catalog.assets.map(\.id))!))
+        func read(_ file: String) throws -> ReviewGallery.Feedback {
+            try #require(ReviewGallery.decodeFeedback(Data(contentsOf: root.appendingPathComponent(file))))
+        }
+        let alex = try read("drafts-0.json"), sam = try read("drafts-1.json")
+        let renamed = try read("drafts-2.json"), backSam = try read("drafts-3.json"), backAlex = try read("drafts-4.json")
+        #expect(alex.reviewer == "Alex" && sam.reviewer == "Sam" && renamed.reviewer == "Alex Updated")
+        #expect(alex.items.first?.favorite == true && alex.items.first?.cardStatus == .approved)
+        #expect(sam.items.first?.favorite == false && sam.items.first?.cardStatus == .changes)
+        #expect(renamed.items.first?.note == "Alex note" && backSam == sam && backAlex == renamed)
+        #expect(try read("legacy-continue-0.json").items.first?.note == "Older note")
+        #expect(try read("legacy-fresh-0.json").items.isEmpty)
+        _ = catalog.applyFeedback(alex)
+        _ = catalog.applyFeedback(sam)
+        #expect(catalog.assets[0].clientNotes.contains(ClientNote(reviewer: "Alex", text: "Alex note", gallery: manifest.gallery)))
+        #expect(catalog.assets[0].clientNotes.contains(ClientNote(reviewer: "Sam", text: "Sam note", gallery: manifest.gallery)))
+        _ = catalog.applyFeedback(renamed)
+        #expect(catalog.assets[0].clientNotes.contains(ClientNote(reviewer: "Alex Updated", text: "Alex note", gallery: manifest.gallery)))
+        #expect(catalog.assets[0].clientNotes.contains(ClientNote(reviewer: "Sam", text: "Sam note", gallery: manifest.gallery)))
+        // A rename in the browser cannot merge the old name's already-imported receipts in the native library.
+        // That is a distinct native import identity; the gallery does not assert verified identity.
+    }
+
     @Test func rejectsOtherJSON() {
         #expect(ReviewGallery.decodeFeedback(Data(#"{"format":"other","gallery":"g","title":"t","reviewer":"r","items":[]}"#.utf8)) == nil)
         #expect(ReviewGallery.decodeFeedback(Data("not json".utf8)) == nil)
