@@ -2,7 +2,91 @@
 """Run real offline-gallery Chrome interactions and save its downloaded-JSON payloads for native import tests.
 Usage: reviewer-drafts.py index.html output-directory [chrome-executable]
 """
-import json, pathlib, re, subprocess, sys, tempfile
+import base64, json, os, pathlib, re, socket, struct, subprocess, sys, tempfile, time, urllib.request
+
+def chrome_result(chrome, url):
+    """Read the page result as soon as its DOM is ready via Chrome DevTools.
+
+    --dump-dom waits for Chrome's virtual-time lifecycle; on macOS headless that
+    wait can hang even after the page's JS finishes. DevTools does not wait for
+    that lifecycle and checks the actual page result instead.
+    """
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
+        args = [chrome, '--headless=new', '--disable-gpu', '--disable-extensions',
+                '--no-first-run', '--no-default-browser-check', '--remote-allow-origins=*',
+                '--remote-debugging-port=0', f'--user-data-dir={profile}',
+                '--allow-file-access-from-files', url]
+        stderr_log = pathlib.Path(profile) / 'chrome-stderr.txt'
+        error_stream = stderr_log.open('wb')
+        process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=error_stream)
+        sock = None
+        try:
+            deadline = time.monotonic() + 35
+            port_file = pathlib.Path(profile) / 'DevToolsActivePort'
+            while not port_file.exists():
+                if process.poll() is not None:
+                    raise RuntimeError(f'Chrome exited {process.returncode}: {stderr_log.read_text(errors="replace")[-1500:]}')
+                if time.monotonic() > deadline: raise TimeoutError('Chrome did not open DevTools')
+                time.sleep(.1)
+            port = int(port_file.read_text().splitlines()[0])
+            target = None
+            while not target:
+                try:
+                    pages = json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json/list', timeout=2))
+                    target = next((x for x in pages if x.get('type') == 'page' and x.get('url') == url), None)
+                except (OSError, ValueError): pass
+                if time.monotonic() > deadline: raise TimeoutError('Chrome did not open test page')
+                if not target: time.sleep(.1)
+            from urllib.parse import urlsplit
+            ws = urlsplit(target['webSocketDebuggerUrl'])
+            sock = socket.create_connection((ws.hostname, ws.port), timeout=3)
+            key = base64.b64encode(os.urandom(16)).decode()
+            sock.sendall((f'GET {ws.path} HTTP/1.1\r\nHost: {ws.hostname}:{ws.port}\r\n'
+                          f'Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n'
+                          'Sec-WebSocket-Version: 13\r\nOrigin: http://localhost\r\n\r\n').encode())
+            response = b''
+            while b'\r\n\r\n' not in response: response += sock.recv(4096)
+            if b' 101 ' not in response.split(b'\r\n', 1)[0]: raise RuntimeError(response[:500])
+            buffer = response.split(b'\r\n\r\n', 1)[1]
+            def receive(n):
+                nonlocal buffer
+                while len(buffer) < n: buffer += sock.recv(max(4096, n-len(buffer)))
+                part, buffer = buffer[:n], buffer[n:]
+                return part
+            seq = 0
+            while time.monotonic() < deadline:
+                seq += 1
+                payload = json.dumps({'id': seq, 'method': 'Runtime.evaluate',
+                    'params': {'expression': 'document.getElementById("results")?.textContent || ""',
+                               'returnByValue': True}}).encode()
+                mask = os.urandom(4)
+                length = len(payload)
+                header = bytes([0x81, 0x80 | (length if length < 126 else 126)])
+                if length >= 126: header += struct.pack('!H', length)
+                sock.sendall(header + mask + bytes(b ^ mask[i%4] for i,b in enumerate(payload)))
+                while True:
+                    first, second = receive(2)
+                    length = second & 127
+                    if length == 126: length = struct.unpack('!H', receive(2))[0]
+                    elif length == 127: length = struct.unpack('!Q', receive(8))[0]
+                    key = receive(4) if second & 128 else None
+                    body = receive(length)
+                    if key: body = bytes(b ^ key[i%4] for i,b in enumerate(body))
+                    if first & 15 != 1: continue
+                    message = json.loads(body)
+                    if message.get('id') != seq: continue
+                    value = message.get('result', {}).get('result', {}).get('value', '')
+                    if value: return json.loads(value)
+                    break
+                time.sleep(.1)
+            raise TimeoutError('Review flow did not publish a DOM result')
+        finally:
+            if sock: sock.close()
+            process.terminate()
+            try: process.communicate(timeout=4)
+            except subprocess.TimeoutExpired:
+                process.kill(); process.communicate()
+            error_stream.close()
 
 page = pathlib.Path(sys.argv[1]).resolve()
 out = pathlib.Path(sys.argv[2]).resolve(); out.mkdir(parents=True, exist_ok=True)
@@ -67,12 +151,7 @@ if(MODE==='drafts'){
         # Seed older storage before gallery script starts. Result node is after gallery initialization.
         html = original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results"></pre>'+flow+'</body>')
         test_page.write_text(html)
-        with tempfile.TemporaryDirectory() as profile:
-            p = subprocess.run([chrome,'--headless=new','--no-sandbox','--disable-gpu','--disable-extensions',f'--user-data-dir={profile}','--allow-file-access-from-files','--virtual-time-budget=5000','--dump-dom',test_page.as_uri()],capture_output=True,text=True,timeout=40)
-        match=re.search(r'<pre id="results">(.*?)</pre>',p.stdout,re.S)
-        if not match: raise RuntimeError(f'{mode}: no browser result; exit {p.returncode}: {p.stderr[-1200:]}')
-        from html import unescape
-        result=json.loads(unescape(match.group(1)))
+        result = chrome_result(chrome, test_page.as_uri())
         if 'error' in result: raise RuntimeError(f'{mode}: {result}')
         for i, download in enumerate(result['downloads']):
             (out / f'{mode}-{i}.json').write_text(json.dumps(download,indent=2)+'\n')
