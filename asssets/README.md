@@ -1084,3 +1084,16 @@ rebuilds the ordered preview, and asks for another review if the files or
 catalog have changed. Core tests cover conflicting and reversed orders,
 disjoint cards, persistence, and changed-state preview. Native proof checks
 the conflict at 1024x768, with no pre-import catalog mutation.
+
+## 1.73.0: duplicate feedback files blocked at preview
+
+Feedback files for the same gallery and reviewer are now recognized at the
+start of the batch preview, using the same normalized key as the pick ledger
+and final import. A blank reviewer is the default "Client", so blank and
+"Client" collide; casing changes do too. The preview names the colliding
+filenames and keeps Import disabled until one is removed with Choose Files
+Again. It does not simulate the impossible sequence as if both files would
+land. The final import still checks for duplicates after the file re-read.
+Core tests cover case variants, blank-vs-Client, distinct reviewers, and
+changed state. Native 1024x768 proof shows the warning and disabled Import.
+This is a batch identity guard, not an authentication of the reviewer.

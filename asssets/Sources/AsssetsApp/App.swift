@@ -660,7 +660,7 @@ final class StudioLibrary: ObservableObject {
         files = zip(files, batch.previews).map { old, preview in
             .init(id: old.id, feedback: old.feedback, preview: preview, name: old.name, path: old.path, digest: old.digest)
         }
-        pendingFeedback = PendingFeedback(files: files, unreadable: bad, conflicts: batch.conflicts)
+        pendingFeedback = PendingFeedback(files: files, unreadable: bad, conflicts: batch.conflicts, duplicates: batch.duplicates)
     }
 
     func chooseGalleryManifest(for fileID: UUID) {
@@ -703,7 +703,7 @@ final class StudioLibrary: ObservableObject {
         pendingFeedback = PendingFeedback(id: pending.id, files: zip(pending.files, batch.previews).map { f, preview in
             .init(id: f.id, feedback: f.feedback, preview: preview, name: f.name,
                   path: f.path, digest: f.digest)
-        }, unreadable: pending.unreadable, conflicts: batch.conflicts)
+        }, unreadable: pending.unreadable, conflicts: batch.conflicts, duplicates: batch.duplicates)
     }
 
     /// Commit a roster to disk before treating it as evidence. Never leave a memory-only roster.
@@ -731,26 +731,25 @@ final class StudioLibrary: ObservableObject {
         }
         if unreadable {
             pendingFeedback = PendingFeedback(id: p.id, files: p.files, unreadable: p.unreadable,
-                notice: "A selected feedback file is missing, unreadable, or no longer valid. Choose the files again; nothing imported.", conflicts: p.conflicts)
+                notice: "A selected feedback file is missing, unreadable, or no longer valid. Choose the files again; nothing imported.", conflicts: p.conflicts, duplicates: p.duplicates)
             return
         }
         let batch = catalog.previewFeedbackBatch(updated.map(\.feedback))
-        if batch.conflicts != p.conflicts { changed = true }
+        if batch.conflicts != p.conflicts || batch.duplicates != p.duplicates { changed = true }
         updated = zip(updated, batch.previews).map { f, preview in
             if preview != f.preview { changed = true }
             return .init(id: f.id, feedback: f.feedback, preview: preview, name: f.name,
                          path: f.path, digest: f.digest)
         }
-        let keys = updated.map { $0.feedback.gallery.lowercased() + "|" + $0.feedback.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-        if Set(keys).count != keys.count {
+        if !batch.duplicates.isEmpty {
             pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable,
-                notice: "Two files claim the same gallery and reviewer. Choose one file; nothing imported.", conflicts: batch.conflicts)
+                notice: "Choose one file per gallery and reviewer; nothing imported.", conflicts: batch.conflicts, duplicates: batch.duplicates)
             return
         }
         if changed || p.notice != nil {
             // Even a same-size replacement must get a new review, not just a silent recheck.
             pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable,
-                notice: changed ? "A feedback file or library state changed. Review this updated preview, then press Import again." : nil, conflicts: batch.conflicts)
+                notice: changed ? "A feedback file or library state changed. Review this updated preview, then press Import again." : nil, conflicts: batch.conflicts, duplicates: batch.duplicates)
             if changed { return }
         }
         let beforeImport = catalog
@@ -770,11 +769,14 @@ final class StudioLibrary: ObservableObject {
 
     func importFeedback(feedback list: [ReviewGallery.Feedback], unreadable bad: Int) {
         guard !cleanupEntryExists(cleanupJournalURL) else { flash("Catalog recovery is pending; feedback was not saved."); return }
+        guard catalog.previewFeedbackBatch(list).duplicates.isEmpty else {
+            flash("Two feedback files claim the same gallery and reviewer. Nothing imported."); return
+        }
         var next = catalog, total = StudioCatalog.FeedbackResult(), reviewers: [String] = []
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; let today = df.string(from: Date())
-        var seenReviews = Set<String>(), applied = false
+        var seenReviews = Set<FeedbackRoundKey>(), applied = false
         for f in list {
-            let key = f.gallery.lowercased() + "|" + StudioCatalog.feedbackReviewer(f.reviewer).lowercased()
+            let key = FeedbackRoundKey(gallery: f.gallery, reviewer: f.reviewer)
             guard seenReviews.insert(key).inserted else {
                 flash("Two feedback files claim the same gallery and reviewer. Nothing imported."); return
             }
@@ -3662,12 +3664,12 @@ final class StudioLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: out)
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.shareRound(id, to: out) }
-        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal", "feedback-reviewer-case", "feedback-receipt", "feedback-batch-conflict":
+        case "feedback-roster", "feedback-legacy", "feedback-recovery", "feedback-changed", "feedback-withdraw", "feedback-save-fail", "feedback-note-removal", "feedback-reviewer-case", "feedback-receipt", "feedback-batch-conflict", "feedback-duplicate":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
             let ids = Array(mocks.prefix(2).map(\.id))
             let outsider = catalog.assets.first { !ids.contains($0.id) }?.id ?? UUID()
-            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" || demo == "feedback-reviewer-case" || demo == "feedback-receipt" || demo == "feedback-batch-conflict" {
+            if demo == "feedback-roster" || demo == "feedback-changed" || demo == "feedback-withdraw" || demo == "feedback-save-fail" || demo == "feedback-note-removal" || demo == "feedback-reviewer-case" || demo == "feedback-receipt" || demo == "feedback-batch-conflict" || demo == "feedback-duplicate" {
                 if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-09-26", assets: ids) {
                     mutate { _ = $0.recordGallery(roster) }
                 }
@@ -3811,6 +3813,22 @@ final class StudioLibrary: ObservableObject {
                         let marker = "done conflicts=\(p?.conflicts.count ?? -1) final=\(p?.conflicts.first?.final.label ?? "missing") secondFrom=\(p?.files.last?.preview.rows.first?.from?.label ?? "missing") unchanged=\(catalog.board(board)?.status(of: card.id) == .open)"
                         try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-batch-conflict.txt"), atomically: true, encoding: .utf8)
                     }
+                }
+            }
+            if demo == "feedback-duplicate" {
+                let blank = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: " ", items: [
+                    .init(id: ids[0].uuidString, favorite: true, note: "Pick this")])
+                let client = ReviewGallery.Feedback(gallery: gallery.lowercased(), title: "Launch proof", reviewer: "Client", items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: "Other version")])
+                let firstURL = FileManager.default.temporaryDirectory.appendingPathComponent("Blank reviewer feedback.json")
+                let secondURL = FileManager.default.temporaryDirectory.appendingPathComponent("Client reviewer feedback.json")
+                if let first = try? JSONEncoder().encode(blank), let second = try? JSONEncoder().encode(client),
+                   (try? first.write(to: firstURL, options: .atomic)) != nil,
+                   (try? second.write(to: secondURL, options: .atomic)) != nil {
+                    previewFeedback([firstURL, secondURL])
+                    let p = pendingFeedback
+                    let marker = "done duplicate=\(p?.duplicates.count ?? -1) reviewer=\(p?.duplicates.first?.reviewer ?? "missing") files=\(p?.duplicates.first?.indices.count ?? -1) unchanged=\(catalog.feedbackPickLedger.isEmpty)"
+                    try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-duplicate.txt"), atomically: true, encoding: .utf8)
                 }
             }
             if demo == "feedback-roster" {
@@ -12435,10 +12453,12 @@ struct PendingFeedback: Identifiable {
     var unreadable: Int
     var notice: String?
     var conflicts: [FeedbackBatchPreview.Conflict]
+    var duplicates: [FeedbackBatchPreview.Duplicate]
     init(id: UUID = UUID(), files: [File], unreadable: Int, notice: String? = nil,
-         conflicts: [FeedbackBatchPreview.Conflict] = []) {
+         conflicts: [FeedbackBatchPreview.Conflict] = [], duplicates: [FeedbackBatchPreview.Duplicate] = []) {
         self.id = id; self.files = files; self.unreadable = unreadable; self.notice = notice
         self.conflicts = conflicts
+        self.duplicates = duplicates
     }
 }
 
@@ -12567,11 +12587,27 @@ struct FeedbackPreviewSheet: View {
             if let notice = model.pendingFeedback?.notice {
                 Label(notice, systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(Theme.warning)
-                if notice.contains("Choose") { Button("Choose Files Again…") { model.importFeedback() } }
+                if notice.contains("Choose") && (model.pendingFeedback?.duplicates.isEmpty ?? true) {
+                    Button("Choose Files Again…") { model.importFeedback() }
+                }
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    let conflicts = model.pendingFeedback?.conflicts ?? pending.conflicts
+                    let current = model.pendingFeedback ?? pending
+                    if !current.duplicates.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Choose one feedback file for each gallery and reviewer. Nothing imports until then.", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.weight(.semibold))
+                            ForEach(Array(current.duplicates.enumerated()), id: \.offset) { _, duplicate in
+                                Text("\(duplicate.title) (\(duplicate.gallery)) / \(duplicate.reviewer): " + duplicate.indices.map { current.files[$0].name }.joined(separator: " and "))
+                                    .font(.caption2).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }.foregroundStyle(Theme.warning).padding(9)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                        Button("Choose Files Again…") { model.importFeedback() }
+                    }
+                    let conflicts = current.conflicts
                     if !conflicts.isEmpty {
                         VStack(alignment: .leading, spacing: 5) {
                             Label("Different reviewers chose different statuses. Files apply top to bottom.", systemImage: "exclamationmark.triangle.fill")
@@ -12596,6 +12632,7 @@ struct FeedbackPreviewSheet: View {
                 Button("Cancel") { model.pendingFeedback = nil }.keyboardShortcut(.cancelAction)
                 Button("Import") { model.applyPendingFeedback() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).tint(Theme.accent)
                     .disabled(!(model.pendingFeedback?.files ?? pending.files).contains { $0.preview.canImport } ||
+                              !(model.pendingFeedback?.duplicates ?? pending.duplicates).isEmpty ||
                               (model.pendingFeedback?.notice ?? "").contains("Choose"))
             }
         }

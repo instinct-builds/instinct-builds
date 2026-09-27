@@ -15,12 +15,37 @@ public struct FeedbackBatchPreview: Equatable, Sendable {
             public var status: CardStatus
         }
     }
+    public struct Duplicate: Equatable, Sendable {
+        public var gallery: String
+        public var title: String
+        public var reviewer: String
+        /// Indices in the selected file order; the caller supplies display filenames.
+        public var indices: [Int]
+    }
     public var previews: [FeedbackPreview]
     public var conflicts: [Conflict]
+    public var duplicates: [Duplicate]
 }
 
 extension StudioCatalog {
     public func previewFeedbackBatch(_ files: [ReviewGallery.Feedback]) -> FeedbackBatchPreview {
+        var byKey: [FeedbackRoundKey: [Int]] = [:]
+        var keys: [FeedbackRoundKey] = []
+        for (i, file) in files.enumerated() {
+            let key = FeedbackRoundKey(gallery: file.gallery, reviewer: file.reviewer)
+            if byKey[key] == nil { keys.append(key) }
+            byKey[key, default: []].append(i)
+        }
+        let duplicates = keys.compactMap { key -> FeedbackBatchPreview.Duplicate? in
+            guard let indices = byKey[key], indices.count > 1 else { return nil }
+            return .init(gallery: key.gallery, title: files[indices[0]].title,
+                         reviewer: Self.feedbackReviewer(files[indices[0]].reviewer), indices: indices)
+        }
+        // The commit path rejects the whole batch. Never preview an impossible
+        // sequence as if duplicate files could replace each other.
+        if !duplicates.isEmpty {
+            return .init(previews: files.map { previewFeedback($0) }, conflicts: [], duplicates: duplicates)
+        }
         var copy = self
         var previews: [FeedbackPreview] = []
         struct Key: Hashable { var board: UUID; var card: UUID }
@@ -46,6 +71,6 @@ extension StudioCatalog {
             return .init(board: key.board, card: key.card, title: title,
                          requests: asked, final: board.status(of: key.card))
         }
-        return .init(previews: previews, conflicts: conflicts)
+        return .init(previews: previews, conflicts: conflicts, duplicates: [])
     }
 }

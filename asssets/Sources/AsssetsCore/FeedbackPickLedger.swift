@@ -12,6 +12,16 @@ public struct FeedbackPickRound: Codable, Equatable, Sendable {
     }
 }
 
+/// Stable identity for a published gallery and reviewer, not proof of authorship.
+public struct FeedbackRoundKey: Hashable, Sendable {
+    public let gallery: String
+    public let reviewer: String
+    public init(gallery: String, reviewer: String) {
+        self.gallery = gallery.lowercased()
+        self.reviewer = StudioCatalog.feedbackReviewer(reviewer).lowercased()
+    }
+}
+
 extension StudioCatalog {
     public static func feedbackReviewer(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -21,8 +31,8 @@ extension StudioCatalog {
     /// Casing changes in a later file must not create a second person's round.
     public static func sameFeedbackRound(_ firstGallery: String, _ firstReviewer: String,
                                          _ secondGallery: String, _ secondReviewer: String) -> Bool {
-        firstGallery.lowercased() == secondGallery.lowercased() &&
-        feedbackReviewer(firstReviewer).lowercased() == feedbackReviewer(secondReviewer).lowercased()
+        FeedbackRoundKey(gallery: firstGallery, reviewer: firstReviewer) ==
+        FeedbackRoundKey(gallery: secondGallery, reviewer: secondReviewer)
     }
     public func feedbackRound(gallery: String, reviewer: String) -> FeedbackPickRound? {
         feedbackPickLedger.first { Self.sameFeedbackRound($0.gallery, $0.reviewer, gallery, reviewer) }

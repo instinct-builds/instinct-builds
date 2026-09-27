@@ -277,6 +277,9 @@ jobs:
           shoot feedback-batch-conflict 1024x768 feedback-batch-conflict demo-feedback-batch-conflict.txt
           grep -q '^done conflicts=1 final=Changes secondFrom=Approved unchanged=true$' "$SUP/demo-feedback-batch-conflict.txt"
           cp "$SUP/demo-feedback-batch-conflict.txt" "ASSSETS-$ASSSETS_VERSION-feedback-batch-conflict.txt"
+          shoot feedback-duplicate 1024x768 feedback-duplicate demo-feedback-duplicate.txt
+          grep -q '^done duplicate=1 reviewer=Client files=2 unchanged=true$' "$SUP/demo-feedback-duplicate.txt"
+          cp "$SUP/demo-feedback-duplicate.txt" "ASSSETS-$ASSSETS_VERSION-feedback-duplicate.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
@@ -484,6 +487,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-reviewer-case.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-receipt.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-batch-conflict.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-duplicate.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
