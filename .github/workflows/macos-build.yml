@@ -127,7 +127,14 @@ jobs:
             fi
             # A previous demo's status must never satisfy the next demo's wait.
             if [ -n "${4:-}" ]; then rm -f "$SUP/$4"; fi
-            open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep "${DELAY:-9}"; screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
+            open -n ASSSETS.app --args -asssets-demo "$1" -asssets-window "$2"; sleep "${DELAY:-9}"
+            # Optional fifth arg: capture immediately after a delayed UI result marker.
+            # The receipt toast lasts 2.6 seconds, so don't wait until after screenshot.
+            if [ "${5:-}" = before ]; then
+              for i in $(seq 1 90); do [ -s "$SUP/$4" ] && break; sleep 0.1; done
+              test -s "$SUP/$4"
+            fi
+            screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
             # Optional 4th arg: a file the demo writes in the background; keep the app alive until it lands.
             if [ -n "${4:-}" ]; then for i in $(seq 1 90); do [ -s "$SUP/$4" ] && break; sleep 1; done; echo "waited ${i}s for $4"; fi
             pkill -x ASSSETS || true; sleep 2
@@ -264,7 +271,7 @@ jobs:
           shoot feedback-reviewer-case 1024x768 feedback-reviewer-case demo-feedback-reviewer-case.txt
           grep -q '^done name=Jordan withdrawn=2 removed=1 replaced=1 other=true$' "$SUP/demo-feedback-reviewer-case.txt"
           cp "$SUP/demo-feedback-reviewer-case.txt" "ASSSETS-$ASSSETS_VERSION-feedback-reviewer-case.txt"
-          DELAY=6 shoot feedback-receipt 1024x768 feedback-receipt demo-feedback-receipt.txt
+          DELAY=1 shoot feedback-receipt 1024x768 feedback-receipt demo-feedback-receipt.txt before
           grep -q '^done saved=true receipt=0 client picks, 1 note, 2 notes removed, 1 note replaced from Jordan, Sam$' "$SUP/demo-feedback-receipt.txt"
           cp "$SUP/demo-feedback-receipt.txt" "ASSSETS-$ASSSETS_VERSION-feedback-receipt.txt"
           shoot feedback-preview 1920x1200 feedback-preview
