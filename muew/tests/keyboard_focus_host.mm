@@ -108,7 +108,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [v accessibilityChildren]; [list accessibilityChildren]; [rows[0] accessibilityLabel];
     Check(v->currentIndex==axLoaded && host->patches==axPatches && v->browserCursorSlug.empty(),
           "accessibility traversal never loads or proposes a sound");
-    id stale=rows[0]; NSString* staleSlug=[stale slug];
+    MUEWBrowserAXRow* stale=rows[0]; NSString* staleSlug=stale.slug;
     v->filter.query="no-such-sound-987"; [v refilter];
     Check([[list accessibilityChildren] count]==0 && ![stale accessibilityPerformPress] &&
           v->currentIndex==axLoaded && host->patches==axPatches,
@@ -117,7 +117,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     v->sortMode=muew::ui::SortName; [v refilter];
     rows=[list accessibilityChildren];
     Check(rows.count>1 && [[rows[0] accessibilityLabel] containsString:@"1 of 108"] &&
-          ![[rows[0] slug] isEqualToString:staleSlug],
+          ![((MUEWBrowserAXRow*)rows[0]).slug isEqualToString:staleSlug],
           "accessible rows follow sort while retaining individual slug identity");
     v->sortMode=muew::ui::SortBank; [v refilter];
     rows=[list accessibilityChildren];
@@ -128,7 +128,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Down(v,w,[NSString stringWithCharacters:&axDown length:1]);
     Down(v,w,[NSString stringWithCharacters:&axDown length:1]);
     rows=[list accessibilityChildren];
-    id target=rows[1]; NSString* targetSlug=[target slug];
+    MUEWBrowserAXRow* target=rows[1]; NSString* targetSlug=target.slug;
     Check([[target accessibilityLabel] containsString:@"proposed: yes"] &&
           v->currentIndex==axLoaded && host->patches==axPatches && host->on.size()==axNotes,
           "accessible proposed state tracks keyboard cursor without loading or notes");

@@ -75,9 +75,9 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 
 // Only visible rows are represented. Retained row elements carry a slug, never
 // a mutable row number; a stale action must not activate a different preset.
-@interface MUEWBrowserAXRow : NSAccessibilityElement
+@interface MUEWBrowserAXRow ()
 @property(nonatomic, weak) MUEWEditorView* editor;
-@property(nonatomic, copy) NSString* slug;
+@property(nonatomic, copy, readwrite) NSString* slug;
 @property(nonatomic) NSUInteger generation;
 @end
 @implementation MUEWBrowserAXRow

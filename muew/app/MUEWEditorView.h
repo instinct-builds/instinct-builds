@@ -217,3 +217,9 @@ struct MUEWEditorHost {
 - (void)showVoiceMorph:(const float*)a count:(int)na b:(const float*)b count:(int)nb; // 0.36.0
 - (std::vector<double>)ghostMorphs:(int)o; // 0.36.0
 @end
+
+// Read-only identity of a virtual result row, used by the macOS AX host test.
+// Activation still revalidates slug and refilter generation in the implementation.
+@interface MUEWBrowserAXRow : NSAccessibilityElement
+@property(nonatomic, copy, readonly) NSString* slug;
+@end
