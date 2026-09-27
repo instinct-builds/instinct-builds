@@ -730,8 +730,8 @@ final class StudioLibrary: ObservableObject {
                                  path: f.path, digest: bytes.digest))
         }
         if unreadable {
-            pendingFeedback = PendingFeedback(id: p.id, files: p.files, unreadable: p.unreadable, conflicts: p.conflicts,
-                notice: "A selected feedback file is missing, unreadable, or no longer valid. Choose the files again; nothing imported.")
+            pendingFeedback = PendingFeedback(id: p.id, files: p.files, unreadable: p.unreadable,
+                notice: "A selected feedback file is missing, unreadable, or no longer valid. Choose the files again; nothing imported.", conflicts: p.conflicts)
             return
         }
         let batch = catalog.previewFeedbackBatch(updated.map(\.feedback))
@@ -743,14 +743,14 @@ final class StudioLibrary: ObservableObject {
         }
         let keys = updated.map { $0.feedback.gallery.lowercased() + "|" + $0.feedback.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         if Set(keys).count != keys.count {
-            pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable, conflicts: batch.conflicts,
-                notice: "Two files claim the same gallery and reviewer. Choose one file; nothing imported.")
+            pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable,
+                notice: "Two files claim the same gallery and reviewer. Choose one file; nothing imported.", conflicts: batch.conflicts)
             return
         }
         if changed || p.notice != nil {
             // Even a same-size replacement must get a new review, not just a silent recheck.
-            pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable, conflicts: batch.conflicts,
-                notice: changed ? "A feedback file or library state changed. Review this updated preview, then press Import again." : nil)
+            pendingFeedback = PendingFeedback(id: p.id, files: updated, unreadable: p.unreadable,
+                notice: changed ? "A feedback file or library state changed. Review this updated preview, then press Import again." : nil, conflicts: batch.conflicts)
             if changed { return }
         }
         let beforeImport = catalog
