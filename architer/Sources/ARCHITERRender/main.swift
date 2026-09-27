@@ -2786,6 +2786,100 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? pcnLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-condition-notes.txt"),
                atomically: true, encoding: .utf8)
+    // Custom conditions on the summary line proofs (3.60.0). Runs at END.
+    var pccLines = ["Custom conditions on the summary line (3.60.0)",
+                    "name is the party identity - customs are per-character instances, born in the per-character editor, party-appliable after"]
+    var pccOrig: [UUID: (conditions: Set<Condition>, durations: [String: Int], notes: [String: String], customs: [CustomCondition])] = [:]
+    for c in model.characters { pccOrig[c.id] = (c.conditions, c.conditionDurations, c.conditionNotes, c.customConditions) }
+    // a customs-free roster keeps the 3.53.0 string contract
+    pccLines.append("customs-free summary: '\(partyConditionSummary(model.characters))'")
+    pccLines.append("customs-free roster byte-identical to the 3.53.0 shape \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned")")
+    let pccWrenID = model.characters.first(where: { $0.name == "Wren Halloway" })?.id
+    let pccBramID = model.characters.first(where: { $0.name == "Bram Oakfel" })?.id
+    let pccSeraID = model.characters.first(where: { $0.name == "Sera Vint" })?.id
+    // setup: Wren pre-holds "Vault-marked" with a 2r clock, built through the
+    // per-character path (explicit fixture construction, flags set here)
+    if let w = pccWrenID, let wIdx = model.characters.firstIndex(where: { $0.id == w }) {
+        var pccSetup = model.characters[wIdx]
+        let pccSeed = CustomCondition(name: "Vault-marked", hindersChecks: true)
+        pccSetup.customConditions.append(pccSeed)
+        pccSetup.conditionDurations[pccSeed.id.uuidString] = 2
+        model.characters[wIdx] = pccSetup
+        try? model.store.save(pccSetup)
+    }
+    pccLines.append("menu names derive from the roster \(model.partyCustomConditionNames == ["Vault-marked"])")
+    // party apply, blank rounds + a note: Wren refreshes (clock kept, note
+    // attached); Bram and Sera are new, flag set copied from Wren
+    let pccLogCount = model.tableLog.filter { $0.title == "Party condition" }.count
+    let pccApply = model.applyPartyCustomCondition(name: "Vault-marked", rounds: nil, note: "vault")
+    pccLines.append("apply: new [\(pccApply.applied.joined(separator: ", "))], refreshed [\(pccApply.refreshed.joined(separator: ", "))]")
+    let pccWrenNow = model.characters.first(where: { $0.id == pccWrenID })
+    let pccBramNow = model.characters.first(where: { $0.id == pccBramID })
+    let pccSeraNow = model.characters.first(where: { $0.id == pccSeraID })
+    let pccWrenCC = pccWrenNow?.customConditions.first(where: { $0.name == "Vault-marked" })
+    let pccBramCC = pccBramNow?.customConditions.first(where: { $0.name == "Vault-marked" })
+    pccLines.append("Wren refreshed not stacked \(pccApply.refreshed == ["Wren Halloway"] && (pccWrenNow?.customConditions.count ?? -1) == 1), clock kept \(pccWrenCC.flatMap { pccWrenNow?.conditionDurations[$0.id.uuidString] } == 2), note attached \(pccWrenCC.flatMap { pccWrenNow?.conditionNotes[$0.id.uuidString] } == "vault")")
+    pccLines.append("flags copied from the first holder \(pccBramCC?.hindersChecks == true), fresh per-character UUID \(pccBramCC != nil && pccWrenCC != nil && pccBramCC!.id != pccWrenCC!.id)")
+    // the summary line: built-ins first, customs after, per character; a
+    // custom-only holder (Sera) appears
+    pccLines.append("summary: '\(partyConditionSummary(model.characters))'")
+    pccLines.append("summary exact \(partyConditionSummary(model.characters) == "Wren Halloway: Poisoned, Vault-marked 2r (vault) \u{00B7} Bram Oakfel: Vault-marked (vault) \u{00B7} Sera Vint: Vault-marked (vault)")")
+    let pccItems = partyConditionSummaryItems(model.characters)
+    pccLines.append("custom-only Sera appears on the line \(pccItems.first(where: { $0.name == "Sera Vint" })?.text == "Sera Vint: Vault-marked (vault)")")
+    pccLines.append("Wren's custom part: expiring derived false at 2r \(pccItems.first(where: { $0.name == "Wren Halloway" })?.parts.first(where: { $0.label == "Vault-marked 2r" })?.expiring == false)")
+    // never stacks: a blank re-apply to Bram is a no-op, no new log
+    if let b = pccBramID {
+        let pccNoop = model.applyPartyCustomCondition(name: "Vault-marked", rounds: nil, from: [b])
+        pccLines.append("blank re-apply: no-op \(pccNoop.applied.isEmpty && pccNoop.refreshed.isEmpty), no new log \(model.tableLog.filter { $0.title == "Party condition" }.count == pccLogCount + 1)")
+    }
+    pccLines.append("apply log: '\(model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "missing")'")
+    renderPNG(
+        GroupCheckSectionView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 560, name: "party-custom-conditions", outDir: outDir, minHeight: 120, maxHeight: 500)
+    // persistence: Bram's instance, clock-less state and note round-trip
+    if let b = pccBramID, let pccBramReload = try? model.store.load(id: b) {
+        pccLines.append("persistence: custom + note round-trip \(pccBramReload.customConditions == pccBramNow?.customConditions && pccBramReload.conditionNotes == pccBramNow?.conditionNotes)")
+    }
+    // scoped removal: Sera only - condition, note and any clock clear together
+    if let s = pccSeraID {
+        let pccRemoved = model.removePartyCustomCondition(name: "Vault-marked", from: [s])
+        let pccSeraAfter = model.characters.first(where: { $0.id == s })
+        pccLines.append("scoped removal: named [\(pccRemoved.joined(separator: ", "))], Sera clean \(pccSeraAfter?.customConditions.isEmpty == true && pccSeraAfter?.conditionNotes.isEmpty == true), others keep theirs \(model.characters.first(where: { $0.id == pccBramID })?.customConditions.isEmpty == false)")
+    }
+    // tick to 0 ends Wren's custom and its note (2r -> 1r -> gone)
+    if let w = pccWrenID, let wIdx = model.characters.firstIndex(where: { $0.id == w }) {
+        var pccTick = model.characters[wIdx]
+        _ = pccTick.tickConditionDurations()
+        let pccAtOne = pccTick.customConditions.first(where: { $0.name == "Vault-marked" })
+        let pccOneLeft = pccAtOne.flatMap { pccTick.conditionDurations[$0.id.uuidString] } == 1
+        _ = pccTick.tickConditionDurations()
+        model.characters[wIdx] = pccTick
+        try? model.store.save(pccTick)
+        pccLines.append("tick: 2r->1r \(pccOneLeft), at 0 custom gone \(pccTick.customConditions.isEmpty), note gone \(pccTick.conditionNotes.isEmpty)")
+    }
+    // hygiene: restore conditions + clocks + notes + customs, drop test log entries
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = pccOrig[c.id], c.conditions != orig.conditions || c.conditionDurations != orig.durations || c.conditionNotes != orig.notes || c.customConditions != orig.customs {
+            var restored = c
+            restored.conditions = orig.conditions
+            restored.conditionDurations = orig.durations
+            restored.conditionNotes = orig.notes
+            restored.customConditions = orig.customs
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    model.tableLog.removeAll { $0.title == "Party condition" }
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    pccLines.append("hygiene: roster conditions, clocks, notes, customs, log and selection restored")
+    try? pccLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-custom-conditions.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

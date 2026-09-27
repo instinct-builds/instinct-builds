@@ -45,6 +45,33 @@ struct ConditionNoteTests {
         #expect(partyConditionSummary([c]) == "Wren: Poisoned, Prone 2r")
     }
 
+    @Test func customsJoinTheSummaryAfterBuiltIns() {
+        var c = character()
+        c.conditions.insert(.poisoned)
+        let dazed = CustomCondition(name: "Dazed", hindersAttacks: true)
+        c.customConditions.append(dazed)
+        c.conditionDurations[dazed.id.uuidString] = 1
+        c.conditionNotes[dazed.id.uuidString] = "flash"
+        let marked = CustomCondition(name: "Vault-marked", hindersChecks: true)
+        c.customConditions.append(marked)
+        let items = partyConditionSummaryItems([c])
+        // built-ins sorted first, then customs sorted by name; note rides faint
+        #expect(items.first?.text == "Wren: Poisoned, Dazed 1r (flash), Vault-marked")
+        #expect(items.first?.parts.first(where: { $0.label == "Dazed 1r" })?.expiring == true)
+        #expect(items.first?.parts.first(where: { $0.label == "Dazed 1r" })?.note == "flash")
+        #expect(items.first?.parts.first(where: { $0.label == "Vault-marked" })?.expiring == false)
+    }
+
+    @Test func customOnlyHolderAppearsOnTheLine() {
+        let c = character()
+        #expect(partyConditionSummaryItems([c]).isEmpty) // nothing held: no row
+        var holding = character()
+        holding.customConditions.append(CustomCondition(name: "Dazed"))
+        let items = partyConditionSummaryItems([holding])
+        #expect(items.count == 1)
+        #expect(items.first?.text == "Wren: Dazed")
+    }
+
     @Test func tickDropsTheNoteWithTheCondition() {
         var c = character()
         c.conditions.insert(.prone)

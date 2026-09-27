@@ -1522,6 +1522,128 @@ public final class AppModel: ObservableObject {
         return removed
     }
 
+    /// Distinct custom condition names on the roster (3.60.0), sorted -
+    /// the party menu's custom entries. Identity is the exact trimmed
+    /// name: each distinct name appears once, blank names drop.
+    public var partyCustomConditionNames: [String] {
+        var seen = Set<String>()
+        for c in characters {
+            for cc in c.customConditions {
+                seen.insert(cc.name.trimmingCharacters(in: .whitespaces))
+            }
+        }
+        seen.remove("")
+        return seen.sorted()
+    }
+
+    /// Party apply for a custom condition (3.60.0). Name, not UUID, is the
+    /// identity: customs are per-character instances, and sharing UUIDs
+    /// would turn a later per-character rename into a party-wide surprise.
+    /// The flag set copies from the first current holder in roster order
+    /// (deterministic); every receiver gets a FRESH instance UUID, so
+    /// durations and notes stay keyed per character. The 3.51.0 discipline
+    /// otherwise verbatim: never stacks (a holder refreshes), blank rounds
+    /// keeps a running clock, typed note replaces / blank keeps,
+    /// per-character undo stacks, one log entry naming exactly those
+    /// touched; an empty subset or a pure no-op logs nothing.
+    @discardableResult
+    public func applyPartyCustomCondition(name rawName: String, rounds: Int?, note: String? = nil) -> (applied: [String], refreshed: [String]) {
+        applyPartyCustomCondition(name: rawName, rounds: rounds, note: note, from: Set(characters.map(\.id)))
+    }
+
+    @discardableResult
+    public func applyPartyCustomCondition(name rawName: String, rounds: Int?, note: String? = nil, from ids: Set<UUID>) -> (applied: [String], refreshed: [String]) {
+        let name = rawName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return ([], []) }
+        // The flag source: the first current holder in roster order.
+        let source = characters.first(where: { holder in
+            holder.customConditions.contains { $0.name == name }
+        })?.customConditions.first(where: { $0.name == name })
+        var applied: [String] = []
+        var refreshed: [String] = []
+        for idx in characters.indices where ids.contains(characters[idx].id) {
+            var c = characters[idx]
+            let had: Bool
+            let key: String
+            if let existing = c.customConditions.first(where: { $0.name == name }) {
+                had = true
+                key = existing.id.uuidString
+            } else {
+                let cc = CustomCondition(name: name,
+                                         hindersAttacks: source?.hindersAttacks ?? false,
+                                         hindersChecks: source?.hindersChecks ?? false,
+                                         immobilizes: source?.immobilizes ?? false)
+                c.customConditions.append(cc)
+                had = false
+                key = cc.id.uuidString
+            }
+            if let rounds, rounds > 0 { c.conditionDurations[key] = rounds }
+            // 3.58.0's note rule carries over: typed replaces, blank keeps.
+            if let note = Character.normalizedConditionNote(note ?? "") {
+                c.conditionNotes[key] = note
+            }
+            guard c != characters[idx] else { continue }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            if had { refreshed.append(c.name) } else { applied.append(c.name) }
+        }
+        let names = applied + refreshed
+        if !names.isEmpty {
+            let base = name + (rounds.flatMap { $0 > 0 ? " (\($0) rounds)" : nil } ?? "")
+            var text = "\(base) -> \(names.joined(separator: ", "))"
+            if !applied.isEmpty && !refreshed.isEmpty {
+                text += " (new: \(applied.joined(separator: ", ")); refreshed: \(refreshed.joined(separator: ", ")))"
+            }
+            tableLog.append(TableLogEntry(title: "Party condition", text: text))
+            tableLogStore.save(tableLog)
+        }
+        return (applied, refreshed)
+    }
+
+    /// Remove a custom condition by exact name (3.60.0): the remove sibling
+    /// of party apply. Clears every instance with that name on the targeted
+    /// characters - apply never stacks, but the per-character editor can
+    /// create same-named duplicates, and "everyone shakes it off" clears
+    /// them all - plus each instance's clock and note. Per-character undo
+    /// stacks, silent skip for non-holders, one log line; an empty subset
+    /// is a no-op.
+    @discardableResult
+    public func removePartyCustomCondition(name rawName: String) -> [String] {
+        removePartyCustomCondition(name: rawName, from: Set(characters.map(\.id)))
+    }
+
+    @discardableResult
+    public func removePartyCustomCondition(name rawName: String, from ids: Set<UUID>) -> [String] {
+        let name = rawName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return [] }
+        var removed: [String] = []
+        for idx in characters.indices where ids.contains(characters[idx].id) {
+            var c = characters[idx]
+            let matches = c.customConditions.filter { $0.name == name }
+            guard !matches.isEmpty else { continue }
+            for cc in matches {
+                c.conditionDurations.removeValue(forKey: cc.id.uuidString)
+                c.conditionNotes.removeValue(forKey: cc.id.uuidString) // 3.58.0: the note dies with the condition
+            }
+            c.customConditions.removeAll { $0.name == name }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            removed.append(c.name)
+        }
+        if !removed.isEmpty {
+            tableLog.append(TableLogEntry(title: "Party condition",
+                                          text: "\(name) removed: \(removed.joined(separator: ", "))"))
+            tableLogStore.save(tableLog)
+        }
+        return removed
+    }
+
     /// Summary-row click-through (3.54.0): tap a name in the party
     /// condition summary, land on that character's sheet. Read-only
     /// navigation - selects the character and flips the detail tab to

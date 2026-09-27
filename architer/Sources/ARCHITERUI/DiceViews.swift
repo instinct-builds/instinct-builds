@@ -1344,6 +1344,24 @@ public struct GroupCheckSectionView: View {
                                 }
                             }
                         }
+                        // 3.60.0: roster customs join the section after the
+                        // built-ins - same submenu shape, name identity;
+                        // customs are born in the per-character editor.
+                        let applyCustomNames = model.partyCustomConditionNames
+                        if !applyCustomNames.isEmpty {
+                            Divider()
+                            ForEach(applyCustomNames, id: \.self) { customName in
+                                Menu(customName) {
+                                    Button("Everyone") { model.applyPartyCustomCondition(name: customName, rounds: partyCondRoundsValue, note: partyCondNote) }
+                                    if !model.characters.isEmpty {
+                                        Divider()
+                                        ForEach(model.characters) { target in
+                                            Button(target.name) { model.applyPartyCustomCondition(name: customName, rounds: partyCondRoundsValue, note: partyCondNote, from: [target.id]) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     // 3.52.0: the remove sibling - clears the condition and
                     // its clock; Rounds does not apply.
@@ -1359,6 +1377,24 @@ public struct GroupCheckSectionView: View {
                                     Divider()
                                     ForEach(holders) { holder in
                                         Button(holder.name) { model.removePartyCondition(cond, from: [holder.id]) }
+                                    }
+                                }
+                            }
+                        }
+                        // 3.60.0: custom removal mirrors the built-ins -
+                        // "Everyone" or one item per current holder, live.
+                        let removeCustomNames = model.partyCustomConditionNames
+                        if !removeCustomNames.isEmpty {
+                            Divider()
+                            ForEach(removeCustomNames, id: \.self) { customName in
+                                Menu(customName) {
+                                    Button("Everyone") { model.removePartyCustomCondition(name: customName) }
+                                    let customHolders = model.characters.filter { $0.customConditions.contains { $0.name == customName } }
+                                    if !customHolders.isEmpty {
+                                        Divider()
+                                        ForEach(customHolders) { holder in
+                                            Button(holder.name) { model.removePartyCustomCondition(name: customName, from: [holder.id]) }
+                                        }
                                     }
                                 }
                             }

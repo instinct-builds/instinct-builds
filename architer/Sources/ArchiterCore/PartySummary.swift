@@ -41,9 +41,11 @@ public struct PartyConditionSummaryPart: Equatable, Sendable {
 
 public func partyConditionSummaryItems(_ characters: [Character]) -> [PartyConditionSummaryItem] {
     characters.compactMap { c in
-        guard !c.conditions.isEmpty else { return nil }
+        // 3.60.0: a custom-only holder is on the line too - the guard drops
+        // only characters holding nothing at all.
+        guard !c.conditions.isEmpty || !c.customConditions.isEmpty else { return nil }
         var parts: [PartyConditionSummaryPart] = []
-        let held = c.conditions.sorted { $0.displayName < $1.displayName }.map { cond -> String in
+        let builtIns = c.conditions.sorted { $0.displayName < $1.displayName }.map { cond -> String in
             // 3.58.0: the note rides the label in the derived string too -
             // the line stays exactly what's stored, nothing computed in.
             let note = c.conditionNotes[cond.rawValue]
@@ -56,6 +58,23 @@ public func partyConditionSummaryItems(_ characters: [Character]) -> [PartyCondi
             parts.append(PartyConditionSummaryPart(label: cond.displayName, expiring: false, note: note))
             return cond.displayName + suffix
         }
+        // 3.60.0: customs join after the built-ins - one iteration rule,
+        // shared with conditionChipNames, so the line and the chips never
+        // disagree. Same label grammar; durations and notes key off each
+        // character's own instance UUID.
+        let customs = c.customConditions.sorted { $0.name < $1.name }.map { cc -> String in
+            let key = cc.id.uuidString
+            let note = c.conditionNotes[key]
+            let suffix = note.map { " (\($0))" } ?? ""
+            if let rounds = c.conditionDurations[key] {
+                let label = "\(cc.name) \(rounds)r"
+                parts.append(PartyConditionSummaryPart(label: label, expiring: rounds == 1, note: note))
+                return label + suffix
+            }
+            parts.append(PartyConditionSummaryPart(label: cc.name, expiring: false, note: note))
+            return cc.name + suffix
+        }
+        let held = builtIns + customs
         return PartyConditionSummaryItem(characterID: c.id, name: c.name,
                                          text: "\(c.name): \(held.joined(separator: ", "))",
                                          parts: parts)
