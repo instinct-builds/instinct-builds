@@ -92,6 +92,20 @@ struct ReviewGalleryTests {
         #expect(renamed.items.first?.note == "Alex note" && backSam == sam && backAlex == renamed)
         #expect(try read("legacy-continue-0.json").items.first?.note == "Older note")
         #expect(try read("legacy-fresh-0.json").items.isEmpty)
+        for mode in ["storage-denied", "storage-quota", "storage-partial", "storage-readback"] {
+            let unsaved = try read("\(mode)-0.json")
+            #expect(unsaved.reviewer == "Failed Draft")
+            #expect(unsaved.items.first?.favorite == true && unsaved.items.first?.cardStatus == .approved)
+            #expect(unsaved.items.first?.note == "Keep this note")
+            var independent = catalog
+            let applied = independent.applyFeedback(unsaved)
+            #expect(applied.favorites == 1 && applied.notes == 1)
+            #expect(independent.assets[0].clientNotes.contains(ClientNote(reviewer: "Failed Draft", text: "Keep this note", gallery: manifest.gallery)))
+        }
+        let warningFile = try read("storage-warning-0.json")
+        #expect(warningFile.items.first?.note == "Keep this note")
+        let survived = try read("reload-0.json")
+        #expect(survived.reviewer == "Reloaded Draft" && survived.items.first?.note == "Saved before reload")
         _ = catalog.applyFeedback(alex)
         _ = catalog.applyFeedback(sam)
         #expect(catalog.assets[0].clientNotes.contains(ClientNote(reviewer: "Alex", text: "Alex note", gallery: manifest.gallery)))

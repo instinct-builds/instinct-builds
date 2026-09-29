@@ -4,7 +4,7 @@ Usage: reviewer-drafts.py index.html output-directory [chrome-executable]
 """
 import base64, json, os, pathlib, re, socket, struct, subprocess, sys, tempfile, time, urllib.request
 
-def chrome_result(chrome, url):
+def chrome_result(chrome, url, screenshot=None):
     """Read the page result as soon as its DOM is ready via Chrome DevTools.
 
     --dump-dom waits for Chrome's virtual-time lifecycle; on macOS headless that
@@ -15,7 +15,7 @@ def chrome_result(chrome, url):
         args = [chrome, '--headless=new', '--disable-gpu', '--disable-extensions',
                 '--no-first-run', '--no-default-browser-check', '--remote-allow-origins=*',
                 '--remote-debugging-port=0', f'--user-data-dir={profile}',
-                '--allow-file-access-from-files', url]
+                '--allow-file-access-from-files', '--window-size=1024,855', url]
         stderr_log = pathlib.Path(profile) / 'chrome-stderr.txt'
         error_stream = stderr_log.open('wb')
         process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=error_stream)
@@ -76,7 +76,29 @@ def chrome_result(chrome, url):
                     message = json.loads(body)
                     if message.get('id') != seq: continue
                     value = message.get('result', {}).get('result', {}).get('value', '')
-                    if value: return json.loads(value)
+                    if value:
+                        result = json.loads(value)
+                        if screenshot:
+                            shot_id = seq + 1
+                            payload = json.dumps({'id': shot_id, 'method': 'Page.captureScreenshot',
+                                'params': {'format': 'png', 'captureBeyondViewport': False}}).encode()
+                            mask = os.urandom(4); length = len(payload)
+                            header = bytes([0x81, 0x80 | (length if length < 126 else 126)])
+                            if length >= 126: header += struct.pack('!H', length)
+                            sock.sendall(header + mask + bytes(b ^ mask[i%4] for i,b in enumerate(payload)))
+                            while True:
+                                first, second = receive(2); length = second & 127
+                                if length == 126: length = struct.unpack('!H', receive(2))[0]
+                                elif length == 127: length = struct.unpack('!Q', receive(8))[0]
+                                key = receive(4) if second & 128 else None
+                                body = receive(length)
+                                if key: body = bytes(b ^ key[i%4] for i,b in enumerate(body))
+                                if first & 15 != 1: continue
+                                message = json.loads(body)
+                                if message.get('id') == shot_id:
+                                    pathlib.Path(screenshot).write_bytes(base64.b64decode(message['result']['data']))
+                                    break
+                        return result
                     break
                 time.sleep(.1)
             raise TimeoutError('Review flow did not publish a DOM result')
@@ -99,10 +121,22 @@ item = manifest['items'][0]['id']
 # Run a page copy next to the gallery so images and file:// origin are unchanged.
 test_page = page.parent / '__reviewer-drafts-test.html'
 try:
-    for mode in ('drafts', 'legacy-continue', 'legacy-fresh'):
+    for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload'):
         seed = ''
         if mode.startswith('legacy'):
             seed = f'''<script>localStorage.setItem('asssets-review-'+{json.dumps(manifest['gallery'])},JSON.stringify({{reviewer:'Old Name',items:{{{json.dumps(item)}:{{favorite:true,note:'Older note',status:'approved'}}}}}}));</script>'''
+        if mode.startswith('storage-'):
+            failure = mode.split('-')[1]
+            if failure == 'warning': failure = 'quota'
+            seed = f'''<script>
+const originalSet=Storage.prototype.setItem, originalGet=Storage.prototype.getItem;
+window.testFailure={json.dumps(failure)};window.failureOn=true;
+Storage.prototype.setItem=function(k,v){{
+ if(window.failureOn && (window.testFailure==='denied' || window.testFailure==='quota' || k.endsWith('-active-v2'))){{
+   if(window.testFailure==='readback')return;
+   throw new DOMException(window.testFailure==='quota'?'full':'blocked',window.testFailure==='quota'?'QuotaExceededError':'SecurityError');
+ }}return originalSet.call(this,k,v)}};
+</script>'''
         flow = r'''<script>
 (async()=>{
 let results=[], blobs=[];const old=URL.createObjectURL;URL.createObjectURL=b=>{blobs.push(b);return old.call(URL,b)};
@@ -131,6 +165,33 @@ if(MODE==='drafts'){
  click('switchReviewer');document.getElementById('knownReviewers').value='Alex Updated';document.querySelector('#reviewModalActions .primary').click();
  let e=await download();assert(e.reviewer==='Alex Updated'&&e.items[0].note==='Alex note','switch back restores renamed Alex');
  document.getElementById('results').textContent=JSON.stringify({results,downloads:[a,b,c,d,e],storage:JSON.parse(localStorage.getItem(DKEY))});
+ }else if(MODE.startsWith('storage-')){
+ assert(document.getElementById('reviewModalTitle').textContent==='Switch reviewer','initial draft choice displayed');
+ type('newReviewer','Failed Draft');document.querySelector('#reviewModalActions .primary').click();
+ document.querySelector('.heart').click();document.querySelector('.st .ap').click();
+ document.querySelector('.thumb').click();type('lbnote','Keep this note');click('close');
+ assert(document.getElementById('saveState').classList.contains('on'),'unsaved warning visible');
+ click('switchReviewer');assert(document.getElementById('reviewModalTitle').textContent==='Draft not saved','unsafe switch blocked');
+ assert(document.querySelector('#reviewModalActions .primary')===null,'no switch action offered');
+ document.querySelector('#reviewModalActions button:last-child').click();
+ const d=JSON.parse(await blobs.pop().text());assert(d.reviewer==='Failed Draft'&&d.items[0].note==='Keep this note'&&d.items[0].status==='approved'&&d.items[0].favorite,'download keeps unsaved draft');
+ assert(document.getElementById('saveState').classList.contains('on'),'download does not falsely claim saved');
+ if(MODE==='storage-partial')assert(localStorage.getItem(DKEY)===null && localStorage.getItem(ACTIVE)===null,'partial write rolled back');
+ if(MODE==='storage-warning')assert(!document.getElementById('reviewModal').classList.contains('open'),'dialog closed after download');
+ else {click('switchReviewer');assert(document.getElementById('reviewModalTitle').textContent==='Draft not saved','blocked dialog stays available')};
+ document.getElementById('results').textContent=JSON.stringify({results,downloads:[d]});
+ }else if(MODE==='reload'){
+ if(sessionStorage.getItem('reload-stage')){
+  assert(document.getElementById('reviewer').value==='Reloaded Draft','reviewer survived reload');
+  assert(document.querySelector('.card').classList.contains('picked'),'pick survived reload');
+  const d=await download();assert(d.items[0].note==='Saved before reload','note survived reload');
+  document.getElementById('results').textContent=JSON.stringify({results,downloads:[d]});
+ }else{
+  type('newReviewer','Reloaded Draft');document.querySelector('#reviewModalActions .primary').click();
+  document.querySelector('.heart').click();document.querySelector('.thumb').click();type('lbnote','Saved before reload');click('close');
+  assert(!document.getElementById('saveState').classList.contains('on'),'both keys read back as saved');
+  sessionStorage.setItem('reload-stage','1');location.reload();
+ }
 }else{
  assert(document.getElementById('reviewModalTitle').textContent==='Earlier draft found','legacy choice shown');
  if(MODE==='legacy-continue'){
@@ -151,7 +212,7 @@ if(MODE==='drafts'){
         # Seed older storage before gallery script starts. Result node is after gallery initialization.
         html = original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results"></pre>'+flow+'</body>')
         test_page.write_text(html)
-        result = chrome_result(chrome, test_page.as_uri())
+        result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith('storage-') else None)
         if 'error' in result: raise RuntimeError(f'{mode}: {result}')
         for i, download in enumerate(result['downloads']):
             (out / f'{mode}-{i}.json').write_text(json.dumps(download,indent=2)+'\n')

@@ -142,6 +142,7 @@ header{position:sticky;top:0;z-index:5;display:flex;align-items:center;flex-wrap
 .spacer{flex:1}input.name{background:var(--raised);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 11px;width:150px;font:inherit}
 .reviewer-tools{display:flex;gap:5px}.reviewer-tools button{border:1px solid var(--line);background:var(--raised);color:var(--dim);border-radius:8px;padding:7px 9px;font-size:12px}
 .reviewer-tools button:hover{color:var(--text)}#download{margin-left:auto}
+#saveState{width:100%;display:none;padding:9px 12px;border:1px solid #ff9f0a;border-radius:8px;background:#342311;color:#ffe0ac;font-size:12px}#saveState.on{display:block}#saveState button{margin-left:10px;padding:3px 9px;border:1px solid #ffbf65;border-radius:6px;color:#fff;background:transparent}
 .review-modal{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;padding:20px}.review-modal.open{display:flex}
 .review-dialog{width:min(480px,100%);background:#171822;border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 30px 80px #0008}.review-dialog h2{margin:0 0 8px;font-size:19px}.review-dialog p{margin:0 0 16px;color:var(--dim);font-size:13px}.review-dialog select,.review-dialog input{width:100%;background:var(--raised);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px;font:inherit}.review-dialog label{display:block;color:var(--dim);font-size:12px;margin:10px 0 5px}.review-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:18px}.review-actions button{background:var(--raised);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 12px}.review-actions .primary{background:var(--accent)}
 button{font:inherit;cursor:pointer}.primary{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600}
@@ -180,7 +181,7 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 <header><div><div class="brand">ASSSETS</div><h1 id="title"></h1><div class="sub" id="sub"></div></div><div class="spacer"></div>
 <a class="filter" id="summary" target="_blank" hidden>Round summary (PDF)</a><button class="filter" id="creditsBtn" hidden>Credits</button><button class="filter" id="onlyPicks">♥ Favorites only</button><input class="name" id="reviewer" placeholder="Your name" autocomplete="name">
 <span class="reviewer-tools"><button id="renameReviewer">Rename</button><button id="switchReviewer">Switch reviewer</button></span>
-<button class="primary" id="download">Download feedback</button></header>
+<button class="primary" id="download">Download feedback</button><div id="saveState" role="alert" aria-live="assertive"></div></header>
 <section id="credits"><h2>Credits</h2><div class="cs" id="creditsSub"></div><div id="creditRows"></div></section>
 <section id="board"><div class="lbl">BOARD · CLICK ANY IMAGE TO REVIEW IT</div><div class="bwrap" id="bwrap"></div></section>
 <main id="grid"></main>
@@ -200,31 +201,52 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 const M=JSON.parse(document.getElementById('manifest').textContent);const KEY='asssets-review-'+M.gallery;
 const DKEY=KEY+'-drafts-v2',ACTIVE=KEY+'-active-v2';
 const norm=n=>(n||'').trim().toLocaleLowerCase();const empty=n=>({reviewer:n,items:{}});
-const read=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
+let storageProblem='';
+function read(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){storageProblem='Browser storage is unavailable or blocked.';return null}}
 let drafts=read(DKEY);if(!drafts||typeof drafts!=='object'||Array.isArray(drafts))drafts={};
 const active=read(ACTIVE);let S=empty('');let legacy=read(KEY);
-const $=id=>document.getElementById(id);let only=false,cur=-1;
+const $=id=>document.getElementById(id);let only=false,cur=-1,unsaved=false;
 const validDraft=d=>d&&typeof d==='object'&&d.items&&typeof d.items==='object'&&!Array.isArray(d.items);
-function put(){if(!norm(S.reviewer))return;drafts[norm(S.reviewer)]={reviewer:S.reviewer.trim(),items:S.items};try{localStorage.setItem(DKEY,JSON.stringify(drafts));localStorage.setItem(ACTIVE,JSON.stringify(norm(S.reviewer)))}catch(e){}}
-function save(){put()};
+function notice(reason){unsaved=true;const bar=$('saveState');bar.classList.add('on');bar.textContent='Not saved in this browser: '+reason+' Download feedback now to keep this draft. Do not reload or close this tab.';
+const retry=document.createElement('button');retry.textContent='Try saving again';retry.onclick=put;bar.appendChild(retry)}
+function saved(){unsaved=false;storageProblem='';$('saveState').classList.remove('on');$('saveState').textContent=''}
+function commit(next,key){const value=JSON.stringify(next),pointer=JSON.stringify(key);
+let previousDrafts=null,previousActive=null,wrote=false;
+try{previousDrafts=localStorage.getItem(DKEY);previousActive=localStorage.getItem(ACTIVE);
+localStorage.setItem(DKEY,value);wrote=true;localStorage.setItem(ACTIVE,pointer);
+if(localStorage.getItem(DKEY)!==value||localStorage.getItem(ACTIVE)!==pointer)throw Error('readback');
+drafts=next;saved();return true
+}catch(e){if(wrote){try{if(previousDrafts===null)localStorage.removeItem(DKEY);else localStorage.setItem(DKEY,previousDrafts);
+if(previousActive===null)localStorage.removeItem(ACTIVE);else localStorage.setItem(ACTIVE,previousActive)}catch(rollback){/* keep the warning, never promise recovery */}}
+const reason=e&&e.name==='QuotaExceededError'?'Browser storage is full.':e&&e.message==='readback'?'The browser did not confirm the stored draft and active reviewer.':'Browser storage is unavailable or blocked.';notice(reason);return false}}
+function put(){if(!norm(S.reviewer))return false;
+const key=norm(S.reviewer);return commit({...drafts,[key]:{reviewer:S.reviewer.trim(),items:S.items}},key)}
+function save(){put()}
 function take(name){const d=drafts[norm(name)];S=validDraft(d)?{reviewer:d.reviewer,items:d.items}:empty(name);$('reviewer').value=S.reviewer;closeReviewerModal();if(cur>=0)close();else render();put()}
 function closeReviewerModal(){$('reviewModal').classList.remove('open')}
 function modal(title,text,buttons,kind){$('reviewModalTitle').textContent=title;$('reviewModalText').textContent=text;
 $('switchFields').hidden=kind!=='switch';$('renameFields').hidden=kind!=='rename';$('legacyFields').hidden=kind!=='legacy';const actions=$('reviewModalActions');actions.innerHTML='';
 buttons.forEach(([label,fn,primary])=>{const b=document.createElement('button');b.textContent=label;if(primary)b.className='primary';b.onclick=fn;actions.appendChild(b)});$('reviewModal').classList.add('open')}
 function listNames(){const select=$('knownReviewers');select.innerHTML='';Object.values(drafts).filter(validDraft).forEach(d=>{const opt=document.createElement('option');opt.value=d.reviewer;opt.textContent=d.reviewer;select.appendChild(opt)});const fresh=document.createElement('option');fresh.value='';fresh.textContent='New reviewer';select.appendChild(fresh);select.value='';$('newReviewer').value=''}
-function switchReviewer(){put();listNames();modal('Switch reviewer','The current draft stays in this browser. Switching loads only the selected reviewer’s picks, notes and decisions.',[
+function showBlockedSwitch(){modal('Draft not saved','Switching now could lose this reviewer’s picks, notes or decisions. Download this draft first, then try saving again before switching.',[
+['Keep reviewing',closeReviewerModal],['Download feedback',()=>{closeReviewerModal();downloadFeedback()}]],'blocked')}
+function switchReviewer(){if(norm(S.reviewer)&&!put()){showBlockedSwitch();return}
+listNames();modal('Switch reviewer','The current draft stays in this browser only when saving succeeds. Switching loads only the selected reviewer’s picks, notes and decisions.',[
 ...(norm(S.reviewer)?[['Cancel',closeReviewerModal]]:[]),['Switch',()=>{const fresh=$('newReviewer').value.trim(),name=fresh||$('knownReviewers').value;if(!name)return;if(fresh&&drafts[norm(fresh)]){alert('That name already has a draft. Choose it from Saved drafts.');return}if(norm(name)===norm(S.reviewer)){closeReviewerModal();return}take(name)},true]],'switch')}
-function renameReviewer(){if(!norm(S.reviewer))return;$('renameInput').value=S.reviewer;modal('Rename this reviewer','Change the name on this draft without creating or copying another draft. Feedback already downloaded under the old name will not change.',[
+function renameReviewer(){if(!norm(S.reviewer))return;if(!put()){showBlockedSwitch();return}$('renameInput').value=S.reviewer;modal('Rename this reviewer','Change the name on this draft without creating or copying another draft. Feedback already downloaded under the old name will not change.',[
 ['Cancel',closeReviewerModal],['Rename',()=>{const name=$('renameInput').value.trim(),before=norm(S.reviewer),after=norm(name);if(!after)return;
 if(after!==before&&drafts[after]){alert('A different reviewer already has a draft under that name. Use Switch reviewer.');return}
-if(before&&after!==before)delete drafts[before];S.reviewer=name;put();$('reviewer').value=name;closeReviewerModal()},true]],'rename')}
+if(after===before){const previous=S.reviewer;S.reviewer=name;if(!put()){S.reviewer=previous;closeReviewerModal();return}$('reviewer').value=name;closeReviewerModal();return}
+// Write the new name and remove the old one in one stored draft-set operation.
+const next={...drafts};delete next[before];next[after]={reviewer:name,items:S.items};
+if(!commit(next,after)){closeReviewerModal();return}S.reviewer=name;
+$('reviewer').value=name;closeReviewerModal()},true]],'rename')}
 $('switchReviewer').onclick=switchReviewer;$('renameReviewer').onclick=renameReviewer;
 $('reviewer').readOnly=true;$('reviewer').onclick=switchReviewer;
-if(!qForDemo()&&validDraft(legacy)&&!localStorage.getItem(KEY+'-legacy-choice-v2')){
+if(!qForDemo()&&validDraft(legacy)&&!read(KEY+'-legacy-choice-v2')){
 const legacyName=(legacy.reviewer||'').trim();$('legacyInput').value=legacyName;modal('Earlier draft found','This browser has an older single draft. Choose whether to keep it under its displayed name or start a fresh draft. No draft is deleted automatically.',[
-['Continue earlier draft',()=>{const name=$('legacyInput').value.trim();if(!name)return;const key=norm(name);if(drafts[key]){alert('A saved draft already uses that name. Choose a different name for the earlier draft.');return}S={reviewer:name.trim(),items:legacy.items};put();localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('continued'));closeReviewerModal();$('reviewer').value=S.reviewer;render()}],
-['Start fresh',()=>{localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('fresh'));if(active&&validDraft(drafts[active]))take(drafts[active].reviewer);else switchReviewer()},true]],'legacy')
+['Continue earlier draft',()=>{const name=$('legacyInput').value.trim();if(!name)return;const key=norm(name);if(drafts[key]){alert('A saved draft already uses that name. Choose a different name for the earlier draft.');return}S={reviewer:name.trim(),items:legacy.items};if(put()){try{localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('continued'))}catch(e){notice('The earlier-draft choice could not be saved.')}}closeReviewerModal();$('reviewer').value=S.reviewer;render()}],
+['Start fresh',()=>{try{localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('fresh'))}catch(e){notice('The fresh-draft choice could not be saved.')}if(active&&validDraft(drafts[active]))take(drafts[active].reviewer);else switchReviewer()},true]],'legacy')
 }else if(active&&validDraft(drafts[active]))S={reviewer:drafts[active].reviewer,items:drafts[active].items};
 function qForDemo(){return new URLSearchParams(location.search).has('demo')}
 const q=new URLSearchParams(location.search);
@@ -261,10 +283,11 @@ $('lbpick').onclick=()=>{const s=st(M.items[cur].id);s.favorite=!s.favorite;save
 $('close').onclick=close;$('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);
 $('onlyPicks').onclick=()=>{only=!only;$('onlyPicks').classList.toggle('on',only);render()};
 document.addEventListener('keydown',e=>{if(cur<0||$('reviewModal').classList.contains('open')||e.target.tagName==='TEXTAREA')return;if(e.key==='Escape')close();else if(e.key==='ArrowRight')step(1);else if(e.key==='ArrowLeft')step(-1);else if(e.key==='f'){$('lbpick').click()}else if(e.key==='a'){$('lbap').click()}else if(e.key==='c'){$('lbch').click()}});
-$('download').onclick=()=>{if($('reviewModal').classList.contains('open'))return;const who=S.reviewer.trim();if(!who){switchReviewer();return}put();const out={format:'asssets-review-feedback',gallery:M.gallery,title:M.title,reviewer:who,
+function downloadFeedback(){if($('reviewModal').classList.contains('open'))return;const who=S.reviewer.trim();if(!who){switchReviewer();return}put();const out={format:'asssets-review-feedback',gallery:M.gallery,title:M.title,reviewer:who,
 items:M.items.map(it=>{const s=st(it.id),x={id:it.id,favorite:!!s.favorite,note:(s.note||'').trim()};if(s.status==='approved'||s.status==='changes')x.status=s.status;return x}).filter(x=>x.favorite||x.note||x.status)};
 const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));
-a.download=(M.title+' feedback'+(out.reviewer?' - '+out.reviewer:'')).replace(/[\/:\\]/g,'-')+'.json';document.body.appendChild(a);a.click();a.remove()};
+a.download=(M.title+' feedback'+(out.reviewer?' - '+out.reviewer:'')).replace(/[\/:\\]/g,'-')+'.json';document.body.appendChild(a);a.click();a.remove()}
+$('download').onclick=downloadFeedback;
 if(M.summary){const a=$('summary');a.href=encodeURI(M.summary);a.hidden=false}
 if(M.credits&&M.credits.length){const b=$('creditsBtn');b.hidden=false;b.textContent='Credits ('+M.credits.length+')';
 $('creditsSub').textContent='Images in this gallery by other people or agencies, and how they are licensed. Keep these credits with any use.';
@@ -272,7 +295,7 @@ M.credits.forEach(c=>{const r=document.createElement('div');r.className='cr';con
 const w=document.createElement('div');w.className='what';w.textContent=c.titles.join(', ');r.append(a,l,w);$('creditRows').appendChild(r)});
 b.onclick=()=>{const on=$('credits').classList.toggle('on');b.classList.toggle('on',on);if(on)$('credits').scrollIntoView({behavior:'smooth'})};
 if(q.get('demo')==='credits'){$('credits').classList.add('on');b.classList.add('on')}}
-if(q.get('demo')==='approve-grid')M.board=null;render();if(!norm(S.reviewer)&&!q.get('demo')&&!$('reviewModal').classList.contains('open'))switchReviewer();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
+if(q.get('demo')==='approve-grid')M.board=null;render();if(storageProblem)notice(storageProblem);if(!norm(S.reviewer)&&!q.get('demo')&&!$('reviewModal').classList.contains('open'))switchReviewer();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
 </script></body></html>
 """#
 }

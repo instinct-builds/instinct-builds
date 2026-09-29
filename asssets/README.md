@@ -1126,3 +1126,17 @@ format and the active displayed name. These names are labels, not identity
 checks. Chrome interaction proof clicks through distinct drafts, both legacy
 choices, and exports real feedback JSON; a native core import test reads those
 separate browser downloads to verify the import shape and independent notes.
+
+## 1.76.0: honest offline draft saving
+
+The gallery now says a reviewer draft is saved only after both its draft set
+and the active-reviewer pointer read back from browser storage. If storage is
+blocked, full, or fails partway, an always-visible warning says the draft is
+not saved, offers a retry and asks the reviewer to download feedback before
+closing or reloading. Switching away from that unsaved draft is blocked;
+Download feedback remains available and does not falsely clear the warning.
+A fresh gallery cannot quietly save a draft under another reviewer. The same
+feedback JSON shape is used. Reviewer names are local labels, not identity
+checks. Chrome proof exercises denied storage, quota, partial write and
+failed readback, downloads each unsaved draft, and reloads a successfully
+saved draft; native tests import the browser-produced JSON.
