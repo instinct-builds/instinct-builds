@@ -1927,10 +1927,21 @@ public final class AppModel: ObservableObject {
     public func undo() {
         guard let id = selectedID, let idx = characters.firstIndex(where: { $0.id == id }),
               var stack = undoStacks[id], stack.canUndo else { return }
+        // 3.66.0: diff the step's endpoints BEFORE the walk - an undo that
+        // brings conditions back (the undo of a removal) logs what
+        // returned, note and all, so the log stays an audit rather than a
+        // diff puzzle. One-direction: undoing an APPLY stays silent.
+        let stepBefore = stack.current
         _ = stack.undo()
         undoStacks[id] = stack
         characters[idx] = stack.current
         try? store.save(stack.current)
+        let restoredLines = ConditionRestoreLog.lines(before: stepBefore, after: stack.current)
+        if !restoredLines.isEmpty {
+            tableLog.append(TableLogEntry(title: "Party condition",
+                                          text: restoredLines.joined(separator: "; ")))
+            tableLogStore.save(tableLog)
+        }
     }
 
     public func redo() {

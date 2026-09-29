@@ -1991,7 +1991,7 @@ func run(model: AppModel, character: Character, outDir: String) {
             .padding()
             .background(Theme.surface)
             .environmentObject(model),
-        width: 560, name: "table-log", outDir: outDir, minHeight: 120, maxHeight: 400)
+        width: 720, name: "table-log", outDir: outDir, minHeight: 120, maxHeight: 400) // 3.66.0: 560 clipped the new filter menu
     if let first = model.tableLog.first { model.deleteTableLogEntry(first) }
     tlLines.append("delete: log count \(model.tableLog.count) (the recap entry survives)")
     // Persistence proof via a scoped store load: reloading the whole model
@@ -3062,7 +3062,7 @@ func run(model: AppModel, character: Character, outDir: String) {
             .padding()
             .background(Theme.surface)
             .environmentObject(model),
-        width: 560, name: "party-remove-note-log", outDir: outDir, minHeight: 120, maxHeight: 400)
+        width: 720, name: "party-remove-note-log", outDir: outDir, minHeight: 120, maxHeight: 400) // 3.66.0: 560 clipped the new filter menu
     // Hygiene: restore conditions/clocks/notes/customs, drop this block's log entries.
     for idx in model.characters.indices {
         let c = model.characters[idx]
@@ -3357,6 +3357,103 @@ func run(model: AppModel, character: Character, outDir: String) {
     pcrLines.append("hygiene: roster conditions, clocks, notes, customs, log and selection restored")
     try? pcrLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/perchar-rest-conditions.txt"),
+               atomically: true, encoding: .utf8)
+    // Undo-restore log lines (3.66.0): the undo of a removal logs what
+    // returned - 'restored Frightened on Ila Thorn (note: the howl)' -
+    // through the same note rule the removal line uses (3.65.0); the undo
+    // of an APPLY stays silent (one-direction audit). A throwaway probe
+    // character keeps the fixture roster and its undo stacks untouched;
+    // deleteSelected retires the probe's stack. Runs at END.
+    var rlnLines = ["Undo-restore log lines (3.66.0)",
+                    "the undo of a removal logs the restoration, note and all; the undo of an apply logs nothing"]
+    let rlnLogStart = model.tableLog.count
+    model.addCharacter(Character(name: "Ila Thorn"))
+    let rlnProbeID = model.selectedID! // addCharacter selects the probe
+    _ = model.applyPartyCondition(.frightened, rounds: 3, note: "the howl", from: [rlnProbeID])
+    _ = model.removePartyCondition(.frightened, from: [rlnProbeID])
+    let rlnRemoval = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    rlnLines.append("noted removal: '\(rlnRemoval)'")
+    rlnLines.append("noted removal exact \(rlnRemoval == "Frightened removed: Ila Thorn (note: the howl)")")
+    model.undo()
+    let rlnRestore = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    rlnLines.append("undo of the removal: '\(rlnRestore)'")
+    rlnLines.append("restore exact \(rlnRestore == "restored Frightened on Ila Thorn (note: the howl)")")
+    let rlnHolds = model.characters.first(where: { $0.id == rlnProbeID })
+    rlnLines.append("probe holds Frightened again \(rlnHolds?.conditions.contains(.frightened) == true)")
+    rlnLines.append("note restored with it \(rlnHolds?.conditionNotes[Condition.frightened.rawValue] == "the howl")")
+    rlnLines.append("clock restored with it \(rlnHolds?.conditionDurations[Condition.frightened.rawValue] == 3)")
+    if let rlnReloaded = try? model.store.load(id: rlnProbeID) {
+        rlnLines.append("persistence: store reload shows condition and note \(rlnReloaded.conditions.contains(.frightened) && rlnReloaded.conditionNotes[Condition.frightened.rawValue] == "the howl")")
+    }
+    // One-direction: the undo of an APPLY drops the condition, logs nothing.
+    _ = model.applyPartyCondition(.prone, rounds: nil, from: [rlnProbeID])
+    let rlnCountBeforeSilentUndo = model.tableLog.count
+    model.undo()
+    rlnLines.append("undo of an apply appends no entry \(model.tableLog.count == rlnCountBeforeSilentUndo)")
+    rlnLines.append("the applied condition is gone \(model.characters.first(where: { $0.id == rlnProbeID })?.conditions.contains(.prone) == false)")
+    // Unnoted built-in restore stays bare.
+    _ = model.applyPartyCondition(.prone, rounds: nil, from: [rlnProbeID])
+    _ = model.removePartyCondition(.prone, from: [rlnProbeID])
+    model.undo()
+    let rlnBare = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    rlnLines.append("unnoted restore: '\(rlnBare)'")
+    rlnLines.append("unnoted restore exact \(rlnBare == "restored Prone on Ila Thorn")")
+    // Custom path: the instance note rides the restore.
+    _ = model.applyPartyCustomCondition(name: "Hexed", rounds: nil, note: "the brand", from: [rlnProbeID])
+    _ = model.removePartyCustomCondition(name: "Hexed", from: [rlnProbeID])
+    model.undo()
+    let rlnCustom = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    rlnLines.append("custom restore: '\(rlnCustom)'")
+    rlnLines.append("custom restore exact \(rlnCustom == "restored Hexed on Ila Thorn (note: the brand)")")
+    rlnLines.append("probe holds the custom again \(model.characters.first(where: { $0.id == rlnProbeID })?.customConditions.contains(where: { $0.name == "Hexed" }) == true)")
+    // PNG: removal and restore lines side by side in the log.
+    renderPNG(
+        TableLogView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 720, name: "party-restore-note-log", outDir: outDir, minHeight: 120, maxHeight: 400)
+    // Hygiene: retire the probe (its undo stack dies with it), drop the
+    // block's log entries, selection back to Bram.
+    model.selectedID = rlnProbeID
+    model.deleteSelected()
+    model.tableLog.removeLast(model.tableLog.count - rlnLogStart)
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    rlnLines.append("hygiene: probe retired, block log entries dropped, selection restored")
+    try? rlnLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-restore-note-log.txt"),
+               atomically: true, encoding: .utf8)
+    // Table log condition filter (3.66.0): the header menu narrows the log
+    // to one condition's lines - apply, removal and restore entries all
+    // name their condition; case-insensitive over title and text; blank
+    // shows all; Copy stays whole-log. Runs at END.
+    var tlfLines = ["Table log condition filter (3.66.0)",
+                    "one menu picks a condition name; the log narrows to the entries naming it"]
+    let tlfLogStart = model.tableLog.count
+    model.addTableLogEntry(title: "Party condition", text: "restored Frightened on Ila Thorn (note: the howl)")
+    model.addTableLogEntry(title: "Ember Warrens", text: "The party reaches the bridge.")
+    model.addTableLogEntry(title: "Party condition", text: "Prone removed: Bram Oakfel")
+    tlfLines.append("blank query shows everything \(TableLogConditionFilter.filter(model.tableLog, query: "").count == model.tableLog.count)")
+    let tlfFrightened = TableLogConditionFilter.filter(model.tableLog, query: "frightened")
+    tlfLines.append("case-insensitive text match \(tlfFrightened.count == 1 && tlfFrightened.first?.text == "restored Frightened on Ila Thorn (note: the howl)")")
+    let tlfProne = TableLogConditionFilter.filter(model.tableLog, query: "Prone")
+    tlfLines.append("name match finds the removal line \(tlfProne.count == 1 && tlfProne.first?.text == "Prone removed: Bram Oakfel")")
+    let tlfTitle = TableLogConditionFilter.filter(model.tableLog, query: "Ember")
+    tlfLines.append("titles match too \(tlfTitle.count == 1 && tlfTitle.first?.title == "Ember Warrens")")
+    tlfLines.append("no match filters to empty \(TableLogConditionFilter.filter(model.tableLog, query: "Petrified").isEmpty)")
+    // PNG: the filtered view - only the Frightened line, menu reads the filter.
+    renderPNG(
+        TableLogView(initialConditionFilter: "Frightened")
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 720, name: "table-log-condition-filter", outDir: outDir, minHeight: 120, maxHeight: 400)
+    model.tableLog.removeLast(model.tableLog.count - tlfLogStart)
+    model.tableLogStore.save(model.tableLog)
+    tlfLines.append("hygiene: filter-fixture entries dropped")
+    try? tlfLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/table-log-condition-filter.txt"),
                atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")

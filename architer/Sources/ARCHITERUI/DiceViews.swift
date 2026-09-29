@@ -1946,8 +1946,13 @@ public struct TableLogView: View {
     @State private var editingID: UUID?
     @State private var editTitleDraft = ""
     @State private var editTextDraft = ""
+    /// 3.66.0: condition-name filter - session-only like the history
+    /// filter; blank shows the whole log. The harness seeds it.
+    @State private var conditionFilter = ""
 
-    public init() {}
+    public init(initialConditionFilter: String = "") {
+        _conditionFilter = State(initialValue: initialConditionFilter)
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Theme.Gap.xs) {
@@ -1957,7 +1962,7 @@ public struct TableLogView: View {
                 Spacer()
                 TextField("Title", text: $titleDraft)
                     .textFieldStyle(InsetFieldStyle())
-                    .frame(maxWidth: 150)
+                    .frame(maxWidth: 120) // 3.66.0: 150->120 reclaims the header for the filter menu; "Title" is 5 chars, drafts scroll (3.59.0's Note discipline)
                 TextField("Note", text: $textDraft)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(maxWidth: 200)
@@ -1975,8 +1980,32 @@ public struct TableLogView: View {
                     .controlSize(.small)
                     .disabled(model.tableLog.isEmpty)
                     .help("Copy the whole table log as one text block")
+                // 3.66.0: narrow the log to one condition's lines - apply,
+                // removal and restore entries all name their condition.
+                // The label carries the active filter; Copy stays
+                // whole-log either way.
+                Menu(conditionFilter.isEmpty ? "Filter" : conditionFilter) {
+                    Button("All conditions") { conditionFilter = "" }
+                    Divider()
+                    ForEach(Condition.allCases, id: \.self) { cond in
+                        Button(cond.displayName) { conditionFilter = cond.displayName }
+                    }
+                    let filterCustomNames = model.partyCustomConditionNames
+                    if !filterCustomNames.isEmpty {
+                        Divider()
+                        ForEach(filterCustomNames, id: \.self) { name in
+                            Button(name) { conditionFilter = name }
+                        }
+                    }
+                }
+                .controlSize(.small)
+                .disabled(model.tableLog.isEmpty)
+                .help(conditionFilter.isEmpty
+                      ? "Show only entries naming one condition"
+                      : "Showing entries naming \(conditionFilter) - pick All conditions to clear")
             }
-            ForEach(model.tableLog.sorted { $0.createdAt > $1.createdAt }) { entry in
+            ForEach(TableLogConditionFilter.filter(model.tableLog, query: conditionFilter)
+                        .sorted { $0.createdAt > $1.createdAt }) { entry in
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Gap.sm) {
                     if editingID == entry.id {
                         // 3.49.0: edit in place, mirroring the encounter-notes
