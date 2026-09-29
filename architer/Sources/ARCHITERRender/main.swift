@@ -3432,15 +3432,17 @@ func run(model: AppModel, character: Character, outDir: String) {
                     "one menu picks a condition name; the log narrows to the entries naming it"]
     let tlfLogStart = model.tableLog.count
     model.addTableLogEntry(title: "Party condition", text: "restored Frightened on Ila Thorn (note: the howl)")
-    model.addTableLogEntry(title: "Ember Warrens", text: "The party reaches the bridge.")
+    // "Zephyr Hollow", not an Ember title: the sample log seeds an Ember
+    // Warrens entry (3.49.0 block), which would break a unique-hit count.
+    model.addTableLogEntry(title: "Zephyr Hollow", text: "The party reaches the rope bridge.")
     model.addTableLogEntry(title: "Party condition", text: "Prone removed: Bram Oakfel")
     tlfLines.append("blank query shows everything \(TableLogConditionFilter.filter(model.tableLog, query: "").count == model.tableLog.count)")
     let tlfFrightened = TableLogConditionFilter.filter(model.tableLog, query: "frightened")
     tlfLines.append("case-insensitive text match \(tlfFrightened.count == 1 && tlfFrightened.first?.text == "restored Frightened on Ila Thorn (note: the howl)")")
     let tlfProne = TableLogConditionFilter.filter(model.tableLog, query: "Prone")
     tlfLines.append("name match finds the removal line \(tlfProne.count == 1 && tlfProne.first?.text == "Prone removed: Bram Oakfel")")
-    let tlfTitle = TableLogConditionFilter.filter(model.tableLog, query: "Ember")
-    tlfLines.append("titles match too \(tlfTitle.count == 1 && tlfTitle.first?.title == "Ember Warrens")")
+    let tlfTitle = TableLogConditionFilter.filter(model.tableLog, query: "Zephyr")
+    tlfLines.append("titles match too \(tlfTitle.count == 1 && tlfTitle.first?.title == "Zephyr Hollow")")
     tlfLines.append("no match filters to empty \(TableLogConditionFilter.filter(model.tableLog, query: "Petrified").isEmpty)")
     // PNG: the filtered view - only the Frightened line, menu reads the filter.
     renderPNG(
