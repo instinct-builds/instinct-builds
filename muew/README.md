@@ -699,3 +699,14 @@ results, cursor and loaded state change. CI records the external probe log. A
 macOS Accessibility/TCC refusal is logged as blocked, not rebranded as a pass;
 see `docs/voiceover-manual-checklist.md` for the manual VoiceOver/AU-host pass.
 The in-process 0.81.0 evidence remains the limit until IPC actually succeeds.
+
+## 0.83.0 Accessible browser navigation
+
+The native Search and virtual result list are joined by stable virtual Bank,
+Type, and sort controls, plus Close. Their press actions use the same browser
+helpers as mouse clicks. The labels report selected state; controls survive a
+refilter or sort while a closed browser removes them and invalidates retained
+handles. The macOS keyboard host and separate AX IPC client probe filtering,
+ordering, inert traversal, stale actions and list updates. Save, import, export,
+ratings, dialog focus return, VoiceOver speech and AU-host AX traversal remain
+outside this slice.

@@ -32,7 +32,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.82.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.83.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -95,10 +95,34 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     // Query AppKit's exposed tree as a client: the native Search survives,
     // while rows represent immutable slugs. Reading/traversal is inert.
     NSArray* ax=[v accessibilityChildren];
-    Check(ax.count==2 && ax[0]==v->search && [[ax[1] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
-          [[ax[1] accessibilityLabel] isEqualToString:@"Preset results"],
-          "accessibility tree exposes native Search and named results list");
-    id list=ax.count>1 ? ax[1] : nil;
+    Check(ax.count==20 && ax[0]==v->search && [[ax[18] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
+          [[ax[18] accessibilityLabel] isEqualToString:@"Preset results"],
+          "accessibility tree exposes native Search, navigation and named results list");
+    id list=ax.count>18 ? ax[18] : nil;
+    id bankFactory=ax.count>2 ? ax[2] : nil;
+    id typeLead=ax.count>7 ? ax[7] : nil;
+    id sortName=ax.count>15 ? ax[15] : nil;
+    Check([[bankFactory accessibilityLabel] containsString:@"Bank: Factory"] &&
+          [[typeLead accessibilityLabel] containsString:@"Type: Lead"] &&
+          [[sortName accessibilityLabel] containsString:@"Sort: Name"],
+          "accessible navigation controls have exact names and stable order");
+    id retainedBank=bankFactory;
+    [bankFactory accessibilityPerformPress];
+    Check(v->filter.bank==muew::ui::BankFactory && retainedBank==[v accessibilityChildren][2] &&
+          v->currentIndex==original,
+          "accessible bank press uses shared filter path and retains control identity");
+    [typeLead accessibilityPerformPress];
+    Check(v->filter.category=="Lead" && retainedBank==[v accessibilityChildren][2] &&
+          v->currentIndex==original,"accessible type press refilters without loading");
+    [sortName accessibilityPerformPress];
+    Check(v->sortMode==muew::ui::SortName && v->currentIndex==original,
+          "accessible sort press reorders without loading");
+    [v setBrowserOpen:false];
+    Check([v accessibilityChildren].count==1 && ![retainedBank accessibilityPerformPress],
+          "closed navigation disappears and retained control refuses press");
+    [v setBrowserOpen:true];
+    v->filter.bank=-1; v->filter.category=""; v->sortMode=muew::ui::SortBank; [v refilter];
+    ax=[v accessibilityChildren]; list=ax[18];
     NSArray* rows=[list accessibilityChildren];
     Check(rows.count>1 && [[rows[0] accessibilityRole] isEqualToString:NSAccessibilityButtonRole] &&
           [[rows[0] accessibilityLabel] containsString:@"1 of 108"] &&

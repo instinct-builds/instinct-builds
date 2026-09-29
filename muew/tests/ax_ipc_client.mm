@@ -78,8 +78,13 @@ int main(int argc,const char** argv) {
     printf("AX IPC window=%s\n",windowTitle.UTF8String);
     AXUIElementRef search=Find(window,@"AXTextField",nil);
     AXUIElementRef list=Find(window,@"AXList",@"Preset results");
+    AXUIElementRef bank=Find(window,@"AXButton",@"Bank: Factory, not selected");
+    AXUIElementRef type=Find(window,@"AXButton",@"Type: Lead, not selected");
+    AXUIElementRef sort=Find(window,@"AXButton",@"Sort: Name, not selected");
+    AXUIElementRef close=Find(window,@"AXButton",@"Close preset browser");
+    printf("AX IPC controls bank=%d type=%d sort=%d close=%d\n",!!bank,!!type,!!sort,!!close);
     printf("AX IPC native_search=%d named_list=%d\n",!!search,!!list);
-    bool ok=(search != nullptr) && (list != nullptr) && [windowTitle isEqualToString:@"MUEW"];
+    bool ok=(search != nullptr) && (list != nullptr) && bank && type && sort && close && [windowTitle isEqualToString:@"MUEW"];
     NSString* control=argc>2 ? [NSString stringWithUTF8String:argv[2]] : nil;
     NSMutableDictionary* counts=[NSMutableDictionary dictionary];
     AXObserverRef observer=nullptr;
@@ -161,8 +166,35 @@ int main(int argc,const char** argv) {
             }
         }
     }
+    if (ok && bank && type && sort && close) {
+        AXError action=AXUIElementPerformAction(bank,kAXPressAction);
+        NSString* bankState=String(bank,kAXDescriptionAttribute);
+        NSArray* factory=Children(list);
+        printf("AX IPC bank_press=%d state=%s rows=%lu\n",(int)action,bankState.UTF8String,(unsigned long)factory.count);
+        ok=ok && action==kAXErrorSuccess && [bankState hasSuffix:@", selected"] && factory.count>0;
+        action=AXUIElementPerformAction(type,kAXPressAction);
+        NSArray* leads=Children(list);
+        printf("AX IPC type_press=%d rows=%lu first=%s\n",(int)action,(unsigned long)leads.count,
+               leads.count ? String((__bridge AXUIElementRef)leads[0],kAXDescriptionAttribute).UTF8String : "");
+        ok=ok && action==kAXErrorSuccess && leads.count>0 && leads.count<factory.count;
+        NSString* beforeSort=leads.count ? String((__bridge AXUIElementRef)leads[0],kAXDescriptionAttribute) : @"";
+        action=AXUIElementPerformAction(sort,kAXPressAction);
+        NSArray* sorted=Children(list);
+        printf("AX IPC sort_press=%d first=%s\n",(int)action,
+               sorted.count ? String((__bridge AXUIElementRef)sorted[0],kAXDescriptionAttribute).UTF8String : "");
+        NSString* afterSort=sorted.count ? String((__bridge AXUIElementRef)sorted[0],kAXDescriptionAttribute) : @"";
+        ok=ok && action==kAXErrorSuccess && sorted.count>0 &&
+           ![beforeSort isEqualToString:afterSort] && [String(sort,kAXDescriptionAttribute) hasSuffix:@", selected"];
+        action=AXUIElementPerformAction(close,kAXPressAction);
+        AXUIElementRef hidden=Find(window,@"AXList",@"Preset results");
+        AXError stale=AXUIElementPerformAction(bank,kAXPressAction);
+        printf("AX IPC close_press=%d hidden=%d stale_control=%d\n",(int)action,!hidden,(int)stale);
+        ok=ok && action==kAXErrorSuccess && !hidden && stale!=kAXErrorSuccess;
+        if (hidden) CFRelease(hidden);
+    }
     if (observer) CFRelease(observer);
     if (search) CFRelease(search); if (list) CFRelease(list);
+    if (bank) CFRelease(bank); if (type) CFRelease(type); if (sort) CFRelease(sort); if (close) CFRelease(close);
     CFRelease(windows); CFRelease(app);
     printf("AX IPC %s\n",ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;

@@ -73,6 +73,9 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
     return std::complex<double>(im, re) * (2.0 / win / amp); // y = |H| sin(ph + phase)
 }
 
+static NSArray<NSString*>* BankRows();
+static int SortForColumn(int c);
+
 // Only visible rows are represented. Retained row elements carry a slug, never
 // a mutable row number; a stale action must not activate a different preset.
 @interface MUEWBrowserAXRow ()
@@ -82,6 +85,19 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
 @end
 @implementation MUEWBrowserAXRow
 - (BOOL)accessibilityPerformPress { return [self.editor accessibilityActivateBrowserSlug:self.slug generation:self.generation]; }
+@end
+
+// The navigation controls remain the same AX objects across refilter/sort,
+// and read current state when queried. Old openings are rejected by epoch.
+@interface MUEWBrowserAXControl : NSAccessibilityElement
+@property(nonatomic, weak) MUEWEditorView* editor;
+@property(nonatomic) int kind;
+@property(nonatomic) int index;
+@property(nonatomic) NSUInteger epoch;
+@end
+@implementation MUEWBrowserAXControl
+- (NSString*)accessibilityLabel { return [self.editor browserAXControlLabel:self.kind index:self.index]; }
+- (BOOL)accessibilityPerformPress { return [self.editor activateBrowserAXControl:self.kind index:self.index epoch:self.epoch]; }
 @end
 
 @interface MUEWBrowserAXList : NSAccessibilityElement
@@ -108,7 +124,7 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXControls = nil; browserAXControlEpoch = 0; browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -134,7 +150,52 @@ template <class F> static std::complex<double> MeasureH(F& f, double hz, double 
         browserAXList=list;
     }
     browserAXList.accessibilityFrameInParentSpace = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
-    return @[search,browserAXList];
+    if (!browserAXControls) {
+        NSMutableArray* controls=[NSMutableArray array];
+        auto add = [&](int kind,int index,NSRect frame) {
+            MUEWBrowserAXControl* control=[MUEWBrowserAXControl accessibilityElementWithRole:NSAccessibilityButtonRole
+                frame:NSZeroRect label:@"" parent:self];
+            control.editor=self; control.kind=kind; control.index=index; control.epoch=browserAXControlEpoch;
+            control.accessibilityFrameInParentSpace=frame;
+            [controls addObject:control];
+        };
+        for (int i=0;i<4;++i) add(0,i,[self bankRow:i]);
+        for (int i=0;i<9;++i) add(1,i,[self catRow:i]);
+        for (int c : {0,1,2,4}) add(2,c,[self tableHeader:c]);
+        add(3,0,[self browserClose]);
+        browserAXControls=[controls copy];
+    }
+    NSMutableArray* children=[NSMutableArray arrayWithObject:search];
+    // Navigation precedes results. Close is last so it cannot interrupt rows.
+    [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,17)]];
+    [children addObject:browserAXList];
+    [children addObject:browserAXControls.lastObject];
+    return children;
+}
+- (NSString*)browserAXControlLabel:(int)kind index:(int)index {
+    if (kind==0) {
+        static NSArray<NSString*>* names=@[@"All banks",@"Factory",@"User",@"Imported"];
+        return [NSString stringWithFormat:@"Bank: %@, %@",names[index],filter.bank==index-1 ? @"selected" : @"not selected"];
+    }
+    if (kind==1) {
+        const auto& cats=factoryCategories();
+        NSString* name=index==0 ? @"All types" : index==8 ? @"Favorites" : S(cats[index-1]);
+        BOOL selected=index==8 ? filter.favoritesOnly : index==0 ? filter.category.empty() : filter.category==cats[index-1];
+        return [NSString stringWithFormat:@"Type: %@, %@",name,selected ? @"selected" : @"not selected"];
+    }
+    if (kind==2) {
+        static NSArray* names=@[@"Bank",@"Name",@"Type",@"Author",@"Rating"];
+        return [NSString stringWithFormat:@"Sort: %@, %@",names[index],sortMode==SortForColumn(index) ? @"selected" : @"not selected"];
+    }
+    return @"Close preset browser";
+}
+- (BOOL)activateBrowserAXControl:(int)kind index:(int)index epoch:(NSUInteger)epoch {
+    if (!browserOpen || epoch != browserAXControlEpoch) return NO;
+    if (kind==0 && index>=0 && index<4) { [self chooseBrowserBank:index]; return YES; }
+    if (kind==1 && index>=0 && index<9) { [self chooseBrowserType:index]; return YES; }
+    if (kind==2 && (index==0 || index==1 || index==2 || index==4)) { [self chooseBrowserSort:index]; return YES; }
+    if (kind==3 && index==0) { [self setBrowserOpen:false]; return YES; }
+    return NO;
 }
 - (NSArray*)browserAccessibilityRows {
     if (!browserOpen) return @[];
@@ -4401,6 +4462,8 @@ static int SortForColumn(int c) {
 - (void)setBrowserOpen:(bool)open {
     [self releaseHeldKeyboardNotes];
     browserOpen = open;
+    ++browserAXControlEpoch;
+    browserAXControls = nil;
     browserCursorSlug.clear();
     browserSearchSelection = NSMakeRange(NSNotFound,0);
     browserListFocus = open && [self hasEditorKeyboardFocus];
@@ -4651,19 +4714,29 @@ static int SortForColumn(int c) {
     [self saveRatings]; [self refilter];
 }
 
+- (void)chooseBrowserBank:(int)i {
+    filter.bank=i-1;
+    if (filter.bank>=ui::BankUser) user::load(UserPresetDir(),ui::library());
+    bscroll=0; [self refilter];
+}
+- (void)chooseBrowserType:(int)i {
+    if (i==8) filter.favoritesOnly=!filter.favoritesOnly;
+    else filter.category=i==0 ? std::string() : factoryCategories()[i-1];
+    bscroll=0; [self refilter];
+}
+- (void)chooseBrowserSort:(int)c {
+    sortMode=SortForColumn(c); [self refilter]; [self revealInTable];
+}
+
 - (void)browserMouseDown:(NSPoint)p {
     if (NSPointInRect(p, [self browserClose]) || !NSPointInRect(p, [self browserRect])) { [self setBrowserOpen:false]; return; }
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self bankRow:i])) {
-            filter.bank = i - 1;
-            if (filter.bank >= ui::BankUser) user::load(UserPresetDir(), ui::library());
-            bscroll = 0; [self refilter]; return;
+            [self chooseBrowserBank:i]; return;
         }
     for (int i = 0; i < 9; ++i)
         if (NSPointInRect(p, [self catRow:i])) {
-            if (i == 8) filter.favoritesOnly = !filter.favoritesOnly;
-            else filter.category = i == 0 ? std::string() : factoryCategories()[i - 1];
-            bscroll = 0; [self refilter]; return;
+            [self chooseBrowserType:i]; return;
         }
     for (int i = 0; i < (int)characterTags().size(); ++i)
         if (NSPointInRect(p, [self tagChip:i])) {
@@ -4672,7 +4745,7 @@ static int SortForColumn(int c) {
             bscroll = 0; [self refilter]; return;
         }
     for (int c = 0; c < 5; ++c)
-        if (c != 3 && NSPointInRect(p, NSInsetRect([self tableHeader:c], -2, -3))) { sortMode = SortForColumn(c); [self refilter]; [self revealInTable]; return; }
+        if (c != 3 && NSPointInRect(p, NSInsetRect([self tableHeader:c], -2, -3))) { [self chooseBrowserSort:c]; return; }
     for (int s = 0; s < 5; ++s)
         if (NSPointInRect(p, [self infoStar:s])) { [self rate:currentIndex stars:s + 1]; return; }
     for (int i = 0; i < 4; ++i)
