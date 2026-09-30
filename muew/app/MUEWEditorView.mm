@@ -124,7 +124,7 @@ static int SortForColumn(int c);
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXControls = nil; browserAXControlEpoch = 0; browserAXDetailControls=nil; browserAXDetailEpoch=0; browserDialogActive=false; browserDialogQueued=false; browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXControls = nil; browserAXControlEpoch = 0; browserAXDetailControls=nil; browserAXDetailEpoch=0; browserDialogActive=false; browserDialogQueued=false; browserNativeDialog=nil; browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -3914,14 +3914,20 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     f.stringValue = S(current.info.name.empty() ? std::string("User Preset") : current.info.name);
     a.accessoryView = f;
     a.window.initialFirstResponder = f;
-    if ([a runModal] == NSAlertFirstButtonReturn) [self saveUserPresetNamed:f.stringValue];
+    browserNativeDialog=a.window;
+    NSModalResponse result=[a runModal];
+    browserNativeDialog=nil;
+    if (result == NSAlertFirstButtonReturn) [self saveUserPresetNamed:f.stringValue];
 }
 
 - (void)promptExport {
     NSSavePanel* panel = [NSSavePanel savePanel];
     panel.nameFieldStringValue = [S(user::fileStem(current.info.name)) stringByAppendingPathExtension:@"muew"];
     panel.allowsOtherFileTypes = NO;
-    if ([panel runModal] == NSModalResponseOK && panel.URL)
+    browserNativeDialog=panel;
+    NSModalResponse result=[panel runModal];
+    browserNativeDialog=nil;
+    if (result == NSModalResponseOK && panel.URL)
         if (!user::exportTo(std::string(panel.URL.fileSystemRepresentation), current)) NSBeep();
 }
 
@@ -4731,7 +4737,10 @@ static int SortForColumn(int c) {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     panel.allowsMultipleSelection = NO;
     panel.allowedFileTypes = @[@"muew"];
-    if ([panel runModal] != NSModalResponseOK || !panel.URL) return;
+    browserNativeDialog=panel;
+    NSModalResponse result=[panel runModal];
+    browserNativeDialog=nil;
+    if (result != NSModalResponseOK || !panel.URL) return;
     [self importPresetFile:panel.URL.path];
 }
 

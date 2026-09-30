@@ -1,3 +1,4 @@
+#include "../tests/proof_watchdog.h"
 // au_host_test.cpp - loads the installed MUEW AU like a host would, plays a
 // note, and requires real audio out. Exits non-zero on any failure.
 #include <AudioToolbox/AudioToolbox.h>
@@ -6,6 +7,7 @@
 #include <vector>
 
 int main() {
+    muew_proof::Watchdog("AU audio host",120);
     AudioComponentDescription desc{};
     desc.componentType = kAudioUnitType_MusicDevice;
     desc.componentSubType = 'Muew';

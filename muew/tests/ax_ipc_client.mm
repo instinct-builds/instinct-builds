@@ -1,3 +1,4 @@
+#include "proof_watchdog.h"
 // Separate-process AX client for the MUEW standalone. No editor headers or
 // direct model calls: all reads and actions cross Accessibility IPC.
 #import <AppKit/AppKit.h>
@@ -68,6 +69,7 @@ static bool Control(NSString* path,int serial,NSString* command) {
 }
 
 int main(int argc,const char** argv) {
+    muew_proof::Watchdog("external AX IPC",120);
  @autoreleasepool {
     if (argc!=2 && argc!=3) { fprintf(stderr,"usage: ax_ipc_client PID [proof-control-file]\n"); return 2; }
     pid_t pid=(pid_t)atoi(argv[1]);
@@ -199,6 +201,8 @@ int main(int argc,const char** argv) {
         ok=ok && load==kAXErrorSuccess && staleFavorite!=kAXErrorSuccess && staleRating!=kAXErrorSuccess;
         if (favorite) CFRelease(favorite); if (rating) CFRelease(rating);
         for (NSString* prefix in @[@"Save preset,",@"Import preset,",@"Export preset,"]) {
+            muew_proof::Phase([prefix hasPrefix:@"Save"] ? "Save external dialog" : [prefix hasPrefix:@"Import"] ? "Import external dialog" : "Export external dialog");
+            std::fprintf(stderr,"AX IPC dialog launch=%s\n",prefix.UTF8String);
             AXUIElementRef button=FindPrefix(window,prefix);
             AXError launch=button ? AXUIElementPerformAction(button,kAXPressAction) : kAXErrorFailure;
             AXUIElementRef cancel=nullptr;

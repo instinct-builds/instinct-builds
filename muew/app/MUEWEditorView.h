@@ -190,6 +190,7 @@ struct MUEWEditorHost {
     NSUInteger browserAXDetailEpoch;
     bool browserDialogActive;
     bool browserDialogQueued;
+    NSWindow* browserNativeDialog; // actual native window, retained only during runModal
     NSArray* browserAXControls; // stable navigation controls during one browser opening
     NSUInteger browserAXControlEpoch; // old handles cannot act after close/reopen
     NSAccessibilityElement* browserAXList; // virtual list, never a replacement for native Search

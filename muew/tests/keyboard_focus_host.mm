@@ -2,6 +2,7 @@
 #import <AppKit/AppKit.h>
 #import "MUEWEditorView.h"
 #include <cstdio>
+#include "proof_watchdog.h"
 #include <vector>
 #include <utility>
 #include <string>
@@ -124,16 +125,21 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [v loadPresetIndex:sound];
     v->favorites=savedFavorites; v->ratings=savedRatings; [v saveFavorites]; [v saveRatings]; [v refilter];
     for (int index=25;index<=27;++index) {
+        const char* phase=index==25 ? "Save dialog launch" : index==26 ? "Import dialog launch" : "Export dialog launch";
+        muew_proof::Phase(phase);
         const int before=host->patches;
         __block BOOL modalSeen=NO;
         __block BOOL guarded=NO;
         NSTimer* timer=[NSTimer timerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* t) {
-            if (!NSApp.modalWindow) return;
+            NSWindow* modal=v->browserNativeDialog ?: NSApp.modalWindow;
+            if (!modal || !modal.isVisible) return;
+            std::fprintf(stderr,"focus dialog index=%d native=%s modal=%d cancel-start\n",index,object_getClassName(modal),NSApp.modalWindow==modal);
             modalSeen=YES;
             guarded=![v performBrowserLoadedRating:1] && ![v performBrowserInfoAction:0];
             [t invalidate];
-            if ([NSApp.modalWindow respondsToSelector:@selector(cancel:)]) [(id)NSApp.modalWindow cancel:nil];
-            else { NSWindow* modal=NSApp.modalWindow; [NSApp abortModal]; [modal orderOut:nil]; }
+            if ([modal isKindOfClass:[NSSavePanel class]]) [(NSSavePanel*)modal cancel:nil];
+            else { [NSApp stopModalWithCode:NSAlertSecondButtonReturn]; [modal orderOut:nil]; }
+            std::fprintf(stderr,"focus dialog index=%d cancel-returned\n",index);
         }];
         [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSModalPanelRunLoopMode];
         [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
@@ -142,6 +148,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         while (!modalSeen && deadline.timeIntervalSinceNow>0)
             [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
         [timer invalidate];
+        std::fprintf(stderr,"focus dialog index=%d launch-returned seen=%d active=%d\n",index,modalSeen,v->browserDialogActive);
         Check(modalSeen && guarded && !v->browserDialogActive && w.firstResponder==v && host->patches==before &&
               v->currentIndex==sound,"native file dialog cancels without edit and restores editor focus");
     }
@@ -312,6 +319,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
 }
 int main() {
  @autoreleasepool {
+    muew_proof::Watchdog("keyboard focus",90);
     setvbuf(stdout, nullptr, _IONBF, 0); // retain the last passing assertion on a runner crash
     std::fprintf(stderr, "focus: boot\n");
     NSApplication* app = [NSApplication sharedApplication];

@@ -1,3 +1,4 @@
+#include "../tests/proof_watchdog.h"
 // Host-level validation: discovery, factory presets, selection, sample-accurate MIDI and audio.
 #include <AudioToolbox/AudioToolbox.h>
 #include <algorithm>
@@ -67,6 +68,7 @@ static double energy(const std::vector<float>& x, size_t a, size_t b) {
 }
 
 int main() {
+    muew_proof::Watchdog("AU audio host",120);
     AudioUnit unit=openUnit();
     if(!unit){printf("FAIL: discovery/initialize\n");return 1;}
 

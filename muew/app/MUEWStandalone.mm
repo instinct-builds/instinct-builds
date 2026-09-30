@@ -1,3 +1,4 @@
+#include "../tests/proof_watchdog.h"
 // MUEWStandalone.mm - MUEW standalone instrument: the shared editor view
 // bound directly to an in-process synth, with the computer keyboard as a
 // MIDI keyboard.
@@ -61,7 +62,7 @@ struct StandaloneHost : MUEWEditorHost {
     [v loadPresetIndex:start >= 0 ? start : 0];
     // Only the AX IPC proof launch opts into an open browser. Normal launches
     // and AU embedding retain their existing initial state.
-    if (getenv("MUEW_AX_PROOF")) [v setBrowserOpen:true];
+    if (getenv("MUEW_AX_PROOF")) { muew_proof::Watchdog("AX standalone target",150); [v setBrowserOpen:true]; }
     const char* axControl=getenv("MUEW_AX_CONTROL");
     if (axControl && *axControl) {
         NSString* request=[NSString stringWithUTF8String:axControl];

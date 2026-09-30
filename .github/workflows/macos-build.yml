@@ -556,10 +556,12 @@ jobs:
           test "$old" = "$new"
           test "${old%% *}" = 108
       - name: Build, sign, install and validate MUEW AU
+        timeout-minutes: 10
         run: cd muew && au/build_au.sh
       - name: Build designed MUEW standalone app + DMG
         run: cd muew && scripts/make_muew_dmg.sh
       - name: Prove standalone keyboard focus and capture three focus states
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           cd muew
@@ -585,6 +587,7 @@ jobs:
           fi
           for state in text output-detail browser browser-cursor handoff-search handoff-list handoff-search-return handoff-search-caret handoff-search-return-caret; do test -s "out/MUEW-0.84.0-focus-$state.png"; done
       - name: Probe standalone accessibility from a separate process
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           cd muew
@@ -607,6 +610,7 @@ jobs:
             test "$status" -eq 0
           fi
       - name: Host MUEW AU editor like a DAW (automation, macros, user presets, unison, FX rack) and capture proof
+        timeout-minutes: 10
         run: |
           cd muew
           clang++ -std=c++17 -O2 -fobjc-arc -isysroot "$(xcrun --show-sdk-path)" -Isrc -Iau \

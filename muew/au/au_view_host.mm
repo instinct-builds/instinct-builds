@@ -1,3 +1,4 @@
+#include "../tests/proof_watchdog.h"
 // au_view_host.mm - CI proof that the MUEW AU editor works the way a DAW
 // uses it: find the installed component, ask it for kAudioUnitProperty_CocoaUI,
 // load the view class from the component bundle, embed the view in a window,
@@ -127,6 +128,7 @@ static void After(double seconds, dispatch_block_t block) {
 }
 
 int main() {
+    muew_proof::Watchdog("AU editor host",240);
     @autoreleasepool {
         NSApplication* app = [NSApplication sharedApplication];
         app.activationPolicy = NSApplicationActivationPolicyRegular;
