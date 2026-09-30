@@ -1189,3 +1189,22 @@ first image and matching asset ID. It verifies image decode and visible spot
 bounds before sending keyboard input. It never changes the client export.
 Grid, board and reviewer-dialog keyboard batteries all run in the same suite;
 board and grid downloaded feedback still pass through native import tests.
+
+
+## 1.79.0: offline review queue
+
+- Title/tag search, All/Approved/Changes/No decision filters and Favorites
+  combine into a visible review queue with exact match counts. Empty results
+  explain that no feedback was removed and offer Show all assets.
+- Prev/Next cycle only among queue matches, including both ends. A decision
+  edit can remove the current card from the queue: its open note stays editable,
+  then navigation selects a remaining match or closes to the empty state.
+- The board is an unfiltered overview, so it hides while any filter is active.
+  It returns on reset. Switching reviewer reevaluates the same filters from
+  that reviewer's own draft; it does not copy another reviewer's matches.
+- Downloads always include all feedback, even for filtered-out cards. Chrome
+  compares the actual downloaded Blob text byte-for-byte before filtering,
+  during filtering and after reset, proves queue boundaries and zero-match
+  opening guards, and captures board-hidden/empty/reset pixels at 1024x768.
+  Native import tests consume that full browser-produced feedback. No changes
+  to feedback format, storage rules or local reviewer identity claims.

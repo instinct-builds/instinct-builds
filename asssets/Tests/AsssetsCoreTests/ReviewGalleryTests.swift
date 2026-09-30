@@ -122,6 +122,12 @@ struct ReviewGalleryTests {
             let applied = independent.applyFeedback(keyboard)
             #expect(applied.favorites == 1 && applied.notes == 1)
         }
+        let queued = try read("queue-0.json"), freshQueue = try read("queue-1.json")
+        #expect(queued.items.count == 3 && queued.items[1].cardStatus == .changes)
+        #expect(freshQueue.reviewer == "New Queue Reviewer" && freshQueue.items.isEmpty)
+        var queueCatalog = catalog
+        let queueApplied = queueCatalog.applyFeedback(queued)
+        #expect(queueApplied.favorites == 2 && queueApplied.notes == 3)
         let warningFile = try read("storage-warning-0.json")
         #expect(warningFile.items.first?.note == "Keep this note")
         let survived = try read("reload-0.json")

@@ -112,10 +112,10 @@ item = manifest['items'][0]['id']
 # Run a page copy next to the gallery so images and file:// origin are unchanged.
 test_page = page.parent / '__reviewer-drafts-test.html'
 try:
-    for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload', 'recovery-json', 'recovery-shape', 'recovery-item', 'recovery-active', 'recovery-legacy', 'recovery-failed', 'recovery-warning', 'keyboard-grid', 'keyboard-board', 'keyboard-dialog'):
+    for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload', 'recovery-json', 'recovery-shape', 'recovery-item', 'recovery-active', 'recovery-legacy', 'recovery-failed', 'recovery-warning', 'keyboard-grid', 'keyboard-board', 'keyboard-dialog', 'queue'):
         seed = ''
         mode_original = original
-        if mode == 'keyboard-board':
+        if mode in ('keyboard-board','queue'):
             # The normal native demo exports a grid-only gallery. Give this
             # throwaway proof page a real local image and one normalized board
             # spot for the same asset; never alter the client export on disk.
@@ -159,7 +159,54 @@ const click=id=>document.getElementById(id).click();
 const type=(id,v)=>{const x=document.getElementById(id);x.value=v;x.dispatchEvent(new Event('input',{bubbles:true}))};
 const download=async()=>{click('download');assert(blobs.length>0,'download button created a Blob');return JSON.parse(await blobs.pop().text())};
 try{
-if(MODE.startsWith('keyboard-')){
+if(MODE==='queue'){
+ const action=(method,params,capture)=>new Promise(resolve=>{window.cdpResolve=resolve;window.cdpAction={method,params,capture}});
+ const shot=name=>action('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},name);
+ const key=async(k,code,v=0)=>{await action('Input.dispatchKeyEvent',{type:'keyDown',key:k,code,text:k==='Enter'?'\r':'',windowsVirtualKeyCode:v});await action('Input.dispatchKeyEvent',{type:'keyUp',key:k,code,windowsVirtualKeyCode:v})};
+ const to=async predicate=>{for(let i=0;i<100&&!predicate(document.activeElement);i++)await key('Tab','Tab',9);assert(predicate(document.activeElement),'Tab reaches queue control')};
+ const select=(v)=>{const x=document.getElementById('queueDecision');x.value=v;x.dispatchEvent(new Event('change',{bubbles:true}))};
+ const rawDownload=async()=>{click('download');return await blobs.pop().text()};
+ const ids=()=>[...document.querySelectorAll('#grid .thumb')].map(e=>e.dataset.reviewId);
+ type('newReviewer','Queue Reviewer');document.querySelector('#reviewModalActions .primary').click();
+ assert(M.items.length>=3,'queue proof requires at least three real exported assets');
+ for(let i=0;i<3;i++){
+  document.querySelectorAll('#grid .thumb')[i].click();click(i===1?'lbch':'lbap');if(i!==1)click('lbpick');type('lbnote','Queue note '+i);click('close');
+ }
+ const before=await rawDownload();
+ select('approved');assert(ids().length===2&&ids()[0]===M.items[0].id&&ids()[1]===M.items[2].id,'Approved queue excludes Changes asset');
+ assert(document.getElementById('queueCount').textContent.startsWith('2 of '),'visible match count is exact');
+ await shot('queue-filtered');
+ assert(!document.getElementById('board').classList.contains('on'),'board hidden while filtering');
+ await to(e=>e.classList.contains('thumb'));await key('Enter','Enter',13);
+ assert(cur===0,'filtered queue begins at first match');await key('ArrowLeft','ArrowLeft',37);assert(cur===2,'Prev at first wraps only to last match');
+ await key('ArrowRight','ArrowRight',39);assert(cur===0,'Next at last wraps only to first match');await key('ArrowRight','ArrowRight',39);assert(cur===2,'Next skips filtered-out middle asset');
+ await key('ArrowLeft','ArrowLeft',37);assert(cur===0,'Prev skips filtered-out middle asset');await key('Escape','Escape',27);
+ const filtered=await rawDownload();assert(before===filtered,'full feedback download byte-identical with active filter');
+ const decoded=JSON.parse(filtered);assert(decoded.items.length===3,'download includes hidden Changes feedback');
+ type('queueSearch','__no_such_asset__');assert(ids().length===0&&!document.getElementById('queueEmpty').hidden,'zero-match queue has real empty state');
+ open(0);assert(cur===-1&&!document.getElementById('lb').classList.contains('open'),'zero-match queue cannot open lightbox');await shot('queue-empty');
+ click('queueEmptyReset');assert(ids().length===M.items.length,'empty state resets to full gallery');
+ select('changes');assert(ids().length===1&&ids()[0]===M.items[1].id,'Changes filter exact');
+ select('undecided');assert(ids().length===M.items.length-3,'No decision excludes all decided assets');
+ select('approved');click('onlyPicks');assert(ids().length===2,'favorite and decision filters combine');
+ click('switchReviewer');type('newReviewer','New Queue Reviewer');document.querySelector('#reviewModalActions .primary').click();
+ assert(ids().length===0&&!document.getElementById('queueEmpty').hidden,'active filter evaluates new reviewer without leaking previous matches');
+ const fresh=JSON.parse(await rawDownload());assert(fresh.reviewer==='New Queue Reviewer'&&fresh.items.length===0,'new reviewer download has no old state');
+ click('switchReviewer');document.getElementById('knownReviewers').value='Queue Reviewer';document.querySelector('#reviewModalActions .primary').click();
+ assert(ids().length===2,'switch back restores only original reviewer matches');click('queueReset');
+ type('queueSearch',M.items[0].title);assert(ids().includes(M.items[0].id),'search finds title');click('queueReset');
+ if(M.items[0].tags.length){type('queueSearch',M.items[0].tags[0]);assert(ids().includes(M.items[0].id),'search finds tags');click('queueReset')}
+ const after=await rawDownload();assert(before===after,'filter reset leaves feedback byte-identical');
+ await shot('queue-reset');
+ // A decision edit may remove the open card from the visible queue. Keep
+ // its note editable, then navigation must leave it or show the empty state.
+ select('changes');document.querySelector('#grid .thumb').click();click('lbap');
+ assert(cur===1,'editing current decision keeps the open note available');click('next');
+ assert(cur===-1&&!document.getElementById('queueEmpty').hidden,'navigation closes lightbox when current edit empties queue');
+ click('queueReset');document.querySelectorAll('#grid .thumb')[1].click();click('lbch');click('close');
+ assert(before===await rawDownload(),'queue-edit round trip restores exact feedback');
+ document.getElementById('results').textContent=JSON.stringify({results,downloads:[decoded,fresh]});
+}else if(MODE.startsWith('keyboard-')){
  const action=(method,params,capture)=>new Promise(resolve=>{window.cdpResolve=resolve;window.cdpAction={method,params,capture}});
  const shot=name=>action('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},name);
  const key=async(k,code,modifiers=0)=>{await action('Input.dispatchKeyEvent',{type:'keyDown',key:k,code,text:k==='Enter'?'\r':'',windowsVirtualKeyCode:k==='Tab'?9:k==='Enter'?13:k==='Escape'?27:0,modifiers});await action('Input.dispatchKeyEvent',{type:'keyUp',key:k,code,modifiers})};
@@ -296,7 +343,7 @@ if(MODE.startsWith('keyboard-')){
         # Seed older storage before gallery script starts. Result node is after gallery initialization.
         html = mode_original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results" hidden></pre>'+flow+'</body>')
         test_page.write_text(html)
-        result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith(('storage-', 'recovery-', 'keyboard-')) else None)
+        result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith(('storage-', 'recovery-', 'keyboard-', 'queue')) else None)
         if 'error' in result: raise RuntimeError(f'{mode}: {result}')
         for i, download in enumerate(result['downloads']):
             (out / f'{mode}-{i}.json').write_text(json.dumps(download,indent=2)+'\n')
