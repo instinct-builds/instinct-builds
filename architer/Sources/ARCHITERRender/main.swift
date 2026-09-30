@@ -4096,9 +4096,9 @@ func run(model: AppModel, character: Character, outDir: String) {
         var hpSurface = hpBase
         hpSurface.setMaxHPReduction(10)
         hpLines.append("party strip shows the drained max \(PartyCardSummary(character: hpSurface).maxHP == 22)")
-        hpLines.append("markdown export shows the drained max \(Export.exportMarkdown(hpSurface).contains("HP **22/22**"))")
-        hpLines.append("html export shows the drained max \(Export.exportHTML(hpSurface).contains("HP <b>22/22</b>"))")
-        hpLines.append("undrained export is unchanged \(Export.exportMarkdown(hpBase).contains("HP **24/32**"))")
+        hpLines.append("markdown export shows the drained max \(SheetExporter.exportMarkdown(hpSurface).contains("HP **22/22**"))")
+        hpLines.append("html export shows the drained max \(SheetExporter.exportHTML(hpSurface).contains("HP <b>22/22</b>"))")
+        hpLines.append("undrained export is unchanged \(SheetExporter.exportMarkdown(hpBase).contains("HP **24/32**"))")
         // Codable.
         let hpData = (try? JSONEncoder().encode(hpSurface)) ?? Data()
         hpLines.append("drain round-trips through Codable \((try? JSONDecoder().decode(Character.self, from: hpData))?.maxHPReduction == 10)")
