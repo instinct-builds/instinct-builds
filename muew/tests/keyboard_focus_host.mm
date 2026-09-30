@@ -33,7 +33,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.85.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.86.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -357,6 +357,56 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check(host->on.size()==onBefore+1 && host->off.size()==offBefore+1,
           "Tab/Shift-Tab and browser arrows never trigger piano notes");
     Snapshot(v,"handoff-search-return");
+    muew_proof::Phase("native type-to-refine proof");
+    const int refineLoads=host->patches,refineIndex=v->currentIndex;
+    const auto refineOn=host->on.size(),refineOff=host->off.size();
+    [w makeFirstResponder:v->search];
+    v->search.stringValue=@"Bright";
+    [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
+    [(NSTextView*)w.firstResponder setSelectedRange:NSMakeRange(1,3)];
+    [w.firstResponder keyDown:Key(w,NSEventTypeKeyDown,@"\t",48)];
+    Down(v,w,down);
+    const std::string refineCursor=v->browserCursorSlug;
+    Check(!refineCursor.empty(),"type-to-refine starts with a proposed list result");
+    NSEvent* shiftedQuestion=[NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint
+        modifierFlags:NSEventModifierFlagShift timestamp:NSProcessInfo.processInfo.systemUptime
+        windowNumber:w.windowNumber context:nil characters:@"?" charactersIgnoringModifiers:@"/" isARepeat:NO keyCode:44];
+    [v keyDown:shiftedQuestion];
+    id refineEditor=w.firstResponder;
+    Check([refineEditor isKindOfClass:[NSTextView class]] && !v->browserListFocus &&
+          [v->search.stringValue isEqualToString:@"Bright?"] && v->filter.query=="Bright?" &&
+          NSEqualRanges([(NSTextView*)refineEditor selectedRange],NSMakeRange(7,0)),
+          "native AppKit receives shifted ? event, not its unshifted / key, and appends to exact existing query");
+    Check(v->visible.empty() && v->browserCursorSlug.empty() && v->currentIndex==refineIndex && host->patches==refineLoads &&
+          host->on.size()==refineOn && host->off.size()==refineOff,
+          "type-to-refine clears removed proposal without loading or piano notes");
+    [refineEditor keyDown:Key(w,NSEventTypeKeyDown,@"\t",48)];
+    Check(w.firstResponder==v && v->browserListFocus && v->visible.empty(),"empty-results list remains a valid refinement origin");
+    [v keyDown:shiftedQuestion];
+    refineEditor=w.firstResponder;
+    Check([v->search.stringValue isEqualToString:@"Bright??"] && v->filter.query=="Bright??" &&
+          NSEqualRanges([(NSTextView*)refineEditor selectedRange],NSMakeRange(8,0)) &&
+          host->patches==refineLoads && host->on.size()==refineOn && host->off.size()==refineOff,
+          "empty-results printable key appends byte-exact query at end without load or note");
+    [refineEditor keyDown:Key(w,NSEventTypeKeyDown,@"\177",51)];
+    Snapshot(v,"type-refine-search");
+    [refineEditor keyDown:Key(w,NSEventTypeKeyDown,@"\177",51)];
+    Check([v->search.stringValue isEqualToString:@"Bright"] && v->filter.query=="Bright",
+          "native Search deletion remains native after type-to-refine");
+    [w.firstResponder keyDown:Key(w,NSEventTypeKeyDown,@"\t",48)];
+    Check(w.firstResponder==v && v->browserListFocus && v->browserCursorSlug.empty(),
+          "Tab after refinement returns to list without implicit proposal");
+    Snapshot(v,"type-refine-list");
+    v->search.stringValue=@"";
+    [v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:v->search]];
+    [w makeFirstResponder:v];v->browserListFocus=true;
+    [v keyDown:Key(w,NSEventTypeKeyDown,@"b",11,NSEventModifierFlagCommand)];
+    Check(w.firstResponder==v && v->search.stringValue.length==0,"modified list shortcut is not turned into Search text");
+    Down(v,w,arrow);
+    Check(w.firstResponder==v && v->search.stringValue.length==0,"function/navigation key is not turned into Search text");
+    [v keyDown:Key(w,NSEventTypeKeyDown,@"B",11,NSEventModifierFlagShift)];
+    Check([v->search.stringValue isEqualToString:@"B"] && v->filter.query=="B" && host->patches==refineLoads &&
+          host->on.size()==refineOn && host->off.size()==refineOff,"empty-query type-to-refine preserves shifted character and stays inert");
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
     fflush(stdout);
     // Bypass runner AppKit teardown after capturing assertions and pixels. The

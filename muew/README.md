@@ -718,3 +718,7 @@ Favorite, five rating choices, Save, Import and Export now share mouse and AX pa
 ## 0.85.0 Matrix trace reset
 
 RESET TRACE below the matrix clears peak-hold and signed range-history displays across all 16 slots without changing the live indicator, route depths, sound or running notes. The next live poll can capture fresh history. This is editor-only state, not a new parameter or preset field.
+
+## 0.86.0 Type-to-refine
+
+A printable key from the standalone browser result list appends to the existing query in native Search and returns text focus there. The actual AppKit text event is used, including Shift; deletion and later input remain native. No sound is loaded or note played. Tab returns to the list without inventing a proposed row. Modified shortcuts and function keys are excluded. The AU still leaves keyboard routing to its host.

@@ -552,7 +552,7 @@ jobs:
           old=$("$RUNNER_TEMP/factory-hash-old")
           new=$("$RUNNER_TEMP/factory-hash-new")
           echo "0.52.0 factory count/hash: $old"
-          echo "0.85.0 factory count/hash: $new"
+          echo "0.86.0 factory count/hash: $new"
           test "$old" = "$new"
           test "${old%% *}" = 108
       - name: Build, sign, install and validate MUEW AU
@@ -585,7 +585,7 @@ jobs:
             fi
             exit "$focus_status"
           fi
-          for state in matrix-reset-before matrix-reset-after matrix-reset-hidden-before matrix-reset-hidden-after text output-detail browser browser-cursor handoff-search handoff-list handoff-search-return handoff-search-caret handoff-search-return-caret; do test -s "out/MUEW-0.85.0-focus-$state.png"; done
+          for state in type-refine-search type-refine-list matrix-reset-before matrix-reset-after matrix-reset-hidden-before matrix-reset-hidden-after text output-detail browser browser-cursor handoff-search handoff-list handoff-search-return handoff-search-caret handoff-search-return-caret; do test -s "out/MUEW-0.86.0-focus-$state.png"; done
       - name: Probe standalone accessibility from a separate process
         timeout-minutes: 10
         run: |
@@ -618,208 +618,208 @@ jobs:
             -o build/au_view_host
           export MUEW_USER_PRESETS="$RUNNER_TEMP/muew-user-presets"
           rm -rf "$MUEW_USER_PRESETS"
-          export MUEW_VIEW_PNG="$PWD/out/MUEW-0.85.0-au-editor-edited.png"
-          export MUEW_BROWSER_PNG="$PWD/out/MUEW-0.85.0-browser.png"
-          export MUEW_FXDETAIL_PREFIX="$PWD/out/MUEW-0.85.0-fx-"
-          export MUEW_FXLFO_MOD_PNG="$PWD/out/MUEW-0.85.0-lfo-modulators.png"
-          export MUEW_FXLFO1_PNG="$PWD/out/MUEW-0.85.0-lfo-flanger-range.png"
-          export MUEW_ROUTEAUX_PNG="$PWD/out/MUEW-0.85.0-route-aux.png"
-          export MUEW_ROUTECURVE_PNG="$PWD/out/MUEW-0.85.0-route-curve.png"
-          export MUEW_MSEG_PNG="$PWD/out/MUEW-0.85.0-mseg-editor.png"
-          export MUEW_LFO_PNG="$PWD/out/MUEW-0.85.0-lfo-editor.png"
-          export MUEW_WARP_PNG="$PWD/out/MUEW-0.85.0-warp-osc.png"
-          export MUEW_WT3D_PNG="$PWD/out/MUEW-0.85.0-wavetable-3d.png"
-          export MUEW_FILTER_PNG="$PWD/out/MUEW-0.85.0-filter-panel.png"
-          export MUEW_NOISE51_PNG="$PWD/out/MUEW-0.85.0-noise-character.png"
-          export MUEW_NOISE52_PNG="$PWD/out/MUEW-0.85.0-noise-color-matrix.png"
-          export MUEW_NOISE53_PNG="$PWD/out/MUEW-0.85.0-noise-stereo-width.png"
-          export MUEW_NOISE55_PNG="$PWD/out/MUEW-0.85.0-noise-burst.png"
-          export MUEW_NOISE57_PNG="$PWD/out/MUEW-0.85.0-noise-burst-shape.png"
-          export MUEW_NOISE60_PNG="$PWD/out/MUEW-0.85.0-noise-burst-sync.png"
-          export MUEW_NOISE63_PNG="$PWD/out/MUEW-0.85.0-noise-burst-velocity.png"
-          export MUEW_NOISE64_PNG="$PWD/out/MUEW-0.85.0-noise-burst-velocity-time.png"
-          export MUEW_NOISE65_PNG="$PWD/out/MUEW-0.85.0-noise-burst-key-time.png"
-          export MUEW_NOISE66_PNG="$PWD/out/MUEW-0.85.0-noise-burst-velocity-color.png"
-          export MUEW_MATRIX54_PNG="$PWD/out/MUEW-0.85.0-matrix-metering.png"
-          export MUEW_HOLD56_PNG="$PWD/out/MUEW-0.85.0-meter-hold.png"
-          export MUEW_RANGE59_PNG="$PWD/out/MUEW-0.85.0-matrix-range.png"
-          export MUEW_RESET85_BEFORE_PNG="$PWD/out/MUEW-0.85.0-matrix-reset-before.png"
-          export MUEW_RESET85_AFTER_PNG="$PWD/out/MUEW-0.85.0-matrix-reset-after.png"
-          export MUEW_RESET85_HIDDEN_BEFORE_PNG="$PWD/out/MUEW-0.85.0-matrix-reset-hidden-before.png"
-          export MUEW_RESET85_HIDDEN_AFTER_PNG="$PWD/out/MUEW-0.85.0-matrix-reset-hidden-after.png"
-          export MUEW_FILTER2_PNG="$PWD/out/MUEW-0.85.0-filter-routing.png"
-          export MUEW_VOICE_PNG="$PWD/out/MUEW-0.85.0-voice-panel.png"
-          export MUEW_PERF_PNG="$PWD/out/MUEW-0.85.0-performance.png"
-          export MUEW_CHANCE50_PNG="$PWD/out/MUEW-0.85.0-arp-chance.png"
-          export MUEW_OCTAVE49_PNG="$PWD/out/MUEW-0.85.0-arp-octave.png"
-          export MUEW_RATCHET48_PNG="$PWD/out/MUEW-0.85.0-arp-ratchet.png"
-          export MUEW_DORMANT77_PNG="$PWD/out/MUEW-0.85.0-arp-dormant-step.png"
-          export MUEW_ACTIVE77_PNG="$PWD/out/MUEW-0.85.0-arp-revealed-step.png"
-          export MUEW_PITCH76_PNG="$PWD/out/MUEW-0.85.0-arp-pitch-badges.png"
-          export MUEW_REST75_PNG="$PWD/out/MUEW-0.85.0-arp-rest-readonly.png"
-          export MUEW_TIE75_PNG="$PWD/out/MUEW-0.85.0-arp-tie-readonly.png"
-          export MUEW_ACTIONS74_PNG="$PWD/out/MUEW-0.85.0-arp-actions-feedback.png"
-          export MUEW_ACTIONS72_PNG="$PWD/out/MUEW-0.85.0-arp-pattern-actions.png"
-          export MUEW_PITCH71_PNG="$PWD/out/MUEW-0.85.0-arp-step-pitch.png"
-          export MUEW_GATE70_PNG="$PWD/out/MUEW-0.85.0-arp-step-gate.png"
-          export MUEW_ARP_PNG="$PWD/out/MUEW-0.85.0-arp.png"
-          export MUEW_HYPER_PNG="$PWD/out/MUEW-0.85.0-fx-hyper-page.png"
-          export MUEW_FILTERFX_PNG="$PWD/out/MUEW-0.85.0-fx-filter-page.png"
-          export MUEW_REVERB_PNG="$PWD/out/MUEW-0.85.0-fx-reverb-page.png"
-          export MUEW_COMP_PNG="$PWD/out/MUEW-0.85.0-fx-comp-page.png"
-          export MUEW_DUCK67_PNG="$PWD/out/MUEW-0.85.0-fx-delay-duck.png"
-          export MUEW_EQ68_PNG="$PWD/out/MUEW-0.85.0-fx-eq-mid.png"
-          export MUEW_PHASER73_PNG="$PWD/out/MUEW-0.85.0-fx-phaser-spread.png"
-          export MUEW_CHORUS69_PNG="$PWD/out/MUEW-0.85.0-fx-chorus-spread.png"
-          export MUEW_DISTHQ_PNG="$PWD/out/MUEW-0.85.0-fx-dist-hq.png"
-          export MUEW_AUTOGAIN_PNG="$PWD/out/MUEW-0.85.0-fx-comp-autogain.png"
-          export MUEW_ENGINE_PNG="$PWD/out/MUEW-0.85.0-engine-hq.png"
-          export MUEW_OUTPUT58_PNG="$PWD/out/MUEW-0.85.0-output-saturation.png"
-          export MUEW_DETAIL61_PNG="$PWD/out/MUEW-0.85.0-output-detail.png"
-          export MUEW_SPEC_PNG="$PWD/out/MUEW-0.85.0-wavetable-spectral.png"
-          export MUEW_UNDO_PNG="$PWD/out/MUEW-0.85.0-wavetable-undo.png"
-          export MUEW_MORPH_PNG="$PWD/out/MUEW-0.85.0-wavetable-morph.png"
-          export MUEW_COMPARE_PNG="$PWD/out/MUEW-0.85.0-wavetable-compare.png"
-          export MUEW_LIVEMORPH_PNG="$PWD/out/MUEW-0.85.0-wavetable-live-morph.png"
-          export MUEW_MORPHMAIN_PNG="$PWD/out/MUEW-0.85.0-morph-main.png"
-          export MUEW_PAGE47_PNG="$PWD/out/MUEW-0.85.0-wavetable-page2.png"
-          export MUEW_PAGE47_FIRST_PNG="$PWD/out/MUEW-0.85.0-wavetable-page1.png"
-          export MUEW_REVERSE46_PNG="$PWD/out/MUEW-0.85.0-wavetable-reverse.png"
-          export MUEW_FEATHER45_PNG="$PWD/out/MUEW-0.85.0-wavetable-feather.png"
-          export MUEW_SPAN44_PNG="$PWD/out/MUEW-0.85.0-wavetable-span.png"
-          export MUEW_CLIP43_PNG="$PWD/out/MUEW-0.85.0-wavetable-profile.png"
-          export MUEW_TAPER42_PNG="$PWD/out/MUEW-0.85.0-wavetable-taper.png"
-          export MUEW_BRUSH41_PNG="$PWD/out/MUEW-0.85.0-wavetable-brush.png"
-          export MUEW_PARTIAL40_PNG="$PWD/out/MUEW-0.85.0-wavetable-partial-zoom.png"
-          export MUEW_PARTIAL39_PNG="$PWD/out/MUEW-0.85.0-wavetable-partial.png"
-          export MUEW_RANGE38_PNG="$PWD/out/MUEW-0.85.0-wavetable-range.png"
-          export MUEW_FRAME37_PNG="$PWD/out/MUEW-0.85.0-wavetable-frame-tools.png"
-          export MUEW_MORPHSNAP_PNG="$PWD/out/MUEW-0.85.0-wavetable-snap.png"
+          export MUEW_VIEW_PNG="$PWD/out/MUEW-0.86.0-au-editor-edited.png"
+          export MUEW_BROWSER_PNG="$PWD/out/MUEW-0.86.0-browser.png"
+          export MUEW_FXDETAIL_PREFIX="$PWD/out/MUEW-0.86.0-fx-"
+          export MUEW_FXLFO_MOD_PNG="$PWD/out/MUEW-0.86.0-lfo-modulators.png"
+          export MUEW_FXLFO1_PNG="$PWD/out/MUEW-0.86.0-lfo-flanger-range.png"
+          export MUEW_ROUTEAUX_PNG="$PWD/out/MUEW-0.86.0-route-aux.png"
+          export MUEW_ROUTECURVE_PNG="$PWD/out/MUEW-0.86.0-route-curve.png"
+          export MUEW_MSEG_PNG="$PWD/out/MUEW-0.86.0-mseg-editor.png"
+          export MUEW_LFO_PNG="$PWD/out/MUEW-0.86.0-lfo-editor.png"
+          export MUEW_WARP_PNG="$PWD/out/MUEW-0.86.0-warp-osc.png"
+          export MUEW_WT3D_PNG="$PWD/out/MUEW-0.86.0-wavetable-3d.png"
+          export MUEW_FILTER_PNG="$PWD/out/MUEW-0.86.0-filter-panel.png"
+          export MUEW_NOISE51_PNG="$PWD/out/MUEW-0.86.0-noise-character.png"
+          export MUEW_NOISE52_PNG="$PWD/out/MUEW-0.86.0-noise-color-matrix.png"
+          export MUEW_NOISE53_PNG="$PWD/out/MUEW-0.86.0-noise-stereo-width.png"
+          export MUEW_NOISE55_PNG="$PWD/out/MUEW-0.86.0-noise-burst.png"
+          export MUEW_NOISE57_PNG="$PWD/out/MUEW-0.86.0-noise-burst-shape.png"
+          export MUEW_NOISE60_PNG="$PWD/out/MUEW-0.86.0-noise-burst-sync.png"
+          export MUEW_NOISE63_PNG="$PWD/out/MUEW-0.86.0-noise-burst-velocity.png"
+          export MUEW_NOISE64_PNG="$PWD/out/MUEW-0.86.0-noise-burst-velocity-time.png"
+          export MUEW_NOISE65_PNG="$PWD/out/MUEW-0.86.0-noise-burst-key-time.png"
+          export MUEW_NOISE66_PNG="$PWD/out/MUEW-0.86.0-noise-burst-velocity-color.png"
+          export MUEW_MATRIX54_PNG="$PWD/out/MUEW-0.86.0-matrix-metering.png"
+          export MUEW_HOLD56_PNG="$PWD/out/MUEW-0.86.0-meter-hold.png"
+          export MUEW_RANGE59_PNG="$PWD/out/MUEW-0.86.0-matrix-range.png"
+          export MUEW_RESET85_BEFORE_PNG="$PWD/out/MUEW-0.86.0-matrix-reset-before.png"
+          export MUEW_RESET85_AFTER_PNG="$PWD/out/MUEW-0.86.0-matrix-reset-after.png"
+          export MUEW_RESET85_HIDDEN_BEFORE_PNG="$PWD/out/MUEW-0.86.0-matrix-reset-hidden-before.png"
+          export MUEW_RESET85_HIDDEN_AFTER_PNG="$PWD/out/MUEW-0.86.0-matrix-reset-hidden-after.png"
+          export MUEW_FILTER2_PNG="$PWD/out/MUEW-0.86.0-filter-routing.png"
+          export MUEW_VOICE_PNG="$PWD/out/MUEW-0.86.0-voice-panel.png"
+          export MUEW_PERF_PNG="$PWD/out/MUEW-0.86.0-performance.png"
+          export MUEW_CHANCE50_PNG="$PWD/out/MUEW-0.86.0-arp-chance.png"
+          export MUEW_OCTAVE49_PNG="$PWD/out/MUEW-0.86.0-arp-octave.png"
+          export MUEW_RATCHET48_PNG="$PWD/out/MUEW-0.86.0-arp-ratchet.png"
+          export MUEW_DORMANT77_PNG="$PWD/out/MUEW-0.86.0-arp-dormant-step.png"
+          export MUEW_ACTIVE77_PNG="$PWD/out/MUEW-0.86.0-arp-revealed-step.png"
+          export MUEW_PITCH76_PNG="$PWD/out/MUEW-0.86.0-arp-pitch-badges.png"
+          export MUEW_REST75_PNG="$PWD/out/MUEW-0.86.0-arp-rest-readonly.png"
+          export MUEW_TIE75_PNG="$PWD/out/MUEW-0.86.0-arp-tie-readonly.png"
+          export MUEW_ACTIONS74_PNG="$PWD/out/MUEW-0.86.0-arp-actions-feedback.png"
+          export MUEW_ACTIONS72_PNG="$PWD/out/MUEW-0.86.0-arp-pattern-actions.png"
+          export MUEW_PITCH71_PNG="$PWD/out/MUEW-0.86.0-arp-step-pitch.png"
+          export MUEW_GATE70_PNG="$PWD/out/MUEW-0.86.0-arp-step-gate.png"
+          export MUEW_ARP_PNG="$PWD/out/MUEW-0.86.0-arp.png"
+          export MUEW_HYPER_PNG="$PWD/out/MUEW-0.86.0-fx-hyper-page.png"
+          export MUEW_FILTERFX_PNG="$PWD/out/MUEW-0.86.0-fx-filter-page.png"
+          export MUEW_REVERB_PNG="$PWD/out/MUEW-0.86.0-fx-reverb-page.png"
+          export MUEW_COMP_PNG="$PWD/out/MUEW-0.86.0-fx-comp-page.png"
+          export MUEW_DUCK67_PNG="$PWD/out/MUEW-0.86.0-fx-delay-duck.png"
+          export MUEW_EQ68_PNG="$PWD/out/MUEW-0.86.0-fx-eq-mid.png"
+          export MUEW_PHASER73_PNG="$PWD/out/MUEW-0.86.0-fx-phaser-spread.png"
+          export MUEW_CHORUS69_PNG="$PWD/out/MUEW-0.86.0-fx-chorus-spread.png"
+          export MUEW_DISTHQ_PNG="$PWD/out/MUEW-0.86.0-fx-dist-hq.png"
+          export MUEW_AUTOGAIN_PNG="$PWD/out/MUEW-0.86.0-fx-comp-autogain.png"
+          export MUEW_ENGINE_PNG="$PWD/out/MUEW-0.86.0-engine-hq.png"
+          export MUEW_OUTPUT58_PNG="$PWD/out/MUEW-0.86.0-output-saturation.png"
+          export MUEW_DETAIL61_PNG="$PWD/out/MUEW-0.86.0-output-detail.png"
+          export MUEW_SPEC_PNG="$PWD/out/MUEW-0.86.0-wavetable-spectral.png"
+          export MUEW_UNDO_PNG="$PWD/out/MUEW-0.86.0-wavetable-undo.png"
+          export MUEW_MORPH_PNG="$PWD/out/MUEW-0.86.0-wavetable-morph.png"
+          export MUEW_COMPARE_PNG="$PWD/out/MUEW-0.86.0-wavetable-compare.png"
+          export MUEW_LIVEMORPH_PNG="$PWD/out/MUEW-0.86.0-wavetable-live-morph.png"
+          export MUEW_MORPHMAIN_PNG="$PWD/out/MUEW-0.86.0-morph-main.png"
+          export MUEW_PAGE47_PNG="$PWD/out/MUEW-0.86.0-wavetable-page2.png"
+          export MUEW_PAGE47_FIRST_PNG="$PWD/out/MUEW-0.86.0-wavetable-page1.png"
+          export MUEW_REVERSE46_PNG="$PWD/out/MUEW-0.86.0-wavetable-reverse.png"
+          export MUEW_FEATHER45_PNG="$PWD/out/MUEW-0.86.0-wavetable-feather.png"
+          export MUEW_SPAN44_PNG="$PWD/out/MUEW-0.86.0-wavetable-span.png"
+          export MUEW_CLIP43_PNG="$PWD/out/MUEW-0.86.0-wavetable-profile.png"
+          export MUEW_TAPER42_PNG="$PWD/out/MUEW-0.86.0-wavetable-taper.png"
+          export MUEW_BRUSH41_PNG="$PWD/out/MUEW-0.86.0-wavetable-brush.png"
+          export MUEW_PARTIAL40_PNG="$PWD/out/MUEW-0.86.0-wavetable-partial-zoom.png"
+          export MUEW_PARTIAL39_PNG="$PWD/out/MUEW-0.86.0-wavetable-partial.png"
+          export MUEW_RANGE38_PNG="$PWD/out/MUEW-0.86.0-wavetable-range.png"
+          export MUEW_FRAME37_PNG="$PWD/out/MUEW-0.86.0-wavetable-frame-tools.png"
+          export MUEW_MORPHSNAP_PNG="$PWD/out/MUEW-0.86.0-wavetable-snap.png"
           ./build/au_view_host > out/au_view_host.log 2>&1 &
           pid=$!
           sleep 7
-          screencapture -x out/MUEW-0.85.0-au-editor.png
+          screencapture -x out/MUEW-0.86.0-au-editor.png
           status=0
           wait $pid || status=$?
           cat out/au_view_host.log
           test "$status" -eq 0
-          test -s out/MUEW-0.85.0-au-editor.png
-          test -s out/MUEW-0.85.0-au-editor-edited.png
-          test -s out/MUEW-0.85.0-browser.png
-          test -s out/MUEW-0.85.0-wavetable-morph.png
-          test -s out/MUEW-0.85.0-wavetable-compare.png
-          test -s out/MUEW-0.85.0-wavetable-live-morph.png
-          test -s out/MUEW-0.85.0-morph-main.png
-          test -s out/MUEW-0.85.0-wavetable-snap.png
-          test -s out/MUEW-0.85.0-wavetable-frame-tools.png
-          test -s out/MUEW-0.85.0-wavetable-range.png
-          test -s out/MUEW-0.85.0-wavetable-partial.png
-          test -s out/MUEW-0.85.0-wavetable-partial-zoom.png
-          test -s out/MUEW-0.85.0-wavetable-brush.png
-          test -s out/MUEW-0.85.0-wavetable-taper.png
-          test -s out/MUEW-0.85.0-wavetable-profile.png
-          test -s out/MUEW-0.85.0-wavetable-span.png
-          test -s out/MUEW-0.85.0-wavetable-page1.png
-          test -s out/MUEW-0.85.0-wavetable-page2.png
-          test -s out/MUEW-0.85.0-wavetable-reverse.png
-          test -s out/MUEW-0.85.0-wavetable-feather.png
-          test -s out/MUEW-0.85.0-fx-delay.png
-          test -s out/MUEW-0.85.0-lfo-modulators.png
-          test -s out/MUEW-0.85.0-lfo-flanger-range.png
-          test -s out/MUEW-0.85.0-route-aux.png
-          test -s out/MUEW-0.85.0-route-curve.png
-          test -s out/MUEW-0.85.0-mseg-editor.png
-          test -s out/MUEW-0.85.0-lfo-editor.png
-          test -s out/MUEW-0.85.0-warp-osc.png
-          test -s out/MUEW-0.85.0-wavetable-3d.png
-          test -s out/MUEW-0.85.0-filter-panel.png
-          test -s out/MUEW-0.85.0-noise-character.png
-          test -s out/MUEW-0.85.0-noise-color-matrix.png
-          test -s out/MUEW-0.85.0-noise-stereo-width.png
-          test -s out/MUEW-0.85.0-noise-burst.png
-          test -s out/MUEW-0.85.0-noise-burst-shape.png
-          test -s out/MUEW-0.85.0-noise-burst-sync.png
-          test -s out/MUEW-0.85.0-noise-burst-velocity.png
-          test -s out/MUEW-0.85.0-noise-burst-velocity-time.png
-          test -s out/MUEW-0.85.0-noise-burst-key-time.png
-          test -s out/MUEW-0.85.0-noise-burst-velocity-color.png
-          test -s out/MUEW-0.85.0-matrix-metering.png
-          test -s out/MUEW-0.85.0-meter-hold.png
-          test -s out/MUEW-0.85.0-matrix-range.png
-          test -s out/MUEW-0.85.0-filter-routing.png
-          test -s out/MUEW-0.85.0-voice-panel.png
-          test -s out/MUEW-0.85.0-performance.png
-          test -s out/MUEW-0.85.0-arp-chance.png
-          test -s out/MUEW-0.85.0-arp-octave.png
-          test -s out/MUEW-0.85.0-arp-ratchet.png
-          test -s out/MUEW-0.85.0-arp-dormant-step.png
-          test -s out/MUEW-0.85.0-arp-revealed-step.png
-          test -s out/MUEW-0.85.0-arp-pitch-badges.png
-          test -s out/MUEW-0.85.0-arp-rest-readonly.png
-          test -s out/MUEW-0.85.0-arp-tie-readonly.png
-          test -s out/MUEW-0.85.0-arp-actions-feedback.png
-          test -s out/MUEW-0.85.0-arp-pattern-actions.png
-          test -s out/MUEW-0.85.0-arp-step-pitch.png
-          test -s out/MUEW-0.85.0-arp-step-gate.png
-          test -s out/MUEW-0.85.0-arp.png
-          test -s out/MUEW-0.85.0-fx-hyper-page.png
-          test -s out/MUEW-0.85.0-fx-filter-page.png
-          test -s out/MUEW-0.85.0-fx-reverb-page.png
-          test -s out/MUEW-0.85.0-fx-comp-page.png
-          test -s out/MUEW-0.85.0-fx-delay-duck.png
-          test -s out/MUEW-0.85.0-fx-eq-mid.png
-          test -s out/MUEW-0.85.0-fx-phaser-spread.png
-          test -s out/MUEW-0.85.0-fx-chorus-spread.png
-          test -s out/MUEW-0.85.0-fx-dist-hq.png
-          test -s out/MUEW-0.85.0-fx-comp-autogain.png
-          test -s out/MUEW-0.85.0-engine-hq.png
-          test -s out/MUEW-0.85.0-output-saturation.png
-          test -s out/MUEW-0.85.0-output-detail.png
-          test -s out/MUEW-0.85.0-wavetable-spectral.png
-          test -s out/MUEW-0.85.0-wavetable-undo.png
+          test -s out/MUEW-0.86.0-au-editor.png
+          test -s out/MUEW-0.86.0-au-editor-edited.png
+          test -s out/MUEW-0.86.0-browser.png
+          test -s out/MUEW-0.86.0-wavetable-morph.png
+          test -s out/MUEW-0.86.0-wavetable-compare.png
+          test -s out/MUEW-0.86.0-wavetable-live-morph.png
+          test -s out/MUEW-0.86.0-morph-main.png
+          test -s out/MUEW-0.86.0-wavetable-snap.png
+          test -s out/MUEW-0.86.0-wavetable-frame-tools.png
+          test -s out/MUEW-0.86.0-wavetable-range.png
+          test -s out/MUEW-0.86.0-wavetable-partial.png
+          test -s out/MUEW-0.86.0-wavetable-partial-zoom.png
+          test -s out/MUEW-0.86.0-wavetable-brush.png
+          test -s out/MUEW-0.86.0-wavetable-taper.png
+          test -s out/MUEW-0.86.0-wavetable-profile.png
+          test -s out/MUEW-0.86.0-wavetable-span.png
+          test -s out/MUEW-0.86.0-wavetable-page1.png
+          test -s out/MUEW-0.86.0-wavetable-page2.png
+          test -s out/MUEW-0.86.0-wavetable-reverse.png
+          test -s out/MUEW-0.86.0-wavetable-feather.png
+          test -s out/MUEW-0.86.0-fx-delay.png
+          test -s out/MUEW-0.86.0-lfo-modulators.png
+          test -s out/MUEW-0.86.0-lfo-flanger-range.png
+          test -s out/MUEW-0.86.0-route-aux.png
+          test -s out/MUEW-0.86.0-route-curve.png
+          test -s out/MUEW-0.86.0-mseg-editor.png
+          test -s out/MUEW-0.86.0-lfo-editor.png
+          test -s out/MUEW-0.86.0-warp-osc.png
+          test -s out/MUEW-0.86.0-wavetable-3d.png
+          test -s out/MUEW-0.86.0-filter-panel.png
+          test -s out/MUEW-0.86.0-noise-character.png
+          test -s out/MUEW-0.86.0-noise-color-matrix.png
+          test -s out/MUEW-0.86.0-noise-stereo-width.png
+          test -s out/MUEW-0.86.0-noise-burst.png
+          test -s out/MUEW-0.86.0-noise-burst-shape.png
+          test -s out/MUEW-0.86.0-noise-burst-sync.png
+          test -s out/MUEW-0.86.0-noise-burst-velocity.png
+          test -s out/MUEW-0.86.0-noise-burst-velocity-time.png
+          test -s out/MUEW-0.86.0-noise-burst-key-time.png
+          test -s out/MUEW-0.86.0-noise-burst-velocity-color.png
+          test -s out/MUEW-0.86.0-matrix-metering.png
+          test -s out/MUEW-0.86.0-meter-hold.png
+          test -s out/MUEW-0.86.0-matrix-range.png
+          test -s out/MUEW-0.86.0-filter-routing.png
+          test -s out/MUEW-0.86.0-voice-panel.png
+          test -s out/MUEW-0.86.0-performance.png
+          test -s out/MUEW-0.86.0-arp-chance.png
+          test -s out/MUEW-0.86.0-arp-octave.png
+          test -s out/MUEW-0.86.0-arp-ratchet.png
+          test -s out/MUEW-0.86.0-arp-dormant-step.png
+          test -s out/MUEW-0.86.0-arp-revealed-step.png
+          test -s out/MUEW-0.86.0-arp-pitch-badges.png
+          test -s out/MUEW-0.86.0-arp-rest-readonly.png
+          test -s out/MUEW-0.86.0-arp-tie-readonly.png
+          test -s out/MUEW-0.86.0-arp-actions-feedback.png
+          test -s out/MUEW-0.86.0-arp-pattern-actions.png
+          test -s out/MUEW-0.86.0-arp-step-pitch.png
+          test -s out/MUEW-0.86.0-arp-step-gate.png
+          test -s out/MUEW-0.86.0-arp.png
+          test -s out/MUEW-0.86.0-fx-hyper-page.png
+          test -s out/MUEW-0.86.0-fx-filter-page.png
+          test -s out/MUEW-0.86.0-fx-reverb-page.png
+          test -s out/MUEW-0.86.0-fx-comp-page.png
+          test -s out/MUEW-0.86.0-fx-delay-duck.png
+          test -s out/MUEW-0.86.0-fx-eq-mid.png
+          test -s out/MUEW-0.86.0-fx-phaser-spread.png
+          test -s out/MUEW-0.86.0-fx-chorus-spread.png
+          test -s out/MUEW-0.86.0-fx-dist-hq.png
+          test -s out/MUEW-0.86.0-fx-comp-autogain.png
+          test -s out/MUEW-0.86.0-engine-hq.png
+          test -s out/MUEW-0.86.0-output-saturation.png
+          test -s out/MUEW-0.86.0-output-detail.png
+          test -s out/MUEW-0.86.0-wavetable-spectral.png
+          test -s out/MUEW-0.86.0-wavetable-undo.png
       - name: Verify MUEW app and distribution
         run: |
           set -euo pipefail
           cd muew
           lipo out/MUEW.app/Contents/MacOS/MUEW -verify_arch arm64 x86_64
           codesign --verify --deep --strict out/MUEW.app
-          hdiutil verify out/MUEW-0.85.0.dmg
+          hdiutil verify out/MUEW-0.86.0.dmg
       - name: Capture MUEW designed UI proof
         run: |
           cd muew
           open out/MUEW.app
           sleep 8
-          screencapture -x out/MUEW-0.85.0-instrument.png
-          test -s out/MUEW-0.85.0-instrument.png
-          sips -g pixelWidth -g pixelHeight out/MUEW-0.85.0-instrument.png
-          test "$(sips -g pixelWidth out/MUEW-0.85.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
+          screencapture -x out/MUEW-0.86.0-instrument.png
+          test -s out/MUEW-0.86.0-instrument.png
+          sips -g pixelWidth -g pixelHeight out/MUEW-0.86.0-instrument.png
+          test "$(sips -g pixelWidth out/MUEW-0.86.0-instrument.png | awk '/pixelWidth/{print $2}')" -ge 1000
       - name: Upload MUEW release + visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.85.0-search-list-handoff
+          name: muew-0.86.0-search-list-handoff
           path: |
-            muew/out/MUEW-0.85.0.dmg
-            muew/out/MUEW-0.85.0-instrument.png
-            muew/out/MUEW-0.85.0-au-editor.png
-            muew/out/MUEW-0.85.0-au-editor-edited.png
-            muew/out/MUEW-0.85.0-browser.png
-            muew/out/MUEW-0.85.0-fx-*.png
-            muew/out/MUEW-0.85.0-lfo-*.png
-            muew/out/MUEW-0.85.0-warp-*.png
-            muew/out/MUEW-0.85.0-wavetable-*.png
-            muew/out/MUEW-0.85.0-route-*.png
-            muew/out/MUEW-0.85.0-mseg-*.png
-            muew/out/MUEW-0.85.0-morph-*.png
-            muew/out/MUEW-0.85.0-filter-*.png
-            muew/out/MUEW-0.85.0-noise-*.png
-            muew/out/MUEW-0.85.0-matrix-*.png
-            muew/out/MUEW-0.85.0-meter-*.png
-            muew/out/MUEW-0.85.0-voice-*.png
-            muew/out/MUEW-0.85.0-performance.png
-            muew/out/MUEW-0.85.0-arp*.png
-            muew/out/MUEW-0.85.0-engine-*.png
-            muew/out/MUEW-0.85.0-output-*.png
-            muew/out/MUEW-0.85.0-focus-*.png
+            muew/out/MUEW-0.86.0.dmg
+            muew/out/MUEW-0.86.0-instrument.png
+            muew/out/MUEW-0.86.0-au-editor.png
+            muew/out/MUEW-0.86.0-au-editor-edited.png
+            muew/out/MUEW-0.86.0-browser.png
+            muew/out/MUEW-0.86.0-fx-*.png
+            muew/out/MUEW-0.86.0-lfo-*.png
+            muew/out/MUEW-0.86.0-warp-*.png
+            muew/out/MUEW-0.86.0-wavetable-*.png
+            muew/out/MUEW-0.86.0-route-*.png
+            muew/out/MUEW-0.86.0-mseg-*.png
+            muew/out/MUEW-0.86.0-morph-*.png
+            muew/out/MUEW-0.86.0-filter-*.png
+            muew/out/MUEW-0.86.0-noise-*.png
+            muew/out/MUEW-0.86.0-matrix-*.png
+            muew/out/MUEW-0.86.0-meter-*.png
+            muew/out/MUEW-0.86.0-voice-*.png
+            muew/out/MUEW-0.86.0-performance.png
+            muew/out/MUEW-0.86.0-arp*.png
+            muew/out/MUEW-0.86.0-engine-*.png
+            muew/out/MUEW-0.86.0-output-*.png
+            muew/out/MUEW-0.86.0-focus-*.png
             muew/out/ax_ipc_client.log
             muew/out/ax_ipc_app.log
             muew/out/keyboard_focus_host.log
@@ -832,7 +832,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: muew-0.85.0-diagnostics
+          name: muew-0.86.0-diagnostics
           path: |
             muew/out/*.log
           if-no-files-found: ignore

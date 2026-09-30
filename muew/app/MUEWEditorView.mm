@@ -5225,6 +5225,27 @@ static int NoteForKey(unichar ch) {
         if (!browserListFocus) return;
         if (ch == NSDownArrowFunctionKey) [self moveBrowserCursor:1];
         else if (ch == NSUpArrowFunctionKey) [self moveBrowserCursor:-1];
+        else {
+            NSString* typed=e.characters;
+            // Do not turn navigation, controls or private-use function keys
+            // into text. AppKit owns the actual insertion and composition.
+            NSCharacterSet* forbidden=[NSCharacterSet controlCharacterSet];
+            BOOL printable=typed.length>0;
+            for (NSUInteger i=0;i<typed.length;++i) {
+                unichar c=[typed characterAtIndex:i];
+                if ([forbidden characterIsMember:c] || (c>=0xF700 && c<=0xF8FF)) printable=NO;
+            }
+            if (printable && !browserDialogActive && !browserDialogQueued) {
+                [self.window makeFirstResponder:search];
+                id editor=self.window.firstResponder;
+                if ([editor isKindOfClass:[NSTextView class]] && [(NSTextView*)editor delegate]==search) {
+                    [(NSTextView*)editor setSelectedRange:NSMakeRange([(NSTextView*)editor string].length,0)];
+                    browserSearchSelection=NSMakeRange(NSNotFound,0);
+                    [(NSTextView*)editor keyDown:e];
+                }
+                [self setNeedsDisplay:YES];
+            }
+        }
         return;
     }
     if (outputDetailOpen || wtEdit >= 0 || burstDetail || msegEdit >= 0 || fxDetail >= 0) return;
