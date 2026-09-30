@@ -4231,6 +4231,72 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/drainondamage.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.76.0 typed party damage: the party damage path takes an optional
+    // type and routes each character through the typed applyDamage.
+    ptProof: do {
+        let ptOrigChars = model.characters
+        let ptOrigLog = model.tableLog
+        guard model.characters.count >= 2 else { break ptProof }
+        let ptAIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
+        let ptBIdx = model.characters.firstIndex(where: { $0.id != model.selectedID }) ?? 1
+        let ptAName = model.characters[ptAIdx].name
+        let ptBName = model.characters[ptBIdx].name
+        func ptSeed(aResist: Set<DamageType> = [], bImmune: Set<DamageType> = [], aDrain: Set<DamageType> = []) {
+            for i in [ptAIdx, ptBIdx] {
+                model.characters[i].maxHP = 32; model.characters[i].currentHP = 30; model.characters[i].tempHP = 0
+                model.characters[i].maxHPReduction = 0
+                model.characters[i].resistances = []; model.characters[i].immunities = []; model.characters[i].vulnerabilities = []
+                model.characters[i].drainDamageTypes = []
+            }
+            model.characters[ptAIdx].resistances = aResist
+            model.characters[ptAIdx].drainDamageTypes = aDrain
+            model.characters[ptBIdx].immunities = bImmune
+        }
+        var ptLines = ["Typed party damage (3.76.0)",
+                       "the party damage button takes an optional type: resist / immune / vuln and drain tags apply per character; a typed hit writes one log line",
+                       "deterministic by construction: two roster characters forced to max 32, current 30, no temp HP; defenses set per step"]
+        ptSeed(aResist: [.fire])
+        var ptLogN = model.tableLog.count
+        let ptNamed = model.adjustPartyHP(amount: 10, damage: true, type: .fire)
+        ptLines.append("resistance halves for the resistant character only \(model.characters[ptAIdx].currentHP == 25 && model.characters[ptBIdx].currentHP == 20)")
+        ptLines.append("both changed characters are returned \(Set(ptNamed) == Set([ptAName, ptBName]))")
+        ptLines.append("one log line names who took what \(model.tableLog.count == ptLogN + 1 && model.tableLog.last?.title == "Party damage" && model.tableLog.last?.text == "10 fire: \(ptAName) -5, \(ptBName) -10")")
+        // Immunity.
+        ptSeed(bImmune: [.poison])
+        ptLogN = model.tableLog.count
+        let ptImmuneNamed = model.adjustPartyHP(amount: 10, damage: true, type: .poison)
+        ptLines.append("an immune character takes nothing and is named immune \(model.characters[ptBIdx].currentHP == 30 && model.tableLog.last?.text == "10 poison: \(ptAName) -10, \(ptBName) immune")")
+        ptLines.append("an immune character is not returned as adjusted \(ptImmuneNamed == [ptAName])")
+        // Drain tag rides the typed path.
+        ptSeed(aDrain: [.necrotic])
+        model.adjustPartyHP(amount: 8, damage: true, type: .necrotic)
+        ptLines.append("a drain-tagged character also loses max HP \(model.characters[ptAIdx].maxHPReduction == 8 && model.characters[ptBIdx].maxHPReduction == 0)")
+        ptLines.append("the log line carries the drain \(model.tableLog.last?.text == "8 necrotic: \(ptAName) -8 (max -8), \(ptBName) -8")")
+        // Untyped: legacy behavior, silent.
+        ptSeed(aResist: [.fire], aDrain: [.necrotic])
+        ptLogN = model.tableLog.count
+        model.adjustPartyHP(amount: 10, damage: true)
+        ptLines.append("untyped party damage ignores defenses and drain tags \(model.characters[ptAIdx].currentHP == 20 && model.characters[ptBIdx].currentHP == 20 && model.characters[ptAIdx].maxHPReduction == 0)")
+        ptLines.append("untyped party damage writes no log line, as before \(model.tableLog.count == ptLogN)")
+        // Healing ignores the type and logs nothing.
+        ptLogN = model.tableLog.count
+        model.adjustPartyHP(amount: 5, damage: false, type: .fire)
+        ptLines.append("healing ignores the type and writes no log line \(model.characters[ptAIdx].currentHP == 25 && model.tableLog.count == ptLogN)")
+        // Everyone immune: no log at all? (immune parts still log) - documented.
+        ptSeed(bImmune: [.cold])
+        model.characters[ptAIdx].immunities = [.cold]
+        ptLogN = model.tableLog.count
+        let ptAllImmune = model.adjustPartyHP(amount: 9, damage: true, type: .cold)
+        ptLines.append("all-immune hit changes nobody yet still logs who was immune \(ptAllImmune.isEmpty && model.tableLog.count == ptLogN + 1 && model.tableLog.last?.text == "9 cold: \(ptAName) immune, \(ptBName) immune")")
+        model.characters = ptOrigChars
+        for ch in ptOrigChars { try? model.store.save(ch) }
+        model.tableLog = ptOrigLog
+        model.tableLogStore.save(ptOrigLog)
+        ptLines.append("hygiene: roster and table log restored \(model.characters == ptOrigChars && model.tableLog.count == ptOrigLog.count)")
+        try? ptLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/partytyped.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

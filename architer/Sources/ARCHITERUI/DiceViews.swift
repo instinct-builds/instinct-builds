@@ -1227,6 +1227,7 @@ public struct GroupCheckSectionView: View {
     @State private var rollKind = 0 // 0 = skill check, 1 = saving throw (3.31.0)
     /// 3.47.0: party damage/heal amount draft; display-only.
     @State private var partyAmount = ""
+    @State private var partyDamageType: DamageType?
 
     /// The party HP amount (3.47.0); 0 when the draft is blank or not a
     /// number, which disables both buttons (same discipline as barTargetDC).
@@ -1318,7 +1319,14 @@ public struct GroupCheckSectionView: View {
                 TextField("Amount", text: $partyAmount)
                     .textFieldStyle(InsetFieldStyle())
                     .frame(width: 72) // 3.48.0: 56 clipped the placeholder
-                Button("Damage (party)") { model.adjustPartyHP(amount: partyAmountValue, damage: true) }
+                Picker("Type", selection: $partyDamageType) {
+                    Text("Untyped").tag(DamageType?.none)
+                    ForEach(DamageType.allCases, id: \.self) { t in Text(t.displayName).tag(DamageType?.some(t)) }
+                }
+                .labelsHidden()
+                .frame(width: 100)
+                .help("Optional damage type: each character's resistance, immunity, vulnerability, and max-HP drain tags apply")
+                Button("Damage (party)") { model.adjustPartyHP(amount: partyAmountValue, damage: true, type: partyDamageType) }
                     .controlSize(.small)
                     .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
                     .help("Damage all \(model.characters.count) roster characters - temp HP absorbs, floor at 0, undo restores")

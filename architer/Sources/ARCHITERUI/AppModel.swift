@@ -1552,12 +1552,27 @@ public final class AppModel: ObservableObject {
     /// 0-HP floor, the max-HP cap, and death-save resets ride the existing
     /// per-character adjust. Concentration saves are NOT rolled here - the
     /// DM resolves those per character.
-    public func adjustPartyHP(amount: Int, damage: Bool) -> [String] {
+    /// 3.76.0: an optional damage type routes each character through the
+    /// typed applyDamage (resist / immune / vuln, drain tags); a typed
+    /// hit writes one "Party damage" log line naming who took what.
+    /// Untyped keeps the old silent behavior exactly.
+    public func adjustPartyHP(amount: Int, damage: Bool, type: DamageType? = nil) -> [String] {
         guard amount > 0 else { return [] }
         var adjusted: [String] = []
+        var logParts: [String] = []
         for idx in characters.indices {
             var c = characters[idx]
-            if damage { c.applyDamage(amount) } else { c.applyHealing(amount) }
+            let before = characters[idx]
+            if damage { c.applyDamage(amount, type: type) } else { c.applyHealing(amount) }
+            if damage, let type {
+                if before.adjustedDamage(amount, type: type) == 0 {
+                    logParts.append("\(c.name) immune")
+                } else if c != before {
+                    var part = "\(c.name) -\(before.currentHP - c.currentHP)"
+                    if c.maxHPReduction > before.maxHPReduction { part += " (max -\(c.maxHPReduction - before.maxHPReduction))" }
+                    logParts.append(part)
+                }
+            }
             guard c != characters[idx] else { continue }
             var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
             stack.push(c)
@@ -1565,6 +1580,11 @@ public final class AppModel: ObservableObject {
             characters[idx] = c
             try? store.save(c)
             adjusted.append(c.name)
+        }
+        if damage, let type, !logParts.isEmpty {
+            tableLog.append(TableLogEntry(title: "Party damage",
+                                          text: "\(amount) \(type.rawValue): \(logParts.joined(separator: ", "))"))
+            tableLogStore.save(tableLog)
         }
         return adjusted
     }
