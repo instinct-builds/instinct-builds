@@ -16,3 +16,9 @@ The editor is one shared AppKit NSView (`app/MUEWEditorView.mm`) in both the sta
 ## Proof boundary
 
 The macOS host harness can query the AppKit accessibility objects and call a row's press action through the same process. This tests tree data and action invariants, not actual VoiceOver speech, remote AXUIElement IPC, assistive-technology permission prompts, or use inside Ableton. A full screen-reader pass requires manual VoiceOver in standalone and at least one AU host, including traversal of every control and dialog and focus restoration. Keep those limitations visible in release notes. Apple guidance on custom drawn controls: https://developer.apple.com/library/archive/documentation/Accessibility/Conceptual/AccessibilityMacOSX/ImplementingAccessibilityforCustomControls.html and https://developer.apple.com/documentation/appkit/nsaccessibilityelement .
+
+## 0.84.0 loaded-sound actions
+
+Bank, Type/Favorites, sort and Close have shared mouse/AX paths and retain their identities across refiltering. Loaded-sound Favorite, five rating buttons, Save, Import and Export now follow that pattern too. Their labels explicitly name the loaded sound, not the proposed row. Detail handles survive refilter and sort, but are replaced on a sound load or changed host recall; retained handles refuse to target the replacement. Closing also invalidates them. Row rating cells and character-tag filters remain mouse-only.
+
+File presses open the existing native AppKit modal dialogs asynchronously so a remote AX call does not block the IPC reply inside a modal loop. The queued launch rechecks its captured epoch. While a dialog is active, AX browser actions cannot load or edit another sound. Cancellation returns keyboard focus to the editor's result list without writing a preset. Tests exercise actual dialog launch/cancel, not a substitute mock. They do not claim full dialog completion, screen-reader focus return/speech or traversal inside a real AU host.

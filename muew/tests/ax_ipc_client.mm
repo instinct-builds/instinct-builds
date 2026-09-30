@@ -34,6 +34,19 @@ static AXUIElementRef Find(AXUIElementRef root, NSString* role, NSString* label,
     }
     return nullptr;
 }
+static AXUIElementRef FindPrefix(AXUIElementRef root, NSString* prefix, int depth=0) {
+    if (depth>10) return nullptr;
+    if ([String(root,kAXDescriptionAttribute) hasPrefix:prefix] || [String(root,kAXTitleAttribute) hasPrefix:prefix])
+        return (AXUIElementRef)CFRetain(root);
+    for (id obj in Children(root)) {
+        AXUIElementRef found=FindPrefix((__bridge AXUIElementRef)obj,prefix,depth+1);
+        if (found) return found;
+    }
+    return nullptr;
+}
+static void Pump(double seconds) {
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
+}
 static void Log(const char* what, AXError code) { printf("AX IPC %s: %d\n",what,(int)code); fflush(stdout); }
 static void Observe(AXObserverRef, AXUIElementRef, CFStringRef notification, void* context) {
     NSMutableDictionary* counts=(__bridge NSMutableDictionary*)context;
@@ -164,6 +177,38 @@ int main(int argc,const char** argv) {
                    cursor && proposedFound &&
                    layout>0 && selection>0 && value>0;
             }
+        }
+    }
+    if (ok) {
+        AXUIElementRef favorite=FindPrefix(window,@"Favorite loaded preset:");
+        AXUIElementRef rating=FindPrefix(window,@"Rate loaded preset:");
+        NSString* before=favorite ? String(favorite,kAXDescriptionAttribute) : @"";
+        AXError f=favorite ? AXUIElementPerformAction(favorite,kAXPressAction) : kAXErrorFailure;
+        AXError r=rating ? AXUIElementPerformAction(rating,kAXPressAction) : kAXErrorFailure;
+        NSString* after=favorite ? String(favorite,kAXDescriptionAttribute) : @"";
+        printf("AX IPC loaded_actions favorite=%d rating=%d before=%s after=%s rating_state=%s\n",
+            (int)f,(int)r,before.UTF8String,after.UTF8String,rating ? String(rating,kAXDescriptionAttribute).UTF8String : "missing");
+        ok=ok && f==kAXErrorSuccess && r==kAXErrorSuccess && ![before isEqualToString:after] &&
+            [String(rating,kAXDescriptionAttribute) containsString:@"current rating 1"];
+        // A deliberate load replaces detail controls; old proxies must not retarget.
+        NSArray* rows=Children(list);
+        AXError load=rows.count>1 ? AXUIElementPerformAction((__bridge AXUIElementRef)rows[1],kAXPressAction) : kAXErrorFailure;
+        AXError staleFavorite=favorite ? AXUIElementPerformAction(favorite,kAXPressAction) : kAXErrorSuccess;
+        AXError staleRating=rating ? AXUIElementPerformAction(rating,kAXPressAction) : kAXErrorSuccess;
+        printf("AX IPC detail_stale load=%d favorite=%d rating=%d\n",(int)load,(int)staleFavorite,(int)staleRating);
+        ok=ok && load==kAXErrorSuccess && staleFavorite!=kAXErrorSuccess && staleRating!=kAXErrorSuccess;
+        if (favorite) CFRelease(favorite); if (rating) CFRelease(rating);
+        for (NSString* prefix in @[@"Save preset,",@"Import preset,",@"Export preset,"]) {
+            AXUIElementRef button=FindPrefix(window,prefix);
+            AXError launch=button ? AXUIElementPerformAction(button,kAXPressAction) : kAXErrorFailure;
+            AXUIElementRef cancel=nullptr;
+            for (int n=0;n<60 && !cancel;++n) { Pump(0.05); cancel=Find(app,@"AXButton",@"Cancel"); }
+            AXError canceled=cancel ? AXUIElementPerformAction(cancel,kAXPressAction) : kAXErrorFailure;
+            Pump(0.2);
+            AXUIElementRef returned=Find(window,@"AXList",@"Preset results");
+            printf("AX IPC dialog=%s launch=%d native_cancel=%d returned=%d\n",prefix.UTF8String,(int)launch,(int)canceled,!!returned);
+            ok=ok && launch==kAXErrorSuccess && canceled==kAXErrorSuccess && returned;
+            if (returned) CFRelease(returned); if (cancel) CFRelease(cancel); if (button) CFRelease(button);
         }
     }
     if (ok && bank && type && sort && close) {

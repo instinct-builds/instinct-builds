@@ -700,7 +700,7 @@ macOS Accessibility/TCC refusal is logged as blocked, not rebranded as a pass;
 see `docs/voiceover-manual-checklist.md` for the manual VoiceOver/AU-host pass.
 The in-process 0.81.0 evidence remains the limit until IPC actually succeeds.
 
-## 0.83.0 Accessible browser navigation
+## 0.84.0 Accessible browser navigation
 
 The native Search and virtual result list are joined by stable virtual Bank,
 Type, and sort controls, plus Close. Their press actions use the same browser

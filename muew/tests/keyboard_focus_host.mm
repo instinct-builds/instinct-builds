@@ -32,7 +32,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.83.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.84.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -95,7 +95,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     // Query AppKit's exposed tree as a client: the native Search survives,
     // while rows represent immutable slugs. Reading/traversal is inert.
     NSArray* ax=[v accessibilityChildren];
-    Check(ax.count==20 && ax[0]==v->search && [[ax[18] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
+    Check(ax.count==29 && ax[0]==v->search && [[ax[18] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
           [[ax[18] accessibilityLabel] isEqualToString:@"Preset results"],
           "accessibility tree exposes native Search, navigation and named results list");
     id list=ax.count>18 ? ax[18] : nil;
@@ -106,6 +106,45 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
           [[typeLead accessibilityLabel] containsString:@"Type: Lead"] &&
           [[sortName accessibilityLabel] containsString:@"Sort: Name"],
           "accessible navigation controls have exact names and stable order");
+    id favorite=ax[24], rating=ax[21];
+    const auto savedFavorites=v->favorites;
+    const auto savedRatings=v->ratings;
+    const int sound=v->currentIndex, patches=host->patches;
+    const std::string loadedSlug=muew::ui::library().slug(sound);
+    [v moveBrowserCursor:1];
+    Check([favorite accessibilityPerformPress] && v->favorites.count(loadedSlug)!=savedFavorites.count(loadedSlug) &&
+          host->patches==patches && v->currentIndex==sound,
+          "favorite targets loaded sound, not proposed row, without loading");
+    Check([rating accessibilityPerformPress] && muew::ui::ratingOf(v->ratings,loadedSlug)==(muew::ui::ratingOf(savedRatings,loadedSlug)==3 ? 0 : 3) &&
+          favorite==[v accessibilityChildren][24],"rating shares loaded-sound path and survives refilter");
+    Snapshot(v,"accessible-detail");
+    [v loadPresetIndex:(sound+1)%muew::ui::library().count()];
+    Check(![favorite accessibilityPerformPress] && ![rating accessibilityPerformPress],
+          "retained loaded-sound controls refuse to target newly loaded preset");
+    [v loadPresetIndex:sound];
+    v->favorites=savedFavorites; v->ratings=savedRatings; [v saveFavorites]; [v saveRatings]; [v refilter];
+    for (int index=25;index<=27;++index) {
+        const int before=host->patches;
+        __block BOOL modalSeen=NO;
+        __block BOOL guarded=NO;
+        NSTimer* timer=[NSTimer timerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* t) {
+            if (!NSApp.modalWindow) return;
+            modalSeen=YES;
+            guarded=![v performBrowserLoadedRating:1] && ![v performBrowserInfoAction:0];
+            [t invalidate];
+            if ([NSApp.modalWindow respondsToSelector:@selector(cancel:)]) [(id)NSApp.modalWindow cancel:nil];
+            else { NSWindow* modal=NSApp.modalWindow; [NSApp abortModal]; [modal orderOut:nil]; }
+        }];
+        [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSModalPanelRunLoopMode];
+        [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
+        Check([[v accessibilityChildren][index] accessibilityPerformPress],"accessible file action accepts launch");
+        NSDate* deadline=[NSDate dateWithTimeIntervalSinceNow:5];
+        while (!modalSeen && deadline.timeIntervalSinceNow>0)
+            [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+        [timer invalidate];
+        Check(modalSeen && guarded && !v->browserDialogActive && w.firstResponder==v && host->patches==before &&
+              v->currentIndex==sound,"native file dialog cancels without edit and restores editor focus");
+    }
     id retainedBank=bankFactory;
     [bankFactory accessibilityPerformPress];
     Check(v->filter.bank==muew::ui::BankFactory && retainedBank==[v accessibilityChildren][2] &&

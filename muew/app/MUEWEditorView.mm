@@ -6,6 +6,7 @@
 #include "frame_tools.h"
 #include <cmath>
 #include <complex>
+#import <dispatch/dispatch.h>
 
 using namespace muew;
 
@@ -124,7 +125,7 @@ static int SortForColumn(int c);
         filterPage = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWFilterPage"], 0, 2);
         NSArray* favs = [MUEWDefaults() arrayForKey:@"MUEWFavorites"];
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
-        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXControls = nil; browserAXControlEpoch = 0; browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
+        browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXControls = nil; browserAXControlEpoch = 0; browserAXDetailControls=nil; browserAXDetailEpoch=0; browserDialogActive=false; browserDialogQueued=false; browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
@@ -165,10 +166,24 @@ static int SortForColumn(int c);
         add(3,0,[self browserClose]);
         browserAXControls=[controls copy];
     }
+    if (!browserAXDetailControls) {
+        NSMutableArray* controls=[NSMutableArray array];
+        auto add = [&](int kind,int index,NSRect frame) {
+            MUEWBrowserAXControl* control=[MUEWBrowserAXControl accessibilityElementWithRole:NSAccessibilityButtonRole
+                frame:NSZeroRect label:@"" parent:self];
+            control.editor=self; control.kind=kind; control.index=index; control.epoch=browserAXDetailEpoch;
+            control.accessibilityFrameInParentSpace=frame;
+            [controls addObject:control];
+        };
+        for (int i=0;i<5;++i) add(5,i+1,[self infoStar:i]);
+        for (int i=0;i<4;++i) add(4,i,[self infoButton:i]);
+        browserAXDetailControls=[controls copy];
+    }
     NSMutableArray* children=[NSMutableArray arrayWithObject:search];
     // Navigation precedes results. Close is last so it cannot interrupt rows.
     [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,17)]];
     [children addObject:browserAXList];
+    [children addObjectsFromArray:browserAXDetailControls];
     [children addObject:browserAXControls.lastObject];
     return children;
 }
@@ -187,10 +202,34 @@ static int SortForColumn(int c);
         static NSArray* names=@[@"Bank",@"Name",@"Type",@"Author",@"Rating"];
         return [NSString stringWithFormat:@"Sort: %@, %@",names[index],sortMode==SortForColumn(index) ? @"selected" : @"not selected"];
     }
+    if (kind==4) {
+        static NSArray* names=@[@"Favorite",@"Save preset",@"Import preset",@"Export preset"];
+        if (index==0) return [NSString stringWithFormat:@"Favorite loaded preset: %@, %@",S(current.info.name),
+            currentIndex>=0 && favorites.count(ui::library().slug(currentIndex)) ? @"selected" : @"not selected"];
+        return [NSString stringWithFormat:@"%@, loaded sound: %@",names[index],S(current.info.name)];
+    }
+    if (kind==5) return [NSString stringWithFormat:@"Rate loaded preset: %@, %d stars, current rating %d",
+        S(current.info.name),index,currentIndex>=0 ? ui::ratingOf(ratings,ui::library().slug(currentIndex)) : 0];
     return @"Close preset browser";
 }
 - (BOOL)activateBrowserAXControl:(int)kind index:(int)index epoch:(NSUInteger)epoch {
-    if (!browserOpen || epoch != browserAXControlEpoch) return NO;
+    if (!browserOpen || browserDialogActive || browserDialogQueued) return NO;
+    if (kind==4 || kind==5) {
+        if (epoch!=browserAXDetailEpoch) return NO;
+        if (kind==5) return [self performBrowserLoadedRating:index];
+        if (index==0) return [self performBrowserInfoAction:index];
+        if (index<1 || index>3) return NO;
+        // Do not block the remote AX request inside an AppKit modal loop.
+        // Recheck the captured loaded-sound epoch before opening the dialog.
+        browserDialogQueued=true;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self->browserDialogQueued=false;
+            if (self->browserOpen && !self->browserDialogActive && epoch==self->browserAXDetailEpoch)
+                [self performBrowserInfoAction:index];
+        });
+        return YES;
+    }
+    if (epoch != browserAXControlEpoch) return NO;
     if (kind==0 && index>=0 && index<4) { [self chooseBrowserBank:index]; return YES; }
     if (kind==1 && index>=0 && index<9) { [self chooseBrowserType:index]; return YES; }
     if (kind==2 && (index==0 || index==1 || index==2 || index==4)) { [self chooseBrowserSort:index]; return YES; }
@@ -235,7 +274,7 @@ static int SortForColumn(int c);
     return browserAXRows;
 }
 - (BOOL)accessibilityActivateBrowserSlug:(NSString*)slug generation:(NSUInteger)generation {
-    if (!browserOpen || !slug || !host || generation != browserAXGeneration) return NO;
+    if (!browserOpen || browserDialogActive || browserDialogQueued || !slug || !host || generation != browserAXGeneration) return NO;
     const std::string target(slug.UTF8String ?: "");
     for (int idx : visible) {
         if (ui::library().slug(idx) != target) continue;
@@ -300,6 +339,7 @@ static int SortForColumn(int c);
         if (!stillVisible) browserCursorSlug.clear();
     }
     if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityLayoutChangedNotification);
+    for (id control in browserAXDetailControls) NSAccessibilityPostNotification(control,NSAccessibilityValueChangedNotification);
     [MUEWDefaults() setInteger:sortMode forKey:@"MUEWSort"];
     int rows = [self listRows];
     int maxScroll = std::max(0, (int)visible.size() - rows);
@@ -353,11 +393,13 @@ static int SortForColumn(int c);
         routeChanged = a.source != b.source || a.dest != b.dest || a.amount != b.amount || a.curve != b.curve || a.aux != b.aux;
     }
     if (routeChanged) { routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f); }
+    if (index!=currentIndex || !(p==current)) { ++browserAXDetailEpoch; browserAXDetailControls=nil; }
     current = p;
     currentIndex = index;
     edited = wasEdited;
     [self revealCurrent];
     if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityValueChangedNotification);
+    if (browserOpen) NSAccessibilityPostNotification(self,NSAccessibilityLayoutChangedNotification);
     [self setNeedsDisplay:YES];
 }
 
@@ -373,6 +415,7 @@ static int SortForColumn(int c);
 - (void)loadPresetIndex:(int)i {
     const ui::Library& lib = ui::library();
     if (i < 0 || i >= lib.count()) return;
+    ++browserAXDetailEpoch; browserAXDetailControls=nil;
     currentIndex = i;
     current = lib.at(i);
     routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0;
@@ -388,6 +431,7 @@ static int SortForColumn(int c);
     [self applySound];
     [self revealCurrent];
     if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityValueChangedNotification);
+    if (browserOpen) NSAccessibilityPostNotification(self,NSAccessibilityLayoutChangedNotification);
     [self setNeedsDisplay:YES];
 }
 
@@ -4463,6 +4507,7 @@ static int SortForColumn(int c) {
     [self releaseHeldKeyboardNotes];
     browserOpen = open;
     ++browserAXControlEpoch;
+    ++browserAXDetailEpoch; browserAXDetailControls=nil;
     browserAXControls = nil;
     browserCursorSlug.clear();
     browserSearchSelection = NSMakeRange(NSNotFound,0);
@@ -4714,6 +4759,29 @@ static int SortForColumn(int c) {
     [self saveRatings]; [self refilter];
 }
 
+- (BOOL)performBrowserLoadedRating:(int)n {
+    if (browserDialogActive || browserDialogQueued || currentIndex<0 || n<1 || n>5) return NO;
+    [self rate:currentIndex stars:n];
+    return YES;
+}
+- (BOOL)performBrowserInfoAction:(int)i {
+    if (browserDialogActive || browserDialogQueued || i<0 || i>3) return NO;
+    if (i==0) {
+        if (currentIndex<0) return NO;
+        [self toggleFavorite:currentIndex];
+        return YES;
+    }
+    browserDialogActive=true;
+    [self releaseHeldKeyboardNotes];
+    if (i==1) [self promptSave];
+    else if (i==2) [self promptImport];
+    else [self promptExport];
+    browserDialogActive=false;
+    [self.window makeFirstResponder:self];
+    browserListFocus=browserOpen;
+    NSAccessibilityPostNotification(self,NSAccessibilityLayoutChangedNotification);
+    return YES;
+}
 - (void)chooseBrowserBank:(int)i {
     filter.bank=i-1;
     if (filter.bank>=ui::BankUser) user::load(UserPresetDir(),ui::library());
@@ -4747,13 +4815,10 @@ static int SortForColumn(int c) {
     for (int c = 0; c < 5; ++c)
         if (c != 3 && NSPointInRect(p, NSInsetRect([self tableHeader:c], -2, -3))) { [self chooseBrowserSort:c]; return; }
     for (int s = 0; s < 5; ++s)
-        if (NSPointInRect(p, [self infoStar:s])) { [self rate:currentIndex stars:s + 1]; return; }
+        if (NSPointInRect(p, [self infoStar:s])) { [self performBrowserLoadedRating:s + 1]; return; }
     for (int i = 0; i < 4; ++i)
         if (NSPointInRect(p, [self infoButton:i])) {
-            if (i == 0) [self toggleFavorite:currentIndex];
-            else if (i == 1) [self promptSave];
-            else if (i == 2) [self promptImport];
-            else [self promptExport];
+            [self performBrowserInfoAction:i];
             return;
         }
     int rows = [self tableRows];
