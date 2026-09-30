@@ -4382,7 +4382,9 @@ func run(model: AppModel, character: Character, outDir: String) {
         rmLines.append("targeted restore touches only the subset \(rmTarget == [rmBName] && model.characters[0].maxHPReduction == 6 && model.characters[1].maxHPReduction == 2)")
         // Undo restores the drain in one snapshot (selected character A).
         rmSeed(aDrain: 6, bDrain: 0)
-        model.selected?.wrappedValue = model.characters[0] // baseline the undo stack
+        // Baseline the undo stack through two REAL binding writes (a write of an
+        // equal value is ignored, which would leave the stack baseline stale).
+        if var t = model.selected?.wrappedValue { t.currentHP = 9; model.selected?.wrappedValue = t; t.currentHP = 10; model.selected?.wrappedValue = t }
         model.restorePartyMaxHP(amount: 4)
         rmLines.append("restore applied to the selected character \(model.characters[0].maxHPReduction == 2)")
         model.undo()
