@@ -4127,6 +4127,110 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/maxhpdrain.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.75.0 drain-on-damage: a drain-tagged type lowers the max HP by the
+    // HP the hit actually took (after defenses and temp HP, never past 0)
+    // through the same apply path as any damage roll.
+    ddProof: do {
+        let ddOrigChars = model.characters
+        let ddOrigLog = model.tableLog
+        let ddIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
+        let ddName = model.characters[ddIdx].name
+        func ddSeed(cur: Int = 24, temp: Int = 0, resist: Set<DamageType> = [], immune: Set<DamageType> = [], tags: Set<DamageType> = [.necrotic]) {
+            var c = model.characters[ddIdx]
+            c.maxHP = 32; c.currentHP = cur; c.tempHP = temp; c.maxHPReduction = 0
+            c.resistances = resist; c.immunities = immune; c.vulnerabilities = []
+            c.drainDamageTypes = tags
+            model.selected?.wrappedValue = c
+        }
+        func ddRoll(_ total: Int, _ type: String?) -> RollResult {
+            RollResult(expression: "1d1+\(total - 1)", dice: [DieResult(sides: 1, value: 1, kept: true)], modifier: total - 1, total: total,
+                       alternateTotal: nil, label: "drain proof",
+                       reroll: type.map { RerollSpec(kind: .outgoingDamage, damageType: $0) })
+        }
+        var ddLines = ["Drain on damage (3.75.0)",
+                       "a drain-tagged damage type also lowers max HP by the HP the hit actually took",
+                       "deterministic by construction: crafted rolls with fixed totals; fixture max 32, current 24, no temp HP, defenses cleared unless a step sets them"]
+        // Untagged type: no drain.
+        ddSeed()
+        model.applyRollToHP(ddRoll(4, "fire"), healing: false)
+        var dd = model.characters[ddIdx]
+        ddLines.append("an untagged type never drains \(dd.currentHP == 20 && dd.maxHPReduction == 0)")
+        // Tagged: drains by damage dealt, one log line.
+        ddSeed()
+        let ddLogBefore = model.tableLog.count
+        model.applyRollToHP(ddRoll(8, "necrotic"), healing: false)
+        dd = model.characters[ddIdx]
+        ddLines.append("tagged hit drains by the damage dealt (8) \(dd.currentHP == 16 && dd.maxHPReduction == 8 && dd.effectiveMaxHP == 24)")
+        ddLines.append("one log line names the drain \(model.tableLog.count == ddLogBefore + 1 && model.tableLog.last?.title == "Max HP drain" && model.tableLog.last?.text == "\(ddName) -8 max HP (necrotic, max now 24)")")
+        ddLines.append("edit menu still names the HP apply \(model.undoMenuLabel.hasPrefix("Undo"))")
+        model.undo()
+        dd = model.characters[ddIdx]
+        ddLines.append("undo restores HP and drain in one snapshot \(dd.currentHP == 24 && dd.maxHPReduction == 0)")
+        model.redo()
+        dd = model.characters[ddIdx]
+        ddLines.append("redo re-applies damage and drain \(dd.currentHP == 16 && dd.maxHPReduction == 8)")
+        // Hits accumulate.
+        model.applyRollToHP(ddRoll(5, "necrotic"), healing: false)
+        dd = model.characters[ddIdx]
+        ddLines.append("a second hit accumulates the drain (8+5) \(dd.maxHPReduction == 13 && dd.effectiveMaxHP == 19 && dd.currentHP == 11)")
+        // Derived from what was dealt: resistance halves it.
+        ddSeed(resist: [.necrotic])
+        model.applyRollToHP(ddRoll(8, "necrotic"), healing: false)
+        dd = model.characters[ddIdx]
+        ddLines.append("resistance halves the hit and the drain (8 -> 4) \(dd.maxHPReduction == 4 && dd.currentHP == 20)")
+        // Temp HP absorbs first, only real HP drains.
+        ddSeed(temp: 5)
+        model.applyRollToHP(ddRoll(8, "necrotic"), healing: false)
+        dd = model.characters[ddIdx]
+        ddLines.append("temp HP absorbs first, drain is only the 3 that reached HP \(dd.tempHP == 0 && dd.maxHPReduction == 3 && dd.currentHP == 21)")
+        // Overkill: damage past 0 does not drain.
+        ddSeed(cur: 2)
+        model.applyRollToHP(ddRoll(10, "necrotic"), healing: false)
+        dd = model.characters[ddIdx]
+        ddLines.append("damage past 0 does not drain (2 taken, not 10) \(dd.currentHP == 0 && dd.maxHPReduction == 2)")
+        // Immunity: nothing dealt, nothing drained, no log, no snapshot.
+        ddSeed(immune: [.necrotic])
+        let ddImmuneLog = model.tableLog.count
+        let ddImmuneBefore = model.characters[ddIdx]
+        model.applyRollToHP(ddRoll(9, "necrotic"), healing: false)
+        ddLines.append("immune: no damage, no drain, no log \(model.characters[ddIdx] == ddImmuneBefore && model.tableLog.count == ddImmuneLog)")
+        // Untyped roll with the tag set: nothing.
+        ddSeed()
+        model.applyRollToHP(ddRoll(6, nil), healing: false)
+        dd = model.characters[ddIdx]
+        ddLines.append("an untyped hit never drains \(dd.currentHP == 18 && dd.maxHPReduction == 0)")
+        // Healing never drains or logs.
+        ddSeed(cur: 10)
+        let ddHealLog = model.tableLog.count
+        model.applyRollToHP(ddRoll(6, "necrotic"), healing: true)
+        dd = model.characters[ddIdx]
+        ddLines.append("healing is not a drain \(dd.currentHP == 16 && dd.maxHPReduction == 0 && model.tableLog.count == ddHealLog)")
+        // Clamp: the drain floors the ceiling at 1.
+        ddSeed(cur: 32)
+        model.applyRollToHP(ddRoll(32, "necrotic"), healing: false)
+        dd = model.characters[ddIdx]
+        ddLines.append("a full-HP wipe drains 32 but clamps at max-1 (31, ceiling 1) \(dd.maxHPReduction == 31 && dd.effectiveMaxHP == 1 && dd.currentHP == 0)")
+        // Long rest lifts.
+        dd.longRest()
+        ddLines.append("long rest lifts a damage drain too \(dd.maxHPReduction == 0 && dd.currentHP == 32)")
+        // Codable.
+        ddSeed()
+        let ddData = (try? JSONEncoder().encode(model.characters[ddIdx])) ?? Data()
+        ddLines.append("tag set round-trips through Codable \((try? JSONDecoder().decode(Character.self, from: ddData))?.drainDamageTypes == [.necrotic])")
+        var ddObj = (try? JSONSerialization.jsonObject(with: ddData) as? [String: Any]) ?? [:]
+        ddObj.removeValue(forKey: "drainDamageTypes")
+        let ddLegacy = (try? JSONSerialization.data(withJSONObject: ddObj)).flatMap { try? JSONDecoder().decode(Character.self, from: $0) }
+        ddLines.append("legacy blob without the key decodes empty \(ddLegacy?.drainDamageTypes.isEmpty == true)")
+        // Hygiene.
+        model.characters = ddOrigChars
+        for ch in ddOrigChars { try? model.store.save(ch) }
+        model.tableLog = ddOrigLog
+        model.tableLogStore.save(ddOrigLog)
+        ddLines.append("hygiene: roster and table log restored \(model.characters == ddOrigChars && model.tableLog.count == ddOrigLog.count)")
+        try? ddLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/drainondamage.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

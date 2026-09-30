@@ -718,6 +718,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// from it, nothing is computed into it. Every condition-removal path
     /// clears the key, same discipline as the note.
     public var conditionSaveEnds: [String: ConditionSaveEnd] = [:]
+    public var drainDamageTypes: Set<DamageType> = []   // 3.75.0: typed damage that also drains max HP
     public var maxHPReduction: Int = 0   // 3.74.0: drained max HP until long rest; effective max is derived
     public var conditionImmunities: Set<Condition> = []   // 3.73.0: manual; lineage grants are derived
     public var resistances: Set<DamageType>
@@ -860,6 +861,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditionSaveEnds: [String: ConditionSaveEnd] = [:],
         conditionImmunities: Set<Condition> = [],
         maxHPReduction: Int = 0,
+        drainDamageTypes: Set<DamageType> = [],
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
@@ -916,6 +918,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.conditionSaveEnds = conditionSaveEnds
         self.conditionImmunities = conditionImmunities
         self.maxHPReduction = max(0, min(self.maxHP - 1, maxHPReduction))
+        self.drainDamageTypes = drainDamageTypes
         self.resistances = resistances
         self.immunities = immunities
         self.vulnerabilities = vulnerabilities
@@ -978,6 +981,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditionImmunities = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditionImmunities) ?? []
         let decodedDrain = try c.decodeIfPresent(Int.self, forKey: .maxHPReduction) ?? 0
         maxHPReduction = max(0, min(maxHP - 1, decodedDrain))
+        drainDamageTypes = try c.decodeIfPresent(Set<DamageType>.self, forKey: .drainDamageTypes) ?? []
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
@@ -1161,7 +1165,14 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
             tempHP -= absorbed
             remaining -= absorbed
         }
+        let hpBefore = currentHP
         currentHP = max(0, currentHP - remaining)
+        // 3.75.0: a drain-tagged type also lowers the max by the HP it
+        // actually took (defenses and temp HP already folded in; damage
+        // past 0 does not count). Derived from the stored tag set.
+        if let type, drainDamageTypes.contains(type), hpBefore > currentHP {
+            setMaxHPReduction(maxHPReduction + (hpBefore - currentHP))
+        }
         if currentHP == 0 {
             deathSaveSuccesses = 0
             deathSaveFailures = 0

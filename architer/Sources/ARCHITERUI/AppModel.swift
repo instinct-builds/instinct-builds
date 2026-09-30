@@ -2038,9 +2038,16 @@ public final class AppModel: ObservableObject {
         } else {
             c.applyDamage(roll.total, type: type)
         }
+        let drainBefore = selected?.wrappedValue.maxHPReduction ?? 0
         let depthBefore = selectedID.flatMap { undoStacks[$0] }?.depth ?? 0
         selected?.wrappedValue = c
         let depthAfter = selectedID.flatMap { undoStacks[$0] }?.depth ?? 0
+        // 3.75.0: a drain-tagged hit logs what it took off the max.
+        if !healing, c.maxHPReduction > drainBefore, let type {
+            tableLog.append(TableLogEntry(title: "Max HP drain",
+                                          text: "\(c.name) -\(c.maxHPReduction - drainBefore) max HP (\(type.rawValue), max now \(c.effectiveMaxHP))"))
+            tableLogStore.save(tableLog)
+        }
         if depthAfter > depthBefore {
             lastApplyDescription = hpApplyMenuLabel(amount: roll.total, type: type,
                                                     healing: healing, characterName: c.name)

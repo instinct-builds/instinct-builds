@@ -89,6 +89,7 @@ public struct VitalsBlock: View {
                 DefenseMenu(title: "Resist", selection: \.resistances, character: $character)
                 DefenseMenu(title: "Immune", selection: \.immunities, character: $character)
                 DefenseMenu(title: "Vulnerable", selection: \.vulnerabilities, character: $character)
+                DefenseMenu(title: "Drains max", selection: \.drainDamageTypes, character: $character)
                 Spacer()
             }
             HStack {
