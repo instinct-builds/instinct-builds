@@ -56,6 +56,6 @@ public func partyDetailRows(_ characters: [Character]) -> [PartyDetailRow] {
             chips.append(PartyDetailChip(text: "Concentrating: \(chip)", expiring: false))
         }
         return PartyDetailRow(characterID: c.id, name: c.name,
-                              currentHP: c.currentHP, maxHP: c.maxHP, tempHP: c.tempHP, chips: chips)
+                              currentHP: c.currentHP, maxHP: c.effectiveMaxHP, tempHP: c.tempHP, chips: chips)
     }
 }

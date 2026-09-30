@@ -20,14 +20,22 @@ public struct VitalsBlock: View {
             HStack(spacing: Theme.Gap.md) {
                 StatPlate(label: "Hit Points",
                           value: "\(character.currentHP)\(character.tempHP > 0 ? "+\(character.tempHP)" : "")",
-                          tint: character.currentHP * 2 > character.maxHP ? Theme.ink : Theme.danger)
+                          tint: character.currentHP * 2 > character.effectiveMaxHP ? Theme.ink : Theme.danger)
                 VStack(spacing: Theme.Gap.xs) {
-                    ResourceBar(current: character.currentHP, max: character.maxHP, temp: character.tempHP)
+                    ResourceBar(current: character.currentHP, max: character.effectiveMaxHP, temp: character.tempHP)
                     HStack(spacing: Theme.Gap.sm) {
-                        Stepper("HP", value: $character.currentHP, in: 0...character.maxHP)
+                        Stepper("HP", value: $character.currentHP, in: 0...character.effectiveMaxHP)
                             .font(Theme.Typeface.caption)
-                        Stepper("Max \(character.maxHP)", value: $character.maxHP, in: 1...999)
+                        Stepper("Max \(character.maxHP)", value: Binding(
+                            get: { character.maxHP },
+                            set: { character.maxHP = $0; character.normalizeHP() }), in: 1...999)
                             .font(Theme.Typeface.caption)
+                        Stepper(character.maxHPReduction > 0 ? "Drain -\(character.maxHPReduction) (max \(character.effectiveMaxHP))" : "Drain 0",
+                                value: Binding(
+                                    get: { character.maxHPReduction },
+                                    set: { character.setMaxHPReduction($0) }), in: 0...max(0, character.maxHP - 1))
+                            .font(Theme.Typeface.caption)
+                            .help("Max-HP drain until a long rest. Lowers the ceiling and current HP; healing caps at the drained max.")
                     }
                     .foregroundStyle(Theme.inkMuted)
                 }

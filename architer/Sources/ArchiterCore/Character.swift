@@ -718,6 +718,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// from it, nothing is computed into it. Every condition-removal path
     /// clears the key, same discipline as the note.
     public var conditionSaveEnds: [String: ConditionSaveEnd] = [:]
+    public var maxHPReduction: Int = 0   // 3.74.0: drained max HP until long rest; effective max is derived
     public var conditionImmunities: Set<Condition> = []   // 3.73.0: manual; lineage grants are derived
     public var resistances: Set<DamageType>
     public var immunities: Set<DamageType>
@@ -858,6 +859,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditionNotes: [String: String] = [:],
         conditionSaveEnds: [String: ConditionSaveEnd] = [:],
         conditionImmunities: Set<Condition> = [],
+        maxHPReduction: Int = 0,
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
@@ -913,6 +915,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.conditionNotes = conditionNotes
         self.conditionSaveEnds = conditionSaveEnds
         self.conditionImmunities = conditionImmunities
+        self.maxHPReduction = max(0, min(self.maxHP - 1, maxHPReduction))
         self.resistances = resistances
         self.immunities = immunities
         self.vulnerabilities = vulnerabilities
@@ -973,6 +976,8 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditionNotes = try c.decodeIfPresent([String: String].self, forKey: .conditionNotes) ?? [:]
         conditionSaveEnds = try c.decodeIfPresent([String: ConditionSaveEnd].self, forKey: .conditionSaveEnds) ?? [:]
         conditionImmunities = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditionImmunities) ?? []
+        let decodedDrain = try c.decodeIfPresent(Int.self, forKey: .maxHPReduction) ?? 0
+        maxHPReduction = max(0, min(maxHP - 1, decodedDrain))
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
@@ -1163,9 +1168,27 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         }
     }
 
+    /// 3.74.0: max HP after any drain. Derived (stored max minus the stored
+    /// reduction), floored at 1 so a drain never zeroes the ceiling.
+    public var effectiveMaxHP: Int { max(1, maxHP - max(0, maxHPReduction)) }
+
+    /// Set the drain (clamped 0...maxHP-1) and pull current HP under the
+    /// new ceiling. Temp HP is untouched. Lowering the drain never raises
+    /// current HP - restored ceiling is room to heal into.
+    public mutating func setMaxHPReduction(_ amount: Int) {
+        maxHPReduction = max(0, min(maxHP - 1, amount))
+        currentHP = min(currentHP, effectiveMaxHP)
+    }
+
+    /// Re-clamp drain and current HP after the stored max is edited.
+    public mutating func normalizeHP() {
+        maxHPReduction = max(0, min(maxHP - 1, maxHPReduction))
+        currentHP = min(currentHP, effectiveMaxHP)
+    }
+
     public mutating func applyHealing(_ amount: Int) {
         let before = currentHP
-        currentHP = min(maxHP, currentHP + max(0, amount))
+        currentHP = min(effectiveMaxHP, currentHP + max(0, amount))
         if before == 0 && currentHP > 0 {
             deathSaveSuccesses = 0
             deathSaveFailures = 0
@@ -1205,6 +1228,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// the 2014 style, all in the 2024 style, min 1), all slots, death saves
     /// reset, long-rest features recharge.
     public mutating func longRest() {
+        maxHPReduction = 0 // 3.74.0: the drain lifts on a long rest
         currentHP = maxHP
         hitDiceSpent = max(0, hitDiceSpent - era.longRestDiceRecovered(total: hitDiceTotal))
         deathSaveSuccesses = 0

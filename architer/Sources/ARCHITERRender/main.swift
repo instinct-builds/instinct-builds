@@ -4051,6 +4051,80 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/condimmune.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.74.0 max-HP reduction: a stored drain lowers the derived effective
+    // max until a long rest; healing caps there; current HP is pulled under
+    // the new ceiling. Sheet editing rides the normal edit/undo path.
+    hpProof: do {
+        let hpOrigChars = model.characters
+        let hpIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
+        var hpBase = model.characters[hpIdx]
+        hpBase.maxHP = 32
+        hpBase.currentHP = 24
+        hpBase.tempHP = 5
+        hpBase.maxHPReduction = 0
+        model.characters[hpIdx] = hpBase
+        var hpLines = ["Max-HP reduction (3.74.0)",
+                       "a drain lowers the effective max HP until a long rest; healing caps at it; long rest lifts it",
+                       "deterministic by construction: fixture is max 32, current 24, temp 5; every step is integer arithmetic"]
+        var c = hpBase
+        hpLines.append("no drain: effective max equals stored max \(c.effectiveMaxHP == 32 && c.maxHPReduction == 0)")
+        c.setMaxHPReduction(10)
+        hpLines.append("drain 10 lowers the effective max to 22 \(c.effectiveMaxHP == 22 && c.maxHP == 32)")
+        hpLines.append("current HP pulled under the new ceiling (24 -> 22) \(c.currentHP == 22)")
+        hpLines.append("temp HP untouched by the drain \(c.tempHP == 5)")
+        c.currentHP = 10
+        c.applyHealing(100)
+        hpLines.append("healing caps at the drained max, not the stored max \(c.currentHP == 22)")
+        c.setMaxHPReduction(4)
+        hpLines.append("lowering the drain raises the ceiling (28) but not current HP (22) \(c.effectiveMaxHP == 28 && c.currentHP == 22)")
+        c.applyHealing(100)
+        hpLines.append("healing then fills the restored room \(c.currentHP == 28)")
+        c.setMaxHPReduction(999)
+        hpLines.append("drain clamps at max-1 so the ceiling floors at 1 \(c.maxHPReduction == 31 && c.effectiveMaxHP == 1 && c.currentHP == 1)")
+        c.setMaxHPReduction(-5)
+        hpLines.append("negative drain clamps to 0 \(c.maxHPReduction == 0 && c.effectiveMaxHP == 32)")
+        c.setMaxHPReduction(8)
+        c.shortRest()
+        hpLines.append("short rest leaves the drain in place \(c.maxHPReduction == 8 && c.effectiveMaxHP == 24)")
+        var hpDrained = c
+        c.longRest()
+        hpLines.append("long rest lifts the drain and restores full HP \(c.maxHPReduction == 0 && c.currentHP == 32 && c.effectiveMaxHP == 32)")
+        hpDrained.maxHP = 5
+        hpDrained.normalizeHP()
+        hpLines.append("lowering the stored max re-clamps drain and current HP (drain 4, max 1) \(hpDrained.maxHPReduction == 4 && hpDrained.effectiveMaxHP == 1 && hpDrained.currentHP == 1)")
+        // Surfaces read the derived ceiling.
+        var hpSurface = hpBase
+        hpSurface.setMaxHPReduction(10)
+        hpLines.append("party strip shows the drained max \(PartyCardSummary(character: hpSurface).maxHP == 22)")
+        hpLines.append("markdown export shows the drained max \(Export.exportMarkdown(hpSurface).contains("HP **22/22**"))")
+        hpLines.append("html export shows the drained max \(Export.exportHTML(hpSurface).contains("HP <b>22/22</b>"))")
+        hpLines.append("undrained export is unchanged \(Export.exportMarkdown(hpBase).contains("HP **24/32**"))")
+        // Codable.
+        let hpData = (try? JSONEncoder().encode(hpSurface)) ?? Data()
+        hpLines.append("drain round-trips through Codable \((try? JSONDecoder().decode(Character.self, from: hpData))?.maxHPReduction == 10)")
+        var hpObj = (try? JSONSerialization.jsonObject(with: hpData) as? [String: Any]) ?? [:]
+        hpObj["maxHPReduction"] = 999
+        let hpClamped = (try? JSONSerialization.data(withJSONObject: hpObj)).flatMap { try? JSONDecoder().decode(Character.self, from: $0) }
+        hpLines.append("an absurd stored drain decodes clamped to max-1 \(hpClamped?.maxHPReduction == 31)")
+        hpObj.removeValue(forKey: "maxHPReduction")
+        let hpLegacy = (try? JSONSerialization.data(withJSONObject: hpObj)).flatMap { try? JSONDecoder().decode(Character.self, from: $0) }
+        hpLines.append("legacy blob without the key decodes undrained \(hpLegacy?.maxHPReduction == 0)")
+        // Editor rides the normal edit/undo path, set / undo / redo / clear.
+        if var e = model.selected?.wrappedValue { e.setMaxHPReduction(10); model.selected?.wrappedValue = e }
+        hpLines.append("editor set drains \(model.selected?.wrappedValue.effectiveMaxHP == 22 && model.selected?.wrappedValue.currentHP == 22)")
+        model.undo()
+        hpLines.append("editor undo restores max and current in one snapshot \(model.selected?.wrappedValue.effectiveMaxHP == 32 && model.selected?.wrappedValue.currentHP == 24 && model.selected?.wrappedValue.maxHPReduction == 0)")
+        model.redo()
+        hpLines.append("editor redo re-drains \(model.selected?.wrappedValue.maxHPReduction == 10 && model.selected?.wrappedValue.currentHP == 22)")
+        if var e = model.selected?.wrappedValue { e.setMaxHPReduction(0); model.selected?.wrappedValue = e }
+        hpLines.append("editor clear lifts the drain, current HP stays \(model.selected?.wrappedValue.maxHPReduction == 0 && model.selected?.wrappedValue.currentHP == 22)")
+        model.characters = hpOrigChars
+        for ch in hpOrigChars { try? model.store.save(ch) }
+        hpLines.append("hygiene: roster restored \(model.characters == hpOrigChars)")
+        try? hpLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/maxhpdrain.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

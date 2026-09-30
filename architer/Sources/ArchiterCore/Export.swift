@@ -37,7 +37,7 @@ public enum SheetExporter {
             case .vitals:
                 var lines = [
                     "## Vitals",
-                    "HP **\(c.currentHP)/\(c.maxHP)**\(c.tempHP > 0 ? " (+\(c.tempHP) temp)" : "") · AC **\(c.computedAC)** · Initiative **\(signed(c.initiative))** · Speed **\(c.effectiveMovementSummary)** · Passives **Perc \(c.passivePerception) / Inv \(c.passiveInvestigation) / Ins \(c.passiveInsight)**",
+                    "HP **\(c.currentHP)/\(c.effectiveMaxHP)**\(c.tempHP > 0 ? " (+\(c.tempHP) temp)" : "") · AC **\(c.computedAC)** · Initiative **\(signed(c.initiative))** · Speed **\(c.effectiveMovementSummary)** · Passives **Perc \(c.passivePerception) / Inv \(c.passiveInvestigation) / Ins \(c.passiveInsight)**",
                     "Hit Dice **\(c.hitDiceRemaining)/\(c.hitDiceTotal) d\(c.hitDiceType)** · Death saves **\(c.deathSaveSuccesses)✓ / \(c.deathSaveFailures)✗**",
                 ]
                 if c.exhaustion > 0 { lines.append("Exhaustion: **\(c.exhaustion)**") }
@@ -209,7 +209,7 @@ public enum SheetExporter {
                 if c.exhaustion > 0 { extra += "<span class=\"chip\">Exhaustion <b>\(c.exhaustion)</b></span>" }
                 body.append("""
                 <section class="block vitals"><h2>Vitals</h2><div class="chips">
-                  <span class="chip">HP <b>\(c.currentHP)/\(c.maxHP)</b>\(c.tempHP > 0 ? " +\(c.tempHP)t" : "")</span>
+                  <span class="chip">HP <b>\(c.currentHP)/\(c.effectiveMaxHP)</b>\(c.tempHP > 0 ? " +\(c.tempHP)t" : "")</span>
                   <span class="chip">AC <b>\(c.computedAC)</b></span>
                   <span class="chip">Init <b>\(signed(c.initiative))</b></span>
                   <span class="chip">Speed <b>\(c.effectiveMovementSummary)</b></span>

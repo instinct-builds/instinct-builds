@@ -253,7 +253,7 @@ public enum SheetPDFExporter {
             case .vitals:
                 cursor.section("Vitals", margin: margin)
                 var chips: [(String, String)] = [
-                    ("HP", "\(c.currentHP)/\(c.maxHP)\(c.tempHP > 0 ? " +\(c.tempHP)t" : "")"),
+                    ("HP", "\(c.currentHP)/\(c.effectiveMaxHP)\(c.tempHP > 0 ? " +\(c.tempHP)t" : "")"),
                     ("AC", "\(c.computedAC)"),
                     ("Initiative", signed(c.initiative)),
                     ("Speed", c.effectiveMovementSummary),

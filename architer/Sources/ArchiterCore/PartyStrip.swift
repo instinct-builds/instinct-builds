@@ -22,7 +22,7 @@ public struct PartyCardSummary: Equatable, Sendable {
         name = c.name
         level = c.level
         currentHP = c.currentHP
-        maxHP = c.maxHP
+        maxHP = c.effectiveMaxHP
         tempHP = c.tempHP
         var chips = c.conditionChipNames
         if let spell = c.concentratingOn {
