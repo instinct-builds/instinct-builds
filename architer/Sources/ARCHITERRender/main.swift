@@ -4237,8 +4237,13 @@ func run(model: AppModel, character: Character, outDir: String) {
         let ptOrigChars = model.characters
         let ptOrigLog = model.tableLog
         guard model.characters.count >= 2 else { break ptProof }
-        let ptAIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
-        let ptBIdx = model.characters.firstIndex(where: { $0.id != model.selectedID }) ?? 1
+        // The party path hits the WHOLE roster, so the proof narrows the roster
+        // to exactly two (selected first, then one other); restored after.
+        guard let ptA = model.characters.first(where: { $0.id == model.selectedID }),
+              let ptB = model.characters.first(where: { $0.id != model.selectedID }) else { break ptProof }
+        model.characters = [ptA, ptB]
+        let ptAIdx = 0
+        let ptBIdx = 1
         let ptAName = model.characters[ptAIdx].name
         let ptBName = model.characters[ptBIdx].name
         func ptSeed(aResist: Set<DamageType> = [], bImmune: Set<DamageType> = [], aDrain: Set<DamageType> = []) {
