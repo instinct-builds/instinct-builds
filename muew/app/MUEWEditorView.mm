@@ -6,7 +6,6 @@
 #include "frame_tools.h"
 #include <cmath>
 #include <complex>
-#import <dispatch/dispatch.h>
 
 using namespace muew;
 
@@ -222,11 +221,11 @@ static int SortForColumn(int c);
         // Do not block the remote AX request inside an AppKit modal loop.
         // Recheck the captured loaded-sound epoch before opening the dialog.
         browserDialogQueued=true;
-        dispatch_async(dispatch_get_main_queue(), ^{
+        [NSTimer scheduledTimerWithTimeInterval:0.0 repeats:NO block:^(NSTimer*) {
             self->browserDialogQueued=false;
             if (self->browserOpen && !self->browserDialogActive && epoch==self->browserAXDetailEpoch)
                 [self performBrowserInfoAction:index];
-        });
+        }];
         return YES;
     }
     if (epoch != browserAXControlEpoch) return NO;
