@@ -793,8 +793,13 @@ public final class AppModel: ObservableObject {
         // 3.70.0: depth before the wrap, so the Edit menu can name the
         // tick on the selected character while its snapshot is on top.
         let selectedDepthBefore = selectedID.flatMap { undoStacks[$0] }?.depth ?? -1
+        // 3.72.0: the OUTGOING active entry's turn ends with this advance -
+        // capture it before the tracker moves so its save-ends roll on any
+        // turn handoff, not only on a round wrap.
+        let outgoing = initiative.rolledOrder.first(where: { $0.id == initiative.activeID })
         initiative.advance()
         initiativeStore.save(initiative)
+        if let name = outgoing?.characterName { rollSaveEnds(forCharacterNamed: name) }
         // 3.30.0: the round wrap ticks every roster character's condition
         // timers; a timer at 0 ends the condition with a notes milestone.
         // Writes ride the same per-character undo snapshot path as any edit.
@@ -822,6 +827,56 @@ public final class AppModel: ObservableObject {
         if let sel = selected?.wrappedValue,
            (undoStacks[sel.id]?.depth ?? -1) > selectedDepthBefore {
             recordTopEdit(conditionTickMenuLabel(characterName: sel.name))
+        }
+    }
+
+    /// End-of-turn save-ends (3.72.0): the outgoing active entry's turn has
+    /// ended - each save-ends condition on its linked sheet rolls through
+    /// rollCheck (history, condition modes, identity stamp, and reroll ride
+    /// for free), and a success ends the condition. Both the roll and the
+    /// end land as notes milestones in the established shapes; the writes
+    /// ride the per-character undo snapshot path like the wrap tick. An
+    /// entry without a sheet link and a key whose condition is absent roll
+    /// nothing - stored input never invents a condition.
+    private func rollSaveEnds(forCharacterNamed name: String) {
+        guard let idx = characters.firstIndex(where: { $0.name == name }) else { return }
+        let specs = characters[idx].conditionSaveEnds.sorted { $0.key < $1.key }
+        guard !specs.isEmpty else { return }
+        var c = characters[idx]
+        for (key, spec) in specs {
+            let displayName: String
+            let builtIn: Condition?
+            if let b = Condition(rawValue: key), c.conditions.contains(b) {
+                displayName = b.displayName
+                builtIn = b
+            } else if let cc = c.customConditions.first(where: { $0.id.uuidString == key }) {
+                displayName = cc.name
+                builtIn = nil
+            } else { continue } // stale key: the condition is not there
+            let save = rollCheck("Save vs \(displayName)", bonus: c.savingThrow(spec.ability),
+                                 targetDC: spec.dc, forCharacterID: c.id)
+            let outcome = save.total >= spec.dc ? "success" : "failure"
+            let rollLine = "Save vs \(displayName) (DC \(spec.dc)): \(save.total) - \(outcome)."
+            c.notes = c.notes.isEmpty ? rollLine : c.notes + "\n" + rollLine
+            guard save.total >= spec.dc else { continue }
+            if let b = builtIn {
+                c.conditions.remove(b)
+            } else {
+                c.customConditions.removeAll { $0.id.uuidString == key }
+            }
+            c.conditionDurations.removeValue(forKey: key)
+            c.conditionNotes.removeValue(forKey: key)
+            c.conditionSaveEnds.removeValue(forKey: key)
+            c.notes += "\n\(displayName) ended (save)."
+        }
+        guard c != characters[idx] else { return }
+        var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+        stack.push(c)
+        undoStacks[c.id] = stack
+        characters[idx] = c
+        try? store.save(c)
+        if selectedID == c.id {
+            recordTopEdit(conditionSaveEndsMenuLabel(characterName: c.name))
         }
     }
 
@@ -1617,6 +1672,7 @@ public final class AppModel: ObservableObject {
             c.conditions.remove(condition)
             c.conditionDurations.removeValue(forKey: condition.rawValue)
             c.conditionNotes.removeValue(forKey: condition.rawValue) // 3.58.0: the note dies with the condition
+            c.conditionSaveEnds.removeValue(forKey: condition.rawValue) // 3.72.0: so does the save-ends spec
             var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
             stack.push(c)
             undoStacks[c.id] = stack
@@ -1759,6 +1815,7 @@ public final class AppModel: ObservableObject {
             for cc in matches {
                 c.conditionDurations.removeValue(forKey: cc.id.uuidString)
                 c.conditionNotes.removeValue(forKey: cc.id.uuidString) // 3.58.0: the note dies with the condition
+                c.conditionSaveEnds.removeValue(forKey: cc.id.uuidString) // 3.72.0: so does the save-ends spec
             }
             c.customConditions.removeAll { $0.name == name }
             var stack = undoStacks[c.id] ?? UndoStack(characters[idx])

@@ -3852,6 +3852,129 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/incapacitate-concentration.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.72.0: end-of-turn save-ends conditions. The outgoing active
+    // entry's saves roll on ANY turn handoff (a mid-round handoff is
+    // proven, not only wraps); a success ends the condition with both
+    // milestone lines, a failure persists; undo restores the pre-save
+    // state in one snapshot. Runs at the end like every AppModel proof;
+    // the roster, the tracker, and the roll history are restored after.
+    seProof: do {
+        let seOriginalInitiative = model.initiative
+        let seOriginalHistory = model.rollHistory
+        let seIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
+        let seOriginal = model.characters[seIdx]
+        let seName = seOriginal.name
+        guard let seB = model.characters.first(where: { $0.id != seOriginal.id }) else { break seProof }
+        let seFKey = Condition.frightened.rawValue
+        let sePKey = Condition.poisoned.rawValue
+        let seSKey = Condition.stunned.rawValue
+        var seLines = ["Save-ends conditions (3.72.0)",
+                       "a marked condition offers a save when the holder's turn ends; a success ends it",
+                       "deterministic by construction: WIS save +5 (16 WIS + proficiency at L1) -",
+                       "  success forced: worst d20 1 + 5 = 6 >= DC 1; failure forced: best d20 20 + 5 = 25 < DC 99",
+                       "  (DC 99 beats even the best possible save bonus: 20 + 11 = 31 < 99)"]
+        // Pin: the sheet Save-ends editor rides the normal edit/undo
+        // path - set, undo, redo, clear - each leaving durations and
+        // notes untouched. Driven through the same selected-binding
+        // write the UI rows use.
+        if var c = model.selected?.wrappedValue {
+            c.conditions.insert(.frightened)
+            c.conditionDurations[seFKey] = 5
+            c.conditionNotes[seFKey] = "wraith shriek"
+            model.selected?.wrappedValue = c
+        }
+        if var c = model.selected?.wrappedValue {
+            c.conditionSaveEnds[seFKey] = ConditionSaveEnd(dc: 12, ability: .wisdom)
+            model.selected?.wrappedValue = c
+        }
+        seLines.append("editor set marks the save \(model.selected?.wrappedValue.conditionSaveEnds[seFKey]?.dc == 12)")
+        model.undo()
+        seLines.append("editor undo unmarks it \(model.selected?.wrappedValue.conditionSaveEnds[seFKey] == nil)")
+        model.redo()
+        seLines.append("editor redo remarks it \(model.selected?.wrappedValue.conditionSaveEnds[seFKey]?.dc == 12)")
+        if var c = model.selected?.wrappedValue {
+            c.conditionSaveEnds.removeValue(forKey: seFKey)
+            model.selected?.wrappedValue = c
+        }
+        let seAfterClear = model.selected?.wrappedValue
+        seLines.append("editor clear removes the mark \(seAfterClear?.conditionSaveEnds[seFKey] == nil)")
+        seLines.append("editor steps leave duration and note untouched \(seAfterClear?.conditionDurations[seFKey] == 5 && seAfterClear?.conditionNotes[seFKey] == "wraith shriek")")
+        // Walk fixture: Frightened (DC 1 WIS - ends), a custom Hexed
+        // (DC 1 WIS - ends through the custom branch), Poisoned (DC 99
+        // WIS - persists), and a stale Stunned key (absent - rolls
+        // nothing). One binding write plants the lot.
+        let seHexed = CustomCondition(name: "Hexed")
+        if var c = model.selected?.wrappedValue {
+            c.scores = AbilityScores(Dictionary(uniqueKeysWithValues: Ability.allCases.map { ($0, $0 == .wisdom ? 16 : 10) }))
+            c.savingThrowProficiencies.insert(.wisdom)
+            c.conditions.insert(.poisoned)
+            c.conditionDurations[sePKey] = 2
+            c.customConditions.append(seHexed)
+            c.conditionSaveEnds[seFKey] = ConditionSaveEnd(dc: 1, ability: .wisdom)
+            c.conditionSaveEnds[seHexed.id.uuidString] = ConditionSaveEnd(dc: 1, ability: .wisdom)
+            c.conditionSaveEnds[sePKey] = ConditionSaveEnd(dc: 99, ability: .wisdom)
+            c.conditionSaveEnds[seSKey] = ConditionSaveEnd(dc: 1, ability: .wisdom)
+            model.selected?.wrappedValue = c
+        }
+        // Deterministic tracker: A 20, an unlinked scout 15, B 10; A is
+        // active, so the first advance is a MID-ROUND handoff off A.
+        model.clearInitiative()
+        model.addInitiativeEntry(name: seName, bonus: 0, forCharacter: seName)
+        model.addInitiativeEntry(name: "Scout (unlinked)", bonus: 0)
+        model.addInitiativeEntry(name: seB.name, bonus: 0, forCharacter: seB.name)
+        for i in model.initiative.entries.indices {
+            let n = model.initiative.entries[i].name
+            model.initiative.entries[i].total = n == seName ? 20 : (n == seB.name ? 10 : 15)
+        }
+        model.initiative.activeID = model.initiative.entries.first(where: { $0.name == seName })?.id
+        let seRoundBefore = model.initiative.round
+        model.advanceInitiative()
+        let seA1 = model.selected?.wrappedValue
+        seLines.append("mid-round handoff triggers the walk \(model.initiative.round == seRoundBefore && (seA1?.notes.contains("Save vs Frightened (DC 1):") ?? false))")
+        seLines.append("frightened ends on success with both milestones \(seA1?.conditions.contains(.frightened) == false && (seA1?.notes.contains("Save vs Frightened (DC 1):") ?? false) && (seA1?.notes.contains(" - success.") ?? false) && (seA1?.notes.contains("Frightened ended (save).") ?? false))")
+        seLines.append("success clears the duration, note, and save keys \(seA1?.conditionDurations[seFKey] == nil && seA1?.conditionNotes[seFKey] == nil && seA1?.conditionSaveEnds[seFKey] == nil)")
+        seLines.append("custom hexed ends through the same walk \(seA1?.customConditions.contains { $0.name == "Hexed" } == false && (seA1?.notes.contains("Hexed ended (save).") ?? false) && seA1?.conditionSaveEnds[seHexed.id.uuidString] == nil)")
+        seLines.append("poisoned fails and persists with its own milestone \(seA1?.conditions.contains(.poisoned) == true && (seA1?.notes.contains("Save vs Poisoned (DC 99):") ?? false) && (seA1?.notes.contains(" - failure.") ?? false))")
+        seLines.append("failure leaves the timer and the save mark in place \(seA1?.conditionDurations[sePKey] == 2 && seA1?.conditionSaveEnds[sePKey]?.dc == 99)")
+        seLines.append("independent resolves in one advance: one ended, one persists \(seA1?.conditions.contains(.frightened) == false && seA1?.conditions.contains(.poisoned) == true)")
+        seLines.append("stale key rolls nothing and stays \(seA1?.notes.contains("Save vs Stunned") == false && seA1?.conditionSaveEnds[seSKey]?.dc == 1)")
+        seLines.append("saves land in dice history \(model.rollHistory.contains { $0.label?.hasPrefix("Save vs Frightened") == true } && model.rollHistory.contains { $0.label?.hasPrefix("Save vs Poisoned") == true })")
+        seLines.append("edit menu names the walk \(model.undoMenuLabel == "Undo Roll end-of-turn saves on \(seName)")")
+        // Undo restores the pre-save state in one snapshot check.
+        model.undo()
+        let seAU = model.selected?.wrappedValue
+        let seUndoOK = seAU?.conditions.contains(.frightened) == true
+            && seAU?.conditions.contains(.poisoned) == true
+            && (seAU?.customConditions.contains { $0.name == "Hexed" } ?? false)
+            && seAU?.conditionSaveEnds.count == 4
+            && seAU?.conditionDurations[seFKey] == 5
+            && seAU?.conditionNotes[seFKey] == "wraith shriek"
+            && !(seAU?.notes.contains("Save vs") ?? true)
+        seLines.append("undo restores the pre-save state in one snapshot \(seUndoOK)")
+        model.redo()
+        let seAR = model.selected?.wrappedValue
+        seLines.append("redo re-applies the walk outcome \(seAR?.conditions.contains(.frightened) == false && seAR?.conditions.contains(.poisoned) == true)")
+        // Outgoing is the unlinked scout next: nothing rolls.
+        let seHistCount = model.rollHistory.count
+        model.advanceInitiative()
+        seLines.append("unlinked entry rolls nothing \(model.rollHistory.count == seHistCount && model.initiative.round == seRoundBefore)")
+        // Outgoing is B (no save-ends): the advance wraps, the timer
+        // ticks, and no extra save fires for A.
+        model.advanceInitiative()
+        let seAW = model.selected?.wrappedValue
+        seLines.append("wrap coexists: timer ticks, no extra save \(model.initiative.round == seRoundBefore + 1 && seAW?.conditionDurations[sePKey] == 1 && (seAW?.notes.components(separatedBy: "Save vs Poisoned").count ?? 0) == 2)")
+        // Hygiene: roster, tracker, and history back to fixture state.
+        model.characters[seIdx] = seOriginal
+        try? model.store.save(seOriginal)
+        model.initiative = seOriginalInitiative
+        model.initiativeStore.save(seOriginalInitiative)
+        model.rollHistory = seOriginalHistory
+        model.rollHistoryStore.save(seOriginalHistory)
+        seLines.append("hygiene: roster, initiative, and history restored")
+        try? seLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/saveends.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

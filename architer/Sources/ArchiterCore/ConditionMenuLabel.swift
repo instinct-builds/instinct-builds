@@ -24,3 +24,10 @@ public func conditionRemoveMenuLabel(conditionName: String, characterName: Strin
 public func conditionTickMenuLabel(characterName: String) -> String {
     "Tick condition timers on \(characterName)"
 }
+
+/// The end-of-turn save-ends walk (3.72.0): the outgoing entry's saves
+/// rolled, ending whatever succeeded. "Roll end-of-turn saves on Wren
+/// Halloway".
+public func conditionSaveEndsMenuLabel(characterName: String) -> String {
+    "Roll end-of-turn saves on \(characterName)"
+}

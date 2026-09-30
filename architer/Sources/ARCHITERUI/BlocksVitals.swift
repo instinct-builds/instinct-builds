@@ -225,6 +225,7 @@ struct ConditionGrid: View {
         }
         .controlSize(.small)
         ConditionTimerRows(character: $character)
+        ConditionSaveEndRows(character: $character)
     }
 }
 
@@ -284,6 +285,75 @@ struct ConditionTimerRows: View {
                             character.conditionDurations.removeValue(forKey: entry.key)
                         } label: { Image(systemName: "minus.circle") }
                         .help("Remove the timer - the condition stays")
+                    }
+                    .font(.caption)
+                }
+            }
+        }
+    }
+}
+
+/// End-of-turn save-ends (3.72.0): mark an active condition as offering a
+/// save when the holder's turn ends; the initiative walk rolls it and a
+/// success ends the condition. Mirrors the timer rows - the key is the
+/// built-in rawValue or the custom condition's UUID string, and edits ride
+/// the same sheet binding (normal edit/undo path).
+struct ConditionSaveEndRows: View {
+    @Binding var character: Character
+
+    private var entries: [ConditionTimerEntry] {
+        character.conditions
+            .map { ConditionTimerEntry(key: $0.rawValue, name: $0.displayName) }
+            .sorted { $0.name < $1.name }
+        + character.customConditions
+            .map { ConditionTimerEntry(key: $0.id.uuidString, name: $0.name) }
+            .sorted { $0.name < $1.name }
+    }
+
+    var body: some View {
+        let marked = entries.filter { character.conditionSaveEnds[$0.key] != nil }
+        let unmarked = entries.filter { character.conditionSaveEnds[$0.key] == nil }
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+                HStack(spacing: Theme.Gap.sm) {
+                    Text("Save ends")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                    Menu("Mark save-ends") {
+                        ForEach(unmarked, id: \.key) { entry in
+                            Button(entry.name) {
+                                character.conditionSaveEnds[entry.key] = ConditionSaveEnd(dc: 10, ability: .wisdom)
+                            }
+                        }
+                    }
+                    .controlSize(.small)
+                    .disabled(unmarked.isEmpty)
+                    .help("Offer a save at the end of the holder's turn - a success ends the condition")
+                }
+                ForEach(marked, id: \.key) { entry in
+                    HStack(spacing: Theme.Gap.sm) {
+                        Text(entry.name)
+                        Text("DC")
+                            .foregroundStyle(Theme.inkMuted)
+                        Stepper("", value: Binding(
+                            get: { character.conditionSaveEnds[entry.key]?.dc ?? 10 },
+                            set: { character.conditionSaveEnds[entry.key]?.dc = max(2, min(30, $0)) }
+                        ), in: 2...30)
+                        .labelsHidden()
+                        Picker("", selection: Binding(
+                            get: { character.conditionSaveEnds[entry.key]?.ability ?? .wisdom },
+                            set: { character.conditionSaveEnds[entry.key]?.ability = $0 }
+                        )) {
+                            ForEach(Ability.allCases, id: \.self) { a in
+                                Text(a.rawValue.capitalized).tag(a)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 130)
+                        Button(role: .destructive) {
+                            character.conditionSaveEnds.removeValue(forKey: entry.key)
+                        } label: { Image(systemName: "minus.circle") }
+                        .help("Remove the save - the condition stays")
                     }
                     .font(.caption)
                 }

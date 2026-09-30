@@ -712,6 +712,12 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// Stored input - the summary line derives from it, nothing is computed
     /// into it. A note dies with its condition: every removal path clears it.
     public var conditionNotes: [String: String] = [:]
+    /// Save-ends conditions (3.72.0): the end-of-turn save offered per
+    /// condition, keyed like conditionDurations (built-in rawValue, custom
+    /// UUID string). Stored input - the initiative walk derives the rolls
+    /// from it, nothing is computed into it. Every condition-removal path
+    /// clears the key, same discipline as the note.
+    public var conditionSaveEnds: [String: ConditionSaveEnd] = [:]
     public var resistances: Set<DamageType>
     public var immunities: Set<DamageType>
     public var vulnerabilities: Set<DamageType>
@@ -849,6 +855,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         customConditions: [CustomCondition] = [],
         conditionDurations: [String: Int] = [:],
         conditionNotes: [String: String] = [:],
+        conditionSaveEnds: [String: ConditionSaveEnd] = [:],
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
@@ -902,6 +909,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.customConditions = customConditions
         self.conditionDurations = conditionDurations
         self.conditionNotes = conditionNotes
+        self.conditionSaveEnds = conditionSaveEnds
         self.resistances = resistances
         self.immunities = immunities
         self.vulnerabilities = vulnerabilities
@@ -960,6 +968,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         customConditions = try c.decodeIfPresent([CustomCondition].self, forKey: .customConditions) ?? []
         conditionDurations = try c.decodeIfPresent([String: Int].self, forKey: .conditionDurations) ?? [:]
         conditionNotes = try c.decodeIfPresent([String: String].self, forKey: .conditionNotes) ?? [:]
+        conditionSaveEnds = try c.decodeIfPresent([String: ConditionSaveEnd].self, forKey: .conditionSaveEnds) ?? [:]
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
@@ -1318,6 +1327,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
             } else {
                 conditionDurations.removeValue(forKey: key)
                 conditionNotes.removeValue(forKey: key) // 3.58.0: the note dies with the condition
+                conditionSaveEnds.removeValue(forKey: key) // 3.72.0: so does the save-ends spec
                 if let builtIn = Condition(rawValue: key) {
                     conditions.remove(builtIn)
                     ended.append(builtIn.displayName)

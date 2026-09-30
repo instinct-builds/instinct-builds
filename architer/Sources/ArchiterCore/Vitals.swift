@@ -71,6 +71,20 @@ public struct CustomCondition: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// An end-of-turn save that can end a condition (3.72.0): the DC and the
+/// ability rolled. Stored per condition on the sheet, keyed like
+/// conditionDurations (built-in rawValue, custom UUID string). The initiative
+/// walk rolls it when the holder's turn ends; a success ends the condition.
+public struct ConditionSaveEnd: Codable, Equatable, Sendable {
+    public var dc: Int
+    public var ability: Ability
+
+    public init(dc: Int, ability: Ability) {
+        self.dc = dc
+        self.ability = ability
+    }
+}
+
 /// Coin purse with genre-standard denominations: 10 cp = 1 sp, 5 sp = 1 ep,
 /// 10 sp (or 2 ep) = 1 gp, 10 gp = 1 pp. Totals convert to copper.
 public struct Currency: Codable, Equatable, Sendable {
