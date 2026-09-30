@@ -102,6 +102,9 @@ struct CharacterDetailView: View {
             // every tab; hidden at a roster of one (nothing to overview).
             if model.characters.count > 1 {
                 PartyStripView()
+                // 3.68.0: the wide detail panel hangs under the strip -
+                // the strip itself stays exactly as it is.
+                PartyDetailPanelView()
             }
             switch tab {
             case 0:
@@ -217,6 +220,123 @@ public struct PartyStripView: View {
             .padding(.horizontal, Theme.Gap.lg)
             .padding(.bottom, Theme.Gap.sm)
         }
+    }
+}
+
+/// A left-aligned wrapping flow for the panel's chips (3.68.0). The
+/// strip's answer to its own width is truncation; the panel's is the
+/// wrap - every chip shows, whole note and all.
+private struct ChipFlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 0
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for sub in subviews {
+            let size = sub.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: width, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        for sub in subviews {
+            let size = sub.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            sub.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+/// Party detail panel (3.68.0): the surface with real width where
+/// condition chips carry their whole 24-char note and remaining clock -
+/// collapsible, collapsed by default, the pick persisted on the model.
+/// Read-only: a row tap navigates to the member's sheet (3.54.0
+/// revealOnSheet parity); edits stay on the sheet and the party menus,
+/// so the undo/redo audit surface is unchanged. All chips, no "+N more"
+/// cap - the cap belongs to the strip's own budget.
+public struct PartyDetailPanelView: View {
+    @EnvironmentObject var model: AppModel
+
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Gap.xs) {
+            Button { model.partyDetailPanelOpen.toggle() } label: {
+                HStack(spacing: Theme.Gap.xs) {
+                    Image(systemName: model.partyDetailPanelOpen ? "chevron.down" : "chevron.right")
+                        .font(Theme.Typeface.captionSmall)
+                    Text("Party details")
+                        .font(Theme.Typeface.caption)
+                    if !model.partyDetailPanelOpen {
+                        Text("notes and clocks for every held condition")
+                            .font(Theme.Typeface.captionSmall)
+                            .foregroundStyle(Theme.inkMuted)
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .help(model.partyDetailPanelOpen
+                  ? "Hide the party detail panel"
+                  : "Show every condition's note and clock for the whole party")
+            if model.partyDetailPanelOpen {
+                ForEach(partyDetailRows(model.characters)) { row in
+                    Button { model.revealOnSheet(row.characterID) } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: Theme.Gap.sm) {
+                            Text(row.name)
+                                .font(Theme.Typeface.caption)
+                                .frame(width: 140, alignment: .leading)
+                            Text("\(row.currentHP)/\(row.maxHP)" + (row.tempHP > 0 ? " +\(row.tempHP)t" : ""))
+                                .font(Theme.Typeface.captionSmall)
+                                .foregroundStyle(Theme.inkMuted)
+                                .frame(width: 70, alignment: .leading)
+                            if row.chips.isEmpty {
+                                // The compact empty line: no conditions,
+                                // but the HP glance still lists.
+                                Text("No conditions")
+                                    .font(Theme.Typeface.captionSmall)
+                                    .foregroundStyle(Theme.inkMuted)
+                            } else {
+                                ChipFlowLayout {
+                                    ForEach(Array(row.chips.enumerated()), id: \.offset) { _, chip in
+                                        Text(chip.text)
+                                            .font(Theme.Typeface.captionSmall)
+                                            .foregroundStyle(chip.expiring ? Theme.accent : Theme.ink)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Theme.surfaceRaised)
+                                            .clipShape(Capsule())
+                                    }
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open \(row.name)'s sheet")
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Gap.lg)
+        .padding(.bottom, Theme.Gap.sm)
     }
 }
 

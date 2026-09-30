@@ -3560,6 +3560,115 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? tfpLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/table-log-filter-persistence.txt"),
                atomically: true, encoding: .utf8)
+    // Party detail panel (3.68.0): the wide surface where chips carry
+    // the whole note and remaining clock. Proves the summary-grammar
+    // chip texts, all-chips-no-cap, the expiring mark, the compact empty
+    // row, 720 + 1024 renders, and the collapsed pick's persistence on a
+    // relaunched model. Direct state edits (the pcr block's pattern)
+    // keep the log untouched - the panel is read-only, so the block also
+    // asserts no log entries appear. Hygiene restores the roster and the
+    // collapsed default. Runs at END.
+    var pdpLines = ["Party detail panel (3.68.0)",
+                    "every chip with its whole note and clock, one row per member; read-only; collapsed by default and the pick persists"]
+    let pdpLogStart = model.tableLog.count
+    let pdpOrig: [UUID: (Set<Condition>, [String: Int], [String: String], [CustomCondition], String?, Int?)] =
+        Dictionary(uniqueKeysWithValues: model.characters.map {
+            ($0.id, ($0.conditions, $0.conditionDurations, $0.conditionNotes, $0.customConditions, $0.concentratingOn, $0.concentrationTimer))
+        })
+    // Deterministic fixture: each member's full condition state is set
+    // explicitly, so the exact strings never depend on block order.
+    if let idx = model.characters.firstIndex(where: { $0.name == "Wren Halloway" }) {
+        var c = model.characters[idx]
+        c.conditions = [.frightened]
+        c.conditionDurations = [Condition.frightened.rawValue: 2]
+        c.conditionNotes = [Condition.frightened.rawValue: "the howl"]
+        c.customConditions = [CustomCondition(name: "Vault-marked")]
+        c.concentratingOn = "Misty step"
+        c.concentrationTimer = 3
+        model.characters[idx] = c
+    }
+    if let idx = model.characters.firstIndex(where: { $0.name == "Bram Oakfel" }) {
+        var c = model.characters[idx]
+        c.conditions = [.prone]
+        c.conditionDurations = [:]
+        c.conditionNotes = [:]
+        let hexed = CustomCondition(name: "Hexed")
+        c.customConditions = [hexed]
+        c.conditionDurations = [hexed.id.uuidString: 1]
+        c.conditionNotes = [hexed.id.uuidString: "the brand"]
+        c.concentratingOn = nil
+        c.concentrationTimer = nil
+        model.characters[idx] = c
+    }
+    if let idx = model.characters.firstIndex(where: { $0.name == "Sera Vint" }) {
+        var c = model.characters[idx]
+        c.conditions = []
+        c.conditionDurations = [:]
+        c.conditionNotes = [:]
+        c.customConditions = []
+        c.concentratingOn = nil
+        c.concentrationTimer = nil
+        model.characters[idx] = c
+    }
+    let pdpRows = partyDetailRows(model.characters)
+    let pdpWren = pdpRows.first(where: { $0.name == "Wren Halloway" })
+    pdpLines.append("wren chips: \(pdpWren?.chips.map(\.text) ?? [])")
+    pdpLines.append("wren chips exact \(pdpWren?.chips.map(\.text) == ["Frightened 2r (the howl)", "Vault-marked", "Concentrating: Misty step (3)"])")
+    pdpLines.append("wren flags none expiring \(pdpWren?.chips.map(\.expiring) == [false, false, false])")
+    let pdpBram = pdpRows.first(where: { $0.name == "Bram Oakfel" })
+    pdpLines.append("bram chips: \(pdpBram?.chips.map(\.text) ?? [])")
+    pdpLines.append("bram chips exact \(pdpBram?.chips.map(\.text) == ["Prone", "Hexed 1r (the brand)"])")
+    pdpLines.append("bram flags the 1r clock expiring \(pdpBram?.chips.map(\.expiring) == [false, true])")
+    let pdpSera = pdpRows.first(where: { $0.name == "Sera Vint" })
+    pdpLines.append("sera holds nothing, still one row \(pdpSera != nil && pdpSera?.chips.isEmpty == true)")
+    pdpLines.append("all three members list \(pdpRows.count == 3)")
+    pdpLines.append("hp rides the row \(pdpWren != nil && pdpWren!.currentHP == model.characters.first(where: { $0.id == pdpWren!.characterID })!.currentHP && pdpWren!.maxHP == model.characters.first(where: { $0.id == pdpWren!.characterID })!.maxHP)")
+    pdpLines.append("no cap inside the panel \(pdpWren?.chips.count == 3)")
+    pdpLines.append("read-only: the log gains no entries \(model.tableLog.count == pdpLogStart)")
+    // PNGs: the expanded panel at 720 and 1024 - wrap behavior at both.
+    model.partyDetailPanelOpen = true
+    renderPNG(
+        PartyDetailPanelView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 720, name: "party-detail-panel-720", outDir: outDir, minHeight: 120, maxHeight: 400)
+    renderPNG(
+        PartyDetailPanelView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 1024, name: "party-detail-panel-1024", outDir: outDir, minHeight: 120, maxHeight: 400)
+    // Persistence: the open pick writes defaults; a relaunched model
+    // restores it; collapsed persists too (the default).
+    // Key literal mirrored from AppModel (private there):
+    // architer.partyDetailPanelOpen.
+    pdpLines.append("the open pick writes defaults \(UserDefaults.standard.bool(forKey: "architer.partyDetailPanelOpen") == true)")
+    let pdpRelaunch = AppModel()
+    pdpLines.append("a relaunched model restores open \(pdpRelaunch.partyDetailPanelOpen == true)")
+    model.partyDetailPanelOpen = false
+    pdpLines.append("collapsing persists \(UserDefaults.standard.bool(forKey: "architer.partyDetailPanelOpen") == false)")
+    let pdpRelaunchClosed = AppModel()
+    pdpLines.append("a relaunch restores collapsed \(pdpRelaunchClosed.partyDetailPanelOpen == false)")
+    // Hygiene: roster condition state back, pick back to the default.
+    for idx in model.characters.indices {
+        let c = model.characters[idx]
+        if let orig = pdpOrig[c.id], c.conditions != orig.0 || c.conditionDurations != orig.1 || c.conditionNotes != orig.2 || c.customConditions != orig.3 || c.concentratingOn != orig.4 || c.concentrationTimer != orig.5 {
+            var restored = c
+            restored.conditions = orig.0
+            restored.conditionDurations = orig.1
+            restored.conditionNotes = orig.2
+            restored.customConditions = orig.3
+            restored.concentratingOn = orig.4
+            restored.concentrationTimer = orig.5
+            model.characters[idx] = restored
+            try? model.store.save(restored)
+        }
+    }
+    pdpLines.append("hygiene: roster conditions, clocks, notes, customs and concentration restored; pick collapsed")
+    try? pdpLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-detail-panel.txt"),
+               atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

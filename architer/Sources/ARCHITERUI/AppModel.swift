@@ -93,6 +93,15 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let tableLogConditionFilterKey = "architer.tableLogConditionFilter"
+    /// Party detail panel open pick (3.68.0): collapsed by default, the
+    /// pick persisted across launches in the session-restore family.
+    @Published public var partyDetailPanelOpen: Bool =
+        UserDefaults.standard.bool(forKey: AppModel.partyDetailPanelOpenKey) {
+        didSet {
+            UserDefaults.standard.set(partyDetailPanelOpen, forKey: AppModel.partyDetailPanelOpenKey)
+        }
+    }
+    private static let partyDetailPanelOpenKey = "architer.partyDetailPanelOpen"
     /// Journal timestamps in exports (2.66.0): on keeps the 2.47.0
     /// stamped heads; off gives clean archival sheets.
     @Published public var exportJournalTimestamps: Bool =
