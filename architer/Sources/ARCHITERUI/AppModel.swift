@@ -93,6 +93,15 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let tableLogConditionFilterKey = "architer.tableLogConditionFilter"
+    /// Last roll-history query (3.69.0), shared by every Dice view and
+    /// restored across launches. Clearing the query persists blank.
+    @Published public var rollHistoryQuery: String =
+        UserDefaults.standard.string(forKey: AppModel.rollHistoryQueryKey) ?? "" {
+        didSet {
+            UserDefaults.standard.set(rollHistoryQuery, forKey: AppModel.rollHistoryQueryKey)
+        }
+    }
+    private static let rollHistoryQueryKey = "architer.rollHistoryQuery"
     /// Party detail panel open pick (3.68.0): collapsed by default, the
     /// pick persisted across launches in the session-restore family.
     @Published public var partyDetailPanelOpen: Bool =

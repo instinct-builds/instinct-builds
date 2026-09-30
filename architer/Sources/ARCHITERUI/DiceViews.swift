@@ -36,7 +36,7 @@ public struct DiceRollerView: View {
     /// 2.78.0/2.84.0: or with the crits-only / starred-only filter on.
     /// 2.97.0: or with a history filter drafted (render proofs).
     public init(initialLatestSession: Bool = false, initialCritsOnly: Bool = false,
-                initialStarredOnly: Bool = false, initialHistoryFilter: String = "",
+                initialStarredOnly: Bool = false, initialHistoryFilter: String? = nil,
                 initialSavingFilterPreset: Bool = false,
                 initialFilterPresetNameDraft: String = "",
                 initialConfirmingFilteredDelete: Bool = false,
@@ -46,7 +46,7 @@ public struct DiceRollerView: View {
         _historyLatestSession = State(initialValue: initialLatestSession)
         _historyCritsOnly = State(initialValue: initialCritsOnly)
         _historyStarredOnly = State(initialValue: initialStarredOnly)
-        _historyFilter = State(initialValue: initialHistoryFilter)
+        _historyFilterOverride = State(initialValue: initialHistoryFilter)
         _savingFilterPreset = State(initialValue: initialSavingFilterPreset)
         _filterPresetNameDraft = State(initialValue: initialFilterPresetNameDraft)
         _confirmingFilteredDelete = State(initialValue: initialConfirmingFilteredDelete)
@@ -85,8 +85,19 @@ public struct DiceRollerView: View {
     /// Starred-only filter (2.84.0): true shows only rolls the table
     /// starred - manual curation next to the automatic crits filter.
     @State private var historyStarredOnly = false
-    /// Text filter over history labels and expressions; blank shows all.
-    @State private var historyFilter = ""
+    /// Production queries live on the model (3.69.0). An explicit
+    /// harness seed is an isolated local override, never a defaults write.
+    @State private var historyFilterOverride: String?
+    private var historyFilter: String {
+        get { historyFilterOverride ?? model.rollHistoryQuery }
+        nonmutating set {
+            if historyFilterOverride != nil { historyFilterOverride = newValue }
+            else { model.rollHistoryQuery = newValue }
+        }
+    }
+    private var historyFilterBinding: Binding<String> {
+        Binding(get: { historyFilter }, set: { historyFilter = $0 })
+    }
     /// Filter-preset naming form (3.0.0): true while the bar is naming
     /// the current filter as a preset; the draft pre-fills with the query.
     @State private var savingFilterPreset = false
@@ -236,7 +247,7 @@ public struct DiceRollerView: View {
                     .lineLimit(1)
                     .fixedSize()
                     .help("Show only rolls the table starred")
-                TextField("Filter rolls", text: $historyFilter)
+                TextField("Filter rolls", text: historyFilterBinding)
                     .textFieldStyle(InsetFieldStyle())
                     // 3.14.2: the field is the bar's designated shock
                     // absorber - 110 still shows long queries, and the

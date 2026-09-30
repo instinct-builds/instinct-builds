@@ -3669,6 +3669,60 @@ func run(model: AppModel, character: Character, outDir: String) {
     try? pdpLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/party-detail-panel.txt"),
                atomically: true, encoding: .utf8)
+    // 3.69.0: force the panel's wrap branch at 720 with six full-note
+    // chips on a single member. Restore the roster without storing this
+    // visual-only fixture. Pixels, not the chip count, prove the wrap.
+    let pwrOriginalRoster = model.characters
+    let pwrOriginalOpen = model.partyDetailPanelOpen
+    var pwrProbe = Character(name: "Wrap proof")
+    pwrProbe.conditions = [.blinded, .frightened, .poisoned, .prone, .stunned, .restrained]
+    for condition in pwrProbe.conditions {
+        pwrProbe.conditionNotes[condition.rawValue] = "abcdefghijklmnopqrstuvwx"
+        pwrProbe.conditionDurations[condition.rawValue] = 2
+    }
+    model.characters = [pwrProbe]
+    model.partyDetailPanelOpen = true
+    let pwrChips = partyDetailRows(model.characters).first?.chips ?? []
+    renderPNG(PartyDetailPanelView().padding().background(Theme.surface).environmentObject(model),
+              width: 720, name: "party-detail-panel-wrap-720", outDir: outDir, minHeight: 120, maxHeight: 600)
+    let pwrLines = ["Panel multi-row wrap fixture (3.69.0)",
+                    "six noted clocked chips \(pwrChips.count == 6)",
+                    "whole 24-character notes on every chip \(pwrChips.allSatisfy { $0.text.contains("abcdefghijklmnopqrstuvwx") })",
+                    "pixel proof: party-detail-panel-wrap-720.png must show multiple chip rows without clipping"]
+    try? pwrLines.joined(separator: "\n").write(to: URL(fileURLWithPath: "\(outDir)/party-detail-panel-wrap.txt"), atomically: true, encoding: .utf8)
+    model.characters = pwrOriginalRoster
+    model.partyDetailPanelOpen = pwrOriginalOpen
+    // 3.69.0: production history query survives a fresh model. Explicit
+    // older render seeds stay local overrides and leave defaults alone.
+    let hqpOriginalHistory = model.rollHistory
+    let hqpOriginalQuery = model.rollHistoryQuery
+    model.rollHistory = [
+        RollResult(expression: "1d6", dice: [], modifier: 0, total: 4,
+                   alternateTotal: nil, label: "Zephyr beacon", rolledAt: Date()),
+        RollResult(expression: "1d8", dice: [], modifier: 0, total: 6,
+                   alternateTotal: nil, label: "Bridge watch", rolledAt: Date())
+    ]
+    model.rollHistoryStore.save(model.rollHistory)
+    model.rollHistoryQuery = "Zephyr beacon"
+    var hqpLines = ["History-query persistence (3.69.0)"]
+    hqpLines.append("query writes defaults \(UserDefaults.standard.string(forKey: "architer.rollHistoryQuery") == "Zephyr beacon")")
+    let hqpRelaunch = AppModel()
+    hqpLines.append("fresh model restores query \(hqpRelaunch.rollHistoryQuery == "Zephyr beacon")")
+    let hqpMatches = hqpRelaunch.rollHistory.matching(hqpRelaunch.rollHistoryQuery)
+    hqpLines.append("fresh model filters to one exact roll \(hqpMatches.count == 1 && hqpMatches.first?.label == "Zephyr beacon")")
+    renderPNG(DiceRollerView().padding().background(Theme.surface).environmentObject(hqpRelaunch),
+              width: 1024, name: "history-query-persistence", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    renderPNG(DiceRollerView(initialHistoryFilter: "Bridge watch").padding().background(Theme.surface).environmentObject(model),
+              width: 1024, name: "history-query-local-override", outDir: outDir, minHeight: 420, maxHeight: 1100)
+    hqpLines.append("explicit render override leaves stored query untouched \(model.rollHistoryQuery == "Zephyr beacon" && UserDefaults.standard.string(forKey: "architer.rollHistoryQuery") == "Zephyr beacon")")
+    model.rollHistoryQuery = ""
+    let hqpCleared = AppModel()
+    hqpLines.append("clear survives fresh model \(hqpCleared.rollHistoryQuery.isEmpty)")
+    hqpLines.append("clear shows both rolls \(hqpCleared.rollHistory.matching(hqpCleared.rollHistoryQuery).count == 2)")
+    model.rollHistory = hqpOriginalHistory
+    model.rollHistoryStore.save(model.rollHistory)
+    model.rollHistoryQuery = hqpOriginalQuery
+    try? hqpLines.joined(separator: "\n").write(to: URL(fileURLWithPath: "\(outDir)/history-query-persistence.txt"), atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }
