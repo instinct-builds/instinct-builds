@@ -74,7 +74,11 @@ def chrome_result(chrome, url, screenshot=None):
                         if 'error' in message:raise RuntimeError(message['error'])
                         return message.get('result',{})
             while time.monotonic() < deadline:
-                state=cdp('Runtime.evaluate',{'expression':'JSON.stringify({result:document.getElementById("results")?.textContent||"",action:window.cdpAction||null})','returnByValue':True})
+                try:
+                    state=cdp('Runtime.evaluate',{'expression':'JSON.stringify({result:document.getElementById("results")?.textContent||"",action:window.cdpAction||null})','returnByValue':True})
+                except RuntimeError as error:
+                    if 'Inspected target navigated or closed' not in str(error): raise
+                    time.sleep(.1); continue
                 state=json.loads(state.get('result',{}).get('value','{}'))
                 if state.get('action'):
                     action=state['action'];response=cdp(action['method'],action['params'])
@@ -110,6 +114,18 @@ test_page = page.parent / '__reviewer-drafts-test.html'
 try:
     for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload', 'recovery-json', 'recovery-shape', 'recovery-item', 'recovery-active', 'recovery-legacy', 'recovery-failed', 'recovery-warning', 'keyboard-grid', 'keyboard-board', 'keyboard-dialog'):
         seed = ''
+        mode_original = original
+        if mode == 'keyboard-board':
+            # The normal native demo exports a grid-only gallery. Give this
+            # throwaway proof page a real local image and one normalized board
+            # spot for the same asset; never alter the client export on disk.
+            board_manifest = json.loads(json.dumps(manifest))
+            board_manifest['board'] = {'image': manifest['items'][0]['image'],
+                'spots': [{'id': item, 'x': 0, 'y': 0, 'w': 1, 'h': 1}]}
+            board_json = json.dumps(board_manifest).replace('</', '<\\/')
+            mode_original = re.sub(r'(<script type="application/json" id="manifest">).*?(</script>)',
+                lambda match: match.group(1)+board_json+match.group(2), original, count=1, flags=re.S)
+
         if mode.startswith('legacy'):
             seed = f'''<script>localStorage.setItem('asssets-review-'+{json.dumps(manifest['gallery'])},JSON.stringify({{reviewer:'Old Name',items:{{{json.dumps(item)}:{{favorite:true,note:'Older note',status:'approved'}}}}}}));</script>'''
         if mode.startswith('recovery-'):
@@ -162,7 +178,11 @@ if(MODE.startsWith('keyboard-')){
   document.getElementById('results').textContent=JSON.stringify({results,downloads:[]});
  }else{
   const board=MODE==='keyboard-board';
-  if(board)assert(document.querySelector('.spot'),'export contains real board spots');
+  if(board){
+   const spot=document.querySelector('.spot'),image=document.querySelector('#bwrap img');
+   assert(spot&&spot.dataset.reviewId===M.items[0].id,'board fixture contains matching asset spot');
+   await image.decode();assert(image.naturalWidth>0&&image.naturalHeight>0&&spot.getBoundingClientRect().width>0&&spot.getBoundingClientRect().height>0,'board fixture image loaded and spot has visible bounds');
+  }
   await to(e=>e.classList.contains(board?'spot':'thumb'));const id=document.activeElement.dataset.reviewId;
   await enter();assert(document.activeElement.id==='close','lightbox opening visibly focuses close');await shot(MODE+'-lightbox');
   await key('Tab','Tab',8);assert(document.activeElement.id==='next','Shift Tab trapped in lightbox');await tab();assert(document.activeElement.id==='close','Tab trapped in lightbox');
@@ -274,7 +294,7 @@ if(MODE.startsWith('keyboard-')){
 })();
 </script>'''.replace('MODE', json.dumps(mode))
         # Seed older storage before gallery script starts. Result node is after gallery initialization.
-        html = original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results" hidden></pre>'+flow+'</body>')
+        html = mode_original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results" hidden></pre>'+flow+'</body>')
         test_page.write_text(html)
         result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith(('storage-', 'recovery-', 'keyboard-')) else None)
         if 'error' in result: raise RuntimeError(f'{mode}: {result}')

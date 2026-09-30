@@ -1179,3 +1179,13 @@ saved draft; native tests import the browser-produced JSON.
   long wrapping name. Native tests import those browser-produced files.
   Feedback format, persistence rules and local-only identity language do not
   change.
+
+
+## 1.78.1: board keyboard proof fixture
+
+The normal native demo gallery has no board. The keyboard-board proof now
+writes a throwaway sibling page with a board manifest using the export's real
+first image and matching asset ID. It verifies image decode and visible spot
+bounds before sending keyboard input. It never changes the client export.
+Grid, board and reviewer-dialog keyboard batteries all run in the same suite;
+board and grid downloaded feedback still pass through native import tests.
