@@ -875,6 +875,19 @@ struct CharacterTests {
                 == "Apply 12 healing to Wren")
     }
 
+    @Test func conditionMenuLabels() throws {
+        // 3.70.0: apply, remove, and round-wrap tick phrasing - built-ins
+        // pass their display name, customs their trimmed name.
+        #expect(conditionApplyMenuLabel(conditionName: "Frightened", characterName: "Wren Halloway")
+                == "Apply Frightened to Wren Halloway")
+        #expect(conditionApplyMenuLabel(conditionName: "Hexed", characterName: "Wren Halloway")
+                == "Apply Hexed to Wren Halloway")
+        #expect(conditionRemoveMenuLabel(conditionName: "Poisoned", characterName: "Wren Halloway")
+                == "Remove Poisoned from Wren Halloway")
+        #expect(conditionTickMenuLabel(characterName: "Wren Halloway")
+                == "Tick condition timers on Wren Halloway")
+    }
+
     @Test func freeRollerTypeMemoryResolvesPerCharacter() throws {
         // Missing entry falls back to the table-wide selection.
         #expect(resolveFreeRollerType(map: [:], characterID: "A", tableDefault: .fire) == .fire)

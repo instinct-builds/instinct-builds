@@ -3723,6 +3723,63 @@ func run(model: AppModel, character: Character, outDir: String) {
     model.rollHistoryStore.save(model.rollHistory)
     model.rollHistoryQuery = hqpOriginalQuery
     try? hqpLines.joined(separator: "\n").write(to: URL(fileURLWithPath: "\(outDir)/history-query-persistence.txt"), atomically: true, encoding: .utf8)
+    // 3.70.0: the Edit menu names condition steps while their snapshot
+    // tops the selected character's undo stack - apply, remove (built-in
+    // and custom), and the round-wrap tick - and falls back to plain
+    // "Undo" after a newer unlabeled edit or the undo itself. Runs at
+    // the end like every AppModel proof; the roster and the initiative
+    // tracker are restored afterwards.
+    do {
+        let culOriginalInitiative = model.initiative
+        let culIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
+        let culOriginal = model.characters[culIdx]
+        let culName = culOriginal.name
+        var culLines = ["Condition undo-menu labels (3.70.0)",
+                        "the Edit menu names a condition step only while its snapshot tops the selected character's undo stack"]
+        // Apply names the step.
+        model.applyPartyCondition(.frightened, rounds: 2, from: [culOriginal.id])
+        culLines.append("apply names the step \(model.undoMenuLabel == "Undo Apply Frightened to \(culName)")")
+        // The undo itself moves the depth: plain "Undo".
+        model.undo()
+        culLines.append("after undo the menu falls back \(model.undoMenuLabel == "Undo")")
+        // Re-apply, then the removal names its own step.
+        model.applyPartyCondition(.frightened, rounds: 2, from: [culOriginal.id])
+        model.removePartyCondition(.frightened, from: [culOriginal.id])
+        culLines.append("removal names the step \(model.undoMenuLabel == "Undo Remove Frightened from \(culName)")")
+        // Customs ride the same pair under their trimmed name.
+        model.applyPartyCustomCondition(name: "Hexed", rounds: 3, from: [culOriginal.id])
+        culLines.append("custom apply names the step \(model.undoMenuLabel == "Undo Apply Hexed to \(culName)")")
+        model.removePartyCustomCondition(name: "Hexed", from: [culOriginal.id])
+        culLines.append("custom removal names the step \(model.undoMenuLabel == "Undo Remove Hexed from \(culName)")")
+        // A newer unlabeled edit moves the depth: plain "Undo".
+        if var c = model.selected?.wrappedValue {
+            c.experience += 1
+            model.selected?.wrappedValue = c
+        }
+        culLines.append("newer unlabeled edit falls back \(model.undoMenuLabel == "Undo")")
+        // The round-wrap tick names its step and actually ends the
+        // 1-round condition. Two rolled entries make the wrap real.
+        model.applyPartyCondition(.poisoned, rounds: 1, from: [culOriginal.id])
+        model.clearInitiative()
+        model.addInitiativeEntry(name: "Tick proof A", bonus: 0)
+        model.addInitiativeEntry(name: "Tick proof B", bonus: 0)
+        model.rollInitiative()
+        model.initiative.activeID = model.initiative.rolledOrder.last?.id
+        model.advanceInitiative()
+        culLines.append("wrap tick names the step \(model.undoMenuLabel == "Undo Tick condition timers on \(culName)")")
+        culLines.append("tick ended the 1-round condition \(model.selected?.wrappedValue.conditions.contains(.poisoned) == false)")
+        model.undo()
+        culLines.append("after tick undo the menu falls back \(model.undoMenuLabel == "Undo")")
+        // Hygiene: roster and tracker back to their fixture state.
+        model.characters[culIdx] = culOriginal
+        try? model.store.save(culOriginal)
+        model.initiative = culOriginalInitiative
+        model.initiativeStore.save(culOriginalInitiative)
+        culLines.append("hygiene: roster and initiative restored")
+        try? culLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/condition-undo-label.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -790,6 +790,9 @@ public final class AppModel: ObservableObject {
 
     public func advanceInitiative() {
         let roundBefore = initiative.round
+        // 3.70.0: depth before the wrap, so the Edit menu can name the
+        // tick on the selected character while its snapshot is on top.
+        let selectedDepthBefore = selectedID.flatMap { undoStacks[$0] }?.depth ?? -1
         initiative.advance()
         initiativeStore.save(initiative)
         // 3.30.0: the round wrap ticks every roster character's condition
@@ -815,6 +818,10 @@ public final class AppModel: ObservableObject {
             undoStacks[c.id] = stack
             characters[idx] = c
             try? store.save(c)
+        }
+        if let sel = selected?.wrappedValue,
+           (undoStacks[sel.id]?.depth ?? -1) > selectedDepthBefore {
+            recordTopEdit(conditionTickMenuLabel(characterName: sel.name))
         }
     }
 
@@ -1560,6 +1567,12 @@ public final class AppModel: ObservableObject {
             tableLog.append(TableLogEntry(title: "Party condition", text: text))
             tableLogStore.save(tableLog)
         }
+        // 3.70.0: the Edit menu names the apply while its snapshot tops
+        // the selected character's undo stack.
+        if let sel = selected?.wrappedValue, names.contains(sel.name) {
+            recordTopEdit(conditionApplyMenuLabel(conditionName: condition.displayName,
+                                                  characterName: sel.name))
+        }
         return (applied, refreshed)
     }
 
@@ -1606,6 +1619,12 @@ public final class AppModel: ObservableObject {
             tableLog.append(TableLogEntry(title: "Party condition",
                                           text: "\(condition.displayName) removed: \(removedLogged.joined(separator: ", "))"))
             tableLogStore.save(tableLog)
+        }
+        // 3.70.0: the Edit menu names the removal while its snapshot
+        // tops the selected character's undo stack.
+        if let sel = selected?.wrappedValue, removed.contains(sel.name) {
+            recordTopEdit(conditionRemoveMenuLabel(conditionName: condition.displayName,
+                                                   characterName: sel.name))
         }
         return removed
     }
@@ -1694,6 +1713,11 @@ public final class AppModel: ObservableObject {
             tableLog.append(TableLogEntry(title: "Party condition", text: text))
             tableLogStore.save(tableLog)
         }
+        // 3.70.0: same menu-label ride as the built-in apply - the menu
+        // names the custom by its trimmed name.
+        if let sel = selected?.wrappedValue, names.contains(sel.name) {
+            recordTopEdit(conditionApplyMenuLabel(conditionName: name, characterName: sel.name))
+        }
         return (applied, refreshed)
     }
 
@@ -1739,6 +1763,11 @@ public final class AppModel: ObservableObject {
             tableLog.append(TableLogEntry(title: "Party condition",
                                           text: "\(name) removed: \(removedLogged.joined(separator: ", "))"))
             tableLogStore.save(tableLog)
+        }
+        // 3.70.0: the menu names the custom removal while its snapshot
+        // tops the selected character's undo stack.
+        if let sel = selected?.wrappedValue, removed.contains(sel.name) {
+            recordTopEdit(conditionRemoveMenuLabel(conditionName: name, characterName: sel.name))
         }
         return removed
     }
@@ -1910,7 +1939,9 @@ public final class AppModel: ObservableObject {
     /// 3.19.0: the last HP apply's description and the undo depth it
     /// left behind, so the Edit menu can name the step while it is on
     /// top. Any newer character edit (or the undo itself) moves the
-    /// depth and the menu falls back to plain "Undo".
+    /// depth and the menu falls back to plain "Undo". 3.70.0: condition
+    /// mutations (apply, remove, round-wrap tick) record into the same
+    /// pair through recordTopEdit, so the menu names those steps too.
     @Published public private(set) var lastApplyDescription: String?
     private var lastApplyUndoDepth: Int?
 
@@ -1936,6 +1967,16 @@ public final class AppModel: ObservableObject {
                                                     healing: healing, characterName: c.name)
             lastApplyUndoDepth = depthAfter
         }
+    }
+
+    /// 3.70.0: store a mutation's menu description with the undo depth
+    /// it left on the selected character's stack - the Edit menu names
+    /// the step only while that depth is still on top (3.19.0
+    /// discipline: any newer edit or the undo itself falls back).
+    private func recordTopEdit(_ description: String) {
+        guard let id = selectedID, let depth = undoStacks[id]?.depth else { return }
+        lastApplyDescription = description
+        lastApplyUndoDepth = depth
     }
 
     /// 3.19.0: the Edit menu names an HP apply while it is the top undo
