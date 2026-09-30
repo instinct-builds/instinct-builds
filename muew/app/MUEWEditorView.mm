@@ -4852,6 +4852,13 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseDown:(NSEvent*)e {
+    // RESET TRACE is display-only, including when the standalone piano keys
+    // are held. Other editor clicks keep their existing note-release safety.
+    NSPoint tracePoint=[self convertPoint:e.locationInWindow fromView:nil];
+    if (!browserOpen && !outputDetailOpen && wtEdit<0 && msegEdit<0 && fxDetail<0 && !burstDetail &&
+        NSPointInRect(tracePoint,[self matrixTraceReset])) {
+        [self resetMatrixTrace]; return;
+    }
     [self releaseHeldKeyboardNotes];
     browserListFocus=false;
     [self.window makeFirstResponder:self];
