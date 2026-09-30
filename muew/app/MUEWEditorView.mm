@@ -1283,6 +1283,7 @@ static const NSInteger kFxDrag = 100; // dragKnob values >= kFxDrag are FX rings
 // 0.16.0: response-curve glyph and AUX chip between the amount bar and its readout.
 - (NSRect)routeCurve:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 151, r.origin.y + 4, 20, 14); }
 - (NSRect)routeAux:(int)i { NSRect r = [self routeRow:i]; return NSMakeRect(r.origin.x + 174, r.origin.y + 4, 26, 14); }
+- (NSRect)matrixTraceReset { return NSMakeRect(44,40,248,14); }
 - (NSRect)pageTab:(int)i { return NSMakeRect(172 + i * 30, 234, 28, 14); }
 // Right: 15 source badges (2 x 8), preview, and the selected modulator's controls.
 - (NSRect)sourceBadge:(int)i { // 2 pt gaps (0.18.0); 0.24.0 performance badges (15-18) on a third row
@@ -2693,9 +2694,17 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     return YES; // panel masks the matrix underneath
 }
 
+- (void)resetMatrixTrace {
+    routeHold.clear(); routeTrace.clear();
+    routeMeterClock=0; routeTraceClock=0;
+    [self setNeedsDisplay:YES];
+}
 - (void)drawMatrix {
     const auto& srcs = ui::matrixSources();
     int n = (int)current.routes.size();
+    NSRect reset=[self matrixTraceReset];
+    FillRound(reset,3,C(0x1d2631));
+    TextA(@"RESET TRACE",NSInsetRect(reset,2,1),7,C(0x8faabb),NSFontWeightSemibold,NSTextAlignmentCenter);
     Text(@"MATRIX", NSMakeRect(44, 235, 60, 12), 9, C(0xa8b2c1), NSFontWeightSemibold);
     Text([NSString stringWithFormat:@"%d / %d", n, kMaxRoutes], NSMakeRect(96, 235, 60, 12), 9, C(0x5f6b7b), NSFontWeightMedium);
     static NSString* pages[4] = {@"1-4", @"5-8", @"9-12", @"13-16"};
@@ -3734,6 +3743,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
 
 // ---- mod matrix interaction ----
 - (BOOL)matrixMouseDown:(NSPoint)p event:(NSEvent*)e {
+    if (NSPointInRect(p,[self matrixTraceReset])) { [self resetMatrixTrace]; return YES; }
     const auto& srcs = ui::matrixSources();
     int n = (int)current.routes.size();
     for (int i = 0; i < 4; ++i)

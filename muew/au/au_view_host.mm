@@ -1,3 +1,6 @@
+#include "../src/route_meter_hold.h"
+#include "../src/route_range_trace.h"
+#import <objc/runtime.h>
 #include "../tests/proof_watchdog.h"
 // au_view_host.mm - CI proof that the MUEW AU editor works the way a DAW
 // uses it: find the installed component, ask it for kAudioUnitProperty_CocoaUI,
@@ -1938,6 +1941,52 @@ int main() {
                   "MUEW AU routes carry both LFO polarities into the editor range trace");
             [view display];
             Snapshot(view,"MUEW_RANGE59_PNG","matrix signed range with held pip and depth handle snapshot written");
+            // Explicit 0.85.0 all-page history reset while the AU note sounds.
+            muew_proof::Phase("AU matrix reset all-page proof");
+            muew::Preset resetBefore,resetAfter,preResetSound;
+            bool resetFixtureRead=State(preResetSound);
+            muew::Preset allPages=preResetSound;
+            allPages.routes.resize(muew::kMaxRoutes,{muew::ModRoute::Source::Macro1,muew::ModRoute::Dest::FilterCutoff,1.0});
+            CFStringRef resetText=CFStringCreateWithCString(kCFAllocatorDefault,allPages.serialize().c_str(),kCFStringEncodingUTF8);
+            bool resetInstalled=resetText && AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&resetText,sizeof(resetText))==noErr;
+            if(resetText) CFRelease(resetText);
+            if ([view respondsToSelector:colorSync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:colorSync])(view,colorSync,YES);
+            MusicDeviceMIDIEvent(gUnit,0x90,60,110,0); RenderBlock(512);
+            if ([view respondsToSelector:meterFollow]) ((void (*)(id,SEL))[view methodForSelector:meterFollow])(view,meterFollow);
+            bool resetStateRead=resetFixtureRead && resetInstalled && State(resetBefore);
+            NSString* liveBefore=[view valueForKey:@"muewRouteMetersText"];
+            id editedBefore=[view valueForKey:@"edited"];
+            id pageBefore=[view valueForKey:@"matrixPage"];
+            // Feed known histories through the view's real display-model APIs.
+            // All sixteen fixture routes are valid; pages 2-4 are hidden.
+            muew::RouteMeterHold* held=(muew::RouteMeterHold*)((char*)(__bridge void*)view+ivar_getOffset(class_getInstanceVariable(view.class,"routeHold")));
+            muew::RouteRangeTrace* trace=(muew::RouteRangeTrace*)((char*)(__bridge void*)view+ivar_getOffset(class_getInstanceVariable(view.class,"routeTrace")));
+            for(int i=0;i<muew::kMaxRoutes;++i) { held->value[i]=i%2 ? -.4f : .6f;held->age[i]=.1;trace->low[i]=-.5f;trace->high[i]=.7f; }
+            Snapshot(view,"MUEW_RESET85_BEFORE_PNG","matrix RESET TRACE before snapshot written");
+            [view setValue:@3 forKey:@"matrixPage"];
+            Snapshot(view,"MUEW_RESET85_HIDDEN_BEFORE_PNG","matrix hidden page before reset snapshot written");
+            [view setValue:@0 forKey:@"matrixPage"];
+            Click(view,w,NSMakePoint(64,47));
+            bool clearedAll=true;
+            for(int i=0;i<muew::kMaxRoutes;++i) clearedAll &= held->value[i]==0 && held->age[i]==0 && trace->low[i]==0 && trace->high[i]==0;
+            MUEWPerformance resetPerf{}; UInt32 resetPerfSize=sizeof(resetPerf);
+            bool resetPerfRead=AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&resetPerf,&resetPerfSize)==noErr;
+            Check(clearedAll && [liveBefore isEqualToString:[view valueForKey:@"muewRouteMetersText"]] &&
+                  resetStateRead && State(resetAfter) && resetBefore==resetAfter &&
+                  [editedBefore isEqual:[view valueForKey:@"edited"]] && resetPerfRead && resetPerf.activeVoices>0,
+                  "RESET TRACE clears all 16 histories but preserves live meters, AU sound, edited state and sounding voices");
+            Snapshot(view,"MUEW_RESET85_AFTER_PNG","matrix RESET TRACE after snapshot written");
+            [view setValue:@3 forKey:@"matrixPage"];
+            Snapshot(view,"MUEW_RESET85_HIDDEN_AFTER_PNG","matrix hidden page after reset snapshot written");
+            [view setValue:pageBefore forKey:@"matrixPage"];
+            bool recaptureRender=RenderBlock(512);
+            if ([view respondsToSelector:meterFollow]) ((void (*)(id,SEL))[view methodForSelector:meterFollow])(view,meterFollow);
+            Check(recaptureRender && held->value[0]>.36f && trace->high[0]>.36f && State(resetAfter) && resetBefore==resetAfter,
+                  "fresh AU render poll recaptures matrix history after reset without sound change");
+            // Restore the two-route fixture for the pre-existing meter assertions.
+            CFStringRef restoreReset=CFStringCreateWithCString(kCFAllocatorDefault,preResetSound.serialize().c_str(),kCFStringEncodingUTF8);
+            if (restoreReset) { AudioUnitSetProperty(gUnit,kMUEWProperty_PresetState,kAudioUnitScope_Global,0,&restoreReset,sizeof(restoreReset)); CFRelease(restoreReset); }
+            if ([view respondsToSelector:colorSync]) ((void (*)(id,SEL,BOOL))[view methodForSelector:colorSync])(view,colorSync,YES);
             MusicDeviceMIDIEvent(gUnit,0xB0,123,0,0); for(int k=0;k<80;++k) RenderBlock();
             MUEWPerformance meterOff{}; UInt32 meterOffSize=sizeof(meterOff);
             bool meterCleared=AudioUnitGetProperty(gUnit,kMUEWProperty_Performance,kAudioUnitScope_Global,0,&meterOff,&meterOffSize)==noErr;

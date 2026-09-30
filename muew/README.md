@@ -700,7 +700,7 @@ macOS Accessibility/TCC refusal is logged as blocked, not rebranded as a pass;
 see `docs/voiceover-manual-checklist.md` for the manual VoiceOver/AU-host pass.
 The in-process 0.81.0 evidence remains the limit until IPC actually succeeds.
 
-## 0.84.0 Accessible browser navigation
+## 0.83.0 Accessible browser navigation
 
 The native Search and virtual result list are joined by stable virtual Bank,
 Type, and sort controls, plus Close. Their press actions use the same browser
@@ -710,3 +710,11 @@ handles. The macOS keyboard host and separate AX IPC client probe filtering,
 ordering, inert traversal, stale actions and list updates. Save, import, export,
 ratings, dialog focus return, VoiceOver speech and AU-host AX traversal remain
 outside this slice.
+
+## 0.84.0 Loaded-sound browser actions
+
+Favorite, five rating choices, Save, Import and Export now share mouse and AX paths. Detail controls name the loaded sound, survive refiltering and refuse stale actions after load/close. Native file dialogs are exercised through launch/cancel/return. Desktop proof watchdogs bound modal and IPC waits independently of the main loop. VoiceOver speech and real AU-host AX traversal remain unclaimed.
+
+## 0.85.0 Matrix trace reset
+
+RESET TRACE below the matrix clears peak-hold and signed range-history displays across all 16 slots without changing the live indicator, route depths, sound or running notes. The next live poll can capture fresh history. This is editor-only state, not a new parameter or preset field.

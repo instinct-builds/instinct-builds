@@ -33,7 +33,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.84.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.85.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -70,6 +70,46 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Up(v,w,@"a");
     Check(host->off.size()==offBefore+1, "late keyUp does not release twice");
 
+    muew_proof::Phase("matrix reset all-page proof");
+    const muew::Preset preResetSound=v->current;
+    v->current.routes.resize(muew::kMaxRoutes,{muew::ModRoute::Source::Macro1,muew::ModRoute::Dest::FilterCutoff,1.0});
+    const muew::Preset resetSound=v->current;
+    const bool resetEdited=v->edited;
+    const int resetPatches=host->patches;
+    const auto resetOn=host->on.size(),resetOff=host->off.size();
+    float resetLive[muew::kMaxRoutes]{};
+    for (int i=0;i<muew::kMaxRoutes;++i) {
+        resetLive[i]=(i%2 ? -.4f : .6f);
+        v->routeMeters[i]=resetLive[i];
+        v->routeHold.value[i]=resetLive[i]; v->routeHold.age[i]=.1;
+        v->routeTrace.low[i]=-.5f; v->routeTrace.high[i]=.7f;
+    }
+    const int savedPage=v->matrixPage;
+    v->matrixPage=3; Snapshot(v,"matrix-reset-hidden-before");
+    v->matrixPage=0; Snapshot(v,"matrix-reset-before");
+    NSPoint resetPoint=[v matrixTraceReset].origin;
+    resetPoint.x+=20; resetPoint.y+=7;
+    NSEvent* resetEvent=[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:resetPoint modifierFlags:0
+        timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+    [v mouseDown:resetEvent];
+    BOOL allClear=YES,liveUnchanged=YES;
+    for (int i=0;i<muew::kMaxRoutes;++i) {
+        allClear &= v->routeHold.value[i]==0 && v->routeHold.age[i]==0 && v->routeTrace.low[i]==0 && v->routeTrace.high[i]==0;
+        liveUnchanged &= v->routeMeters[i]==resetLive[i];
+    }
+    Check(allClear && liveUnchanged && v->current==resetSound && v->edited==resetEdited && host->patches==resetPatches &&
+          host->on.size()==resetOn && host->off.size()==resetOff && v->matrixPage==0,
+          "RESET TRACE clears all 16 hidden/visible histories, not live values, sound, edits or notes");
+    Snapshot(v,"matrix-reset-after");
+    v->matrixPage=3; Snapshot(v,"matrix-reset-hidden-after");
+    float resetLo[muew::kMaxRoutes]{}, resetHi[muew::kMaxRoutes]{};
+    resetLo[0]=-.3f;resetHi[0]=.5f;
+    [v showRouteMeters:resetLive count:muew::kMaxRoutes];
+    [v showRouteMin:resetLo max:resetHi count:muew::kMaxRoutes];
+    Check(v->routeHold.value[0]==resetLive[0] && v->routeTrace.low[0]==-.3f && v->routeTrace.high[0]==.5f &&
+          v->current==resetSound && host->patches==resetPatches,"fresh in-process poll recaptures history without sound edits");
+    v->current=preResetSound;
+    v->matrixPage=savedPage; [v resetMatrixTrace];
     v->outputDetailOpen=true; [v setNeedsDisplay:YES]; Snapshot(v,"output-detail");
     Down(v,w,@"\r"); Check(!v->outputDetailOpen && v->currentIndex==original, "Return closes read-only output detail only");
     v->outputDetailOpen=true; v->browserOpen=true;
