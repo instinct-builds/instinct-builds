@@ -1140,3 +1140,22 @@ feedback JSON shape is used. Reviewer names are local labels, not identity
 checks. Chrome proof exercises denied storage, quota, partial write and
 failed readback, downloads each unsaved draft, and reloads a successfully
 saved draft; native tests import the browser-produced JSON.
+
+
+## 1.77.0: unreadable reviewer storage recovery
+
+- The offline gallery checks draft JSON, reviewer names, item fields, active
+  pointers, and legacy draft/choice data before allowing automatic writes.
+  Unreadable data is left untouched and a recovery dialog explains the block.
+- Download recovery copy exports the original raw storage strings separately
+  from review feedback. It is not native-importable feedback. Replacement is
+  offered only after requesting the copy and confirming that it was received;
+  the browser cannot verify a download actually reached the filesystem.
+- Explicit replacement clears this gallery's browser drafts, confirms each
+  storage value by readback, and keeps recovery blocked on failure. Rollback
+  is best effort, never a promise. Downloaded feedback is not changed.
+- Chrome/CDP tests cover invalid JSON and shapes, invalid items/pointers,
+  legacy corruption, untouched bytes, unresolved reload, replacement failure,
+  fresh-draft reload and normal feedback downloads. Native import tests check
+  the resulting feedback and reject recovery copies as feedback. Reviewer
+  names remain local labels, not proof of identity. No server sync is added.

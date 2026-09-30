@@ -102,6 +102,17 @@ struct ReviewGalleryTests {
             #expect(applied.favorites == 1 && applied.notes == 1)
             #expect(independent.assets[0].clientNotes.contains(ClientNote(reviewer: "Failed Draft", text: "Keep this note", gallery: manifest.gallery)))
         }
+        for mode in ["recovery-json", "recovery-shape", "recovery-item", "recovery-active", "recovery-legacy"] {
+            let recovered = try read("\(mode)-0.json")
+            #expect(recovered.reviewer == "Recovered Reviewer")
+            #expect(recovered.items.first?.note == "New draft after recovery")
+            var independent = catalog
+            let applied = independent.applyFeedback(recovered)
+            #expect(applied.favorites == 1 && applied.notes == 1)
+            #expect(independent.assets[0].clientNotes.contains(ClientNote(reviewer: "Recovered Reviewer", text: "New draft after recovery", gallery: manifest.gallery)))
+        }
+        let raw = try Data(contentsOf: root.appendingPathComponent("recovery-warning-raw.json"))
+        #expect(ReviewGallery.decodeFeedback(raw) == nil) // recovery copies are not feedback
         let warningFile = try read("storage-warning-0.json")
         #expect(warningFile.items.first?.note == "Keep this note")
         let survived = try read("reload-0.json")

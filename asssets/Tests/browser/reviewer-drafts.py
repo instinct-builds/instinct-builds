@@ -121,10 +121,20 @@ item = manifest['items'][0]['id']
 # Run a page copy next to the gallery so images and file:// origin are unchanged.
 test_page = page.parent / '__reviewer-drafts-test.html'
 try:
-    for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload'):
+    for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload', 'recovery-json', 'recovery-shape', 'recovery-item', 'recovery-active', 'recovery-legacy', 'recovery-failed', 'recovery-warning'):
         seed = ''
         if mode.startswith('legacy'):
             seed = f'''<script>localStorage.setItem('asssets-review-'+{json.dumps(manifest['gallery'])},JSON.stringify({{reviewer:'Old Name',items:{{{json.dumps(item)}:{{favorite:true,note:'Older note',status:'approved'}}}}}}));</script>'''
+        if mode.startswith('recovery-'):
+            key = 'asssets-review-'+manifest['gallery']
+            valid = {'alex': {'reviewer':'Alex', 'items':{item:{'favorite':True,'note':'Recover original','status':'approved'}}}}
+            values = {key+'-drafts-v2':json.dumps(valid),key+'-active-v2':json.dumps('alex')}
+            if mode in ('recovery-json','recovery-failed', 'recovery-warning'): values[key+'-drafts-v2']='{broken json: keep exact bytes'
+            if mode=='recovery-shape': values[key+'-drafts-v2']=json.dumps({'alex':{'reviewer':42,'items':{}}})
+            if mode=='recovery-item': values[key+'-drafts-v2']=json.dumps({'alex':{'reviewer':'Alex','items':{item:{'note':42}}}})
+            if mode=='recovery-active': values[key+'-active-v2']=json.dumps('missing')
+            if mode=='recovery-legacy': values[key]='[unsupported legacy]'
+            seed = '<script>window.expectedRaw='+json.dumps(values)+';if(!sessionStorage.getItem("recovery-stage"))for(const [k,v] of Object.entries(expectedRaw))localStorage.setItem(k,v);</script>'
         if mode.startswith('storage-'):
             failure = mode.split('-')[1]
             if failure == 'warning': failure = 'quota'
@@ -139,13 +149,50 @@ Storage.prototype.setItem=function(k,v){{
 </script>'''
         flow = r'''<script>
 (async()=>{
-let results=[], blobs=[];const old=URL.createObjectURL;URL.createObjectURL=b=>{blobs.push(b);return old.call(URL,b)};
-const assert=(ok,msg)=>{if(!ok)throw Error(msg);results.push(msg)};
+let results=JSON.parse(sessionStorage.getItem('proof-results')||'[]'), blobs=[];const old=URL.createObjectURL;URL.createObjectURL=b=>{blobs.push(b);return old.call(URL,b)};
+const assert=(ok,msg)=>{if(!ok)throw Error(msg);results.push(msg);try{sessionStorage.setItem('proof-results',JSON.stringify(results))}catch(e){}};
+window.confirm=()=>true;
 const click=id=>document.getElementById(id).click();
 const type=(id,v)=>{const x=document.getElementById(id);x.value=v;x.dispatchEvent(new Event('input',{bubbles:true}))};
 const download=async()=>{click('download');assert(blobs.length>0,'download button created a Blob');return JSON.parse(await blobs.pop().text())};
 try{
-if(MODE==='drafts'){
+if(MODE.startsWith('recovery-')&&sessionStorage.getItem('recovery-stage')==='fresh'){
+ assert(document.getElementById('reviewer').value==='Recovered Reviewer','new reviewer survives reload after recovery');
+ const d=await download();assert(d.items[0].note==='New draft after recovery','new feedback survives reload after recovery');
+ document.getElementById('results').textContent=JSON.stringify({results,downloads:[d]});
+}else if(MODE.startsWith('recovery-')){
+ const unchanged=()=>Object.entries(expectedRaw).every(([k,v])=>localStorage.getItem(k)===v);
+ assert(document.getElementById('reviewModalTitle').textContent==='Stored drafts need recovery','recovery blocks startup');
+ assert(unchanged(),'original raw bytes untouched on startup');
+ assert(document.querySelector('#reviewModalActions .primary')===null,'replacement requires recovery download');
+ assert(!put()&&unchanged(),'automatic save cannot overwrite unreadable storage');
+ document.querySelector('#reviewModalActions button').click();
+ const recovery=JSON.parse(await blobs.pop().text());
+ assert(recovery.format==='asssets-review-storage-recovery'&&Object.entries(expectedRaw).every(([k,v])=>recovery.stored[k]===v),'recovery download contains exact original bytes');
+ assert(unchanged(),'recovery download leaves storage unchanged');
+ if(MODE==='recovery-warning'){document.getElementById('results').textContent=JSON.stringify({results,downloads:[],recovery});
+ }else if(MODE==='recovery-failed'){
+  const set=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('blocked','SecurityError')};
+  document.querySelector('#reviewModalActions .primary').click();
+  assert(unchanged()&&document.getElementById('reviewModalTitle').textContent==='Stored drafts need recovery','failed fresh start stays blocked without data loss');
+  Storage.prototype.setItem=set;
+  document.getElementById('results').textContent=JSON.stringify({results,downloads:[],recovery});
+ }else if(!sessionStorage.getItem('recovery-stage')){
+  sessionStorage.setItem('recovery-stage','downloaded');
+  // A second navigation must still detect the same stored bytes, not quietly clear them.
+  location.reload();
+ }else{
+  assert(unchanged(),'reload preserves unresolved original storage');
+  window.confirm=()=>false;document.querySelector('#reviewModalActions .primary').click();assert(unchanged(),'declined replacement keeps original bytes');window.confirm=()=>true;
+  document.querySelector('#reviewModalActions .primary').click();
+  assert(document.getElementById('reviewModalTitle').textContent==='Switch reviewer','explicit fresh start enables new draft');
+  type('newReviewer','Recovered Reviewer');document.querySelector('#reviewModalActions .primary').click();
+  document.querySelector('.heart').click();document.querySelector('.st .ap').click();document.querySelector('.thumb').click();type('lbnote','New draft after recovery');click('close');
+  const d=await download();assert(d.reviewer==='Recovered Reviewer'&&d.items[0].note==='New draft after recovery','fresh feedback excludes unreadable stored contents');
+  assert(JSON.parse(localStorage.getItem(DKEY))['recovered reviewer'].items[d.items[0].id].note==='New draft after recovery','new draft read back after recovery');
+  sessionStorage.setItem('recovery-stage','fresh');location.reload();
+ }
+}else if(MODE==='drafts'){
  assert(document.getElementById('reviewModalTitle').textContent==='Switch reviewer','new gallery asks reviewer');
  type('newReviewer','Alex');document.querySelector('#reviewModalActions .primary').click();
  document.querySelector('.heart').click();document.querySelector('.st .ap').click();
@@ -210,12 +257,13 @@ if(MODE==='drafts'){
 })();
 </script>'''.replace('MODE', json.dumps(mode))
         # Seed older storage before gallery script starts. Result node is after gallery initialization.
-        html = original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results"></pre>'+flow+'</body>')
+        html = original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results" hidden></pre>'+flow+'</body>')
         test_page.write_text(html)
-        result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith('storage-') else None)
+        result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith(('storage-', 'recovery-')) else None)
         if 'error' in result: raise RuntimeError(f'{mode}: {result}')
         for i, download in enumerate(result['downloads']):
             (out / f'{mode}-{i}.json').write_text(json.dumps(download,indent=2)+'\n')
+        if 'recovery' in result: (out / f'{mode}-raw.json').write_text(json.dumps(result['recovery'],indent=2)+'\n')
         print(mode, ', '.join(result['results']))
     (out / 'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 finally:

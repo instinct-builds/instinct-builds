@@ -189,7 +189,7 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 <aside><h2 id="lbtitle"></h2><div class="r" id="lbres"></div><div class="lbcredit" id="lbcredit"></div><div class="sw" id="lbsw"></div>
 <button class="pickbtn" id="lbpick">♥ Favorite</button><div class="lbl">DECISION</div><div class="st big" id="lbst"><button class="ap" id="lbap">✓ Approve</button><button class="ch" id="lbch">↺ Request changes</button></div><div class="lbl">NOTE</div><textarea id="lbnote" placeholder="What works, what to change…"></textarea>
 <div class="lbl">TAGS</div><div class="tags" id="lbtags"></div><div class="nav"><button id="prev">← Prev</button><button id="next">Next →</button></div>
-<div class="hint">← → browse · F favorite · A approve · C changes · Esc close. Your picks and notes stay in this browser until you download them.</div></aside></div>
+<div class="hint">← → browse · F favorite · A approve · C changes · Esc close. Picks and notes save in this browser only when storage succeeds. Download feedback to keep a separate copy.</div></aside></div>
 <footer>Made with ASSSETS · send the downloaded feedback file back to the person who shared this gallery</footer>
 <div class="review-modal" id="reviewModal" role="dialog" aria-modal="true" aria-labelledby="reviewModalTitle"><div class="review-dialog"><h2 id="reviewModalTitle"></h2><p id="reviewModalText"></p>
 <div id="switchFields"><label for="knownReviewers">Saved drafts</label><select id="knownReviewers"></select><label for="newReviewer">Or start a new reviewer draft</label><input id="newReviewer" placeholder="Reviewer name"></div>
@@ -201,16 +201,25 @@ textarea{background:var(--raised);border:1px solid var(--line);color:var(--text)
 const M=JSON.parse(document.getElementById('manifest').textContent);const KEY='asssets-review-'+M.gallery;
 const DKEY=KEY+'-drafts-v2',ACTIVE=KEY+'-active-v2';
 const norm=n=>(n||'').trim().toLocaleLowerCase();const empty=n=>({reviewer:n,items:{}});
-let storageProblem='';
-function read(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){storageProblem='Browser storage is unavailable or blocked.';return null}}
-let drafts=read(DKEY);if(!drafts||typeof drafts!=='object'||Array.isArray(drafts))drafts={};
-const active=read(ACTIVE);let S=empty('');let legacy=read(KEY);
-const $=id=>document.getElementById(id);let only=false,cur=-1,unsaved=false;
-const validDraft=d=>d&&typeof d==='object'&&d.items&&typeof d.items==='object'&&!Array.isArray(d.items);
-function notice(reason){unsaved=true;const bar=$('saveState');bar.classList.add('on');bar.textContent='Not saved in this browser: '+reason+' Download feedback now to keep this draft. Do not reload or close this tab.';
+let storageProblem='',recoveryProblem='',recoveryDownloaded=false;
+const rawStorage={},CHOICE=KEY+'-legacy-choice-v2';
+const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+const validItem=v=>object(v)&&(v.favorite===undefined||typeof v.favorite==='boolean')&&(v.note===undefined||typeof v.note==='string')&&(v.status===undefined||['','approved','changes'].includes(v.status));
+const validDraft=d=>object(d)&&typeof d.reviewer==='string'&&object(d.items)&&Object.values(d.items).every(validItem);
+function read(k){try{const raw=localStorage.getItem(k);rawStorage[k]=raw;if(raw===null)return null;
+try{return JSON.parse(raw)}catch(e){recoveryProblem='Stored draft data is not readable JSON.';return null}
+}catch(e){storageProblem='Browser storage is unavailable or blocked.';return null}}
+let drafts=read(DKEY),active=read(ACTIVE),legacy=read(KEY),legacyChoice=read(CHOICE);
+if(rawStorage[DKEY]!==null&&rawStorage[DKEY]!==undefined&&(!object(drafts)||!Object.entries(drafts).every(([key,d])=>validDraft(d)&&norm(d.reviewer)===key&&key.length>0)))recoveryProblem=recoveryProblem||'Stored reviewer drafts have an unsupported shape.';
+if(rawStorage[KEY]!==null&&rawStorage[KEY]!==undefined&&!validDraft(legacy))recoveryProblem=recoveryProblem||'The earlier draft has an unsupported shape.';
+if(active!==null&&(typeof active!=='string'||!object(drafts)||!validDraft(drafts[active])))recoveryProblem=recoveryProblem||'The active reviewer does not point to a readable draft.';
+if(legacyChoice!==null&&!['fresh','continued'].includes(legacyChoice))recoveryProblem=recoveryProblem||'The earlier-draft choice is unreadable.';
+if(!object(drafts))drafts={};
+let S=empty('');const $=id=>document.getElementById(id);let only=false,cur=-1,unsaved=false;
+function notice(reason){unsaved=true;const bar=$('saveState');bar.classList.add('on');bar.textContent='Not saved in this browser: '+reason+' '+(recoveryProblem?'Use the recovery dialog to download the stored bytes.':'Download feedback now to keep this draft. Do not reload or close this tab.');
 const retry=document.createElement('button');retry.textContent='Try saving again';retry.onclick=put;bar.appendChild(retry)}
 function saved(){unsaved=false;storageProblem='';$('saveState').classList.remove('on');$('saveState').textContent=''}
-function commit(next,key){const value=JSON.stringify(next),pointer=JSON.stringify(key);
+function commit(next,key){if(recoveryProblem){notice(recoveryProblem+' Stored data has not been replaced.');return false}const value=JSON.stringify(next),pointer=JSON.stringify(key);
 let previousDrafts=null,previousActive=null,wrote=false;
 try{previousDrafts=localStorage.getItem(DKEY);previousActive=localStorage.getItem(ACTIVE);
 localStorage.setItem(DKEY,value);wrote=true;localStorage.setItem(ACTIVE,pointer);
@@ -230,10 +239,10 @@ buttons.forEach(([label,fn,primary])=>{const b=document.createElement('button');
 function listNames(){const select=$('knownReviewers');select.innerHTML='';Object.values(drafts).filter(validDraft).forEach(d=>{const opt=document.createElement('option');opt.value=d.reviewer;opt.textContent=d.reviewer;select.appendChild(opt)});const fresh=document.createElement('option');fresh.value='';fresh.textContent='New reviewer';select.appendChild(fresh);select.value='';$('newReviewer').value=''}
 function showBlockedSwitch(){modal('Draft not saved','Switching now could lose this reviewer’s picks, notes or decisions. Download this draft first, then try saving again before switching.',[
 ['Keep reviewing',closeReviewerModal],['Download feedback',()=>{closeReviewerModal();downloadFeedback()}]],'blocked')}
-function switchReviewer(){if(norm(S.reviewer)&&!put()){showBlockedSwitch();return}
+function switchReviewer(){if(recoveryProblem){showRecovery();return}if(norm(S.reviewer)&&!put()){showBlockedSwitch();return}
 listNames();modal('Switch reviewer','The current draft stays in this browser only when saving succeeds. Switching loads only the selected reviewer’s picks, notes and decisions.',[
 ...(norm(S.reviewer)?[['Cancel',closeReviewerModal]]:[]),['Switch',()=>{const fresh=$('newReviewer').value.trim(),name=fresh||$('knownReviewers').value;if(!name)return;if(fresh&&drafts[norm(fresh)]){alert('That name already has a draft. Choose it from Saved drafts.');return}if(norm(name)===norm(S.reviewer)){closeReviewerModal();return}take(name)},true]],'switch')}
-function renameReviewer(){if(!norm(S.reviewer))return;if(!put()){showBlockedSwitch();return}$('renameInput').value=S.reviewer;modal('Rename this reviewer','Change the name on this draft without creating or copying another draft. Feedback already downloaded under the old name will not change.',[
+function renameReviewer(){if(recoveryProblem){showRecovery();return}if(!norm(S.reviewer))return;if(!put()){showBlockedSwitch();return}$('renameInput').value=S.reviewer;modal('Rename this reviewer','Change the name on this draft without creating or copying another draft. Feedback already downloaded under the old name will not change.',[
 ['Cancel',closeReviewerModal],['Rename',()=>{const name=$('renameInput').value.trim(),before=norm(S.reviewer),after=norm(name);if(!after)return;
 if(after!==before&&drafts[after]){alert('A different reviewer already has a draft under that name. Use Switch reviewer.');return}
 if(after===before){const previous=S.reviewer;S.reviewer=name;if(!put()){S.reviewer=previous;closeReviewerModal();return}$('reviewer').value=name;closeReviewerModal();return}
@@ -243,11 +252,22 @@ if(!commit(next,after)){closeReviewerModal();return}S.reviewer=name;
 $('reviewer').value=name;closeReviewerModal()},true]],'rename')}
 $('switchReviewer').onclick=switchReviewer;$('renameReviewer').onclick=renameReviewer;
 $('reviewer').readOnly=true;$('reviewer').onclick=switchReviewer;
-if(!qForDemo()&&validDraft(legacy)&&!read(KEY+'-legacy-choice-v2')){
+if(!recoveryProblem&&!qForDemo()&&validDraft(legacy)&&!legacyChoice){
 const legacyName=(legacy.reviewer||'').trim();$('legacyInput').value=legacyName;modal('Earlier draft found','This browser has an older single draft. Choose whether to keep it under its displayed name or start a fresh draft. No draft is deleted automatically.',[
 ['Continue earlier draft',()=>{const name=$('legacyInput').value.trim();if(!name)return;const key=norm(name);if(drafts[key]){alert('A saved draft already uses that name. Choose a different name for the earlier draft.');return}S={reviewer:name.trim(),items:legacy.items};if(put()){try{localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('continued'))}catch(e){notice('The earlier-draft choice could not be saved.')}}closeReviewerModal();$('reviewer').value=S.reviewer;render()}],
 ['Start fresh',()=>{try{localStorage.setItem(KEY+'-legacy-choice-v2',JSON.stringify('fresh'))}catch(e){notice('The fresh-draft choice could not be saved.')}if(active&&validDraft(drafts[active]))take(drafts[active].reviewer);else switchReviewer()},true]],'legacy')
-}else if(active&&validDraft(drafts[active]))S={reviewer:drafts[active].reviewer,items:drafts[active].items};
+}else if(!recoveryProblem&&active&&validDraft(drafts[active]))S={reviewer:drafts[active].reviewer,items:drafts[active].items};
+function downloadRecovery(){const out={format:'asssets-review-storage-recovery',gallery:M.gallery,reason:recoveryProblem,stored:rawStorage};
+const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));a.download='ASSSETS draft storage recovery.json';document.body.appendChild(a);a.click();a.remove();recoveryDownloaded=true;showRecovery()}
+function startFreshRecovery(){if(!recoveryDownloaded)return;if(!confirm('Have you checked that the recovery copy is in your downloads? Replacing storage removes all browser drafts for this gallery. This cannot be undone here.'))return;
+const values={[DKEY]:'{}',[ACTIVE]:'null',[KEY]:null,[CHOICE]:JSON.stringify('fresh')};
+try{for(const [k,v] of Object.entries(values)){if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)};
+for(const [k,v] of Object.entries(values))if(localStorage.getItem(k)!==v)throw Error('readback');
+recoveryProblem='';drafts={};active=null;legacy=null;S=empty('');saved();closeReviewerModal();$('reviewer').value='';render();switchReviewer()
+}catch(e){try{for(const [k,v] of Object.entries(rawStorage)){if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}}catch(rollback){}
+notice('Fresh storage could not be confirmed. Keep the recovery download and do not close this tab.');showRecovery()}}
+function showRecovery(){modal('Stored drafts need recovery',recoveryProblem+' Automatic saving is paused so the stored data is not silently replaced. Download the raw storage first. It is a recovery copy, not feedback for native import. Starting fresh replaces this gallery’s browser drafts; it does not change feedback already downloaded. Reviewer names are local labels, not verified identities.',[
+['Download recovery copy',downloadRecovery],...(recoveryDownloaded?[['Replace stored drafts and start fresh',startFreshRecovery,true]]:[])],'recovery')}
 function qForDemo(){return new URLSearchParams(location.search).has('demo')}
 const q=new URLSearchParams(location.search);
 if((q.get('demo')||'').startsWith('approve')){S.reviewer='Mara Quinn';const plan=[['approved','Brass plinth is the one. Approved for the lobby.'],['changes','Too tech for us - can the screen show the stone frame?'],['approved',''],['',''],['changes','Warmer, please.'],['approved','']];
@@ -295,7 +315,7 @@ M.credits.forEach(c=>{const r=document.createElement('div');r.className='cr';con
 const w=document.createElement('div');w.className='what';w.textContent=c.titles.join(', ');r.append(a,l,w);$('creditRows').appendChild(r)});
 b.onclick=()=>{const on=$('credits').classList.toggle('on');b.classList.toggle('on',on);if(on)$('credits').scrollIntoView({behavior:'smooth'})};
 if(q.get('demo')==='credits'){$('credits').classList.add('on');b.classList.add('on')}}
-if(q.get('demo')==='approve-grid')M.board=null;render();if(storageProblem)notice(storageProblem);if(!norm(S.reviewer)&&!q.get('demo')&&!$('reviewModal').classList.contains('open'))switchReviewer();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
+if(q.get('demo')==='approve-grid')M.board=null;render();if(storageProblem)notice(storageProblem);if(recoveryProblem){notice(recoveryProblem+' Stored data has not been replaced.');showRecovery()}else if(!norm(S.reviewer)&&!q.get('demo')&&!$('reviewModal').classList.contains('open'))switchReviewer();if(q.get('demo')==='lightbox')open(0);if(q.get('demo')==='approve')open(1);
 </script></body></html>
 """#
 }
