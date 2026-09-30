@@ -83,6 +83,16 @@ public final class AppModel: ObservableObject {
         }
     }
     private static let filterPresetsKey = "architer.filterPresets"
+    /// Table-log condition filter (3.67.0): the header menu's pick,
+    /// persisted across launches like the presets above; blank shows the
+    /// whole log. The view binds to this - one source of truth.
+    @Published public var tableLogConditionFilter: String =
+        UserDefaults.standard.string(forKey: AppModel.tableLogConditionFilterKey) ?? "" {
+        didSet {
+            UserDefaults.standard.set(tableLogConditionFilter, forKey: AppModel.tableLogConditionFilterKey)
+        }
+    }
+    private static let tableLogConditionFilterKey = "architer.tableLogConditionFilter"
     /// Journal timestamps in exports (2.66.0): on keeps the 2.47.0
     /// stamped heads; off gives clean archival sheets.
     @Published public var exportJournalTimestamps: Bool =
@@ -1947,10 +1957,21 @@ public final class AppModel: ObservableObject {
     public func redo() {
         guard let id = selectedID, let idx = characters.firstIndex(where: { $0.id == id }),
               var stack = undoStacks[id], stack.canRedo else { return }
+        // 3.67.0: mirror of the undo hook - a redo that DROPS conditions
+        // (the redo of a removal) logs the re-removal in the removal
+        // line's own shape (3.65.0), note and all, closing the audit
+        // loop. One-direction: redoing an APPLY stays silent.
+        let stepBefore = stack.current
         _ = stack.redo()
         undoStacks[id] = stack
         characters[idx] = stack.current
         try? store.save(stack.current)
+        let reremovedLines = ConditionRestoreLog.removalLines(before: stepBefore, after: stack.current)
+        if !reremovedLines.isEmpty {
+            tableLog.append(TableLogEntry(title: "Party condition",
+                                          text: reremovedLines.joined(separator: "; ")))
+            tableLogStore.save(tableLog)
+        }
     }
 
     private func savePanel(text: String, name: String) {

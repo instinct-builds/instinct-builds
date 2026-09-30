@@ -3444,18 +3444,121 @@ func run(model: AppModel, character: Character, outDir: String) {
     let tlfTitle = TableLogConditionFilter.filter(model.tableLog, query: "Zephyr")
     tlfLines.append("titles match too \(tlfTitle.count == 1 && tlfTitle.first?.title == "Zephyr Hollow")")
     tlfLines.append("no match filters to empty \(TableLogConditionFilter.filter(model.tableLog, query: "Petrified").isEmpty)")
-    // PNG: the filtered view - only the Frightened line, menu reads the filter.
+    // PNG: the filtered view - only the Frightened line, menu reads the
+    // filter. 3.67.0: the filter lives on the model (persisted across
+    // launches); seed it there, restore blank after.
+    model.tableLogConditionFilter = "Frightened"
     renderPNG(
-        TableLogView(initialConditionFilter: "Frightened")
+        TableLogView()
             .padding()
             .background(Theme.surface)
             .environmentObject(model),
         width: 720, name: "table-log-condition-filter", outDir: outDir, minHeight: 120, maxHeight: 400)
+    model.tableLogConditionFilter = ""
+    tlfLines.append("filter seeded through the persisted model property \(model.tableLogConditionFilter.isEmpty)")
     model.tableLog.removeLast(model.tableLog.count - tlfLogStart)
     model.tableLogStore.save(model.tableLog)
     tlfLines.append("hygiene: filter-fixture entries dropped")
     try? tlfLines.joined(separator: "\n")
         .write(to: URL(fileURLWithPath: "\(outDir)/table-log-condition-filter.txt"),
+               atomically: true, encoding: .utf8)
+    // Redo-of-removal log lines (3.67.0): the redo of a removal logs the
+    // re-removal in the removal line's own shape (3.65.0), closing the
+    // audit loop apply -> removed -> restored -> removed; the redo of an
+    // APPLY stays silent (one-direction, mirroring the undo side). A
+    // throwaway probe character keeps the fixture roster and its undo
+    // stacks untouched; deleteSelected retires the probe's stack. Runs at
+    // END.
+    var rdlLines = ["Redo-of-removal log lines (3.67.0)",
+                    "the redo of a removal logs the re-removal, note and all; the redo of an apply logs nothing"]
+    let rdlLogStart = model.tableLog.count
+    model.addCharacter(Character(name: "Nyx Alder"))
+    let rdlProbeID = model.selectedID! // addCharacter selects the probe
+    _ = model.applyPartyCondition(.frightened, rounds: 3, note: "the howl", from: [rdlProbeID])
+    _ = model.removePartyCondition(.frightened, from: [rdlProbeID])
+    model.undo()
+    model.redo()
+    let rdlRedo = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    rdlLines.append("redo of the removal: '\(rdlRedo)'")
+    rdlLines.append("redo removal exact \(rdlRedo == "Frightened removed: Nyx Alder (note: the howl)")")
+    rdlLines.append("the condition is gone again \(model.characters.first(where: { $0.id == rdlProbeID })?.conditions.contains(.frightened) == false)")
+    rdlLines.append("the note dies with it again \(model.characters.first(where: { $0.id == rdlProbeID })?.conditionNotes[Condition.frightened.rawValue] == nil)")
+    // One-direction: the redo of an APPLY re-applies silently.
+    _ = model.applyPartyCondition(.prone, rounds: nil, from: [rdlProbeID])
+    model.undo()
+    let rdlCountBeforeSilentRedo = model.tableLog.count
+    model.redo()
+    rdlLines.append("redo of an apply appends no entry \(model.tableLog.count == rdlCountBeforeSilentRedo)")
+    rdlLines.append("the applied condition is back \(model.characters.first(where: { $0.id == rdlProbeID })?.conditions.contains(.prone) == true)")
+    // Unnoted built-in redo stays bare.
+    _ = model.removePartyCondition(.prone, from: [rdlProbeID])
+    model.undo()
+    model.redo()
+    let rdlBare = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    rdlLines.append("unnoted redo: '\(rdlBare)'")
+    rdlLines.append("unnoted redo exact \(rdlBare == "Prone removed: Nyx Alder")")
+    // Custom path: the instance note rides the re-removal.
+    _ = model.applyPartyCustomCondition(name: "Hexed", rounds: nil, note: "the brand", from: [rdlProbeID])
+    _ = model.removePartyCustomCondition(name: "Hexed", from: [rdlProbeID])
+    model.undo()
+    model.redo()
+    let rdlCustom = model.tableLog.last(where: { $0.title == "Party condition" })?.text ?? "<missing>"
+    rdlLines.append("custom redo: '\(rdlCustom)'")
+    rdlLines.append("custom redo exact \(rdlCustom == "Hexed removed: Nyx Alder (note: the brand)")")
+    // PNG: the audit loop visible end to end - apply, removal, restore,
+    // re-removal side by side in the log.
+    renderPNG(
+        TableLogView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(model),
+        width: 720, name: "party-redo-removal-log", outDir: outDir, minHeight: 120, maxHeight: 400)
+    // Hygiene: retire the probe (its undo stack dies with it), drop the
+    // block's log entries, selection back to Bram.
+    model.selectedID = rdlProbeID
+    model.deleteSelected()
+    model.tableLog.removeLast(model.tableLog.count - rdlLogStart)
+    model.tableLogStore.save(model.tableLog)
+    if let bram = model.characters.first(where: { $0.name == "Bram Oakfel" }) { model.selectedID = bram.id }
+    rdlLines.append("hygiene: probe retired, block log entries dropped, selection restored")
+    try? rdlLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/party-redo-removal-log.txt"),
+               atomically: true, encoding: .utf8)
+    // Table log filter persistence (3.67.0): the pick writes UserDefaults
+    // on change; a fresh model - the relaunch - reads it back and the
+    // view binds to it, so the filter survives quitting.
+    var tfpLines = ["Table log filter persistence (3.67.0)",
+                    "the condition filter persists across launches; a relaunched model restores the pick"]
+    let tfpLogStart = model.tableLog.count
+    model.addTableLogEntry(title: "Party condition", text: "Hexed removed: Nyx Alder (note: the brand)")
+    model.addTableLogEntry(title: "Table note", text: "The torches gutter.")
+    model.tableLogConditionFilter = "Hexed"
+    // Key literal mirrored from AppModel (private there):
+    // architer.tableLogConditionFilter.
+    tfpLines.append("the pick writes defaults \(UserDefaults.standard.string(forKey: "architer.tableLogConditionFilter") == "Hexed")")
+    let tfpRelaunch = AppModel()
+    tfpLines.append("a relaunched model restores the pick \(tfpRelaunch.tableLogConditionFilter == "Hexed")")
+    let tfpFiltered = TableLogConditionFilter.filter(tfpRelaunch.tableLog, query: tfpRelaunch.tableLogConditionFilter)
+    tfpLines.append("the relaunch narrows to the one Hexed entry \(tfpFiltered.count == 1 && tfpFiltered.first?.text == "Hexed removed: Nyx Alder (note: the brand)")")
+    // PNG: the relaunched model's own view - the menu reads Hexed, one
+    // entry listed. Rendered off the relaunch, not the seeding model.
+    renderPNG(
+        TableLogView()
+            .padding()
+            .background(Theme.surface)
+            .environmentObject(tfpRelaunch),
+        width: 720, name: "table-log-filter-persistence", outDir: outDir, minHeight: 120, maxHeight: 400)
+    model.tableLogConditionFilter = ""
+    tfpLines.append("clearing persists blank \(UserDefaults.standard.string(forKey: "architer.tableLogConditionFilter") == "")")
+    let tfpRelaunchCleared = AppModel()
+    tfpLines.append("a relaunch after clearing shows the whole log \(tfpRelaunchCleared.tableLogConditionFilter == "")")
+    // Hygiene: drop the fixture entries; the render model's filter was
+    // cleared above.
+    model.tableLog.removeLast(model.tableLog.count - tfpLogStart)
+    model.tableLogStore.save(model.tableLog)
+    tfpLines.append("hygiene: fixture entries dropped, filter cleared")
+    try? tfpLines.joined(separator: "\n")
+        .write(to: URL(fileURLWithPath: "\(outDir)/table-log-filter-persistence.txt"),
                atomically: true, encoding: .utf8)
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")

@@ -77,4 +77,55 @@ struct ConditionRestoreLogTests {
         after.currentHP = 7
         #expect(ConditionRestoreLog.lines(before: before, after: after).isEmpty)
     }
+
+    // 3.67.0: the mirror direction - a redo step that drops conditions
+    // logs the re-removal in the removal line's own shape (3.65.0); the
+    // note rides from the before-state because removal kills it (3.58.0).
+
+    @Test func droppedBuiltInCarriesTheNoteFromTheBeforeState() {
+        var before = character()
+        before.conditions.insert(.frightened)
+        before.conditionNotes[Condition.frightened.rawValue] = "the howl"
+        #expect(ConditionRestoreLog.removalLines(before: before, after: character())
+            == ["Frightened removed: Wren (note: the howl)"])
+    }
+
+    @Test func unnotedRemovalStaysBare() {
+        var before = character()
+        before.conditions.insert(.prone)
+        #expect(ConditionRestoreLog.removalLines(before: before, after: character())
+            == ["Prone removed: Wren"])
+    }
+
+    @Test func droppedCustomCarriesItsInstanceNote() {
+        var before = character()
+        let hexed = CustomCondition(name: "Hexed")
+        before.customConditions = [hexed]
+        before.conditionNotes[hexed.id.uuidString] = "the brand"
+        #expect(ConditionRestoreLog.removalLines(before: before, after: character())
+            == ["Hexed removed: Wren (note: the brand)"])
+    }
+
+    @Test func sameNamedCustomSurvivingIsNotADrop() {
+        var before = character()
+        before.customConditions = [CustomCondition(name: "Hexed")]
+        var after = character()
+        after.customConditions = [CustomCondition(name: "Hexed")]
+        #expect(ConditionRestoreLog.removalLines(before: before, after: after).isEmpty)
+    }
+
+    @Test func aPureAddDropsNothing() {
+        var after = character()
+        after.conditions.insert(.stunned)
+        #expect(ConditionRestoreLog.removalLines(before: character(), after: after).isEmpty)
+    }
+
+    @Test func mixedDropsSortBuiltInsFirstThenCustoms() {
+        var before = character()
+        before.conditions.insert(.stunned)
+        before.conditions.insert(.blinded)
+        before.customConditions = [CustomCondition(name: "Hexed")]
+        #expect(ConditionRestoreLog.removalLines(before: before, after: character())
+            == ["Blinded removed: Wren", "Stunned removed: Wren", "Hexed removed: Wren"])
+    }
 }
