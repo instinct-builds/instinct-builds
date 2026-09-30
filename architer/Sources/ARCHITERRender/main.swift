@@ -3780,6 +3780,78 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/condition-undo-label.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.71.0: a NEW incapacitating condition ends concentration on
+    // landing through the shared party-apply walk, with the damage
+    // path's notes milestone; undo restores both; refresh does not
+    // re-fire; removal never restores a lost concentration. Runs at
+    // the end like every AppModel proof; the roster is restored after.
+    do {
+        let icIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
+        let icOriginal = model.characters[icIdx]
+        var icLines = ["Incapacitation breaks concentration (3.71.0)",
+                       "a new incapacitating state ends concentration on landing; refresh and removal never touch it"]
+        func icConcentrate(_ spell: String) {
+            if var c = model.selected?.wrappedValue {
+                c.beginConcentration(on: spell)
+                model.selected?.wrappedValue = c
+            }
+        }
+        // New apply of a breaking state: concentration ends, milestone lands.
+        icConcentrate("Ember Shield")
+        model.applyPartyCondition(.stunned, rounds: nil, from: [icOriginal.id])
+        let icAfterStun = model.selected?.wrappedValue
+        icLines.append("stunned apply ends concentration \(icAfterStun?.concentratingOn == nil && (icAfterStun?.notes.contains("Lost concentration on Ember Shield.") ?? false))")
+        // Undo restores the condition and the concentration together.
+        model.undo()
+        let icAfterUndo = model.selected?.wrappedValue
+        icLines.append("undo restores condition and concentration together \(icAfterUndo?.conditions.contains(.stunned) == false && icAfterUndo?.concentratingOn == "Ember Shield")")
+        // A non-breaking state leaves concentration alone.
+        model.applyPartyCondition(.prone, rounds: nil, from: [icOriginal.id])
+        let icAfterProne = model.selected?.wrappedValue
+        icLines.append("prone leaves concentration \(icAfterProne?.concentratingOn == "Ember Shield" && icAfterProne?.conditions.contains(.prone) == true)")
+        model.removePartyCondition(.prone, from: [icOriginal.id])
+        // Customs never break concentration.
+        model.applyPartyCustomCondition(name: "Dazed", rounds: nil, from: [icOriginal.id])
+        let icAfterCustom = model.selected?.wrappedValue
+        icLines.append("custom condition leaves concentration \(icAfterCustom?.concentratingOn == "Ember Shield" && (icAfterCustom?.customConditions.contains { $0.name == "Dazed" } ?? false))")
+        model.removePartyCustomCondition(name: "Dazed", from: [icOriginal.id])
+        // Refresh of a held state does not re-fire the break. The held
+        // state is planted by direct mutation (the raw editing path),
+        // which deliberately bypasses the play-time break.
+        if var c = model.selected?.wrappedValue {
+            c.conditions.insert(.paralyzed)
+            c.beginConcentration(on: "Ward of Stone")
+            model.selected?.wrappedValue = c
+        }
+        model.applyPartyCondition(.paralyzed, rounds: 3, from: [icOriginal.id])
+        let icAfterRefresh = model.selected?.wrappedValue
+        icLines.append("timer refresh does not re-fire the break \(icAfterRefresh?.concentratingOn == "Ward of Stone" && !(icAfterRefresh?.notes.contains("Lost concentration on Ward of Stone.") ?? true))")
+        if var c = model.selected?.wrappedValue {
+            c.conditions.remove(.paralyzed)
+            c.conditionDurations.removeValue(forKey: Condition.paralyzed.rawValue)
+            c.dropConcentration()
+            model.selected?.wrappedValue = c
+        }
+        // Removal never restores a lost concentration.
+        icConcentrate("Last Light")
+        model.applyPartyCondition(.unconscious, rounds: nil, from: [icOriginal.id])
+        model.removePartyCondition(.unconscious, from: [icOriginal.id])
+        let icAfterRemoval = model.selected?.wrappedValue
+        icLines.append("removal never restores a lost concentration \(icAfterRemoval?.concentratingOn == nil && icAfterRemoval?.conditions.contains(.unconscious) == false && (icAfterRemoval?.notes.contains("Lost concentration on Last Light.") ?? false))")
+        // The party-wide path shares the same walk: one proof through it.
+        icConcentrate("Full Chorus")
+        model.applyPartyCondition(.paralyzed, rounds: nil)
+        let icAfterParty = model.selected?.wrappedValue
+        icLines.append("party-path apply breaks the same way \(icAfterParty?.concentratingOn == nil && icAfterParty?.conditions.contains(.paralyzed) == true && (icAfterParty?.notes.contains("Lost concentration on Full Chorus.") ?? false))")
+        model.removePartyCondition(.paralyzed)
+        // Hygiene: roster back to its fixture state.
+        model.characters[icIdx] = icOriginal
+        try? model.store.save(icOriginal)
+        icLines.append("hygiene: roster restored")
+        try? icLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/incapacitate-concentration.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

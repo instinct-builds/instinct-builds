@@ -1537,6 +1537,16 @@ public final class AppModel: ObservableObject {
             var c = characters[idx]
             let had = c.conditions.contains(condition)
             if !had { c.conditions.insert(condition) }
+            // 3.71.0: a NEW incapacitating state ends concentration on
+            // landing (genre-standard), with the same notes milestone the
+            // damage path writes (3.28.0). Refresh of a held state does
+            // not re-fire; undo restores both via the snapshot; removal
+            // never restores a lost concentration.
+            if !had, condition.breaksConcentration, let spell = c.concentratingOn {
+                c.dropConcentration()
+                let line = "Lost concentration on \(spell)."
+                c.notes = c.notes.isEmpty ? line : c.notes + "\n" + line
+            }
             if let rounds, rounds > 0 { c.conditionDurations[condition.rawValue] = rounds }
             // 3.58.0: a typed note replaces; blank keeps any existing note
             // (same discipline as blank rounds keeping a running clock).

@@ -25,6 +25,20 @@ public enum Condition: String, Codable, CaseIterable, Sendable {
         default: return false
         }
     }
+
+    /// Concentration break (3.71.0): the genre-standard states that
+    /// include incapacitation end an active concentration the moment they
+    /// land. Derived, never stored; customs carry no such flag. The break
+    /// fires on a NEW apply through the shared party-apply walk - a timer
+    /// refresh of an already-held state does not re-fire it, and removing
+    /// the state (manual, rest, or wrap tick) never restores a lost
+    /// concentration.
+    public var breaksConcentration: Bool {
+        switch self {
+        case .incapacitated, .paralyzed, .petrified, .stunned, .unconscious: return true
+        default: return false
+        }
+    }
 }
 
 /// A user-defined condition: a name plus which d20 side effects it carries.
