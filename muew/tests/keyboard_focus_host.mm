@@ -76,7 +76,10 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     const muew::Preset resetSound=v->current;
     const bool resetEdited=v->edited;
     const int resetPatches=host->patches;
+    const auto preResetOn=host->on.size(),preResetOff=host->off.size();
+    Down(v,w,@"a");
     const auto resetOn=host->on.size(),resetOff=host->off.size();
+    Check(resetOn==preResetOn+1 && resetOff==preResetOff,"matrix reset fixture has a held standalone piano note");
     float resetLive[muew::kMaxRoutes]{};
     for (int i=0;i<muew::kMaxRoutes;++i) {
         resetLive[i]=(i%2 ? -.4f : .6f);
@@ -108,6 +111,9 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [v showRouteMin:resetLo max:resetHi count:muew::kMaxRoutes];
     Check(v->routeHold.value[0]==resetLive[0] && v->routeTrace.low[0]==-.3f && v->routeTrace.high[0]==.5f &&
           v->current==resetSound && host->patches==resetPatches,"fresh in-process poll recaptures history without sound edits");
+    Up(v,w,@"a");
+    Check(host->off.size()==preResetOff+1,"held piano note releases normally after trace reset");
+    host->on.resize(preResetOn);host->off.resize(preResetOff); // isolate from later key-count assertions
     v->current=preResetSound;
     v->matrixPage=savedPage; [v resetMatrixTrace];
     v->outputDetailOpen=true; [v setNeedsDisplay:YES]; Snapshot(v,"output-detail");
