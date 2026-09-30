@@ -192,7 +192,8 @@ struct ConditionGrid: View {
     var body: some View {
         LazyVGrid(columns: cols, alignment: .leading, spacing: 6) {
             ForEach(Condition.allCases, id: \.self) { condition in
-                Toggle(condition.displayName, isOn: Binding(
+                let immuneSource = character.conditions.contains(condition) ? nil : character.conditionImmunitySource(condition)
+                Toggle(immuneSource.map { "\(condition.displayName) (immune: \($0))" } ?? condition.displayName, isOn: Binding(
                     get: { character.conditions.contains(condition) },
                     set: { on in
                         if on { character.conditions.insert(condition) }
@@ -204,7 +205,9 @@ struct ConditionGrid: View {
                 ))
                 .toggleStyle(.checkbox)
                 .font(.caption)
+                .disabled(immuneSource != nil)
             }
+            ConditionImmunityMenu(character: $character)
         }
         ForEach($character.customConditions) { $cc in
             HStack(spacing: Theme.Gap.sm) {
@@ -444,6 +447,30 @@ struct DefenseMenu: View {
         .menuStyle(.borderlessButton)
         .font(Theme.Typeface.caption)
         .foregroundStyle(character[keyPath: selection].isEmpty ? Theme.inkMuted : Theme.accent)
+    }
+}
+
+/// 3.73.0: the stored condition-immunity set; lineage grants show as
+/// locked-on rows (derived, not editable here).
+struct ConditionImmunityMenu: View {
+    @Binding var character: Character
+
+    var body: some View {
+        let derived = ConditionImmunity.lineageGrants(character.lineage)
+        Menu("Cond. immune \(character.allConditionImmunities.count)") {
+            ForEach(Condition.allCases, id: \.self) { c in
+                Toggle(derived.contains(c) ? "\(c.displayName) (lineage)" : c.displayName, isOn: Binding(
+                    get: { character.conditionImmunities.contains(c) || derived.contains(c) },
+                    set: { on in
+                        if on { character.conditionImmunities.insert(c) }
+                        else { character.conditionImmunities.remove(c) }
+                    }))
+                .disabled(derived.contains(c))
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .font(Theme.Typeface.caption)
+        .foregroundStyle(character.allConditionImmunities.isEmpty ? Theme.inkMuted : Theme.accent)
     }
 }
 

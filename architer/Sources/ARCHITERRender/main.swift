@@ -3975,6 +3975,82 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/saveends.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.73.0 condition immunity by lineage: derived lineage grants and
+    // the stored set both stop a NEW apply on every party path; a holder
+    // who already has the condition still refreshes; nothing is stored
+    // for the derived grant. Roster and log restored after.
+    ciProof: do {
+        let ciOrigChars = model.characters
+        let ciOrigLog = model.tableLog
+        guard model.characters.count >= 2 else { break ciProof }
+        let ciAIdx = model.characters.firstIndex(where: { $0.id == model.selectedID }) ?? 0
+        let ciBIdx = model.characters.firstIndex(where: { $0.id != model.selectedID }) ?? 1
+        let ciAId = model.characters[ciAIdx].id
+        let ciBId = model.characters[ciBIdx].id
+        let ciAName = model.characters[ciAIdx].name
+        let ciBName = model.characters[ciBIdx].name
+        model.characters[ciAIdx].lineage = "High Elf"
+        model.characters[ciAIdx].conditions = []
+        model.characters[ciAIdx].conditionImmunities = [.charmed]
+        model.characters[ciBIdx].lineage = "Warforged Scout"
+        model.characters[ciBIdx].conditions = []
+        model.characters[ciBIdx].conditionImmunities = []
+        var ciLines = ["Condition immunity by lineage (3.73.0)",
+                       "lineage text grants derived immunities (Warforged -> poisoned); a stored set adds more; a new apply on an immune holder does nothing",
+                       "deterministic by construction: fixture lineages are forced (A: High Elf + stored charmed; B: Warforged Scout)"]
+        ciLines.append("derived grant reads from lineage text \(ConditionImmunity.lineageGrants("Warforged Scout") == [.poisoned] && ConditionImmunity.lineageGrants("Warforged Scout") == model.characters[ciBIdx].allConditionImmunities)")
+        ciLines.append("keyword match is case-insensitive and substring \(ConditionImmunity.lineageGrants("the UNDEAD knight") == [.poisoned])")
+        ciLines.append("no grant for an unrelated lineage \(ConditionImmunity.lineageGrants("High Elf").isEmpty && model.characters[ciAIdx].conditionImmunitySource(.poisoned) == nil)")
+        ciLines.append("source labels: lineage vs set \(model.characters[ciBIdx].conditionImmunitySource(.poisoned) == "lineage" && model.characters[ciAIdx].conditionImmunitySource(.charmed) == "set")")
+        // Party-wide poisoned: A takes it, B (derived immune) is blocked.
+        let ciMenuBefore = model.undoMenuLabel
+        let ciBBefore = model.characters[ciBIdx]
+        let ciR1 = model.applyPartyCondition(.poisoned, rounds: 3, note: "bad stew")
+        let ciA1 = model.characters[ciAIdx]
+        let ciB1 = model.characters[ciBIdx]
+        ciLines.append("party apply: non-immune takes it \(ciA1.conditions.contains(.poisoned) && ciR1.applied.contains(ciAName))")
+        ciLines.append("party apply: lineage-immune blocked, reported \(!ciB1.conditions.contains(.poisoned) && ciR1.immune == [ciBName] && !ciR1.applied.contains(ciBName))")
+        ciLines.append("blocked holder is left byte-identical: no condition, timer, or note \(ciB1 == ciBBefore && ciB1.conditionDurations[Condition.poisoned.rawValue] == nil && ciB1.conditionNotes[Condition.poisoned.rawValue] == nil)")
+        ciLines.append("log names the immune holder \(model.tableLog.last?.text.contains("(immune: \(ciBName))") == true)")
+        _ = ciMenuBefore
+        // Stored-set path, targeted to A alone: fully blocked -> blocked log.
+        let ciLogCount = model.tableLog.count
+        let ciR2 = model.applyPartyCondition(.charmed, rounds: 2, from: [ciAId])
+        ciLines.append("targeted apply: stored-set immune blocked \(ciR2.immune == [ciAName] && ciR2.applied.isEmpty && !(model.characters[ciAIdx].conditions.contains(.charmed)))")
+        ciLines.append("all-immune apply writes one blocked log line \(model.tableLog.count == ciLogCount + 1 && model.tableLog.last?.text == "Charmed blocked (immune): \(ciAName)")")
+        // The same condition lands on the non-immune holder.
+        let ciR3 = model.applyPartyCondition(.charmed, rounds: 2, from: [ciBId])
+        ciLines.append("same condition lands on a non-immune holder \(ciR3.applied == [ciBName] && model.characters[ciBIdx].conditions.contains(.charmed) && ciR3.immune.isEmpty)")
+        // Already-held override refreshes despite immunity.
+        model.characters[ciBIdx].conditions.insert(.poisoned)
+        model.characters[ciBIdx].conditionDurations[Condition.poisoned.rawValue] = 1
+        let ciR4 = model.applyPartyCondition(.poisoned, rounds: 4, from: [ciBId])
+        ciLines.append("held-by-override still refreshes \(ciR4.refreshed == [ciBName] && ciR4.immune.isEmpty && model.characters[ciBIdx].conditionDurations[Condition.poisoned.rawValue] == 4)")
+        // Derived, never stored: clear the lineage and the grant goes away.
+        model.characters[ciBIdx].conditions.remove(.poisoned)
+        model.characters[ciBIdx].conditionDurations.removeValue(forKey: Condition.poisoned.rawValue)
+        ciLines.append("grant is not stored \(model.characters[ciBIdx].conditionImmunities.isEmpty)")
+        model.characters[ciBIdx].lineage = "Human"
+        let ciR5 = model.applyPartyCondition(.poisoned, rounds: 2, from: [ciBId])
+        ciLines.append("editing the lineage drops the grant at once \(ciR5.applied == [ciBName] && ciR5.immune.isEmpty && model.characters[ciBIdx].conditions.contains(.poisoned))")
+        // Codable: stored set round-trips, legacy blob decodes empty.
+        let ciData = (try? JSONEncoder().encode(model.characters[ciAIdx])) ?? Data()
+        let ciBack = try? JSONDecoder().decode(Character.self, from: ciData)
+        ciLines.append("stored set round-trips through Codable \(ciBack?.conditionImmunities == [.charmed])")
+        var ciObj = (try? JSONSerialization.jsonObject(with: ciData) as? [String: Any]) ?? [:]
+        ciObj.removeValue(forKey: "conditionImmunities")
+        let ciLegacy = (try? JSONSerialization.data(withJSONObject: ciObj)).flatMap { try? JSONDecoder().decode(Character.self, from: $0) }
+        ciLines.append("legacy blob without the key decodes empty \(ciLegacy?.conditionImmunities.isEmpty == true)")
+        // Hygiene.
+        model.characters = ciOrigChars
+        for c in ciOrigChars { try? model.store.save(c) }
+        model.tableLog = ciOrigLog
+        model.tableLogStore.save(ciOrigLog)
+        ciLines.append("hygiene: roster and table log restored \(model.characters == ciOrigChars && model.tableLog.count == ciOrigLog.count)")
+        try? ciLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/condimmune.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -718,6 +718,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// from it, nothing is computed into it. Every condition-removal path
     /// clears the key, same discipline as the note.
     public var conditionSaveEnds: [String: ConditionSaveEnd] = [:]
+    public var conditionImmunities: Set<Condition> = []   // 3.73.0: manual; lineage grants are derived
     public var resistances: Set<DamageType>
     public var immunities: Set<DamageType>
     public var vulnerabilities: Set<DamageType>
@@ -856,6 +857,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditionDurations: [String: Int] = [:],
         conditionNotes: [String: String] = [:],
         conditionSaveEnds: [String: ConditionSaveEnd] = [:],
+        conditionImmunities: Set<Condition> = [],
         exhaustion: Int = 0,
         era: RulesetVariant = .era2014,
         concentratingOn: String? = nil,
@@ -910,6 +912,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         self.conditionDurations = conditionDurations
         self.conditionNotes = conditionNotes
         self.conditionSaveEnds = conditionSaveEnds
+        self.conditionImmunities = conditionImmunities
         self.resistances = resistances
         self.immunities = immunities
         self.vulnerabilities = vulnerabilities
@@ -969,6 +972,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         conditionDurations = try c.decodeIfPresent([String: Int].self, forKey: .conditionDurations) ?? [:]
         conditionNotes = try c.decodeIfPresent([String: String].self, forKey: .conditionNotes) ?? [:]
         conditionSaveEnds = try c.decodeIfPresent([String: ConditionSaveEnd].self, forKey: .conditionSaveEnds) ?? [:]
+        conditionImmunities = try c.decodeIfPresent(Set<Condition>.self, forKey: .conditionImmunities) ?? []
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []

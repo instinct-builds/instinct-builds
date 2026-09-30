@@ -1576,7 +1576,7 @@ public final class AppModel: ObservableObject {
     /// timer, while an untimed apply leaves any running timer alone - a
     /// shouted "everyone's prone" never silently kills a 3-round clock.
     @discardableResult
-    public func applyPartyCondition(_ condition: Condition, rounds: Int?, note: String? = nil) -> (applied: [String], refreshed: [String]) {
+    public func applyPartyCondition(_ condition: Condition, rounds: Int?, note: String? = nil) -> (applied: [String], refreshed: [String], immune: [String]) {
         applyPartyCondition(condition, rounds: rounds, note: note, from: Set(characters.map(\.id)))
     }
 
@@ -1585,12 +1585,18 @@ public final class AppModel: ObservableObject {
     /// undo stacks, one log entry naming exactly those touched. An empty
     /// subset (or one fully covered with blank rounds) is a no-op.
     @discardableResult
-    public func applyPartyCondition(_ condition: Condition, rounds: Int?, note: String? = nil, from ids: Set<UUID>) -> (applied: [String], refreshed: [String]) {
+    public func applyPartyCondition(_ condition: Condition, rounds: Int?, note: String? = nil, from ids: Set<UUID>) -> (applied: [String], refreshed: [String], immune: [String]) {
         var applied: [String] = []
         var refreshed: [String] = []
+        var immune: [String] = []
         for idx in characters.indices where ids.contains(characters[idx].id) {
             var c = characters[idx]
             let had = c.conditions.contains(condition)
+            // 3.73.0: immunity (stored set or lineage grant) stops a NEW
+            // apply cold: no condition, no timer, no note, no snapshot.
+            // A holder who already has it (manual override) still
+            // refreshes like any other.
+            if !had, c.isImmune(to: condition) { immune.append(c.name); continue }
             if !had { c.conditions.insert(condition) }
             // 3.71.0: a NEW incapacitating state ends concentration on
             // landing (genre-standard), with the same notes milestone the
@@ -1617,6 +1623,11 @@ public final class AppModel: ObservableObject {
             if had { refreshed.append(c.name) } else { applied.append(c.name) }
         }
         let names = applied + refreshed
+        if names.isEmpty, !immune.isEmpty {
+            tableLog.append(TableLogEntry(title: "Party condition",
+                                          text: "\(condition.displayName) blocked (immune): \(immune.joined(separator: ", "))"))
+            tableLogStore.save(tableLog)
+        }
         if !names.isEmpty {
             let base = condition.displayName + (rounds.flatMap { $0 > 0 ? " (\($0) rounds)" : nil } ?? "")
             var text = "\(base) -> \(names.joined(separator: ", "))"
@@ -1629,6 +1640,7 @@ public final class AppModel: ObservableObject {
             if !applied.isEmpty && !refreshed.isEmpty {
                 text += " (new: \(applied.joined(separator: ", ")); refreshed: \(refreshed.joined(separator: ", ")))"
             }
+            if !immune.isEmpty { text += " (immune: \(immune.joined(separator: ", ")))" }
             tableLog.append(TableLogEntry(title: "Party condition", text: text))
             tableLogStore.save(tableLog)
         }
@@ -1638,7 +1650,7 @@ public final class AppModel: ObservableObject {
             recordTopEdit(conditionApplyMenuLabel(conditionName: condition.displayName,
                                                   characterName: sel.name))
         }
-        return (applied, refreshed)
+        return (applied, refreshed, immune)
     }
 
     /// Remove a built-in condition from the whole roster at once (3.52.0):
