@@ -1589,6 +1589,35 @@ public final class AppModel: ObservableObject {
         return adjusted
     }
 
+    /// 3.78.0: lift max-HP drain by `amount` on the roster (or a subset)
+    /// without a rest - a lesser-restoration-style effect. Each changed
+    /// character rides their own undo stack; one "Max HP restored" log
+    /// line names who got what; undrained characters are skipped
+    /// silently and current HP never rises.
+    @discardableResult
+    public func restorePartyMaxHP(amount: Int, from ids: Set<UUID>? = nil) -> [String] {
+        guard amount > 0 else { return [] }
+        var restored: [String] = []
+        var parts: [String] = []
+        for idx in characters.indices where ids?.contains(characters[idx].id) ?? true {
+            var c = characters[idx]
+            let lifted = c.restoreMaxHP(amount)
+            guard lifted > 0 else { continue }
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            restored.append(c.name)
+            parts.append("\(c.name) +\(lifted) (max now \(c.effectiveMaxHP))")
+        }
+        if !parts.isEmpty {
+            tableLog.append(TableLogEntry(title: "Max HP restored", text: parts.joined(separator: ", ")))
+            tableLogStore.save(tableLog)
+        }
+        return restored
+    }
+
     /// Apply a built-in condition to the whole roster at once (3.51.0):
     /// "the shove lands on everyone". Rides adjustPartyHP's discipline -
     /// own undo stack per changed character, no confirm. Re-applying

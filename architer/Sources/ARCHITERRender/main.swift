@@ -4333,6 +4333,71 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/drainchip.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.78.0 partial restore: lift drain by N on the roster or a subset.
+    rmProof: do {
+        let rmOrig = model.characters
+        let rmOrigLog = model.tableLog
+        guard let rmA = model.characters.first(where: { $0.id == model.selectedID }),
+              let rmB = model.characters.first(where: { $0.id != model.selectedID }) else { break rmProof }
+        model.characters = [rmA, rmB]
+        func rmSeed(aDrain: Int, bDrain: Int) {
+            for i in 0..<2 {
+                model.characters[i].maxHP = 32; model.characters[i].currentHP = 10; model.characters[i].tempHP = 0
+            }
+            model.characters[0].maxHPReduction = 0; model.characters[1].maxHPReduction = 0
+            model.characters[0].setMaxHPReduction(aDrain); model.characters[1].setMaxHPReduction(bDrain)
+            model.characters[0].currentHP = 10; model.characters[1].currentHP = 10
+        }
+        let rmAName = model.characters[0].name, rmBName = model.characters[1].name
+        var rmLines = ["Partial restore (3.78.0)",
+                       "Restore max lifts the drain by N without a rest: clamped at 0, current HP never rises, one log line, undrained skipped",
+                       "deterministic by construction: two roster characters forced to max 32, current 10; drains set per step"]
+        // Core rule.
+        var c = Character(name: "T", maxHP: 32, currentHP: 10)
+        c.setMaxHPReduction(8)
+        rmLines.append("core lifts by the amount and reports it \(c.restoreMaxHP(5) == 5 && c.maxHPReduction == 3 && c.effectiveMaxHP == 29)")
+        rmLines.append("core clamps at the drain (restore 99 lifts only 3) \(c.restoreMaxHP(99) == 3 && c.maxHPReduction == 0)")
+        rmLines.append("core restore on an undrained character is 0 \(c.restoreMaxHP(5) == 0 && c.restoreMaxHP(-4) == 0)")
+        // Party path.
+        rmSeed(aDrain: 8, bDrain: 2)
+        var rmLogN = model.tableLog.count
+        let rmNames = model.restorePartyMaxHP(amount: 5)
+        rmLines.append("party restore lifts each by what it can (8->3, 2->0) \(model.characters[0].maxHPReduction == 3 && model.characters[1].maxHPReduction == 0)")
+        rmLines.append("changed characters are returned \(rmNames == [rmAName, rmBName])")
+        rmLines.append("current HP never rises \(model.characters[0].currentHP == 10 && model.characters[1].currentHP == 10)")
+        rmLines.append("one log line names who got what \(model.tableLog.count == rmLogN + 1 && model.tableLog.last?.title == "Max HP restored" && model.tableLog.last?.text == "\(rmAName) +5 (max now 29), \(rmBName) +2 (max now 32)")")
+        // Skip undrained silently.
+        rmSeed(aDrain: 0, bDrain: 4)
+        rmLogN = model.tableLog.count
+        let rmSkip = model.restorePartyMaxHP(amount: 3)
+        rmLines.append("undrained characters are skipped silently \(rmSkip == [rmBName] && model.characters[0].maxHPReduction == 0 && model.characters[1].maxHPReduction == 1)")
+        // Nobody drained: no log.
+        rmSeed(aDrain: 0, bDrain: 0)
+        rmLogN = model.tableLog.count
+        rmLines.append("nobody drained: no-op and no log \(model.restorePartyMaxHP(amount: 5).isEmpty && model.tableLog.count == rmLogN)")
+        rmLines.append("non-positive amount is a no-op \(model.restorePartyMaxHP(amount: 0).isEmpty)")
+        // Targeted subset.
+        rmSeed(aDrain: 6, bDrain: 6)
+        let rmTarget = model.restorePartyMaxHP(amount: 4, from: [model.characters[1].id])
+        rmLines.append("targeted restore touches only the subset \(rmTarget == [rmBName] && model.characters[0].maxHPReduction == 6 && model.characters[1].maxHPReduction == 2)")
+        // Undo restores the drain in one snapshot (selected character A).
+        rmSeed(aDrain: 6, bDrain: 0)
+        model.selected?.wrappedValue = model.characters[0] // baseline the undo stack
+        model.restorePartyMaxHP(amount: 4)
+        rmLines.append("restore applied to the selected character \(model.characters[0].maxHPReduction == 2)")
+        model.undo()
+        rmLines.append("undo restores the drain in one snapshot \(model.characters[0].maxHPReduction == 6 && model.characters[0].currentHP == 10)")
+        model.redo()
+        rmLines.append("redo re-lifts it \(model.characters[0].maxHPReduction == 2)")
+        model.characters = rmOrig
+        for ch in rmOrig { try? model.store.save(ch) }
+        model.tableLog = rmOrigLog
+        model.tableLogStore.save(rmOrigLog)
+        rmLines.append("hygiene: roster and table log restored \(model.characters == rmOrig && model.tableLog.count == rmOrigLog.count)")
+        try? rmLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/restoremax.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

@@ -1330,6 +1330,10 @@ public struct GroupCheckSectionView: View {
                     .controlSize(.small)
                     .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
                     .help("Damage all \(model.characters.count) roster characters - temp HP absorbs, floor at 0, undo restores")
+                Button("Restore max (party)") { model.restorePartyMaxHP(amount: partyAmountValue) }
+                    .controlSize(.small)
+                    .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
+                    .help("Lift max-HP drain by the amount on every drained roster character - current HP stays, undo restores")
                 Button("Heal (party)") { model.adjustPartyHP(amount: partyAmountValue, damage: false) }
                     .controlSize(.small)
                     .disabled(partyAmountValue <= 0 || model.characters.isEmpty)

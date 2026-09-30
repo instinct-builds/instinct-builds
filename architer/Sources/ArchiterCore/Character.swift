@@ -1191,6 +1191,17 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         currentHP = min(currentHP, effectiveMaxHP)
     }
 
+    /// 3.78.0: lift the drain by up to `amount` without a rest. Returns
+    /// the amount actually restored (0 when undrained or amount <= 0).
+    /// Current HP never rises - the restored ceiling is room to heal into.
+    @discardableResult
+    public mutating func restoreMaxHP(_ amount: Int) -> Int {
+        let lift = min(max(0, amount), maxHPReduction)
+        guard lift > 0 else { return 0 }
+        maxHPReduction -= lift
+        return lift
+    }
+
     /// Re-clamp drain and current HP after the stored max is edited.
     public mutating func normalizeHP() {
         maxHPReduction = max(0, min(maxHP - 1, maxHPReduction))
