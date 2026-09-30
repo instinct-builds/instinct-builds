@@ -113,6 +113,15 @@ struct ReviewGalleryTests {
         }
         let raw = try Data(contentsOf: root.appendingPathComponent("recovery-warning-raw.json"))
         #expect(ReviewGallery.decodeFeedback(raw) == nil) // recovery copies are not feedback
+        for mode in ["keyboard-grid", "keyboard-board"] {
+            let keyboard = try read("\(mode)-0.json")
+            #expect(keyboard.reviewer == "Recovered Reviewer With A Much Longer Full Name That Wraps Onto Two Lines")
+            #expect(keyboard.items.first?.favorite == true && keyboard.items.first?.cardStatus == .approved)
+            #expect(keyboard.items.first?.note == "Keyboard note with a c and f preserved")
+            var independent = catalog
+            let applied = independent.applyFeedback(keyboard)
+            #expect(applied.favorites == 1 && applied.notes == 1)
+        }
         let warningFile = try read("storage-warning-0.json")
         #expect(warningFile.items.first?.note == "Keep this note")
         let survived = try read("reload-0.json")

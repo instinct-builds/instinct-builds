@@ -191,7 +191,7 @@ jobs:
           "$CH" --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files --virtual-time-budget=4000 --window-size=1600,1000 --screenshot="$PWD/ASSSETS-$ASSSETS_VERSION-gallery-lightbox.png" "$U?demo=lightbox" || true
           test -s "ASSSETS-$ASSSETS_VERSION-gallery-web.png"
           python3 ../Tests/browser/reviewer-drafts.py "$G/index.html" "$PWD/reviewer-browser" "$CH" | tee "ASSSETS-$ASSSETS_VERSION-reviewer-browser.txt"
-          for mode in storage-denied storage-quota storage-partial storage-readback storage-warning recovery-json recovery-shape recovery-item recovery-active recovery-legacy recovery-failed recovery-warning; do
+          for mode in storage-denied storage-quota storage-partial storage-readback storage-warning recovery-json recovery-shape recovery-item recovery-active recovery-legacy recovery-failed recovery-warning keyboard-grid keyboard-board keyboard-dialog keyboard-grid-open keyboard-grid-lightbox keyboard-grid-return keyboard-board-open keyboard-board-lightbox keyboard-board-return keyboard-dialog-open keyboard-dialog-return; do
             test -s "$PWD/reviewer-browser/$mode.png"
             cp "$PWD/reviewer-browser/$mode.png" "$PWD/ASSSETS-$ASSSETS_VERSION-$mode.png"
           done

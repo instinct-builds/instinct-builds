@@ -1159,3 +1159,23 @@ saved draft; native tests import the browser-produced JSON.
   fresh-draft reload and normal feedback downloads. Native import tests check
   the resulting feedback and reject recovery copies as feedback. Reviewer
   names remain local labels, not proof of identity. No server sync is added.
+
+
+## 1.78.0: keyboard gallery review
+
+- Grid thumbnails and board spots open on Enter or Space, with visible focus
+  rings and descriptive labels. Reviewer dialogs and the lightbox keep Tab
+  and Shift-Tab inside their controls and make the background inert.
+- Opening a dialog focuses its first control; closing returns focus to the
+  invoking control. Escape closes the lightbox, even from the note field,
+  without losing text. Required first-reviewer and recovery choices cannot
+  be dismissed silently. Letter shortcuts never change decisions while
+  typing a note or holding command/control/option.
+- Reviewer names use a wrapping button rather than a fixed-width input.
+  Full names remain visible at 1024x768 and can still open the reviewer picker.
+- Chrome/CDP sends real keyboard and text input events for grid and board
+  review, note entry, feedback download, focus trapping and return. Captures
+  show initial dialog focus, lightbox focus, invoking-control return and a
+  long wrapping name. Native tests import those browser-produced files.
+  Feedback format, persistence rules and local-only identity language do not
+  change.

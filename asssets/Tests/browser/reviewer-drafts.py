@@ -54,53 +54,40 @@ def chrome_result(chrome, url, screenshot=None):
                 part, buffer = buffer[:n], buffer[n:]
                 return part
             seq = 0
-            while time.monotonic() < deadline:
+            def cdp(method, params):
+                nonlocal seq
                 seq += 1
-                payload = json.dumps({'id': seq, 'method': 'Runtime.evaluate',
-                    'params': {'expression': 'document.getElementById("results")?.textContent || ""',
-                               'returnByValue': True}}).encode()
-                mask = os.urandom(4)
-                length = len(payload)
-                header = bytes([0x81, 0x80 | (length if length < 126 else 126)])
-                if length >= 126: header += struct.pack('!H', length)
-                sock.sendall(header + mask + bytes(b ^ mask[i%4] for i,b in enumerate(payload)))
+                payload = json.dumps({'id':seq,'method':method,'params':params}).encode()
+                mask=os.urandom(4); length=len(payload)
+                header=bytes([0x81,0x80|(length if length<126 else 126)])
+                if length>=126: header+=struct.pack('!H',length)
+                sock.sendall(header+mask+bytes(b^mask[i%4] for i,b in enumerate(payload)))
                 while True:
-                    first, second = receive(2)
-                    length = second & 127
-                    if length == 126: length = struct.unpack('!H', receive(2))[0]
-                    elif length == 127: length = struct.unpack('!Q', receive(8))[0]
-                    key = receive(4) if second & 128 else None
-                    body = receive(length)
-                    if key: body = bytes(b ^ key[i%4] for i,b in enumerate(body))
-                    if first & 15 != 1: continue
-                    message = json.loads(body)
-                    if message.get('id') != seq: continue
-                    value = message.get('result', {}).get('result', {}).get('value', '')
-                    if value:
-                        result = json.loads(value)
-                        if screenshot:
-                            shot_id = seq + 1
-                            payload = json.dumps({'id': shot_id, 'method': 'Page.captureScreenshot',
-                                'params': {'format': 'png', 'captureBeyondViewport': False}}).encode()
-                            mask = os.urandom(4); length = len(payload)
-                            header = bytes([0x81, 0x80 | (length if length < 126 else 126)])
-                            if length >= 126: header += struct.pack('!H', length)
-                            sock.sendall(header + mask + bytes(b ^ mask[i%4] for i,b in enumerate(payload)))
-                            while True:
-                                first, second = receive(2); length = second & 127
-                                if length == 126: length = struct.unpack('!H', receive(2))[0]
-                                elif length == 127: length = struct.unpack('!Q', receive(8))[0]
-                                key = receive(4) if second & 128 else None
-                                body = receive(length)
-                                if key: body = bytes(b ^ key[i%4] for i,b in enumerate(body))
-                                if first & 15 != 1: continue
-                                message = json.loads(body)
-                                if message.get('id') == shot_id:
-                                    pathlib.Path(screenshot).write_bytes(base64.b64decode(message['result']['data']))
-                                    break
-                        return result
-                    break
-                time.sleep(.1)
+                    first,second=receive(2);length=second&127
+                    if length==126:length=struct.unpack('!H',receive(2))[0]
+                    elif length==127:length=struct.unpack('!Q',receive(8))[0]
+                    mask=receive(4) if second&128 else None;body=receive(length)
+                    if mask:body=bytes(b^mask[i%4] for i,b in enumerate(body))
+                    if first&15!=1:continue
+                    message=json.loads(body)
+                    if message.get('id')==seq:
+                        if 'error' in message:raise RuntimeError(message['error'])
+                        return message.get('result',{})
+            while time.monotonic() < deadline:
+                state=cdp('Runtime.evaluate',{'expression':'JSON.stringify({result:document.getElementById("results")?.textContent||"",action:window.cdpAction||null})','returnByValue':True})
+                state=json.loads(state.get('result',{}).get('value','{}'))
+                if state.get('action'):
+                    action=state['action'];response=cdp(action['method'],action['params'])
+                    if action.get('capture'): pathlib.Path(screenshot).with_name(action['capture']+'.png').write_bytes(base64.b64decode(response['data']))
+                    cdp('Runtime.evaluate',{'expression':'window.cdpAction=null;window.cdpResolve()'})
+                    continue
+                if state.get('result'):
+                    result=json.loads(state['result'])
+                    if screenshot:
+                        data=cdp('Page.captureScreenshot',{'format':'png','captureBeyondViewport':False})
+                        pathlib.Path(screenshot).write_bytes(base64.b64decode(data['data']))
+                    return result
+                time.sleep(.02)
             raise TimeoutError('Review flow did not publish a DOM result')
         finally:
             if sock: sock.close()
@@ -121,7 +108,7 @@ item = manifest['items'][0]['id']
 # Run a page copy next to the gallery so images and file:// origin are unchanged.
 test_page = page.parent / '__reviewer-drafts-test.html'
 try:
-    for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload', 'recovery-json', 'recovery-shape', 'recovery-item', 'recovery-active', 'recovery-legacy', 'recovery-failed', 'recovery-warning'):
+    for mode in ('drafts', 'legacy-continue', 'legacy-fresh', 'storage-denied', 'storage-quota', 'storage-partial', 'storage-readback', 'storage-warning', 'reload', 'recovery-json', 'recovery-shape', 'recovery-item', 'recovery-active', 'recovery-legacy', 'recovery-failed', 'recovery-warning', 'keyboard-grid', 'keyboard-board', 'keyboard-dialog'):
         seed = ''
         if mode.startswith('legacy'):
             seed = f'''<script>localStorage.setItem('asssets-review-'+{json.dumps(manifest['gallery'])},JSON.stringify({{reviewer:'Old Name',items:{{{json.dumps(item)}:{{favorite:true,note:'Older note',status:'approved'}}}}}}));</script>'''
@@ -156,8 +143,38 @@ const click=id=>document.getElementById(id).click();
 const type=(id,v)=>{const x=document.getElementById(id);x.value=v;x.dispatchEvent(new Event('input',{bubbles:true}))};
 const download=async()=>{click('download');assert(blobs.length>0,'download button created a Blob');return JSON.parse(await blobs.pop().text())};
 try{
-if(MODE.startsWith('recovery-')&&sessionStorage.getItem('recovery-stage')==='fresh'){
- assert(document.getElementById('reviewer').value==='Recovered Reviewer','new reviewer survives reload after recovery');
+if(MODE.startsWith('keyboard-')){
+ const action=(method,params,capture)=>new Promise(resolve=>{window.cdpResolve=resolve;window.cdpAction={method,params,capture}});
+ const shot=name=>action('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},name);
+ const key=async(k,code,modifiers=0)=>{await action('Input.dispatchKeyEvent',{type:'keyDown',key:k,code,text:k==='Enter'?'\r':'',windowsVirtualKeyCode:k==='Tab'?9:k==='Enter'?13:k==='Escape'?27:0,modifiers});await action('Input.dispatchKeyEvent',{type:'keyUp',key:k,code,modifiers})};
+ const tab=()=>key('Tab','Tab'),enter=()=>key('Enter','Enter'),esc=()=>key('Escape','Escape');
+ const to=async predicate=>{for(let i=0;i<90&&!predicate(document.activeElement);i++)await tab();assert(predicate(document.activeElement),'Tab reached requested control')};
+ assert(document.activeElement.id==='knownReviewers','opening dialog focuses saved drafts');await shot(MODE+'-open');
+ await key('Tab','Tab',8);assert(document.activeElement.textContent==='Switch','Shift Tab trapped at dialog end');
+ await tab();assert(document.activeElement.id==='knownReviewers','Tab trapped at dialog start');
+ await tab();assert(document.activeElement.id==='newReviewer','Tab focuses new reviewer');
+ await action('Input.insertText',{text:'Recovered Reviewer With A Much Longer Full Name That Wraps Onto Two Lines'});
+ await tab();await enter();assert(document.getElementById('reviewer').textContent==='Recovered Reviewer With A Much Longer Full Name That Wraps Onto Two Lines','full reviewer name shown');
+ if(MODE==='keyboard-dialog'){
+  await to(e=>e.id==='renameReviewer');await enter();assert(document.activeElement.id==='renameInput','rename dialog receives focus');
+  await esc();assert(document.activeElement.id==='renameReviewer','Escape restores invoking rename control');await shot(MODE+'-return');
+  await enter();assert(document.activeElement.id==='renameInput','rename reopened with focus');
+  document.getElementById('results').textContent=JSON.stringify({results,downloads:[]});
+ }else{
+  const board=MODE==='keyboard-board';
+  if(board)assert(document.querySelector('.spot'),'export contains real board spots');
+  await to(e=>e.classList.contains(board?'spot':'thumb'));const id=document.activeElement.dataset.reviewId;
+  await enter();assert(document.activeElement.id==='close','lightbox opening visibly focuses close');await shot(MODE+'-lightbox');
+  await key('Tab','Tab',8);assert(document.activeElement.id==='next','Shift Tab trapped in lightbox');await tab();assert(document.activeElement.id==='close','Tab trapped in lightbox');
+  await key('f','KeyF');await key('a','KeyA');
+  await to(e=>e.id==='lbnote');await action('Input.insertText',{text:'Keyboard note with a c and f preserved'});
+  await esc();assert(document.activeElement.dataset.reviewId===id&&document.activeElement.classList.contains(board?'spot':'thumb'),'lightbox Escape returns to invoking review target');await shot(MODE+'-return');
+  await to(e=>e.id==='download');await enter();const d=JSON.parse(await blobs.pop().text());
+  assert(d.items[0].favorite&&d.items[0].status==='approved'&&d.items[0].note==='Keyboard note with a c and f preserved','keyboard download contains exact picks decisions notes');
+  document.getElementById('results').textContent=JSON.stringify({results,downloads:[d]});
+ }
+}else if(MODE.startsWith('recovery-')&&sessionStorage.getItem('recovery-stage')==='fresh'){
+ assert(document.getElementById('reviewer').textContent==='Recovered Reviewer','new reviewer survives reload after recovery');
  const d=await download();assert(d.items[0].note==='New draft after recovery','new feedback survives reload after recovery');
  document.getElementById('results').textContent=JSON.stringify({results,downloads:[d]});
 }else if(MODE.startsWith('recovery-')){
@@ -229,7 +246,7 @@ if(MODE.startsWith('recovery-')&&sessionStorage.getItem('recovery-stage')==='fre
  document.getElementById('results').textContent=JSON.stringify({results,downloads:[d]});
  }else if(MODE==='reload'){
  if(sessionStorage.getItem('reload-stage')){
-  assert(document.getElementById('reviewer').value==='Reloaded Draft','reviewer survived reload');
+  assert(document.getElementById('reviewer').textContent==='Reloaded Draft','reviewer survived reload');
   assert(document.querySelector('.card').classList.contains('picked'),'pick survived reload');
   const d=await download();assert(d.items[0].note==='Saved before reload','note survived reload');
   document.getElementById('results').textContent=JSON.stringify({results,downloads:[d]});
@@ -259,7 +276,7 @@ if(MODE.startsWith('recovery-')&&sessionStorage.getItem('recovery-stage')==='fre
         # Seed older storage before gallery script starts. Result node is after gallery initialization.
         html = original.replace('<script>\nconst M=', seed+'<script>\nconst M=',1).replace('</body>', '<pre id="results" hidden></pre>'+flow+'</body>')
         test_page.write_text(html)
-        result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith(('storage-', 'recovery-')) else None)
+        result = chrome_result(chrome, test_page.as_uri(), out / f'{mode}.png' if mode.startswith(('storage-', 'recovery-', 'keyboard-')) else None)
         if 'error' in result: raise RuntimeError(f'{mode}: {result}')
         for i, download in enumerate(result['downloads']):
             (out / f'{mode}-{i}.json').write_text(json.dumps(download,indent=2)+'\n')
