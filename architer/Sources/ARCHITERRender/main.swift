@@ -4302,6 +4302,37 @@ func run(model: AppModel, character: Character, outDir: String) {
             .write(to: URL(fileURLWithPath: "\(outDir)/partytyped.txt"),
                    atomically: true, encoding: .utf8)
     }
+    // 3.77.0 drain chip: drained characters show "Max -N" on the party
+    // strip card and the party detail row, derived from the stored drain.
+    dcProof: do {
+        guard var dcBase = model.characters.first else { break dcProof }
+        dcBase.maxHP = 32; dcBase.currentHP = 30; dcBase.tempHP = 0
+        dcBase.conditions = []; dcBase.customConditions = []; dcBase.concentratingOn = nil
+        dcBase.conditionDurations = [:]; dcBase.conditionNotes = [:]
+        dcBase.maxHPReduction = 0
+        var dcLines = ["Drain chip (3.77.0)",
+                       "a drained character carries a last chip \"Max -N\" on the party strip and detail row; undrained characters are unchanged",
+                       "deterministic by construction: one fixture character, no conditions, forced max 32 / current 30"]
+        dcLines.append("undrained strip has no drain chip \(!PartyCardSummary(character: dcBase).chips.contains { $0.hasPrefix("Max -") })")
+        dcLines.append("undrained detail row has no drain chip \(!(partyDetailRows([dcBase]).first?.chips.contains { $0.text.hasPrefix("Max -") } ?? true))")
+        var dcDrained = dcBase
+        dcDrained.setMaxHPReduction(8)
+        let dcStrip = PartyCardSummary(character: dcDrained)
+        dcLines.append("drained strip card shows the chip \(dcStrip.chips == ["Max -8"] && dcStrip.maxHP == 24 && dcStrip.currentHP == 24)")
+        let dcRow = partyDetailRows([dcDrained]).first
+        dcLines.append("drained detail row shows the chip \(dcRow?.chips.map(\.text) == ["Max -8"] && dcRow?.maxHP == 24)")
+        var dcBusy = dcDrained
+        dcBusy.conditions.insert(.prone)
+        dcBusy.concentratingOn = "Hold Person"
+        dcLines.append("the chip rides last after conditions and concentration \(PartyCardSummary(character: dcBusy).chips.last == "Max -8" && partyDetailRows([dcBusy]).first?.chips.last?.text == "Max -8")")
+        dcBusy.setMaxHPReduction(15)
+        dcLines.append("the chip follows the stored drain \(PartyCardSummary(character: dcBusy).chips.last == "Max -15")")
+        dcBusy.longRest()
+        dcLines.append("long rest clears the chip \(!PartyCardSummary(character: dcBusy).chips.contains { $0.hasPrefix("Max -") })")
+        try? dcLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/drainchip.txt"),
+                   atomically: true, encoding: .utf8)
+    }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
 }

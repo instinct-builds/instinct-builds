@@ -55,6 +55,9 @@ public func partyDetailRows(_ characters: [Character]) -> [PartyDetailRow] {
             let chip = c.concentrationTimer.map { "\(spell) (\($0))" } ?? spell
             chips.append(PartyDetailChip(text: "Concentrating: \(chip)", expiring: false))
         }
+        if c.maxHPReduction > 0 {
+            chips.append(PartyDetailChip(text: "Max -\(c.maxHPReduction)", expiring: false))
+        }
         return PartyDetailRow(characterID: c.id, name: c.name,
                               currentHP: c.currentHP, maxHP: c.effectiveMaxHP, tempHP: c.tempHP, chips: chips)
     }

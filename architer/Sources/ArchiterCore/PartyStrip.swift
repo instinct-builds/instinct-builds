@@ -31,6 +31,9 @@ public struct PartyCardSummary: Equatable, Sendable {
             let chip = c.concentrationTimer.map { "\(spell) (\($0))" } ?? spell
             chips.append("Concentrating: \(chip)")
         }
+        // 3.77.0: a drained character shows it last, derived from the
+        // stored drain (nothing extra stored).
+        if c.maxHPReduction > 0 { chips.append("Max -\(c.maxHPReduction)") }
         self.chips = chips
     }
 
