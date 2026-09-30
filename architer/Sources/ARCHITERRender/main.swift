@@ -4062,7 +4062,9 @@ func run(model: AppModel, character: Character, outDir: String) {
         hpBase.currentHP = 24
         hpBase.tempHP = 5
         hpBase.maxHPReduction = 0
-        model.characters[hpIdx] = hpBase
+        // Seed through the selected binding so the undo stack's baseline is
+        // the fixture (a direct roster write would leave it stale).
+        model.selected?.wrappedValue = hpBase
         var hpLines = ["Max-HP reduction (3.74.0)",
                        "a drain lowers the effective max HP until a long rest; healing caps at it; long rest lifts it",
                        "deterministic by construction: fixture is max 32, current 24, temp 5; every step is integer arithmetic"]
