@@ -1638,6 +1638,33 @@ public final class AppModel: ObservableObject {
         return restored
     }
 
+    /// Split gold (3.83.0): "the vault holds 250 gp, split it" is said to the
+    /// party. The amount is gold pieces; each member gets the same whole-copper
+    /// share as the fewest coins added to their purse (existing coins untouched),
+    /// on their own undo stack, with one log line naming the share and any
+    /// leftover that stays in the pot. Returns the names that received it.
+    @discardableResult
+    public func splitPartyGold(amount: Int, among ids: Set<UUID>? = nil) -> [String] {
+        let idxs = characters.indices.filter { ids?.contains(characters[$0].id) ?? true }
+        guard amount > 0, let split = LootSplit(totalCopper: amount * 100, members: idxs.count) else { return [] }
+        var names: [String] = []
+        for idx in idxs {
+            var c = characters[idx]
+            c.currency = c.currency.adding(split.share)
+            var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
+            stack.push(c)
+            undoStacks[c.id] = stack
+            characters[idx] = c
+            try? store.save(c)
+            names.append(c.name)
+        }
+        var text = "\(amount) gp split \(names.count) ways: \(split.share.displayString) each"
+        if split.leftoverCopper > 0 { text += " (\(split.leftoverCopper) cp left in the pot)" }
+        tableLog.append(TableLogEntry(title: "Loot split", text: text))
+        tableLogStore.save(tableLog)
+        return names
+    }
+
     /// Apply a built-in condition to the whole roster at once (3.51.0):
     /// "the shove lands on everyone". Rides adjustPartyHP's discipline -
     /// own undo stack per changed character, no confirm. Re-applying

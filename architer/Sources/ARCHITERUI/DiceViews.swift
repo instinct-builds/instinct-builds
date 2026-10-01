@@ -1344,6 +1344,14 @@ public struct GroupCheckSectionView: View {
                     .help("Heal all \(model.characters.count) roster characters - capped at max HP, undo restores")
             }
             HStack(spacing: Theme.Gap.sm) {
+                Button("Split gold (party)") { model.splitPartyGold(amount: partyAmountValue) }
+                    .controlSize(.small)
+                    .fixedSize()
+                    .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
+                    .help("Treat Amount as gold pieces and split it evenly across all \(model.characters.count) roster characters - leftover copper stays in the pot, undo restores")
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: Theme.Gap.sm) {
                 // Party condition (3.51.0): "the shove lands on everyone".
                 // Same discipline as party damage/heal - own undo stacks,
                 // no confirm. Rounds blank = untimed apply.

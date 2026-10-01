@@ -4492,6 +4492,31 @@ func run(model: AppModel, character: Character, outDir: String) {
         drLines.append("undrained long rest logs no drain line \(model.tableLog.count == dlN5)")
         model.selectedID = dlSelSave
         model.characters = dlSaveChars; model.tableLog = dlSaveLog; model.tableLogStore.save(dlSaveLog)
+        // 3.83.0: split gold across the roster.
+        let lsSaveChars = model.characters, lsSaveLog = model.tableLog
+        var lsLines = ["Split gold (3.83.0)",
+                       "Amount is gp; the pot is exact copper, each share the whole-copper floor as fewest coins added to each purse, leftover stays in the pot"]
+        var lsRoster = Array(lsSaveChars.prefix(3))
+        for i in lsRoster.indices { lsRoster[i].currency = Currency(copper: 3, silver: 0, gold: 10 * (i + 1)) }
+        model.characters = lsRoster
+        let lsBefore = model.characters.map(\.currency)
+        let lsN = model.tableLog.count
+        let lsNames = model.splitPartyGold(amount: 100)
+        let lsText = model.tableLog.last?.text ?? "nil"
+        lsLines.append("100 gp over 3 members: 33 gp, 3 sp, 3 cp each, 1 cp left; log: \(lsText) \(lsNames.count == 3 && lsText == "100 gp split 3 ways: 33 gp, 3 sp, 3 cp each (1 cp left in the pot)" && model.tableLog.count == lsN + 1 && model.tableLog.last?.title == "Loot split")")
+        lsLines.append("existing coins kept, share added per denomination \(model.characters[0].currency == Currency(copper: 6, silver: 3, gold: 43) && model.characters[2].currency == Currency(copper: 6, silver: 3, gold: 63))")
+        lsLines.append("exact copper conserved: shares + leftover = pot \(model.characters.indices.map { model.characters[$0].currency.totalCopper - lsBefore[$0].totalCopper }.reduce(0, +) + 1 == 10000)")
+        let lsPersisted = (try? model.store.load(id: model.characters[1].id))?.currency == model.characters[1].currency
+        lsLines.append("persisted through the store \(lsPersisted)")
+        let lsN2 = model.tableLog.count
+        lsLines.append("zero amount splits nothing \(model.splitPartyGold(amount: 0).isEmpty && model.tableLog.count == lsN2)")
+        lsLines.append("even pot logs no leftover: 90 gp over 3 \(model.splitPartyGold(amount: 90).count == 3 && model.tableLog.last?.text == "90 gp split 3 ways: 30 gp each")")
+        lsLines.append("core: nobody or nothing yields no split \(LootSplit(totalCopper: 100, members: 0) == nil && LootSplit(totalCopper: 0, members: 3) == nil)")
+        model.characters = lsSaveChars; model.tableLog = lsSaveLog; model.tableLogStore.save(lsSaveLog)
+        for ch in lsSaveChars { try? model.store.save(ch) }
+        lsLines.append("hygiene: roster and table log restored \(model.characters == lsSaveChars && model.tableLog.count == lsSaveLog.count)")
+        try? lsLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/splitgold.txt"), atomically: true, encoding: .utf8)
         var drShown = vzCora; drShown.longRestDrainRecovery = 5
         for w in [480, 720] as [CGFloat] {
             renderPNG(VitalsBlock(character: .constant(drShown)).padding().background(Theme.surface).environmentObject(model),

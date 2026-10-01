@@ -129,6 +129,34 @@ public struct Currency: Codable, Equatable, Sendable {
     }
 }
 
+/// 3.83.0: dividing a shared haul among the party. The pot is in copper so
+/// every split is exact; each share is the whole-copper floor, shown as the
+/// fewest coins, and what cannot divide evenly (always fewer copper than
+/// members) stays in the pot rather than being invented or rounded up.
+public struct LootSplit: Equatable, Sendable {
+    public let share: Currency
+    public let shareCopper: Int
+    public let leftoverCopper: Int
+
+    /// nil when there is nobody to split between or nothing to split.
+    public init?(totalCopper: Int, members: Int) {
+        guard members > 0, totalCopper > 0 else { return nil }
+        shareCopper = totalCopper / members
+        leftoverCopper = totalCopper - shareCopper * members
+        share = Currency(copper: shareCopper).normalized()
+    }
+}
+
+extension Currency {
+    /// Adds another purse denomination by denomination - existing coins are
+    /// never consolidated or reshuffled.
+    public func adding(_ other: Currency) -> Currency {
+        Currency(copper: copper + other.copper, silver: silver + other.silver,
+                 electrum: electrum + other.electrum, gold: gold + other.gold,
+                 platinum: platinum + other.platinum)
+    }
+}
+
 /// How much of the character's carry limit is in use.
 public enum Encumbrance: String, Sendable {
     case normal, encumbered, heavilyEncumbered, overCapacity
