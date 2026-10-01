@@ -1641,8 +1641,13 @@ public final class AppModel: ObservableObject {
     /// 3.84.0: what Split gold would do for this amount with these members
     /// left out - derived, never stored. nil when nothing would happen.
     public func partyGoldSplitPreview(amount: Int, excluded: Set<UUID>) -> String? {
+        partyGoldSplitPreview(copper: amount * 100, excluded: excluded)
+    }
+
+    /// 3.85.0: the same preview for a pot in copper (typed with coin suffixes).
+    public func partyGoldSplitPreview(copper: Int, excluded: Set<UUID>) -> String? {
         let names = characters.filter { !excluded.contains($0.id) }.map(\.name)
-        guard amount > 0, let split = LootSplit(totalCopper: amount * 100, members: names.count) else { return nil }
+        guard let split = LootSplit(totalCopper: copper, members: names.count) else { return nil }
         var text = "\(split.share.displayString) each to \(names.joined(separator: ", "))"
         if split.leftoverCopper > 0 { text += " (\(split.leftoverCopper) cp left in the pot)" }
         return text
@@ -1655,8 +1660,14 @@ public final class AppModel: ObservableObject {
     /// leftover that stays in the pot. Returns the names that received it.
     @discardableResult
     public func splitPartyGold(amount: Int, among ids: Set<UUID>? = nil) -> [String] {
+        splitPartyGold(copper: amount * 100, among: ids)
+    }
+
+    /// 3.85.0: split a pot given in copper (the Amount field parses coin suffixes).
+    @discardableResult
+    public func splitPartyGold(copper: Int, among ids: Set<UUID>? = nil) -> [String] {
         let idxs = characters.indices.filter { ids?.contains(characters[$0].id) ?? true }
-        guard amount > 0, let split = LootSplit(totalCopper: amount * 100, members: idxs.count) else { return [] }
+        guard let split = LootSplit(totalCopper: copper, members: idxs.count) else { return [] }
         var names: [String] = []
         for idx in idxs {
             var c = characters[idx]
@@ -1668,7 +1679,7 @@ public final class AppModel: ObservableObject {
             try? store.save(c)
             names.append(c.name)
         }
-        var text = "\(amount) gp split \(names.count) ways: \(split.share.displayString) each"
+        var text = "\(CoinAmount.potText(copper: copper)) split \(names.count) ways: \(split.share.displayString) each"
         if split.leftoverCopper > 0 { text += " (\(split.leftoverCopper) cp left in the pot)" }
         let left = characters.filter { !names.contains($0.name) }.map(\.name)
         if !left.isEmpty { text += " - left out: \(left.joined(separator: ", "))" }

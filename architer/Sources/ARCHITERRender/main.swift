@@ -4535,12 +4535,26 @@ func run(model: AppModel, character: Character, outDir: String) {
         sxLines.append("split two ways: \(sxLog) \(sxNames.count == 2 && model.tableLog.count == sxN + 1 && sxLog == "100 gp split 2 ways: 5 pp each - left out: \(sxAbsent.name)")")
         sxLines.append("members got 5 pp each, absent got nothing \(model.characters[0].currency == Currency(platinum: 5) && model.characters[1].currency == Currency(platinum: 5) && model.characters[2].currency == Currency())")
         sxLines.append("nobody ticked splits nothing \(model.splitPartyGold(amount: 100, among: []).isEmpty && model.tableLog.count == sxN + 1)")
+        // 3.85.0: coin suffixes in the Amount.
+        sxLines.append("parse: 250 -> \(CoinAmount.parseCopper("250") ?? -1) cp, 40sp -> \(CoinAmount.parseCopper("40sp") ?? -1), 2gp 5sp 3cp -> \(CoinAmount.parseCopper("2gp 5sp 3cp") ?? -1) \(CoinAmount.parseCopper("250") == 25000 && CoinAmount.parseCopper("40sp") == 400 && CoinAmount.parseCopper("2gp 5sp 3cp") == 253)")
+        sxLines.append("parse rejects junk (2.5gp, 12xp, empty) \(CoinAmount.parseCopper("2.5gp") == nil && CoinAmount.parseCopper("12xp") == nil && CoinAmount.parseCopper("") == nil)")
+        for i in model.characters.indices { model.characters[i].currency = Currency() }
+        let sxTwo = Set(model.characters.prefix(2).map(\.id))
+        let sxPrev2 = model.partyGoldSplitPreview(copper: 75, excluded: Set(model.characters.map(\.id)).subtracting(sxTwo)) ?? "nil"
+        sxLines.append("preview for 75cp over two: \(sxPrev2) \(sxPrev2.hasPrefix("3 sp, 7 cp each to ") && sxPrev2.hasSuffix("(1 cp left in the pot)"))")
+        let sxN2 = model.tableLog.count
+        let sxCopperNames = model.splitPartyGold(copper: 75, among: sxTwo)
+        let sxCopperLog = model.tableLog.last?.text ?? "nil"
+        sxLines.append("75cp split two ways logs the pot as coins: \(sxCopperLog) \(sxCopperNames.count == 2 && model.tableLog.count == sxN2 + 1 && sxCopperLog.hasPrefix("7 sp, 5 cp split 2 ways: 3 sp, 7 cp each (1 cp left in the pot) - left out: "))")
+        sxLines.append("purses hold 3 sp, 7 cp \(model.characters.prefix(2).allSatisfy { $0.currency == Currency(copper: 7, silver: 3) } && model.characters[2].currency == Currency())")
+        let sxN3 = model.tableLog.count
+        sxLines.append("a pot under one copper per member splits nothing and logs nothing (1 cp over 2) \(model.splitPartyGold(copper: 1, among: sxTwo).isEmpty && model.tableLog.count == sxN3)")
         model.tableLog = sxSaveLog
         for w in [480, 720] as [CGFloat] {
-            renderPNG(GroupCheckSectionView(previewAmount: "250", previewExcluded: [sxAbsent.id]).padding().background(Theme.surface).environmentObject(model),
+            renderPNG(GroupCheckSectionView(previewAmount: "2gp 5sp 3cp", previewExcluded: [sxAbsent.id]).padding().background(Theme.surface).environmentObject(model),
                       width: w, name: "viz-party-split-\(Int(w))", outDir: outDir, minHeight: 200, maxHeight: 900)
         }
-        sxLines.append("rendered viz-party-split-480, viz-party-split-720 (Amount 250, third member unticked, preview line shown)")
+        sxLines.append("rendered viz-party-split-480, viz-party-split-720 (Amount "2gp 5sp 3cp", third member unticked, preview line shown)")
         model.characters = sxSaveChars; model.tableLog = sxSaveLog; model.tableLogStore.save(sxSaveLog)
         for ch in sxSaveChars { try? model.store.save(ch) }
         sxLines.append("hygiene: roster and table log restored \(model.characters == sxSaveChars && model.tableLog.count == sxSaveLog.count)")

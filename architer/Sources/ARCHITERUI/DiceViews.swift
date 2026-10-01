@@ -1228,6 +1228,8 @@ public struct GroupCheckSectionView: View {
     /// 3.47.0: party damage/heal amount draft; display-only.
     @State private var partyAmount = ""
     @State private var splitExcluded: Set<UUID> = []
+    /// 3.85.0: the Amount read as a coin haul ("250", "40sp", "2gp 5sp"); 0 when it does not parse.
+    private var partyPotCopper: Int { CoinAmount.parseCopper(partyAmount) ?? 0 }
     @State private var partyDamageType: DamageType?
 
     /// The party HP amount (3.47.0); 0 when the draft is blank or not a
@@ -1352,13 +1354,13 @@ public struct GroupCheckSectionView: View {
             }
             HStack(spacing: Theme.Gap.sm) {
                 Button("Split gold (party)") {
-                    model.splitPartyGold(amount: partyAmountValue,
+                    model.splitPartyGold(copper: partyPotCopper,
                                          among: Set(model.characters.map(\.id)).subtracting(splitExcluded))
                 }
                     .controlSize(.small)
                     .fixedSize()
-                    .disabled(model.partyGoldSplitPreview(amount: partyAmountValue, excluded: splitExcluded) == nil)
-                    .help("Treat Amount as gold pieces and split it evenly across all \(model.characters.count) roster characters - leftover copper stays in the pot, undo restores")
+                    .disabled(model.partyGoldSplitPreview(copper: partyPotCopper, excluded: splitExcluded) == nil)
+                    .help("Treat Amount as a haul (bare number = gold; or 40sp, 75cp, 2gp 5sp) and split it evenly across all \(model.characters.count) roster characters - leftover copper stays in the pot, undo restores")
                 Spacer(minLength: 0)
             }
             // 3.84.0: who shares the haul - untick an absent player; the preview
@@ -1374,7 +1376,7 @@ public struct GroupCheckSectionView: View {
                 }
             }
             .foregroundStyle(Theme.inkMuted)
-            if let preview = model.partyGoldSplitPreview(amount: partyAmountValue, excluded: splitExcluded) {
+            if let preview = model.partyGoldSplitPreview(copper: partyPotCopper, excluded: splitExcluded) {
                 Text(preview)
                     .font(Theme.Typeface.caption)
                     .foregroundStyle(Theme.inkMuted)

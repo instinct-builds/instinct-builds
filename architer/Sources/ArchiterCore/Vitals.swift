@@ -138,12 +138,51 @@ public struct LootSplit: Equatable, Sendable {
     public let shareCopper: Int
     public let leftoverCopper: Int
 
-    /// nil when there is nobody to split between or nothing to split.
+    /// nil when there is nobody to split between, nothing to split, or the
+    /// pot is smaller than one copper per member (every share would be 0).
     public init?(totalCopper: Int, members: Int) {
-        guard members > 0, totalCopper > 0 else { return nil }
+        guard members > 0, totalCopper > 0, totalCopper >= members else { return nil }
         shareCopper = totalCopper / members
         leftoverCopper = totalCopper - shareCopper * members
         share = Currency(copper: shareCopper).normalized()
+    }
+}
+
+/// 3.85.0: a typed haul like "250", "250gp", "40 sp", "2gp 5sp 3cp". A bare
+/// number is gold pieces (what the Amount field has always meant); every
+/// token is a whole number plus an optional denomination (pp, gp, ep, sp,
+/// cp). Anything else - decimals, unknown units, empty text - is rejected
+/// outright rather than guessed at.
+public enum CoinAmount {
+    public static func parseCopper(_ text: String) -> Int? {
+        let tokens = text.lowercased().split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
+        guard !tokens.isEmpty else { return nil }
+        var total = 0
+        for token in tokens {
+            let digits = token.prefix { $0.isNumber }
+            let unit = String(token.dropFirst(digits.count))
+            guard !digits.isEmpty, let n = Int(digits), n >= 0 else { return nil }
+            let per: Int
+            switch unit {
+            case "", "gp", "g": per = 100
+            case "pp", "p": per = 1000
+            case "ep", "e": per = 50
+            case "sp", "s": per = 10
+            case "cp", "c": per = 1
+            default: return nil
+            }
+            let (value, overflow) = n.multipliedReportingOverflow(by: per)
+            let (sum, overflow2) = total.addingReportingOverflow(value)
+            if overflow || overflow2 || sum > 100_000_000 { return nil }
+            total = sum
+        }
+        return total
+    }
+
+    /// How a pot reads back in the log: whole gold as "N gp", anything else
+    /// as the fewest coins.
+    public static func potText(copper: Int) -> String {
+        copper % 100 == 0 ? "\(copper / 100) gp" : Currency(copper: copper).normalized().displayString
     }
 }
 
