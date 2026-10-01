@@ -52,23 +52,34 @@ public struct VitalsBlock: View {
                     if let n = Int(damageAmount) { character.applyDamage(n, type: damageType); damageAmount = "" }
                 }
                 .buttonStyle(RollButtonStyle(prominent: true))
+                .fixedSize()
                 Button("Roll") {
                     model.rollIncomingDamage(damageAmount, type: damageType)
                     damageAmount = ""
                 }
                 .buttonStyle(RollButtonStyle())
                 .disabled((try? DiceExpression.parse(damageAmount)) == nil)
+                .fixedSize()
                 .help("Roll the field as dice notation (2d6+3); defenses adjust the total before it lands")
+                Spacer(minLength: 0)
+            }
+            // 3.79.0: heal and temp get their own row - one row of four
+            // fields and four buttons broke labels ("Ap ply", "G ai n") at
+            // the narrow pane width.
+            HStack(spacing: Theme.Gap.sm) {
                 TextField("Heal", text: $healAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
                 Button("Apply") {
                     if let n = Int(healAmount) { character.applyHealing(n); healAmount = "" }
                 }
                 .buttonStyle(RollButtonStyle())
+                .fixedSize()
                 TextField("Temp", text: $tempAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
                 Button("Gain") {
                     if let n = Int(tempAmount) { character.gainTempHP(n); tempAmount = "" }
                 }
                 .buttonStyle(RollButtonStyle())
+                .fixedSize()
+                Spacer(minLength: 0)
             }
             Divider().overlay(Theme.edge)
             // Defenses row
@@ -81,9 +92,15 @@ public struct VitalsBlock: View {
                         Text("\(def.name) (\(def.baseAC)\(def.addDex ? "+DEX" : ""))").tag(String?.some(def.name))
                     }
                 }
-                .frame(maxWidth: 220)
+                .frame(minWidth: 180, maxWidth: 260)
+                Spacer(minLength: 0)
+            }
+            // 3.79.0: shield and misc ride their own row so the armor name
+            // is never truncated ("Unarm...") at the narrow pane width.
+            HStack(spacing: Theme.Gap.md) {
                 Toggle("Shield", isOn: $character.shieldEquipped).toggleStyle(.checkbox)
                 Stepper("Misc \(signed(character.armorClassBonus))", value: $character.armorClassBonus, in: -10...10)
+                Spacer(minLength: 0)
             }
             HStack(spacing: Theme.Gap.md) {
                 DefenseMenu(title: "Resist", selection: \.resistances, character: $character)
