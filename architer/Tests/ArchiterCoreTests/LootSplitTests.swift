@@ -8,14 +8,14 @@ struct LootSplitTests {
         let s = LootSplit(totalCopper: 9000, members: 3)!
         #expect(s.shareCopper == 3000)
         #expect(s.leftoverCopper == 0)
-        #expect(s.share == Currency(gold: 30))
+        #expect(s.share == Currency(platinum: 3))
     }
 
     @Test func unevenSplitFloorsAndKeepsRemainderInThePot() {
         let s = LootSplit(totalCopper: 10000, members: 3)!
         #expect(s.shareCopper == 3333)
         #expect(s.leftoverCopper == 1)
-        #expect(s.share == Currency(copper: 3, silver: 3, gold: 33))
+        #expect(s.share == Currency(copper: 3, silver: 3, gold: 3, platinum: 3))
         #expect(s.shareCopper * 3 + s.leftoverCopper == 10000)
     }
 
