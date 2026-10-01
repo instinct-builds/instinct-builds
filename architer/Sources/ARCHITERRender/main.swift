@@ -4517,6 +4517,35 @@ func run(model: AppModel, character: Character, outDir: String) {
         lsLines.append("hygiene: roster and table log restored \(model.characters == lsSaveChars && model.tableLog.count == lsSaveLog.count)")
         try? lsLines.joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/splitgold.txt"), atomically: true, encoding: .utf8)
+        // 3.84.0: per-member include/exclude on Split gold.
+        let sxSaveChars = model.characters, sxSaveLog = model.tableLog
+        var sxLines = ["Split gold with members left out (3.84.0)",
+                       "unticked members get nothing; the preview line is derived; the log names who was left out"]
+        var sxRoster = Array(sxSaveChars.prefix(3))
+        for i in sxRoster.indices { sxRoster[i].currency = Currency() }
+        model.characters = sxRoster
+        let sxAbsent = sxRoster[2]
+        let sxPrev = model.partyGoldSplitPreview(amount: 100, excluded: [sxAbsent.id]) ?? "nil"
+        sxLines.append("preview with the third member left out: \(sxPrev) \(sxPrev == "5 pp each to \(sxRoster[0].name), \(sxRoster[1].name)")")
+        sxLines.append("preview is nil for no amount or nobody ticked \(model.partyGoldSplitPreview(amount: 0, excluded: []) == nil && model.partyGoldSplitPreview(amount: 100, excluded: Set(sxRoster.map(\.id))) == nil)")
+        let sxIDs = Set(sxRoster.map(\.id)).subtracting([sxAbsent.id])
+        let sxN = model.tableLog.count
+        let sxNames = model.splitPartyGold(amount: 100, among: sxIDs)
+        let sxLog = model.tableLog.last?.text ?? "nil"
+        sxLines.append("split two ways: \(sxLog) \(sxNames.count == 2 && model.tableLog.count == sxN + 1 && sxLog == "100 gp split 2 ways: 5 pp each - left out: \(sxAbsent.name)")")
+        sxLines.append("members got 5 pp each, absent got nothing \(model.characters[0].currency == Currency(platinum: 5) && model.characters[1].currency == Currency(platinum: 5) && model.characters[2].currency == Currency())")
+        sxLines.append("nobody ticked splits nothing \(model.splitPartyGold(amount: 100, among: []).isEmpty && model.tableLog.count == sxN + 1)")
+        model.tableLog = sxSaveLog
+        for w in [480, 720] as [CGFloat] {
+            renderPNG(GroupCheckSectionView(previewAmount: "250", previewExcluded: [sxAbsent.id]).padding().background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-party-split-\(Int(w))", outDir: outDir, minHeight: 200, maxHeight: 900)
+        }
+        sxLines.append("rendered viz-party-split-480, viz-party-split-720 (Amount 250, third member unticked, preview line shown)")
+        model.characters = sxSaveChars; model.tableLog = sxSaveLog; model.tableLogStore.save(sxSaveLog)
+        for ch in sxSaveChars { try? model.store.save(ch) }
+        sxLines.append("hygiene: roster and table log restored \(model.characters == sxSaveChars && model.tableLog.count == sxSaveLog.count)")
+        try? sxLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/splitgold-members.txt"), atomically: true, encoding: .utf8)
         var drShown = vzCora; drShown.longRestDrainRecovery = 5
         for w in [480, 720] as [CGFloat] {
             renderPNG(VitalsBlock(character: .constant(drShown)).padding().background(Theme.surface).environmentObject(model),

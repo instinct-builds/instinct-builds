@@ -1227,6 +1227,7 @@ public struct GroupCheckSectionView: View {
     @State private var rollKind = 0 // 0 = skill check, 1 = saving throw (3.31.0)
     /// 3.47.0: party damage/heal amount draft; display-only.
     @State private var partyAmount = ""
+    @State private var splitExcluded: Set<UUID> = []
     @State private var partyDamageType: DamageType?
 
     /// The party HP amount (3.47.0); 0 when the draft is blank or not a
@@ -1249,6 +1250,12 @@ public struct GroupCheckSectionView: View {
     @State private var dcDraft = ""
 
     public init() {}
+
+    /// Harness: render the party controls with a typed Amount and some members unticked.
+    public init(previewAmount: String, previewExcluded: Set<UUID>) {
+        _partyAmount = State(initialValue: previewAmount)
+        _splitExcluded = State(initialValue: previewExcluded)
+    }
 
     /// The selected character's skill names, else the default list.
     private var skillNames: [String] {
@@ -1344,12 +1351,34 @@ public struct GroupCheckSectionView: View {
                     .help("Heal all \(model.characters.count) roster characters - capped at max HP, undo restores")
             }
             HStack(spacing: Theme.Gap.sm) {
-                Button("Split gold (party)") { model.splitPartyGold(amount: partyAmountValue) }
+                Button("Split gold (party)") {
+                    model.splitPartyGold(amount: partyAmountValue,
+                                         among: Set(model.characters.map(\.id)).subtracting(splitExcluded))
+                }
                     .controlSize(.small)
                     .fixedSize()
-                    .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
+                    .disabled(model.partyGoldSplitPreview(amount: partyAmountValue, excluded: splitExcluded) == nil)
                     .help("Treat Amount as gold pieces and split it evenly across all \(model.characters.count) roster characters - leftover copper stays in the pot, undo restores")
                 Spacer(minLength: 0)
+            }
+            // 3.84.0: who shares the haul - untick an absent player; the preview
+            // line is derived from the amount and the ticks.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 2) {
+                ForEach(model.characters) { c in
+                    Toggle(c.name, isOn: Binding(
+                        get: { !splitExcluded.contains(c.id) },
+                        set: { on in if on { splitExcluded.remove(c.id) } else { splitExcluded.insert(c.id) } }))
+                        .toggleStyle(.checkbox)
+                        .font(Theme.Typeface.caption)
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(Theme.inkMuted)
+            if let preview = model.partyGoldSplitPreview(amount: partyAmountValue, excluded: splitExcluded) {
+                Text(preview)
+                    .font(Theme.Typeface.caption)
+                    .foregroundStyle(Theme.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: Theme.Gap.sm) {
                 // Party condition (3.51.0): "the shove lands on everyone".

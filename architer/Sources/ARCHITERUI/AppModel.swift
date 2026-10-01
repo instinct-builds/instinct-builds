@@ -1638,6 +1638,16 @@ public final class AppModel: ObservableObject {
         return restored
     }
 
+    /// 3.84.0: what Split gold would do for this amount with these members
+    /// left out - derived, never stored. nil when nothing would happen.
+    public func partyGoldSplitPreview(amount: Int, excluded: Set<UUID>) -> String? {
+        let names = characters.filter { !excluded.contains($0.id) }.map(\.name)
+        guard amount > 0, let split = LootSplit(totalCopper: amount * 100, members: names.count) else { return nil }
+        var text = "\(split.share.displayString) each to \(names.joined(separator: ", "))"
+        if split.leftoverCopper > 0 { text += " (\(split.leftoverCopper) cp left in the pot)" }
+        return text
+    }
+
     /// Split gold (3.83.0): "the vault holds 250 gp, split it" is said to the
     /// party. The amount is gold pieces; each member gets the same whole-copper
     /// share as the fewest coins added to their purse (existing coins untouched),
@@ -1660,6 +1670,8 @@ public final class AppModel: ObservableObject {
         }
         var text = "\(amount) gp split \(names.count) ways: \(split.share.displayString) each"
         if split.leftoverCopper > 0 { text += " (\(split.leftoverCopper) cp left in the pot)" }
+        let left = characters.filter { !names.contains($0.name) }.map(\.name)
+        if !left.isEmpty { text += " - left out: \(left.joined(separator: ", "))" }
         tableLog.append(TableLogEntry(title: "Loot split", text: text))
         tableLogStore.save(tableLog)
         return names
