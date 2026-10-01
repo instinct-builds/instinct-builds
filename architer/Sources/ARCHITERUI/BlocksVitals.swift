@@ -114,9 +114,11 @@ public struct VitalsBlock: View {
                     .help("Used when unarmored")
                 Stepper("Speed \(character.speed) ft", value: $character.speed, in: 0...120, step: 5)
                 Stepper("Init misc \(signed(character.initiativeBonus))", value: $character.initiativeBonus, in: -10...20)
-                Text("Initiative \(signed(character.initiative))")
-                    .foregroundStyle(.secondary)
+                    .lineLimit(1).fixedSize()
+                Spacer(minLength: 0)
             }
+            Text("Initiative \(signed(character.initiative))")
+                .foregroundStyle(.secondary)
             ForEach($character.extraSpeeds) { $ms in
                 HStack(spacing: Theme.Gap.sm) {
                     Picker("", selection: Binding(
@@ -176,11 +178,17 @@ public struct VitalsBlock: View {
                 Button("Spend hit die") { model.spendHitDie() }
                     .buttonStyle(RollButtonStyle())
                     .disabled(character.hitDiceRemaining == 0)
-                Spacer()
+                    .lineLimit(1).fixedSize()
+                Spacer(minLength: 0)
+            }
+            HStack {
+                Spacer(minLength: 0)
                 Button("Short rest") { model.shortRest() }
                     .buttonStyle(RollButtonStyle())
+                    .lineLimit(1).fixedSize()
                 Button("Long rest") { model.longRest() }
                     .buttonStyle(RollButtonStyle(prominent: true))
+                    .lineLimit(1).fixedSize()
             }
             HStack(spacing: Theme.Gap.md) {
                 CardSectionLabel(text: "Death saves")
