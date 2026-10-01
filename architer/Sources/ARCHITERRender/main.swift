@@ -4450,6 +4450,28 @@ func run(model: AppModel, character: Character, outDir: String) {
         vzManifest.append("pixel proof: the PNGs above are inspected for clipping, truncation and overlap")
         try? vzManifest.joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/viz-drain-manifest.txt"), atomically: true, encoding: .utf8)
+        // 3.80.0: drain recovery on rest - proof lines plus a 480/720 render of the control.
+        var drLines = ["Drain recovery on rest (3.80.0)",
+                       "nil keeps the full lift; a number lifts that much per long rest and current HP rises to the new ceiling"]
+        var drFull = vzCora; drFull.longRestDrainRecovery = nil
+        let drStart = drFull.maxHPReduction
+        drFull.longRest()
+        drLines.append("default long rest lifts the whole drain (was \(drStart)) \(drStart > 0 && drFull.maxHPReduction == 0 && drFull.currentHP == drFull.maxHP)")
+        var drPart = vzCora; drPart.longRestDrainRecovery = 5
+        let drBefore = drPart.maxHPReduction
+        drPart.longRest()
+        drLines.append("configured 5 lifts only 5 (\(drBefore) -> \(drPart.maxHPReduction)) \(drPart.maxHPReduction == drBefore - 5 && drPart.currentHP == drPart.effectiveMaxHP)")
+        var drZero = vzCora; drZero.longRestDrainRecovery = 0
+        drZero.longRest()
+        drLines.append("configured 0 keeps the drain \(drZero.maxHPReduction == drBefore)")
+        var drShown = vzCora; drShown.longRestDrainRecovery = 5
+        for w in [480, 720] as [CGFloat] {
+            renderPNG(VitalsBlock(character: .constant(drShown)).padding().background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-vitals-recovery-\(Int(w))", outDir: outDir, minHeight: 200, maxHeight: 420)
+        }
+        drLines.append("rendered viz-vitals-recovery-480, viz-vitals-recovery-720")
+        try? drLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/drainrecovery.txt"), atomically: true, encoding: .utf8)
         model.characters = vzOrigChars
         model.selectedID = vzOrigSel
         model.partyDetailPanelOpen = vzOrigOpen

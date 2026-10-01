@@ -720,6 +720,10 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     public var conditionSaveEnds: [String: ConditionSaveEnd] = [:]
     public var drainDamageTypes: Set<DamageType> = []   // 3.75.0: typed damage that also drains max HP
     public var maxHPReduction: Int = 0   // 3.74.0: drained max HP until long rest; effective max is derived
+    /// 3.80.0: nil keeps the 3.74.0 rule (a long rest lifts the whole drain);
+    /// a number makes a long rest lift only that much, current HP rising
+    /// to the new ceiling.
+    public var longRestDrainRecovery: Int? = nil
     public var conditionImmunities: Set<Condition> = []   // 3.73.0: manual; lineage grants are derived
     public var resistances: Set<DamageType>
     public var immunities: Set<DamageType>
@@ -982,6 +986,7 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
         let decodedDrain = try c.decodeIfPresent(Int.self, forKey: .maxHPReduction) ?? 0
         maxHPReduction = max(0, min(maxHP - 1, decodedDrain))
         drainDamageTypes = try c.decodeIfPresent(Set<DamageType>.self, forKey: .drainDamageTypes) ?? []
+        longRestDrainRecovery = try c.decodeIfPresent(Int.self, forKey: .longRestDrainRecovery).map { max(0, $0) }
         resistances = try c.decodeIfPresent(Set<DamageType>.self, forKey: .resistances) ?? []
         immunities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .immunities) ?? []
         vulnerabilities = try c.decodeIfPresent(Set<DamageType>.self, forKey: .vulnerabilities) ?? []
@@ -1250,8 +1255,9 @@ public struct Character: Codable, Equatable, Sendable, Identifiable {
     /// the 2014 style, all in the 2024 style, min 1), all slots, death saves
     /// reset, long-rest features recharge.
     public mutating func longRest() {
-        maxHPReduction = 0 // 3.74.0: the drain lifts on a long rest
-        currentHP = maxHP
+        // 3.74.0: the drain lifts on a long rest; 3.80.0: by a set amount when configured.
+        if let part = longRestDrainRecovery { restoreMaxHP(part) } else { maxHPReduction = 0 }
+        currentHP = effectiveMaxHP
         hitDiceSpent = max(0, hitDiceSpent - era.longRestDiceRecovered(total: hitDiceTotal))
         deathSaveSuccesses = 0
         deathSaveFailures = 0

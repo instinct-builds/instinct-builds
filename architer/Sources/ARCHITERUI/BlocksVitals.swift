@@ -40,6 +40,22 @@ public struct VitalsBlock: View {
                     .foregroundStyle(Theme.inkMuted)
                 }
             }
+            if character.maxHPReduction > 0 || character.longRestDrainRecovery != nil {
+                HStack(spacing: Theme.Gap.sm) {
+                    Toggle("Long rest lifts only part of the drain", isOn: Binding(
+                        get: { character.longRestDrainRecovery != nil },
+                        set: { character.longRestDrainRecovery = $0 ? 1 : nil }))
+                        .font(Theme.Typeface.caption)
+                    if let r = character.longRestDrainRecovery {
+                        Stepper("\(r) per rest", value: Binding(
+                            get: { r }, set: { character.longRestDrainRecovery = $0 }), in: 0...999)
+                            .font(Theme.Typeface.caption)
+                            .lineLimit(1).fixedSize()
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Theme.inkMuted)
+            }
             HStack(spacing: Theme.Gap.sm) {
                 TextField("Damage", text: $damageAmount).frame(width: 84).textFieldStyle(InsetFieldStyle())
                 Picker("", selection: $damageType) {
