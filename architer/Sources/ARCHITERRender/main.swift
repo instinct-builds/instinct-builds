@@ -4439,7 +4439,7 @@ func run(model: AppModel, character: Character, outDir: String) {
             renderPNG(VitalsBlock(character: .constant(vzWard)).padding().background(Theme.surface).environmentObject(model),
                       width: w, name: "viz-vitals-defense-\(n)", outDir: outDir, minHeight: 200, maxHeight: 900)
             renderPNG(VitalsBlock(character: .constant(vzCora)).padding().background(Theme.surface).environmentObject(model),
-                      width: w, name: "viz-vitals-drained-\(n)", outDir: outDir, minHeight: 200, maxHeight: 330)
+                      width: w, name: "viz-vitals-drained-\(n)", outDir: outDir, minHeight: 200, maxHeight: 900)
             vzManifest.append("rendered viz-vitals-drained-\(n) (drained Cora: Drain stepper label with max shown)")
             vzManifest.append("rendered viz-party-strip-\(n), viz-party-detail-\(n), viz-party-controls-\(n), viz-vitals-defense-\(n)")
         }

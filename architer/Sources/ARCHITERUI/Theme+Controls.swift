@@ -72,7 +72,7 @@ struct StatPlate: View {
         VStack(spacing: 2) {
             Text(label.uppercased())
                 .font(Theme.Typeface.statLabel)
-                .tracking(1)
+                .tracking(1).lineLimit(1).minimumScaleFactor(0.7)
                 .foregroundStyle(Theme.inkMuted)
             Text(value)
                 .font(Theme.Typeface.statBig)

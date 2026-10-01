@@ -41,7 +41,7 @@ public struct VitalsBlock: View {
                 }
             }
             HStack(spacing: Theme.Gap.sm) {
-                TextField("Damage", text: $damageAmount).frame(width: 64).textFieldStyle(InsetFieldStyle())
+                TextField("Damage", text: $damageAmount).frame(width: 84).textFieldStyle(InsetFieldStyle())
                 Picker("", selection: $damageType) {
                     Text("Untyped").tag(DamageType?.none)
                     ForEach(DamageType.allCases, id: \.self) { Text($0.displayName).tag(DamageType?.some($0)) }
@@ -153,23 +153,24 @@ public struct VitalsBlock: View {
             HStack(spacing: Theme.Gap.md) {
                 CardSectionLabel(text: "Passive senses")
                 StatPlate(label: "Perception", value: "\(character.passivePerception)", tint: Theme.accent)
-                    .frame(maxWidth: 100)
+                    .frame(maxWidth: 110)
                 StatPlate(label: "Investigation", value: "\(character.passiveInvestigation)")
-                    .frame(maxWidth: 100)
+                    .frame(maxWidth: 120)
                 StatPlate(label: "Insight", value: "\(character.passiveInsight)")
                     .frame(maxWidth: 100)
-                Spacer()
-                Text("10 + skill bonus; counts when not actively rolling")
-                    .font(Theme.Typeface.caption)
-                    .foregroundStyle(Theme.inkFaint)
+                Spacer(minLength: 0)
             }
+            Text("10 + skill bonus; counts when not actively rolling")
+                .font(Theme.Typeface.caption)
+                .foregroundStyle(Theme.inkFaint)
             Divider().overlay(Theme.edge)
             // Hit dice + death saves + rests
             HStack {
                 Picker("Hit die", selection: $character.hitDiceType) {
                     ForEach([6, 8, 10, 12], id: \.self) { Text("d\($0)").tag($0) }
                 }
-                .frame(width: 90)
+                .frame(minWidth: 110)
+                .fixedSize()
                 Text("\(character.hitDiceRemaining)/\(character.hitDiceTotal) remaining")
                     .foregroundStyle(.secondary)
                 Button("Spend hit die") { model.spendHitDie() }
