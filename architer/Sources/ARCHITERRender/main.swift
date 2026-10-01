@@ -4554,7 +4554,7 @@ func run(model: AppModel, character: Character, outDir: String) {
             renderPNG(GroupCheckSectionView(previewAmount: "2gp 5sp 3cp", previewExcluded: [sxAbsent.id]).padding().background(Theme.surface).environmentObject(model),
                       width: w, name: "viz-party-split-\(Int(w))", outDir: outDir, minHeight: 200, maxHeight: 900)
         }
-        sxLines.append("rendered viz-party-split-480, viz-party-split-720 (Amount "2gp 5sp 3cp", third member unticked, preview line shown)")
+        sxLines.append("rendered viz-party-split-480, viz-party-split-720 (Amount 2gp 5sp 3cp, third member unticked, preview line shown)")
         model.characters = sxSaveChars; model.tableLog = sxSaveLog; model.tableLogStore.save(sxSaveLog)
         for ch in sxSaveChars { try? model.store.save(ch) }
         sxLines.append("hygiene: roster and table log restored \(model.characters == sxSaveChars && model.tableLog.count == sxSaveLog.count)")
