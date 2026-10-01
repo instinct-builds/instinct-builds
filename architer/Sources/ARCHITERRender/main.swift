@@ -4467,7 +4467,7 @@ func run(model: AppModel, character: Character, outDir: String) {
         var drShown = vzCora; drShown.longRestDrainRecovery = 5
         for w in [480, 720] as [CGFloat] {
             renderPNG(VitalsBlock(character: .constant(drShown)).padding().background(Theme.surface).environmentObject(model),
-                      width: w, name: "viz-vitals-recovery-\(Int(w))", outDir: outDir, minHeight: 200, maxHeight: 420)
+                      width: w, name: "viz-vitals-recovery-\(Int(w))", outDir: outDir, minHeight: 200, maxHeight: 900)
         }
         drLines.append("rendered viz-vitals-recovery-480, viz-vitals-recovery-720")
         try? drLines.joined(separator: "\n")
