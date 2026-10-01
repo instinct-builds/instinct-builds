@@ -4560,6 +4560,39 @@ func run(model: AppModel, character: Character, outDir: String) {
         sxLines.append("hygiene: roster and table log restored \(model.characters == sxSaveChars && model.tableLog.count == sxSaveLog.count)")
         try? sxLines.joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/splitgold-members.txt"), atomically: true, encoding: .utf8)
+        // 3.86.0: party table facts (AC, passive Perception, inspiration) in the detail panel.
+        let tfSaveChars = model.characters, tfSaveSel = model.selectedID
+        func tfMember(_ name: String, ac: Int, wisdom: Int, inspired: Bool = false) -> Character {
+            var c = Character(name: name, maxHP: 20, currentHP: 20)
+            c.armorClass = ac
+            var d = Dictionary(uniqueKeysWithValues: Ability.allCases.map { ($0, 10) })
+            d[.wisdom] = wisdom
+            c.scores = AbilityScores(d)
+            c.inspiration = inspired
+            return c
+        }
+        var tfLines = ["Party table facts (3.86.0)",
+                       "AC, passive Perception and an inspiration star ride each party-detail row; a glance line names best passive Perception, lowest AC and who holds inspiration"]
+        let tfA = tfMember("Ayla", ac: 12, wisdom: 10), tfB = tfMember("Bram", ac: 17, wisdom: 16), tfC = tfMember("Cora", ac: 15, wisdom: 16, inspired: true)
+        model.characters = [tfA, tfB, tfC]; model.selectedID = tfA.id
+        let tfRows = partyDetailRows(model.characters)
+        tfLines.append("rows carry AC, passive Perception, inspiration: \(tfRows.map { "\($0.name) AC \($0.armorClass) PP \($0.passivePerception)\($0.inspired ? " star" : "")" }) \(tfRows.map(\.armorClass) == [12, 17, 15] && tfRows.map(\.passivePerception) == [10, 13, 13] && tfRows.map(\.inspired) == [false, false, true])")
+        let tfLine = partyTableFactsLine(tfRows) ?? "nil"
+        tfLines.append("glance line: \(tfLine) \(tfLine == "Best passive Perception 13 (Bram) \u{00B7} Lowest AC 12 (Ayla) \u{00B7} Inspired: Cora")")
+        tfLines.append("tie on passive Perception goes to the first in roster order (Bram over Cora) \(tfLine.contains("(Bram)"))")
+        var tfAfter = model.characters; tfAfter[0].inspiration = true; tfAfter[2].inspiration = false
+        tfLines.append("derived live: inspiration moves, line follows \(partyTableFactsLine(partyDetailRows(tfAfter)) == "Best passive Perception 13 (Bram) \u{00B7} Lowest AC 12 (Ayla) \u{00B7} Inspired: Ayla")")
+        tfLines.append("empty roster gives no line \(partyTableFactsLine([]) == nil)")
+        model.partyDetailPanelOpen = true
+        for w in [480, 720] as [CGFloat] {
+            renderPNG(PartyDetailPanelView().padding().background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-party-facts-\(Int(w))", outDir: outDir, minHeight: 120, maxHeight: 700)
+        }
+        tfLines.append("rendered viz-party-facts-480, viz-party-facts-720 (three members, one inspired)")
+        model.characters = tfSaveChars; model.selectedID = tfSaveSel
+        tfLines.append("hygiene: roster restored \(model.characters == tfSaveChars)")
+        try? tfLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/partyfacts.txt"), atomically: true, encoding: .utf8)
         var drShown = vzCora; drShown.longRestDrainRecovery = 5
         for w in [480, 720] as [CGFloat] {
             renderPNG(VitalsBlock(character: .constant(drShown)).padding().background(Theme.surface).environmentObject(model),

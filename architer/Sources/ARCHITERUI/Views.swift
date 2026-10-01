@@ -305,16 +305,26 @@ public struct PartyDetailPanelView: View {
                   ? "Hide the party detail panel"
                   : "Show every condition's note and clock for the whole party")
             if model.partyDetailPanelOpen {
+                if let facts = partyTableFactsLine(partyDetailRows(model.characters)) {
+                    Text(facts)
+                        .font(Theme.Typeface.captionSmall)
+                        .foregroundStyle(Theme.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 ForEach(partyDetailRows(model.characters)) { row in
                     Button { model.revealOnSheet(row.characterID) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: Theme.Gap.sm) {
                             Text(row.name)
                                 .font(Theme.Typeface.caption)
                                 .frame(width: 140, alignment: .leading)
-                            Text("\(row.currentHP)/\(row.maxHP)" + (row.tempHP > 0 ? " +\(row.tempHP)t" : ""))
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text("\(row.currentHP)/\(row.maxHP)" + (row.tempHP > 0 ? " +\(row.tempHP)t" : ""))
+                                // 3.86.0: AC, passive Perception and the inspiration star under the HP.
+                                Text("AC \(row.armorClass) \u{00B7} PP \(row.passivePerception)" + (row.inspired ? " \u{2605}" : ""))
+                            }
                                 .font(Theme.Typeface.captionSmall)
                                 .foregroundStyle(Theme.inkMuted)
-                                .frame(width: 70, alignment: .leading)
+                                .frame(width: 96, alignment: .leading)
                             if row.chips.isEmpty {
                                 // The compact empty line: no conditions,
                                 // but the HP glance still lists.

@@ -33,7 +33,15 @@ public struct PartyDetailRow: Equatable, Sendable, Identifiable {
     /// Empty when the member holds nothing - the row still lists as one
     /// compact line, doubling as the party HP glance.
     public let chips: [PartyDetailChip]
-    public init(characterID: UUID, name: String, currentHP: Int, maxHP: Int, tempHP: Int, chips: [PartyDetailChip]) {
+    /// 3.86.0: table facts a DM asks for out loud, derived from the sheet.
+    public let armorClass: Int
+    public let passivePerception: Int
+    public let inspired: Bool
+    public init(characterID: UUID, name: String, currentHP: Int, maxHP: Int, tempHP: Int, chips: [PartyDetailChip],
+                armorClass: Int = 0, passivePerception: Int = 0, inspired: Bool = false) {
+        self.armorClass = armorClass
+        self.passivePerception = passivePerception
+        self.inspired = inspired
         self.characterID = characterID
         self.name = name
         self.currentHP = currentHP
@@ -59,6 +67,24 @@ public func partyDetailRows(_ characters: [Character]) -> [PartyDetailRow] {
             chips.append(PartyDetailChip(text: "Max -\(c.maxHPReduction)", expiring: false))
         }
         return PartyDetailRow(characterID: c.id, name: c.name,
-                              currentHP: c.currentHP, maxHP: c.effectiveMaxHP, tempHP: c.tempHP, chips: chips)
+                              currentHP: c.currentHP, maxHP: c.effectiveMaxHP, tempHP: c.tempHP, chips: chips,
+                              armorClass: c.computedAC, passivePerception: c.passivePerception, inspired: c.inspiration)
     }
+}
+
+/// 3.86.0: the one-line table glance above the rows - best passive
+/// Perception (who spots the ambush), lowest AC (who gets hit first),
+/// and who holds inspiration. Ties go to roster order; nil for an empty
+/// roster. Derived, never stored.
+public func partyTableFactsLine(_ rows: [PartyDetailRow]) -> String? {
+    guard let best = rows.max(by: { $0.passivePerception < $1.passivePerception }),
+          let soft = rows.min(by: { $0.armorClass < $1.armorClass }) else { return nil }
+    // max/min(by:) keep the LAST of equals for max and the first for min;
+    // pin both to the first in roster order for a stable readout.
+    let bestFirst = rows.first(where: { $0.passivePerception == best.passivePerception }) ?? best
+    var parts = ["Best passive Perception \(bestFirst.passivePerception) (\(bestFirst.name))",
+                 "Lowest AC \(soft.armorClass) (\(soft.name))"]
+    let inspired = rows.filter(\.inspired).map(\.name)
+    if !inspired.isEmpty { parts.append("Inspired: \(inspired.joined(separator: ", "))") }
+    return parts.joined(separator: " \u{00B7} ")
 }
