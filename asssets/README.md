@@ -1208,3 +1208,13 @@ board and grid downloaded feedback still pass through native import tests.
   opening guards, and captures board-hidden/empty/reset pixels at 1024x768.
   Native import tests consume that full browser-produced feedback. No changes
   to feedback format, storage rules or local reviewer identity claims.
+
+
+## 1.79.1: Chrome launch-race guard
+
+The gallery proof harness waits for a readable, nonempty debug-port file with
+a valid port, within the existing 35-second launch deadline. Missing, empty,
+partial and invalid files are retried. Chrome exit and timeout report the
+last port-file state and stderr tail instead of an unhandled IndexError.
+Deterministic tests cover these races and failure diagnostics before the
+real-browser suite runs. Product behavior and feedback format are unchanged.

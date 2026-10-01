@@ -4,6 +4,31 @@ Usage: reviewer-drafts.py index.html output-directory [chrome-executable]
 """
 import base64, json, os, pathlib, re, socket, struct, subprocess, sys, tempfile, time, urllib.request
 
+def wait_for_debug_port(process, port_file, stderr_log, deadline, poll_interval=.1):
+    """Chrome may create its port file before writing a usable first line."""
+    last_state = 'port file not created'
+    def diagnostic():
+        try: tail = stderr_log.read_text(errors='replace')[-1500:]
+        except OSError as error: tail = f'stderr unavailable: {error}'
+        return f'{last_state}; stderr tail: {tail or "(empty)"}'
+    while True:
+        if process.poll() is not None:
+            raise RuntimeError(f'Chrome exited {process.returncode} before DevTools was ready: {diagnostic()}')
+        try:
+            lines = port_file.read_text().splitlines()
+            if not lines:
+                last_state = 'port file exists but is empty'
+            else:
+                try: port = int(lines[0].strip())
+                except ValueError: port = 0
+                if 1 <= port <= 65535: return port
+                last_state = f'port file has invalid first line: {lines[0][:120]!r}'
+        except OSError as error:
+            last_state = f'port file is not readable: {error}'
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f'Chrome did not publish a valid DevTools port before the launch deadline: {diagnostic()}')
+        time.sleep(poll_interval)
+
 def chrome_result(chrome, url, screenshot=None):
     """Read the page result as soon as its DOM is ready via Chrome DevTools.
 
@@ -23,12 +48,7 @@ def chrome_result(chrome, url, screenshot=None):
         try:
             deadline = time.monotonic() + 35
             port_file = pathlib.Path(profile) / 'DevToolsActivePort'
-            while not port_file.exists():
-                if process.poll() is not None:
-                    raise RuntimeError(f'Chrome exited {process.returncode}: {stderr_log.read_text(errors="replace")[-1500:]}')
-                if time.monotonic() > deadline: raise TimeoutError('Chrome did not open DevTools')
-                time.sleep(.1)
-            port = int(port_file.read_text().splitlines()[0])
+            port = wait_for_debug_port(process, port_file, stderr_log, deadline)
             target = None
             while not target:
                 try:
