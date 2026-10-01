@@ -1327,7 +1327,7 @@ public struct GroupCheckSectionView: View {
             HStack(spacing: Theme.Gap.sm) {
                 TextField("Amount", text: $partyAmount)
                     .textFieldStyle(InsetFieldStyle())
-                    .frame(width: 72) // 3.48.0: 56 clipped the placeholder
+                    .frame(width: 128) // 3.48.0: 56 clipped the placeholder; 3.85.0: 72 clipped "2gp 5sp 3cp"
                 Picker("Type", selection: $partyDamageType) {
                     Text("Untyped").tag(DamageType?.none)
                     ForEach(DamageType.allCases, id: \.self) { t in Text(t.displayName).tag(DamageType?.some(t)) }
