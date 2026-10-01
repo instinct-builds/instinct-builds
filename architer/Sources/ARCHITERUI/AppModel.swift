@@ -1467,10 +1467,12 @@ public final class AppModel: ObservableObject {
 
     public func longRest() {
         guard var c = selected?.wrappedValue else { return }
+        let drainBefore = c.maxHPReduction
         c.longRest()
         selected?.wrappedValue = c
         let cleared = clearRestedConditions(memberIDs: [c.id])
         logRestClear(cleared, long: true, party: false)
+        logDrainLift([c.name: (drainBefore, c.maxHPReduction)], party: false)
     }
 
     /// Party rest (3.45.0): "you take a long rest" is said to the party,
@@ -1488,9 +1490,12 @@ public final class AppModel: ObservableObject {
     @discardableResult
     public func restParty(long: Bool) -> [String] {
         var rested: [String] = []
+        var drainMoves: [String: (Int, Int)] = [:]
         for idx in characters.indices {
             var c = characters[idx]
+            let drainBefore = c.maxHPReduction
             if long { c.longRest() } else { c.shortRest() }
+            if long { drainMoves[c.name] = (drainBefore, c.maxHPReduction) }
             guard c != characters[idx] else { continue }
             var stack = undoStacks[c.id] ?? UndoStack(characters[idx])
             stack.push(c)
@@ -1501,6 +1506,7 @@ public final class AppModel: ObservableObject {
         }
         let clearedByName = clearRestedConditions(memberIDs: Set(characters.map(\.id)))
         logRestClear(clearedByName, long: long, party: true)
+        if long { logDrainLift(drainMoves, party: true) }
         return rested
     }
 
@@ -1543,6 +1549,20 @@ public final class AppModel: ObservableObject {
         }.joined(separator: " \u{00B7} ")
         tableLog.append(TableLogEntry(title: party ? "Party rest" : "Rest",
                                       text: "\(restName) cleared \(perCharacter)"))
+        tableLogStore.save(tableLog)
+    }
+
+    /// 3.81.0: a long rest that lifted max-HP drain says so in the table log
+    /// ("Cora -12 to -7"); nothing is logged when no drain moved.
+    private func logDrainLift(_ moves: [String: (Int, Int)], party: Bool) {
+        let lifted = moves.filter { $0.value.0 > $0.value.1 }
+        guard !lifted.isEmpty else { return }
+        let parts = lifted.keys.sorted().map { name -> String in
+            let m = lifted[name]!
+            return m.1 == 0 ? "\(name) -\(m.0) to none" : "\(name) -\(m.0) to -\(m.1)"
+        }.joined(separator: " \u{00B7} ")
+        tableLog.append(TableLogEntry(title: party ? "Party rest" : "Rest",
+                                      text: "Long rest lifted drain: \(parts)"))
         tableLogStore.save(tableLog)
     }
 

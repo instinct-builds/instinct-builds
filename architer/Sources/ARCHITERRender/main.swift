@@ -4464,6 +4464,18 @@ func run(model: AppModel, character: Character, outDir: String) {
         var drZero = vzCora; drZero.longRestDrainRecovery = 0
         drZero.longRest()
         drLines.append("configured 0 keeps the drain \(drZero.maxHPReduction == drBefore)")
+        // 3.81.0: the rest log names the lift; nothing logged when no drain moved.
+        let dlSaveChars = model.characters, dlSaveLog = model.tableLog
+        var dlCora = vzCora; dlCora.longRestDrainRecovery = 5
+        model.characters = [dlCora]
+        let dlN = model.tableLog.count
+        _ = model.restParty(long: true)
+        let dlText = model.tableLog.last?.text ?? "nil"
+        drLines.append("party long rest logs the lift: \(dlText) \(model.tableLog.count == dlN + 1 && dlText == "Long rest lifted drain: \(dlCora.name) -12 to -7")")
+        let dlN2 = model.tableLog.count
+        _ = model.restParty(long: false)
+        drLines.append("short rest logs no drain line \(model.tableLog.count == dlN2)")
+        model.characters = dlSaveChars; model.tableLog = dlSaveLog; model.tableLogStore.save(dlSaveLog)
         var drShown = vzCora; drShown.longRestDrainRecovery = 5
         for w in [480, 720] as [CGFloat] {
             renderPNG(VitalsBlock(character: .constant(drShown)).padding().background(Theme.surface).environmentObject(model),
