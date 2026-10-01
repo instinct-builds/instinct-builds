@@ -186,6 +186,13 @@ public struct PartyStripView: View {
                                         .font(Theme.Typeface.captionSmall)
                                         .foregroundStyle(Theme.accent)
                                 }
+                                if let drain = summary.drainChip {
+                                    Text(drain)
+                                        .font(Theme.Typeface.captionSmall)
+                                        .foregroundStyle(Theme.danger)
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                }
                             }
                             HStack(spacing: Theme.Gap.xs) {
                                 ForEach(summary.visibleChips, id: \.self) { chip in

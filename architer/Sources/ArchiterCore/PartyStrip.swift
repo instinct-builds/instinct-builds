@@ -16,6 +16,9 @@ public struct PartyCardSummary: Equatable, Sendable {
     /// Every chip: active conditions (built-ins first, then custom, each
     /// sorted), then a concentration chip when the character is holding one.
     public let chips: [String]
+    /// 3.79.0: "Max -N" for a drained character; nil otherwise. Not part of
+    /// `chips`, so it never falls into the "+N more" overflow.
+    public let drainChip: String?
 
     public init(character c: Character) {
         characterID = c.id
@@ -33,7 +36,10 @@ public struct PartyCardSummary: Equatable, Sendable {
         }
         // 3.77.0: a drained character shows it last, derived from the
         // stored drain (nothing extra stored).
-        if c.maxHPReduction > 0 { chips.append("Max -\(c.maxHPReduction)") }
+        // 3.79.0: pinned OUT of the chip overflow - a crowded card would
+        // otherwise hide the drain in "+N more"; the strip renders it in
+        // the HP row instead.
+        drainChip = c.maxHPReduction > 0 ? "Max -\(c.maxHPReduction)" : nil
         self.chips = chips
     }
 

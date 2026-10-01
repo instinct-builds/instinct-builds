@@ -4313,22 +4313,22 @@ func run(model: AppModel, character: Character, outDir: String) {
         var dcLines = ["Drain chip (3.77.0)",
                        "a drained character carries a last chip \"Max -N\" on the party strip and detail row; undrained characters are unchanged",
                        "deterministic by construction: one fixture character, no conditions, forced max 32 / current 30"]
-        dcLines.append("undrained strip has no drain chip \(!PartyCardSummary(character: dcBase).chips.contains { $0.hasPrefix("Max -") })")
+        dcLines.append("undrained strip has no drain chip \(PartyCardSummary(character: dcBase).drainChip == nil && !PartyCardSummary(character: dcBase).chips.contains { $0.hasPrefix("Max -") })")
         dcLines.append("undrained detail row has no drain chip \(!(partyDetailRows([dcBase]).first?.chips.contains { $0.text.hasPrefix("Max -") } ?? true))")
         var dcDrained = dcBase
         dcDrained.setMaxHPReduction(8)
         let dcStrip = PartyCardSummary(character: dcDrained)
-        dcLines.append("drained strip card shows the chip \(dcStrip.chips == ["Max -8"] && dcStrip.maxHP == 24 && dcStrip.currentHP == 24)")
+        dcLines.append("drained strip card pins the chip outside the chip list \(dcStrip.drainChip == "Max -8" && dcStrip.chips.isEmpty && dcStrip.maxHP == 24 && dcStrip.currentHP == 24)")
         let dcRow = partyDetailRows([dcDrained]).first
         dcLines.append("drained detail row shows the chip \(dcRow?.chips.map(\.text) == ["Max -8"] && dcRow?.maxHP == 24)")
         var dcBusy = dcDrained
         dcBusy.conditions.insert(.prone)
         dcBusy.concentratingOn = "Hold Person"
-        dcLines.append("the chip rides last after conditions and concentration \(PartyCardSummary(character: dcBusy).chips.last == "Max -8" && partyDetailRows([dcBusy]).first?.chips.last?.text == "Max -8")")
+        dcLines.append("the detail chip rides last; the strip chip never enters the overflow \(PartyCardSummary(character: dcBusy).drainChip == "Max -8" && !PartyCardSummary(character: dcBusy).chips.contains { $0.hasPrefix("Max -") } && partyDetailRows([dcBusy]).first?.chips.last?.text == "Max -8")")
         dcBusy.setMaxHPReduction(15)
-        dcLines.append("the chip follows the stored drain \(PartyCardSummary(character: dcBusy).chips.last == "Max -15")")
+        dcLines.append("the chip follows the stored drain \(PartyCardSummary(character: dcBusy).drainChip == "Max -15")")
         dcBusy.longRest()
-        dcLines.append("long rest clears the chip \(!PartyCardSummary(character: dcBusy).chips.contains { $0.hasPrefix("Max -") })")
+        dcLines.append("long rest clears the chip \(PartyCardSummary(character: dcBusy).drainChip == nil)")
         try? dcLines.joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/drainchip.txt"),
                    atomically: true, encoding: .utf8)
@@ -4399,6 +4399,57 @@ func run(model: AppModel, character: Character, outDir: String) {
         try? rmLines.joined(separator: "\n")
             .write(to: URL(fileURLWithPath: "\(outDir)/restoremax.txt"),
                    atomically: true, encoding: .utf8)
+    }
+    // 3.79.0 visual proof pass for the drain surfaces (3.75.0-3.78.0).
+    // Real views, real fixture roster, two pane widths (480 narrow, 720
+    // normal) plus the crowded-chips case. Pixels are inspected by eye by
+    // the lane; this block only produces the captures and a manifest.
+    vzProof: do {
+        let vzOrigChars = model.characters
+        let vzOrigSel = model.selectedID
+        let vzOrigOpen = model.partyDetailPanelOpen
+        var vzDax = Character(name: "Drained Dax", maxHP: 32, currentHP: 30)
+        vzDax.level = 5
+        vzDax.setMaxHPReduction(8)
+        var vzCora = Character(name: "Crowded Cora", maxHP: 40, currentHP: 36)
+        vzCora.level = 7
+        vzCora.tempHP = 5
+        vzCora.conditions = [.prone, .poisoned, .blinded, .frightened]
+        vzCora.concentratingOn = "Hold Person"
+        vzCora.setMaxHPReduction(12)
+        var vzPip = Character(name: "Plain Pip", maxHP: 24, currentHP: 24)
+        vzPip.level = 3
+        var vzWard = Character(name: "Warforged Ward", lineage: "Warforged Scout", maxHP: 30, currentHP: 30)
+        vzWard.level = 4
+        vzWard.resistances = [.fire]; vzWard.immunities = [.poison]; vzWard.vulnerabilities = [.thunder]
+        vzWard.drainDamageTypes = [.necrotic, .radiant]
+        vzWard.conditionImmunities = [.charmed]
+        model.characters = [vzDax, vzCora, vzPip, vzWard]
+        model.selectedID = vzCora.id
+        model.partyDetailPanelOpen = true
+        var vzManifest = ["Visual proof pass (3.79.0): drain surfaces", "widths: 480 narrow pane, 720 normal pane (harness convention: group-check renders at 520)"]
+        for w in [480, 720] as [CGFloat] {
+            let n = Int(w)
+            renderPNG(PartyStripView().padding(.vertical).background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-party-strip-\(n)", outDir: outDir, minHeight: 100, maxHeight: 260)
+            renderPNG(PartyDetailPanelView().padding().background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-party-detail-\(n)", outDir: outDir, minHeight: 120, maxHeight: 700)
+            renderPNG(GroupCheckSectionView().padding().background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-party-controls-\(n)", outDir: outDir, minHeight: 200, maxHeight: 900)
+            renderPNG(VitalsBlock(character: .constant(vzWard)).padding().background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-vitals-defense-\(n)", outDir: outDir, minHeight: 200, maxHeight: 900)
+            vzManifest.append("rendered viz-party-strip-\(n), viz-party-detail-\(n), viz-party-controls-\(n), viz-vitals-defense-\(n)")
+        }
+        let vzCard = PartyCardSummary(character: vzCora)
+        vzManifest.append("crowded card: chips \(vzCard.chips) visible \(vzCard.visibleChips) extra \(vzCard.extraChipCount) drainChip \(vzCard.drainChip ?? "nil")")
+        vzManifest.append("crowded card keeps the drain out of the overflow \(vzCard.drainChip == "Max -12" && !vzCard.chips.contains { $0.hasPrefix("Max -") } && vzCard.extraChipCount >= 1)")
+        vzManifest.append("detail row for the crowded card carries every chip incl. the drain last \(partyDetailRows([vzCora]).first?.chips.last?.text == "Max -12")")
+        vzManifest.append("pixel proof: the PNGs above are inspected for clipping, truncation and overlap")
+        try? vzManifest.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/viz-drain-manifest.txt"), atomically: true, encoding: .utf8)
+        model.characters = vzOrigChars
+        model.selectedID = vzOrigSel
+        model.partyDetailPanelOpen = vzOrigOpen
     }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
