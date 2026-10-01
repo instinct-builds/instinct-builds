@@ -4475,6 +4475,22 @@ func run(model: AppModel, character: Character, outDir: String) {
         let dlN2 = model.tableLog.count
         _ = model.restParty(long: false)
         drLines.append("short rest logs no drain line \(model.tableLog.count == dlN2)")
+        // per-character sheet-level Long rest: same line, one character
+        var dlSolo = vzCora; dlSolo.longRestDrainRecovery = 5
+        let dlSelSave = model.selectedID
+        model.characters = [dlSolo]; model.selectedID = dlSolo.id
+        let dlN3 = model.tableLog.count
+        model.longRest()
+        let dlSoloText = model.tableLog.last?.text ?? "nil"
+        drLines.append("sheet Long rest logs the lift: \(dlSoloText) \(model.tableLog.count == dlN3 + 1 && model.tableLog.last?.title == "Rest" && dlSoloText == "Long rest lifted drain: \(dlSolo.name) -12 to -7")")
+        drLines.append("sheet Long rest left drain 7 and healed to the new ceiling \(model.characters[0].maxHPReduction == 7 && model.characters[0].currentHP == model.characters[0].effectiveMaxHP)")
+        let dlN4 = model.tableLog.count
+        model.longRest(); model.longRest()
+        drLines.append("two more rests: -7 to -2 then -2 to none, 2 lines \(model.tableLog.count == dlN4 + 2 && model.tableLog.last?.text == "Long rest lifted drain: \(dlSolo.name) -2 to none" && model.characters[0].maxHPReduction == 0)")
+        let dlN5 = model.tableLog.count
+        model.longRest()
+        drLines.append("undrained long rest logs no drain line \(model.tableLog.count == dlN5)")
+        model.selectedID = dlSelSave
         model.characters = dlSaveChars; model.tableLog = dlSaveLog; model.tableLogStore.save(dlSaveLog)
         var drShown = vzCora; drShown.longRestDrainRecovery = 5
         for w in [480, 720] as [CGFloat] {
