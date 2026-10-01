@@ -1326,6 +1326,10 @@ public struct GroupCheckSectionView: View {
                 .labelsHidden()
                 .frame(width: 100)
                 .help("Optional damage type: each character's resistance, immunity, vulnerability, and max-HP drain tags apply")
+            }
+            // 3.79.0: the three party HP buttons get their own row - at the
+            // narrow pane width they truncated to "Damage (p..." in one row.
+            HStack(spacing: Theme.Gap.sm) {
                 Button("Damage (party)") { model.adjustPartyHP(amount: partyAmountValue, damage: true, type: partyDamageType) }
                     .controlSize(.small)
                     .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
@@ -1338,6 +1342,8 @@ public struct GroupCheckSectionView: View {
                     .controlSize(.small)
                     .disabled(partyAmountValue <= 0 || model.characters.isEmpty)
                     .help("Heal all \(model.characters.count) roster characters - capped at max HP, undo restores")
+            }
+            HStack(spacing: Theme.Gap.sm) {
                 // Party condition (3.51.0): "the shove lands on everyone".
                 // Same discipline as party damage/heal - own undo stacks,
                 // no confirm. Rounds blank = untimed apply.
