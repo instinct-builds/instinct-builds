@@ -722,3 +722,5 @@ RESET TRACE below the matrix clears peak-hold and signed range-history displays 
 ## 0.86.0 Type-to-refine
 
 A printable key from the standalone browser result list appends to the existing query in native Search and returns text focus there. The actual AppKit text event is used, including Shift; deletion and later input remain native. No sound is loaded or note played. Tab returns to the list without inventing a proposed row. Modified shortcuts and function keys are excluded. The AU still leaves keyboard routing to its host.
+
+0.87.0 adds a MIN RATING floor to the standalone browser sidebar: five stars at the bottom-left set the lowest personal rating shown, clicking the lit star clears it, unrated sounds are hidden while a floor is set, and sidebar counts, favorites, search, tags and sorts all compose with it. Each star is also a labelled Accessibility button. The compact chips clear the floor. No DSP, preset or AU parameter changes. macOS pixels and AU host proof are pending CI.

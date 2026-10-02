@@ -97,9 +97,11 @@ int main(int argc,const char** argv) {
     AXUIElementRef type=Find(window,@"AXButton",@"Type: Lead, not selected");
     AXUIElementRef sort=Find(window,@"AXButton",@"Sort: Name, not selected");
     AXUIElementRef close=Find(window,@"AXButton",@"Close preset browser");
+    AXUIElementRef minRating=Find(window,@"AXButton",@"Minimum rating: 3 stars, not selected");
+    printf("AX IPC min_rating_control=%d\n",!!minRating);
     printf("AX IPC controls bank=%d type=%d sort=%d close=%d\n",!!bank,!!type,!!sort,!!close);
     printf("AX IPC native_search=%d named_list=%d\n",!!search,!!list);
-    bool ok=(search != nullptr) && (list != nullptr) && bank && type && sort && close && [windowTitle isEqualToString:@"MUEW"];
+    bool ok=(search != nullptr) && (list != nullptr) && bank && type && sort && close && minRating && [windowTitle isEqualToString:@"MUEW"];
     NSString* control=argc>2 ? [NSString stringWithUTF8String:argv[2]] : nil;
     NSMutableDictionary* counts=[NSMutableDictionary dictionary];
     AXObserverRef observer=nullptr;

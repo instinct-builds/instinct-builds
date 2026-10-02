@@ -105,6 +105,27 @@ int main() {
     check(user::importFile(dir.string(), (dir / "missing.muew").string(), lib) == -1, "Import of a missing file fails cleanly");
     fs::remove_all(dir); fs::remove(ext);
 
+    // 0.87.0: minimum-rating floor composes with every other filter.
+    {
+        ui::Library rl; std::set<std::string> rf; ui::Ratings rr;
+        ui::setRating(rr, rl.slug(0), 5); ui::setRating(rr, rl.slug(1), 3); ui::setRating(rr, rl.slug(2), 1);
+        PresetFilter m; ui::setMinRating(m, 3);
+        auto v3 = ui::visiblePresets(m, rf, rl, rr, ui::SortBank);
+        check(v3.size() == 2 && v3[0] == 0 && v3[1] == 1 && m.minRating == 3, "min rating 3 keeps only 3+ star sounds");
+        ui::setMinRating(m, 5);
+        check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).size() == 1, "min rating 5 keeps only 5 stars");
+        ui::setMinRating(m, 5);
+        check(m.minRating == 0 && (int)ui::visiblePresets(m, rf, rl, rr, ui::SortBank).size() == rl.count(), "same star clears the floor; unrated sounds return");
+        ui::setMinRating(m, 1); m.query = "zzzz-no-match";
+        check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).empty(), "floor plus empty search stays empty");
+        m.query.clear(); m.favoritesOnly = true;
+        check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).empty(), "floor plus favorites-only intersects");
+        rf.insert(rl.slug(2)); rf.insert(rl.slug(0));
+        check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).size() == 2 && ui::countWith(m, rf, rl, rr) == 2, "counts honor the floor");
+        ui::setRating(rr, rl.slug(0), 5); // clears (same star) -> unrated
+        check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).size() == 1, "clearing a rating drops the sound from the floor");
+    }
+
     if (g_fail == 0) { printf("\nALL BROWSER TESTS PASSED\n"); return 0; }
     printf("\n%d BROWSER TEST(S) FAILED\n", g_fail); return 1;
 }

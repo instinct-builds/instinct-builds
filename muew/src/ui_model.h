@@ -768,12 +768,24 @@ inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std
 inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites,
                                        const Library& lib, const Ratings& ratings, int sort) {
     std::vector<int> out = visiblePresets(f, favorites, lib);
+    if (f.minRating > 0)
+        out.erase(std::remove_if(out.begin(), out.end(),
+                                 [&](int i) { return ratingOf(ratings, lib.slug(i)) < f.minRating; }), out.end());
     sortPresets(out, sort, lib, ratings);
     return out;
 }
 // How many presets a sidebar row would show if picked (the other filters kept).
 inline int countWith(PresetFilter f, const std::set<std::string>& favorites, const Library& lib) {
     return (int)visiblePresets(f, favorites, lib).size();
+}
+inline int countWith(const PresetFilter& f, const std::set<std::string>& favorites, const Library& lib,
+                     const Ratings& ratings) {
+    return (int)visiblePresets(f, favorites, lib, ratings, SortBank).size();
+}
+// Click the star that is already the floor to clear it (same rule as ratings).
+inline void setMinRating(PresetFilter& f, int stars) {
+    stars = std::clamp(stars, 0, 5);
+    f.minRating = (stars == f.minRating) ? 0 : stars;
 }
 inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites) {
     return visiblePresets(f, favorites, library());

@@ -102,6 +102,9 @@ struct PresetFilter {
     // ui::Bank; -1 = every bank). The query also matches author and description.
     std::set<std::string> tags;
     int bank = -1;
+    // 0.87.0: browser-only floor on the user's own star rating (0 = any).
+    // presetMatches does not see ratings; ui::visiblePresets applies it.
+    int minRating = 0;
 };
 
 // Character tags offered as multi-select filters in the full browser. Every

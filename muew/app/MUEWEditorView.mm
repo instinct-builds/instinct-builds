@@ -162,6 +162,7 @@ static int SortForColumn(int c);
         for (int i=0;i<4;++i) add(0,i,[self bankRow:i]);
         for (int i=0;i<9;++i) add(1,i,[self catRow:i]);
         for (int c : {0,1,2,4}) add(2,c,[self tableHeader:c]);
+        for (int i=1;i<=5;++i) add(6,i,[self minRatingStar:i-1]);
         add(3,0,[self browserClose]);
         browserAXControls=[controls copy];
     }
@@ -180,7 +181,7 @@ static int SortForColumn(int c);
     }
     NSMutableArray* children=[NSMutableArray arrayWithObject:search];
     // Navigation precedes results. Close is last so it cannot interrupt rows.
-    [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,17)]];
+    [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,22)]];
     [children addObject:browserAXList];
     [children addObjectsFromArray:browserAXDetailControls];
     [children addObject:browserAXControls.lastObject];
@@ -201,6 +202,8 @@ static int SortForColumn(int c);
         static NSArray* names=@[@"Bank",@"Name",@"Type",@"Author",@"Rating"];
         return [NSString stringWithFormat:@"Sort: %@, %@",names[index],sortMode==SortForColumn(index) ? @"selected" : @"not selected"];
     }
+    if (kind==6) return [NSString stringWithFormat:@"Minimum rating: %d %@, %@",index,index==1 ? @"star" : @"stars",
+        filter.minRating==index ? @"selected" : @"not selected"];
     if (kind==4) {
         static NSArray* names=@[@"Favorite",@"Save preset",@"Import preset",@"Export preset"];
         if (index==0) return [NSString stringWithFormat:@"Favorite loaded preset: %@, %@",S(current.info.name),
@@ -232,6 +235,7 @@ static int SortForColumn(int c);
     if (kind==0 && index>=0 && index<4) { [self chooseBrowserBank:index]; return YES; }
     if (kind==1 && index>=0 && index<9) { [self chooseBrowserType:index]; return YES; }
     if (kind==2 && (index==0 || index==1 || index==2 || index==4)) { [self chooseBrowserSort:index]; return YES; }
+    if (kind==6 && index>=1 && index<=5) { [self chooseBrowserMinRating:index]; return YES; }
     if (kind==3 && index==0) { [self setBrowserOpen:false]; return YES; }
     return NO;
 }
@@ -4496,6 +4500,7 @@ static NSArray<NSString*>* BankRows() { return @[@"All banks", @"Factory", @"Use
 - (NSRect)bankRow:(int)i { return NSMakeRect(40, [self top] - 80 - i * 20, 170, 18); }
 - (NSRect)catRow:(int)i { return NSMakeRect(40, [self top] - 186 - i * 20, 170, 18); } // 0 All, 1-7 categories, 8 favorites
 - (NSRect)tagChip:(int)i { return NSMakeRect(40 + (i % 2) * 86, [self top] - 404 - (i / 2) * 22, 82, 18); }
+- (NSRect)minRatingStar:(int)s { return NSMakeRect(40 + s * 22, 66, 22, 20); } // 0.87.0: floor of s+1 stars
 - (CGFloat)tableTop { return [self top] - 62; }
 - (int)tableRows { return (int)std::floor(([self tableTop] - 54) / 20); }
 - (NSRect)tableHeader:(int)c { // 0 #, 1 NAME, 2 TYPE, 3 AUTHOR, 4 RATING
@@ -4625,7 +4630,7 @@ static int SortForColumn(int c) {
     Text(@"BANK", NSMakeRect(48, [self top] - 58, 100, 12), 8, C(0x5f6b7b), NSFontWeightBold);
     for (int i = 0; i < 4; ++i) {
         PresetFilter f = filter; f.bank = i - 1;
-        sideRow([self bankRow:i], BankRows()[i], ui::countWith(f, favorites, lib), filter.bank == i - 1);
+        sideRow([self bankRow:i], BankRows()[i], ui::countWith(f, favorites, lib, ratings), filter.bank == i - 1);
     }
     Text(@"TYPE", NSMakeRect(48, [self top] - 164, 100, 12), 8, C(0x5f6b7b), NSFontWeightBold);
     const auto& cats = factoryCategories();
@@ -4635,7 +4640,7 @@ static int SortForColumn(int c) {
         if (i < 8) f.category = i == 0 ? std::string() : cats[i - 1];
         bool on = i == 8 ? filter.favoritesOnly : (i == 0 ? filter.category.empty() : filter.category == cats[i - 1]);
         NSString* label = i == 0 ? @"All types" : i == 8 ? @"\u2605 Favorites" : S(cats[i - 1]);
-        sideRow([self catRow:i], label, ui::countWith(f, favorites, lib), on);
+        sideRow([self catRow:i], label, ui::countWith(f, favorites, lib, ratings), on);
     }
     Text(@"CHARACTER", NSMakeRect(48, [self top] - 382, 100, 12), 8, C(0x5f6b7b), NSFontWeightBold);
     for (int i = 0; i < (int)characterTags().size(); ++i) {
@@ -4645,6 +4650,13 @@ static int SortForColumn(int c) {
         TextA(S(characterTags()[i]), NSMakeRect(r.origin.x, r.origin.y + 3, r.size.width, 13), 9,
               on ? C(0xc9b8ff) : C(0x9ca6b4), on ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
     }
+    Text(@"MIN RATING", NSMakeRect(48, 92, 100, 12), 8, C(0x5f6b7b), NSFontWeightBold);
+    for (int s = 0; s < 5; ++s) {
+        bool lit = s < filter.minRating;
+        TextA(@"\u2605", [self minRatingStar:s], 14, lit ? C(0xf2ab55) : C(0x3a4452), NSFontWeightRegular, NSTextAlignmentCenter);
+    }
+    TextA(filter.minRating ? [NSString stringWithFormat:@"%d+", filter.minRating] : @"ANY", NSMakeRect(152, 69, 52, 14), 9,
+          filter.minRating ? C(0xf2ab55) : C(0x5f6b7b), NSFontWeightSemibold, NSTextAlignmentRight);
     [C(0x232c37) setFill]; NSRectFill(NSMakeRect(218, 50, 1, t - 100));
 
     // Table
@@ -4810,6 +4822,10 @@ static int SortForColumn(int c) {
     else filter.category=i==0 ? std::string() : factoryCategories()[i-1];
     bscroll=0; [self refilter];
 }
+- (void)chooseBrowserMinRating:(int)stars {
+    ui::setMinRating(filter, stars);
+    bscroll=0; [self refilter];
+}
 - (void)chooseBrowserSort:(int)c {
     sortMode=SortForColumn(c); [self refilter]; [self revealInTable];
 }
@@ -4830,6 +4846,8 @@ static int SortForColumn(int c) {
             if (filter.tags.count(t)) filter.tags.erase(t); else filter.tags.insert(t);
             bscroll = 0; [self refilter]; return;
         }
+    for (int s = 0; s < 5; ++s)
+        if (NSPointInRect(p, [self minRatingStar:s])) { [self chooseBrowserMinRating:s + 1]; return; }
     for (int c = 0; c < 5; ++c)
         if (c != 3 && NSPointInRect(p, NSInsetRect([self tableHeader:c], -2, -3))) { [self chooseBrowserSort:c]; return; }
     for (int s = 0; s < 5; ++s)
@@ -4936,6 +4954,7 @@ static int SortForColumn(int c) {
             filter.favoritesOnly = (i == 8);
             filter.bank = i == kUserChip ? (int)ui::BankUserFolder : -1;
             filter.tags.clear(); // the compact chips never hide a tag filter
+            filter.minRating = 0; // ...or a rating floor
             if (i == kUserChip) user::load(UserPresetDir(), ui::library()); // pick up presets saved elsewhere
             filter.category = (i >= 1 && i <= 7) ? factoryCategories()[i - 1] : std::string();
             scroll = 0;
