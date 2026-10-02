@@ -2,6 +2,8 @@
 #import <AppKit/AppKit.h>
 #import "MUEWEditorView.h"
 #include <cstdio>
+#include <algorithm>
+#include <cmath>
 #include "proof_watchdog.h"
 #include <vector>
 #include <utility>
@@ -33,13 +35,30 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.92.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.93.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
     Check(data.length > 10000 && [data writeToFile:path atomically:YES], name);
 }
 static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
+    {   // 0.93.0 LFO RATE destination through the real matrix destination menu path
+        const auto savedRoutes=v->current.routes; const int savedPage=v->matrixPage; const bool savedEdited=v->edited;
+        const auto& dests=muew::ui::matrixDests();
+        const int di=(int)(std::find(dests.begin(),dests.end(),muew::ModRoute::Dest::Lfo2Rate)-dests.begin());
+        v->current.routes.clear();
+        muew::ui::addRoute(v->current.routes,muew::ModRoute::Source::Macro1,muew::ModRoute::Dest::FilterCutoff);
+        NSMenuItem* pick=[[NSMenuItem alloc] initWithTitle:@"LFO2 RATE" action:nil keyEquivalent:@""];
+        pick.tag=(2*100+0)*100+di;
+        [v performSelector:NSSelectorFromString(@"menuPicked:") withObject:pick];
+        const auto& r0=v->current.routes[0];
+        Check(di==34 && r0.dest==muew::ModRoute::Dest::Lfo2Rate && std::fabs(muew::ui::routeDisplayAmount(r0)-0.25)<1e-9 &&
+              std::string(muew::ui::routeAmountReadout(r0))=="+1.00 oct" && muew::ui::routeActive(r0),
+              "matrix destination menu assigns LFO RATE and the route reads in octaves");
+        v->matrixPage=0; [v setNeedsDisplay:YES];
+        Snapshot(v,"lfo-rate-route");
+        v->current.routes=savedRoutes; v->matrixPage=savedPage; v->edited=savedEdited; [v applySound];
+    }
     Check(w.isKeyWindow && w.firstResponder == v, "editor is the standalone key responder");
     const int original = v->currentIndex;
     Down(v,w,@"a"); Down(v,w,@"a");
@@ -199,7 +218,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
               "native mouseDown on minimum-rating stars sets, clears and re-sets the floor without load or note");
         clickStar(4);
         Check(v->filter.minRating==0,"native mouseDown on the lit star clears the floor");
-        {   // 0.92.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
+        {   // 0.93.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
             id surprise=[v accessibilityChildren][24];
             const int surpriseOrigin=v->currentIndex;
             v->filter=muew::PresetFilter(); v->filter.category="Lead"; [v refilter];
@@ -221,7 +240,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             const int wasN=v->currentIndex, pN=host->patches;
             [v mouseDown:se];
             Check(v->currentIndex!=wasN && allowed.count(v->currentIndex) && host->patches==pN+1,"native mouseDown on SURPRISE ME loads one visible sound");
-            {   // 0.92.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
+            {   // 0.93.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
                 id back=[v accessibilityChildren][25];
                 v->loadBack.clear(); [v refilter];
                 Check([[back accessibilityLabel] isEqualToString:@"Back to previous sound, nothing earlier"] && ![back accessibilityPerformPress],
@@ -246,7 +265,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                 Check(c0!=a0 && v->currentIndex==a0 && host->patches==pC+1,"native mouseDown on BACK restores the previous sound");
                 (void)c0;
             }
-            {   // 0.92.0 row heart: toggles that row's favorite without loading, selecting or playing
+            {   // 0.93.0 row heart: toggles that row's favorite without loading, selecting or playing
                 v->filter=muew::PresetFilter(); v->filter.category="Lead"; v->sortMode=muew::ui::SortName; v->bscroll=0; [v refilter];
                 const int rowIdx=v->visible[0]; const std::string rowSlug=muew::ui::library().slug(rowIdx);
                 const bool wasFav=v->favorites.count(rowSlug)>0;
@@ -278,7 +297,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             Snapshot(v,"surprise-all");
             [v loadPresetIndex:surpriseOrigin]; [v refilter];
         }
-        {   // 0.92.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
+        {   // 0.93.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
             id clear=[v accessibilityChildren][23];
             const int clearPatches=host->patches; const int clearOn=(int)host->on.size();
             Check([[clear accessibilityLabel] isEqualToString:@"Clear all filters, nothing to clear"] && ![clear accessibilityPerformPress],
@@ -358,7 +377,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [sortName accessibilityPerformPress];
     Check(v->sortMode==muew::ui::SortName && v->currentIndex==original,
           "accessible sort press reorders without loading");
-    {   // 0.92.0 sort direction: the active header reverses; a new column starts at its natural direction
+    {   // 0.93.0 sort direction: the active header reverses; a new column starts at its natural direction
         const std::vector<int> asc=v->visible; std::vector<int> expectDesc(asc.rbegin(),asc.rend());
         const int pS=host->patches, onS=(int)host->on.size();
         Check(asc.size()>2 && !v->sortReverse && [[sortName accessibilityLabel] isEqualToString:@"Sort: Name, selected, ascending"],

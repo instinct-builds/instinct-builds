@@ -16,7 +16,7 @@ static std::vector<float> render(const VoiceParams& v,const std::vector<ModRoute
 static double delta(const std::vector<float>&a,const std::vector<float>&b){double d=0;for(size_t i=0;i<a.size();++i)d+=std::abs(a[i]-b[i]);return d/a.size();}
 int main(){
  using D=ModRoute::Dest;using S=ModRoute::Source;
- ck((int)D::NoiseColor==32 && params::Count==40 && ui::matrixDests().back()==D::NoiseColor && std::string(ui::destName(D::NoiseColor))=="NOISE COLOR", "destination 32 appended, 40 published AU IDs unchanged, matrix label visible");
+ ck((int)D::NoiseColor==32 && params::Count==40 && ui::matrixDests()[32]==D::NoiseColor && std::string(ui::destName(D::NoiseColor))=="NOISE COLOR", "destination 32 appended, 40 published AU IDs unchanged, matrix label visible");
  VoiceParams v;v.noiseLevel=.8;v.noiseColor=.5;v.osc1Shape=0;v.osc2Level=0;v.ampA=.001;v.ampS=1;v.filterMode=2;v.filterCutoff=18000;
  std::vector<S> src={S::LFO1,S::MSEG1,S::Velocity,S::Macro1};
  for(S source:src){ModRoute r{source,D::NoiseColor,.65};VoiceParams driven=v;
