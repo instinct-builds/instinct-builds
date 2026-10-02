@@ -41,6 +41,19 @@ static void Snapshot(MUEWEditorView* v, const char* name) {
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
     Check(data.length > 10000 && [data writeToFile:path atomically:YES], name);
 }
+// 0.96.0: with the browser closed the tree is the native Search plus the UNDO / REDO buttons; no browser
+// control or results list may remain. Checked by content so later header controls do not break it.
+static BOOL ClosedAXTree(MUEWEditorView* v) {
+    NSArray* ax=[v accessibilityChildren];
+    if (ax.count<1 || ax[0]!=v->search) return NO;
+    for (NSUInteger i=1;i<ax.count;++i) {
+        if ([[ax[i] accessibilityRole] isEqualToString:NSAccessibilityListRole]) return NO;
+        NSString* l=[ax[i] accessibilityLabel];
+        for (NSString* bad in @[@"Bank:",@"Type:",@"Sort:",@"Close preset browser",@"Back to",@"Surprise",@"Clear all",@"Minimum rating"])
+            if ([l hasPrefix:bad]) return NO;
+    }
+    return YES;
+}
 static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     {   // 0.93.0 LFO RATE destination through the real matrix destination menu path
         const auto savedRoutes=v->current.routes; const int savedPage=v->matrixPage; const bool savedEdited=v->edited;
@@ -488,7 +501,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         v->sortMode=muew::ui::SortName; v->sortReverse=false; [v refilter];
     }
     [v setBrowserOpen:false];
-    Check([v accessibilityChildren].count==1 && ![retainedBank accessibilityPerformPress],
+    Check(ClosedAXTree(v) && ![retainedBank accessibilityPerformPress],
           "closed navigation disappears and retained control refuses press");
     [v setBrowserOpen:true];
     v->filter.bank=-1; v->filter.category=""; v->sortMode=muew::ui::SortBank; [v refilter];
@@ -533,7 +546,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     Check([[rows[1] accessibilityLabel] containsString:@"proposed: no, loaded: yes"],
           "accessible loaded state updates after activation");
     [v setBrowserOpen:false];
-    Check([v accessibilityChildren].count==1 && ![target accessibilityPerformPress],
+    Check(ClosedAXTree(v) && ![target accessibilityPerformPress],
           "closed browser hides the list and retained row cannot act");
     [v setBrowserOpen:true];
     [v loadPresetIndex:original];
