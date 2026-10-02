@@ -26,3 +26,7 @@ File presses open the existing native AppKit modal dialogs asynchronously so a r
 ### Desktop proof hard deadlines
 
 Desktop proofs now use a watchdog thread independent of the main queue and AppKit run-loop modes. A blocked callback, modal loop or AX call exits 124 with the current phase on stderr. Keyboard focus has 90 seconds, external AX client 120 seconds, its standalone target 150 seconds, AU audio host 120 seconds and AU editor host 240 seconds. CI also bounds the affected steps to ten minutes. Those timeouts mean failure, never proof. The dialog harness retains the actual native window during runModal and cancels that window explicitly; it does not wait solely for NSApp.modalWindow. Launch, native window, cancellation and return are logged separately.
+
+## 0.96.0 UNDO / REDO controls
+
+With the preset browser closed, the editor tree is: native Search, then "Undo last edit, available | nothing to undo", then "Redo edit, available | nothing to redo" (both buttons, kinds 10 and 11, pressed through `activateBrowserAXControl`). With the browser open the tree is unchanged (37 children, same indices); the undo controls are not exposed there and Cmd-Z is ignored while the browser is open.

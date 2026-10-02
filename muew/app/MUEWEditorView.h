@@ -13,6 +13,7 @@
 #include "table_history.h"
 #include "arp_pattern_actions.h"
 #include "frame_range.h"
+#include "edit_history.h"
 #include "partial_edit.h"
 #include "partial_view.h"
 #include "partial_brush.h"
@@ -50,6 +51,9 @@ struct MUEWEditorHost {
     MUEWEditorHost* host; // not owned
     muew::Preset current;
     int currentIndex;
+    muew::ui::EditHistory<muew::Preset> editHistory; // 0.96.0: UNDO / REDO of editor-originated sound edits
+    bool histGesture, histSuppress, histBaseEdited;
+    NSArray* historyAXControls;
     std::vector<int> loadBack; // 0.90.0: previously loaded library indices, newest last
     bool edited;
     muew::PresetFilter filter;
@@ -207,6 +211,13 @@ struct MUEWEditorHost {
 // Show a sound that came from the engine side (host recall, host preset menu)
 // without echoing it back to the engine.
 - (void)adoptPreset:(const muew::Preset&)p index:(int)index edited:(bool)wasEdited;
+- (void)historyNote;
+- (void)historyReset;
+- (BOOL)performHistoryStep:(BOOL)redo;
+- (NSRect)undoRect;
+- (NSPoint)knobCenter:(int)k;
+- (NSInteger)hitKnob:(NSPoint)p;
+- (NSRect)redoRect;
 // Saves the current sound as a user preset and selects it (the + Save button
 // after its name prompt). Returns NO if the file could not be written.
 - (BOOL)saveUserPresetNamed:(NSString*)name;

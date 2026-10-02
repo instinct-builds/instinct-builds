@@ -143,7 +143,20 @@ static int SortForColumn(int c);
 }
 
 - (NSArray*)accessibilityChildren {
-    if (!browserOpen) return @[search];
+    if (!browserOpen) { // 0.96.0: UNDO / REDO follow the search field
+        if (!historyAXControls) {
+            NSMutableArray* c = [NSMutableArray array];
+            for (int k = 10; k <= 11; ++k) {
+                MUEWBrowserAXControl* control = [MUEWBrowserAXControl accessibilityElementWithRole:NSAccessibilityButtonRole frame:NSZeroRect label:@"" parent:self];
+                control.editor = self; control.kind = k; control.index = 0; control.epoch = 0;
+                [c addObject:control];
+            }
+            historyAXControls = [c copy];
+        }
+        ((MUEWBrowserAXControl*)historyAXControls[0]).accessibilityFrameInParentSpace = [self undoRect];
+        ((MUEWBrowserAXControl*)historyAXControls[1]).accessibilityFrameInParentSpace = [self redoRect];
+        return @[search, historyAXControls[0], historyAXControls[1]];
+    }
     if (!browserAXList) {
         MUEWBrowserAXList* list = [MUEWBrowserAXList accessibilityElementWithRole:NSAccessibilityListRole
             frame:NSZeroRect label:@"Preset results" parent:self];
@@ -208,6 +221,8 @@ static int SortForColumn(int c);
         const bool descending=(sortMode==ui::SortRating)!=sortReverse;
         return [NSString stringWithFormat:@"Sort: %@, selected, %@",names[index],descending ? @"descending" : @"ascending"];
     }
+    if (kind==10) return [NSString stringWithFormat:@"Undo last edit, %@",editHistory.canUndo() ? @"available" : @"nothing to undo"];
+    if (kind==11) return [NSString stringWithFormat:@"Redo edit, %@",editHistory.canRedo() ? @"available" : @"nothing to redo"];
     if (kind==9) return [NSString stringWithFormat:@"Back to previous sound, %@",loadBack.empty() ? @"nothing earlier" : @"available"];
     if (kind==8) return [NSString stringWithFormat:@"Surprise me, load a random sound from %d shown",(int)visible.size()];
     if (kind==7) return [NSString stringWithFormat:@"Clear all filters, %@",[self browserFiltersActive] ? @"available" : @"nothing to clear"];
@@ -224,6 +239,7 @@ static int SortForColumn(int c);
     return @"Close preset browser";
 }
 - (BOOL)activateBrowserAXControl:(int)kind index:(int)index epoch:(NSUInteger)epoch {
+    if (kind==10 || kind==11) return [self performHistoryStep:kind==11];
     if (!browserOpen || browserDialogActive || browserDialogQueued) return NO;
     if (kind==4 || kind==5) {
         if (epoch!=browserAXDetailEpoch) return NO;
@@ -385,12 +401,61 @@ static int SortForColumn(int c);
 }
 - (void)controlTextDidEndEditing:(NSNotification*)n { [self setNeedsDisplay:YES]; }
 
+static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byte bound
+    size_t n = 4096;
+    for (int t = 0; t < 2; ++t) n += (p.tables[t].size() + p.recipeTable[t].size()) * sizeof(muew::TableFrames::value_type);
+    return n;
+}
+- (void)historyNote { // 0.96.0: commit the current state as one UNDO step unless a drag is in progress
+    if (histSuppress || histGesture) return;
+    editHistory.note(current, PresetWeight(current));
+}
+- (void)historyReset { editHistory.reset(current, PresetWeight(current)); histBaseEdited = edited; }
+- (BOOL)editHostParam:(int)pid {
+    const BOOL ok = host && host->editParameter(pid, current);
+    [self historyNote];
+    return ok;
+}
+- (void)restoreHistoryPreset:(const Preset&)p {
+    histSuppress = true;
+    current = p;
+    routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f);
+    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); arpActions.clear();
+    edited = editHistory.canUndo() ? true : histBaseEdited;
+    [self applySound];
+    histSuppress = false;
+    ++browserAXDetailEpoch; browserAXDetailControls = nil;
+    [self setNeedsDisplay:YES];
+}
+- (BOOL)performHistoryStep:(BOOL)redo {
+    if (browserOpen) return NO;
+    histGesture = false; [self historyNote];
+    Preset p = current;
+    if (!(redo ? editHistory.redo(p) : editHistory.undo(p))) return NO;
+    [self restoreHistoryPreset:p];
+    return YES;
+}
+- (NSRect)undoRect { return NSMakeRect(28, self.bounds.size.height - 76, 44, 16); }
+- (NSRect)redoRect { return NSMakeRect(76, self.bounds.size.height - 76, 44, 16); }
+- (void)drawHistoryButtons {
+    const bool can[2] = {editHistory.canUndo(), editHistory.canRedo()};
+    const NSRect rs[2] = {[self undoRect], [self redoRect]};
+    for (int i = 0; i < 2; ++i) {
+        FillRound(rs[i], 4, can[i] ? C(0x16202a) : C(0x0e1218));
+        [(can[i] ? C(0x2f6f66) : C(0x1c232d)) setStroke];
+        [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(rs[i], .5, .5) xRadius:4 yRadius:4] stroke];
+        TextA(i == 0 ? @"UNDO" : @"REDO", NSMakeRect(rs[i].origin.x, rs[i].origin.y + 2, rs[i].size.width, 12), 8,
+              can[i] ? C(0x75ead8) : C(0x46515f), NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
+}
+
 - (void)applySound {
+    [self historyNote];
     if (host) host->applyPreset(current, ui::library().factoryNumber(currentIndex), edited);
 }
 
 - (void)knobEdited:(int)k {
-    if (!host || !host->editParameter(ui::knobParam(k), current)) [self applySound];
+    if (![self editHostParam:(ui::knobParam(k))]) [self applySound];
 }
 
 - (void)adoptPreset:(const Preset&)p index:(int)index edited:(bool)wasEdited {
@@ -410,9 +475,13 @@ static int SortForColumn(int c);
     }
     if (routeChanged) { routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f); }
     if (index!=currentIndex || !(p==current)) { ++browserAXDetailEpoch; browserAXDetailControls=nil; }
+    const bool historySameSound = index == currentIndex && p.info.name == current.info.name;
     current = p;
     currentIndex = index;
     edited = wasEdited;
+    if (!histSuppress) { // 0.96.0: another sound resets UNDO; host-side tweaks of this sound only rebase it
+        if (!historySameSound) [self historyReset]; else editHistory.rebase(current, PresetWeight(current));
+    }
     [self revealCurrent];
     if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityValueChangedNotification);
     if (browserOpen) NSAccessibilityPostNotification(self,NSAccessibilityLayoutChangedNotification);
@@ -446,6 +515,7 @@ static bool loadingBack = false; // 0.90.0: BACK restores without growing its ow
         wtCmpRef[o] = current.tables[o]; wtCmpRefMs[o] = ui::morphSpec(current.voice, o); wtCmpRefAmt[o] = ui::specMorphAmount(current.voice, o);
     }
     edited = false;
+    [self historyReset]; // 0.96.0: a loaded preset is the UNDO boundary
     [self applySound];
     [self revealCurrent];
     if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityValueChangedNotification);
@@ -1167,7 +1237,7 @@ static NSString* ArpSwingValue(double s) { return s <= 0 ? @"OFF" : [NSString st
 - (void)voiceParamEdited:(int)id {
     if (!arpActionMutation) arpActions.clearHistory(); // stale undo must not overwrite a later manual edit
     edited = true;
-    if (id < 0 || !host || !host->editParameter(id, current)) [self applySound];
+    if (id < 0 || ![self editHostParam:(id)]) [self applySound];
     [self setNeedsDisplay:YES];
 }
 - (BOOL)voiceStripMouseDown:(NSPoint)p event:(NSEvent*)e {
@@ -2279,6 +2349,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     [g drawInRect:NSMakeRect(0, b.size.height - 82, b.size.width, 82) angle:270];
     Text(@"MUEW", NSMakeRect(28, b.size.height - 59, 180, 38), 28, C(0xf5f7fa), NSFontWeightBold);
     Text(@"WAVETABLE INSTRUMENT", NSMakeRect(126, b.size.height - 50, 200, 16), 10, C(0x5adac8), NSFontWeightSemibold);
+    [self drawHistoryButtons]; // 0.96.0
     [self drawEngine]; // 0.30.0
 
     // Preset display
@@ -3740,7 +3811,7 @@ static double FilterFxMag(int mode, double hz, double fc, double q) {
     ui::fxSet(current.fx, fxDetail, i, v);
     edited = true;
     int id = FxRowParam(fxDetail, i);
-    if (id < 0 || !host || !host->editParameter(id, current)) [self applySound];
+    if (id < 0 || ![self editHostParam:(id)]) [self applySound];
     [self setNeedsDisplay:YES];
 }
 
@@ -4935,6 +5006,12 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseDown:(NSEvent*)e {
+    if (histGesture) { histGesture = false; [self historyNote]; }
+    [self mouseDownBody:e];
+}
+- (void)mouseDragged:(NSEvent*)e { histGesture = true; [self mouseDraggedBody:e]; } // 0.96.0: one drag is one UNDO step
+- (void)mouseUp:(NSEvent*)e { [self mouseUpBody:e]; histGesture = false; [self historyNote]; }
+- (void)mouseDownBody:(NSEvent*)e {
     // RESET TRACE is display-only, including when the standalone piano keys
     // are held. Other editor clicks keep their existing note-release safety.
     NSPoint tracePoint=[self convertPoint:e.locationInWindow fromView:nil];
@@ -5010,6 +5087,8 @@ static int SortForColumn(int c) {
                 [self setNeedsDisplay:YES];
                 return;
             }
+    if (NSPointInRect(p, [self undoRect])) { [self performHistoryStep:NO]; return; }
+    if (NSPointInRect(p, [self redoRect])) { [self performHistoryStep:YES]; return; }
     if (NSPointInRect(p, [self prevRect])) { [self stepPreset:-1]; return; }
     if (NSPointInRect(p, [self nextRect])) { [self stepPreset:1]; return; }
     NSArray* chips = ChipLabels();
@@ -5051,7 +5130,7 @@ static int SortForColumn(int c) {
     }
 }
 
-- (void)mouseDragged:(NSEvent*)e {
+- (void)mouseDraggedBody:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
     if (wtProfileSpanSelecting && wtProfile.valid) {
@@ -5078,7 +5157,7 @@ static int SortForColumn(int c) {
     if (wtPosDrag >= 0) { // WT POS bar: the full bar width is 0..100%
         OscWtPos(current.voice, wtPosDrag) = std::clamp(dragValue + (p.x - dragStart.x) / ([self wtPosBar:wtPosDrag].size.width * scale / 150.0), 0.0, 1.0);
         edited = true;
-        if (!host || !host->editParameter(wtPosDrag ? params::WtPosB : params::WtPosA, current)) [self applySound];
+        if (![self editHostParam:(wtPosDrag ? params::WtPosB : params::WtPosA)]) [self applySound];
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5173,7 +5252,7 @@ static int SortForColumn(int c) {
         int id = [self paramForDrag:dragKnob];
         params::set(current, id, RingValue(id, dragValue + (p.y - dragStart.y) / scale));
         edited = true;
-        if (!host || !host->editParameter(id, current)) [self applySound];
+        if (![self editHostParam:(id)]) [self applySound];
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5183,7 +5262,7 @@ static int SortForColumn(int c) {
     [self setNeedsDisplay:YES];
 }
 
-- (void)mouseUp:(NSEvent*)e {
+- (void)mouseUpBody:(NSEvent*)e {
     if (wtProfileSpanSelecting) { wtProfileSpanSelecting = false; [self setNeedsDisplay:YES]; return; }
     if (wtTaperDrag >= 0) { wtTaperDrag = -1; return; }
     if (wtBrushActive) { [self wtBrushEnd]; return; }
@@ -5266,6 +5345,11 @@ static int NoteForKey(unichar ch) {
     if (wtEdit >= 0 && self.window.firstResponder == self && (e.modifierFlags & NSEventModifierFlagCommand)) {
         NSString* k = e.charactersIgnoringModifiers.lowercaseString;
         if ([k isEqualToString:@"z"]) { [self wtStep:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return YES; }
+    }
+    if (!browserOpen && wtEdit < 0 && self.window.firstResponder == self && (e.modifierFlags & NSEventModifierFlagCommand) &&
+        !(e.modifierFlags & (NSEventModifierFlagControl | NSEventModifierFlagOption))) {
+        NSString* k = e.charactersIgnoringModifiers.lowercaseString;
+        if ([k isEqualToString:@"z"]) { [self performHistoryStep:(e.modifierFlags & NSEventModifierFlagShift) != 0]; return YES; } // 0.96.0
     }
     return [super performKeyEquivalent:e];
 }
