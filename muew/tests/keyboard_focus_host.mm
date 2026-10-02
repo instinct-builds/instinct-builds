@@ -232,6 +232,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         }
         {   // 0.89.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
             id clear=[v accessibilityChildren][23];
+            const int clearPatches=host->patches; const int clearOn=(int)host->on.size();
             Check([[clear accessibilityLabel] isEqualToString:@"Clear all filters, nothing to clear"] && ![clear accessibilityPerformPress],
                   "clear filters is inert with no filter active");
             const auto keepRatings=v->ratings; const int keepSort=v->sortMode;
@@ -242,7 +243,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                   v->filter.category.empty() && !v->filter.favoritesOnly && v->filter.tags.empty() && v->filter.bank==-1 &&
                   v->filter.minRating==0 && v->filter.query.empty() && [v->search.stringValue length]==0 &&
                   (int)v->visible.size()==muew::ui::library().count() && v->sortMode==keepSort && v->ratings==keepRatings &&
-                  host->patches==floorPatches && (int)host->on.size()==onCount,
+                  host->patches==clearPatches && (int)host->on.size()==clearOn,
                   "clear filters AX press resets every filter and the query, keeps sort and ratings, loads nothing");
             v->filter.tags={"dark"}; v->filter.query="x"; v->search.stringValue=@"x"; [v refilter];
             NSRect cr=[v browserClearRect];
@@ -250,11 +251,12 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                 timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
             [v mouseDown:ce];
             Check(v->filter.tags.empty() && v->filter.query.empty() && [v->search.stringValue length]==0 &&
-                  host->patches==floorPatches && (int)host->on.size()==onCount,
+                  host->patches==clearPatches && (int)host->on.size()==clearOn,
                   "native mouseDown on CLEAR FILTERS resets filters without load or note");
         }
         v->ratings=savedRatings; v->sortMode=muew::ui::SortBank; [v refilter];
     }
+    ax=[v accessibilityChildren]; favorite=ax[31]; rating=ax[28]; // loads in the blocks above retire older loaded-sound controls
     const int sound=v->currentIndex, patches=host->patches;
     const std::string loadedSlug=muew::ui::library().slug(sound);
     [v moveBrowserCursor:1];
