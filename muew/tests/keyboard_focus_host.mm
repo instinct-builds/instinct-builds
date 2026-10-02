@@ -142,10 +142,10 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     // Query AppKit's exposed tree as a client: the native Search survives,
     // while rows represent immutable slugs. Reading/traversal is inert.
     NSArray* ax=[v accessibilityChildren];
-    Check(ax.count==29 && ax[0]==v->search && [[ax[18] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
-          [[ax[18] accessibilityLabel] isEqualToString:@"Preset results"],
+    Check(ax.count==34 && ax[0]==v->search && [[ax[23] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
+          [[ax[23] accessibilityLabel] isEqualToString:@"Preset results"],
           "accessibility tree exposes native Search, navigation and named results list");
-    id list=ax.count>18 ? ax[18] : nil;
+    id list=ax.count>23 ? ax[23] : nil;
     id bankFactory=ax.count>2 ? ax[2] : nil;
     id typeLead=ax.count>7 ? ax[7] : nil;
     id sortName=ax.count>15 ? ax[15] : nil;
@@ -153,7 +153,20 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
           [[typeLead accessibilityLabel] containsString:@"Type: Lead"] &&
           [[sortName accessibilityLabel] containsString:@"Sort: Name"],
           "accessible navigation controls have exact names and stable order");
-    id favorite=ax[24], rating=ax[21];
+    id favorite=ax[29], rating=ax[26];
+    {
+        id floor5=ax[22];
+        const int floorPatches=host->patches;
+        Check([[ax[18] accessibilityLabel] isEqualToString:@"Minimum rating: 1 star, not selected"] &&
+              [[floor5 accessibilityLabel] isEqualToString:@"Minimum rating: 5 stars, not selected"] &&
+              [floor5 accessibilityPerformPress] && v->filter.minRating==5 &&
+              [[floor5 accessibilityLabel] isEqualToString:@"Minimum rating: 5 stars, selected"],
+              "minimum-rating AX star sets the floor");
+        bool allFive=true;
+        for (int idx : v->visible) allFive=allFive && muew::ui::ratingOf(v->ratings,muew::ui::library().slug(idx))>=5;
+        Check(allFive && [floor5 accessibilityPerformPress] && v->filter.minRating==0 && host->patches==floorPatches,
+              "minimum-rating floor filters, clears on same star, and loads nothing");
+    }
     const auto savedFavorites=v->favorites;
     const auto savedRatings=v->ratings;
     const int sound=v->currentIndex, patches=host->patches;
@@ -163,15 +176,15 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
           host->patches==patches && v->currentIndex==sound,
           "favorite targets loaded sound, not proposed row, without loading");
     Check([rating accessibilityPerformPress] && muew::ui::ratingOf(v->ratings,loadedSlug)==(muew::ui::ratingOf(savedRatings,loadedSlug)==3 ? 0 : 3) &&
-          favorite==[v accessibilityChildren][24],"rating shares loaded-sound path and survives refilter");
+          favorite==[v accessibilityChildren][29],"rating shares loaded-sound path and survives refilter");
     Snapshot(v,"accessible-detail");
     [v loadPresetIndex:(sound+1)%muew::ui::library().count()];
     Check(![favorite accessibilityPerformPress] && ![rating accessibilityPerformPress],
           "retained loaded-sound controls refuse to target newly loaded preset");
     [v loadPresetIndex:sound];
     v->favorites=savedFavorites; v->ratings=savedRatings; [v saveFavorites]; [v saveRatings]; [v refilter];
-    for (int index=25;index<=27;++index) {
-        const char* phase=index==25 ? "Save dialog launch" : index==26 ? "Import dialog launch" : "Export dialog launch";
+    for (int index=30;index<=32;++index) {
+        const char* phase=index==30 ? "Save dialog launch" : index==31 ? "Import dialog launch" : "Export dialog launch";
         muew_proof::Phase(phase);
         const int before=host->patches;
         __block BOOL modalSeen=NO;
@@ -214,7 +227,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
           "closed navigation disappears and retained control refuses press");
     [v setBrowserOpen:true];
     v->filter.bank=-1; v->filter.category=""; v->sortMode=muew::ui::SortBank; [v refilter];
-    ax=[v accessibilityChildren]; list=ax[18];
+    ax=[v accessibilityChildren]; list=ax[23];
     NSArray* rows=[list accessibilityChildren];
     Check(rows.count>1 && [[rows[0] accessibilityRole] isEqualToString:NSAccessibilityButtonRole] &&
           [[rows[0] accessibilityLabel] containsString:@"1 of 108"] &&
