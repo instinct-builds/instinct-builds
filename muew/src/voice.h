@@ -41,7 +41,8 @@ struct ModRoute {
                       FxHyperDetune = 28, FxFilterCutoff = 29,        // 0.27.0: HYPER detune, FILTER FX cutoff (1 = +4 oct)
                       Osc1SpecMorph = 30, Osc2SpecMorph = 31, // 0.33.0: live spectral morph
                       NoiseColor = 32, // 0.52.0: modulated AIR/GRAIN/DUST color, never CLASSIC
-                      Lfo1Rate = 33, Lfo2Rate = 34, Lfo3Rate = 35, Lfo4Rate = 36 } dest; // 0.93.0: octaves of LFO rate
+                      Lfo1Rate = 33, Lfo2Rate = 34, Lfo3Rate = 35, Lfo4Rate = 36, // 0.93.0: octaves of LFO rate
+                      AmpEnvTime = 37, ModEnvTime = 38, Env3Time = 39 } dest; // 0.94.0: octaves of envelope A/D/R time (+ = slower)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -208,10 +209,19 @@ inline double routeMeterScale(ModRoute::Dest d) {
     case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: return 5.0;
     case ModRoute::Dest::FilterResonance: return 8.0;
     case ModRoute::Dest::Lfo1Rate: case ModRoute::Dest::Lfo2Rate: case ModRoute::Dest::Lfo3Rate: case ModRoute::Dest::Lfo4Rate: return 4.0; // 0.93.0: +-4 octaves
+    case ModRoute::Dest::AmpEnvTime: case ModRoute::Dest::ModEnvTime: case ModRoute::Dest::Env3Time: return 4.0; // 0.94.0
     default: return 1.0;
     }
 }
 
+// 0.94.0 envelope TIME routing: one destination per envelope scales its attack, decay and
+// release together by 2^octaves. An envelope cannot drive its own time.
+inline int envTimeDestIndex(ModRoute::Dest d) { const int v = (int)d - (int)ModRoute::Dest::AmpEnvTime; return v >= 0 && v < 3 ? v : -1; }
+inline bool envTimeRouteValid(const ModRoute& r) {
+    const int t = envTimeDestIndex(r.dest);
+    if (t < 0) return true;
+    return !((t == 1 && r.source == ModRoute::Source::ModEnv) || (t == 2 && r.source == ModRoute::Source::Env3));
+}
 // 0.93.0 LFO RATE routing. An LFO's rate may follow any voice source except an
 // LFO with the same or a higher number, so rate routing has no cycles.
 inline int lfoIndexOfSource(ModRoute::Source s) {
@@ -308,12 +318,18 @@ public:
             if (r.source == ModRoute::Source::LFO3) usesLfo3_ = true;
             if (r.source == ModRoute::Source::LFO4) usesLfo4_ = true;
         }
-        usesLfoRateAny_ = false;
+        usesLfoRateAny_ = false; usesEnvTimeAny_ = false;
+        for (int i = 0; i < 3; ++i) usesEnvTime_[i] = false;
         for (int i = 0; i < 4; ++i) usesLfoRate_[i] = false;
         for (const auto& r : routes) {
             const int t = lfoRateDestIndex(r.dest);
             if (t >= 0 && lfoRateRouteValid(r) && !sourceIsRack((int)r.source)) { usesLfoRate_[t] = true; usesLfoRateAny_ = true; }
         }
+        for (const auto& r : routes) {
+            const int t = envTimeDestIndex(r.dest);
+            if (t >= 0 && envTimeRouteValid(r) && !sourceIsRack((int)r.source)) { usesEnvTime_[t] = true; usesEnvTimeAny_ = true; }
+        }
+        ampEnv_.setTimeScale(1.0); modEnv_.setTimeScale(1.0); env3_.setTimeScale(1.0);
         applyRates(); // drops any stale modulated rate left from a previous route set
         mseg1_.setPoints(p.mseg1Points);
         mseg1_.setLoop(p.mseg1LoopStart, p.mseg1LoopEnd < 0 ? (int)mseg1_.pointCount() - 1 : p.mseg1LoopEnd, p.mseg1Loop);
@@ -378,7 +394,7 @@ public:
         baseFreq_ = midiToFreq(note);
         glideLeft_ = 0; glideSemi_ = 0.0;
         polyAT_ = -1.0;
-        if (usesLfoRateAny_) { // 0.93.0: rate routes read the previous sample's sources; seed them for sample 0
+        if (usesLfoRateAny_ || usesEnvTimeAny_) { // 0.93.0/0.94.0: rate and time routes read the previous sample's sources; seed them for sample 0
             for (int k = 0; k < kModSources; ++k) svPrev_[k] = 0.0;
             svPrev_[(int)ModRoute::Source::Velocity] = velocity_;
             for (int m = 0; m < 4; ++m) svPrev_[(int)ModRoute::Source::Macro1 + m] = params_.macros[m];
@@ -474,6 +490,7 @@ public:
     bool hq() const { return hq_; }
     static constexpr double kHQLatency = Halfband2x::kLatency * 0.5; // 7.5 samples at 1x
     bool isActive() const { return ampEnv_.isActive(); }
+    const Envelope& envelope(int i) const { return i == 0 ? ampEnv_ : i == 1 ? modEnv_ : env3_; } // 0.94.0: read-only, for tests
     // Peak signed contribution this voice actually applied since its last meter reset.
     void resetRouteMeters() { routePeak_.fill(0.0f); routeMin_.fill(0.0f); routeMax_.fill(0.0f); }
     uint64_t noiseBurstLength() const { return noiseBurstLength_; } // test and host diagnostics
@@ -494,6 +511,29 @@ public:
             if (--glideLeft_ == 0) { glideSemi_ = 0.0; baseFreq_ = glideTarget_; }
             else { glideSemi_ += glideStep_; baseFreq_ = glideTarget_ * std::pow(2.0, glideSemi_ / 12.0); }
         }
+        auto timeFor = [&](int i, Envelope& env) { // 0.94.0: octaves of A/D/R time, previous-sample sources
+            if (!usesEnvTime_[i]) return;
+            const ModRoute::Dest d = (ModRoute::Dest)((int)ModRoute::Dest::AmpEnvTime + i);
+            double oct = 0.0;
+            for (size_t slot = 0; slot < routes_.size(); ++slot) {
+                const auto& r = routes_[slot];
+                if (r.dest != d || !envTimeRouteValid(r) || sourceIsRack((int)r.source)) continue;
+                const int si = (int)r.source;
+                double src = (si >= 0 && si < kModSources) ? svPrev_[si] : 0.0;
+                if (r.curve != 0.0) src = routeCurve(src, r.curve);
+                if (r.aux >= 0 && r.aux < kModSources && !sourceIsRack(r.aux)) src *= auxLevel(r.aux, svPrev_[r.aux]);
+                const double contribution = src * r.amount;
+                if (slot < kMaxRoutes) {
+                    const float level = (float)std::clamp(contribution / routeMeterScale(d), -1.0, 1.0);
+                    if (std::fabs(level) > std::fabs(routePeak_[slot])) routePeak_[slot] = level;
+                    routeMin_[slot] = std::min(routeMin_[slot], level);
+                    routeMax_[slot] = std::max(routeMax_[slot], level);
+                }
+                oct += contribution;
+            }
+            env.setTimeScale(std::exp2(oct));
+        };
+        if (usesEnvTimeAny_) { timeFor(1, modEnv_); timeFor(2, env3_); }
         double lfoVals[4] = {0.0, 0.0, 0.0, 0.0}; // 0.93.0: this sample's LFO values, in order
         auto rateFor = [&](int i) { // LFO RATE routes: octaves of rate, previous-sample non-LFO sources
             if (!usesLfoRate_[i]) return;
@@ -538,7 +578,7 @@ public:
                                         lfo3, lfo4, env3, 0.0, 0.0, mseg2,
                                         pf.wheel, polyAT_ >= 0 ? polyAT_ : pf.aftertouch, pf.bend, // 0.24.0
                                         note_ >= 0 ? std::clamp((note_ - 60) / 60.0, -1.0, 1.0) : 0.0};
-        if (usesLfoRateAny_) for (int k = 0; k < kModSources; ++k) svPrev_[k] = sv[k];
+        if (usesLfoRateAny_ || usesEnvTimeAny_) for (int k = 0; k < kModSources; ++k) svPrev_[k] = sv[k];
         auto modSum = [&](ModRoute::Dest d) {
             double sum = 0.0;
             for (size_t slot = 0; slot < routes_.size(); ++slot) {
@@ -741,6 +781,7 @@ public:
             else { l = yL; r = yR; }
         }
 
+        if (usesEnvTimeAny_) timeFor(0, ampEnv_);
         float amp = ampEnv_.process();
         ++age_;
         outL = l * amp * velocity_;
@@ -924,6 +965,7 @@ private:
     Envelope env3_;
     bool usesLfo3_ = false, usesLfo4_ = false;
     bool usesLfoRate_[4] = {false, false, false, false}, usesLfoRateAny_ = false; // 0.93.0
+    bool usesEnvTime_[3] = {false, false, false}, usesEnvTimeAny_ = false; // 0.94.0
     double svPrev_[kModSources] = {};
     const CustomTable* custom1_ = nullptr; const CustomTable* custom2_ = nullptr;
     bool active1_ = false, active2_ = false;

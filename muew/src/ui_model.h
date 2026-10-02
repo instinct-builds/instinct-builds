@@ -88,6 +88,9 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::Lfo2Rate: return "LFO2 RATE";
     case ModRoute::Dest::Lfo3Rate: return "LFO3 RATE";
     case ModRoute::Dest::Lfo4Rate: return "LFO4 RATE";
+    case ModRoute::Dest::AmpEnvTime: return "AMP ENV TIME"; // 0.94.0
+    case ModRoute::Dest::ModEnvTime: return "MOD ENV TIME";
+    case ModRoute::Dest::Env3Time: return "ENV3 TIME";
     }
     return "?";
 }
@@ -119,17 +122,19 @@ inline bool isRackLfo(ModRoute::Source s) { return s == ModRoute::Source::FxLfo1
 // drive nothing else. A route outside that says so instead of an amount.
 inline bool routeActive(const ModRoute& r) {
     if (isRackLfo(r.source)) return isFxDest(r.dest);
+    if (!envTimeRouteValid(r)) return false; // 0.94.0: an envelope cannot drive its own time
     if (!lfoRateRouteValid(r)) return false; // 0.93.0: an LFO cannot drive its own or a lower LFO's rate
     return !isFxDest(r.dest) || isMacroSource(r.source);
 }
 inline std::string routeAmountReadout(const ModRoute& r) {
     char b[32];
-    if (!routeActive(r)) return isRackLfo(r.source) ? "FX DESTS ONLY" : !lfoRateRouteValid(r) ? "LOWER LFO ONLY" : "GLOBAL ONLY";
+    if (!routeActive(r)) return isRackLfo(r.source) ? "FX DESTS ONLY" : !envTimeRouteValid(r) ? "NOT ITSELF" : !lfoRateRouteValid(r) ? "LOWER LFO ONLY" : "GLOBAL ONLY";
     switch (r.dest) {
     case ModRoute::Dest::Osc1Pitch: case ModRoute::Dest::Osc2Pitch: snprintf(b, sizeof b, "%+.2f st", r.amount); break;
     case ModRoute::Dest::FilterCutoff: case ModRoute::Dest::Filter2Cutoff: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
     case ModRoute::Dest::FilterResonance: snprintf(b, sizeof b, "%+.2f Q", r.amount); break;
-    case ModRoute::Dest::Lfo1Rate: case ModRoute::Dest::Lfo2Rate: case ModRoute::Dest::Lfo3Rate: case ModRoute::Dest::Lfo4Rate: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
+    case ModRoute::Dest::Lfo1Rate: case ModRoute::Dest::Lfo2Rate: case ModRoute::Dest::Lfo3Rate: case ModRoute::Dest::Lfo4Rate:
+    case ModRoute::Dest::AmpEnvTime: case ModRoute::Dest::ModEnvTime: case ModRoute::Dest::Env3Time: snprintf(b, sizeof b, "%+.2f oct", r.amount); break;
     default: snprintf(b, sizeof b, "%+.0f%%", r.amount * 100); break;
     }
     return b;
@@ -216,7 +221,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::FxHyperDetune, D::FxFilterCutoff, // 0.27.0 appended
                                   D::Osc1SpecMorph, D::Osc2SpecMorph, // 0.33.0
                                   D::NoiseColor, // 0.52.0 appended
-                                  D::Lfo1Rate, D::Lfo2Rate, D::Lfo3Rate, D::Lfo4Rate}; // 0.93.0 appended
+                                  D::Lfo1Rate, D::Lfo2Rate, D::Lfo3Rate, D::Lfo4Rate, // 0.93.0 appended
+                                  D::AmpEnvTime, D::ModEnvTime, D::Env3Time}; // 0.94.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.

@@ -937,6 +937,21 @@ int main() {
         printf("LFO RATE destination 36 recalled through AU; 40 published parameter IDs unchanged\n");
     }
 
+    // 0.94.0: envelope TIME destinations 37-39 are appended; existing route lines carry them.
+    {
+        muew::Preset p = muew::factoryPresets()[0], got;
+        muew::ModRoute r; r.source=muew::ModRoute::Source::LFO1; r.dest=muew::ModRoute::Dest::Env3Time; r.amount=.5;
+        if (p.routes.empty()) p.routes.push_back(r); else p.routes[0]=r;
+        AudioUnit t=openUnit();
+        bool ok=t && setState(t,p) && getState(t,got);
+        auto saved=got.serialize();
+        if (!ok || !(got==p) || saved.find("\nroute 0 39 0.5") == std::string::npos) {
+            printf("FAIL: AU ENV TIME route state\n"); return 1;
+        }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("ENV TIME destination 39 recalled through AU; 40 published parameter IDs unchanged\n");
+    }
+
     // 0.53.0: stereo width is a separate optional line, not a new AU parameter.
     {
         muew::Preset p=muew::factoryPresets()[0],got;
