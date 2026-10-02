@@ -225,6 +225,8 @@ struct MUEWEditorHost {
 - (NSRect)browserSurpriseRect;
 - (BOOL)surpriseBrowserPick;
 - (NSRect)browserBackRect;
+- (NSRect)rowHeart:(int)r;
+- (void)toggleFavorite:(int)idx;
 - (BOOL)browserBack;
 - (int)browserCursorPosition;
 - (void)moveBrowserCursor:(int)direction;

@@ -4523,6 +4523,7 @@ static NSArray<NSString*>* BankRows() { return @[@"All banks", @"Factory", @"Use
 }
 - (NSRect)tableRow:(int)r { return NSMakeRect(226, [self tableTop] - (r + 1) * 20, 476, 19); }
 - (NSRect)rowStar:(int)r star:(int)s { NSRect row = [self tableRow:r]; return NSMakeRect(624 + s * 13, row.origin.y + 2, 13, 15); }
+- (NSRect)rowHeart:(int)r { NSRect row=[self tableRow:r]; return NSMakeRect(NSMaxX(row)-13, row.origin.y+2, 12, 15); } // 0.91.0
 - (NSRect)infoStar:(int)s { return NSMakeRect(728 + s * 20, [self top] - 104, 20, 20); }
 - (NSRect)infoButton:(int)i { // 0 favorite, 1 + save, 2 import, 3 export
     return NSMakeRect(728 + (i % 2) * 118, 90 - (i / 2) * 28, 112, 22);
@@ -4721,7 +4722,7 @@ static int SortForColumn(int c) {
         Text(S(p.info.author), NSMakeRect(526, y, 94, 13), 9, bk == ui::BankFactory ? C(0x5f6b7b) : C(0x3a8f84), NSFontWeightMedium);
         [self stars:ui::ratingOf(ratings, lib.slug(idx)) in:[self rowStar:r star:0] step:13 size:10];
         bool fav = favorites.count(lib.slug(idx)) > 0;
-        if (fav) TextA(@"\u2665", NSMakeRect(NSMaxX(row) - 18, y - 1, 14, 14), 10, C(0xf2ab55), NSFontWeightRegular, NSTextAlignmentCenter);
+        TextA(fav ? @"\u2665" : @"\u2661", NSMakeRect(NSMaxX(row) - 14, y - 1, 14, 14), 10, fav ? C(0xf2ab55) : C(0x3a4452), NSFontWeightRegular, NSTextAlignmentCenter);
     }
     if (browserListFocus && [self hasEditorKeyboardFocus]) {
         NSRect list = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
@@ -4916,6 +4917,7 @@ static int SortForColumn(int c) {
     for (int r = 0; r < rows && bscroll + r < (int)visible.size(); ++r) {
         if (!NSPointInRect(p, [self tableRow:r])) continue;
         int idx = visible[bscroll + r];
+        if (NSPointInRect(p, [self rowHeart:r])) { [self toggleFavorite:idx]; return; } // 0.91.0: row heart never loads
         for (int s = 0; s < 5; ++s)
             if (NSPointInRect(p, [self rowStar:r star:s])) { [self rate:idx stars:s + 1]; return; }
         browserCursorSlug.clear();
