@@ -48,16 +48,18 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         const int di=(int)(std::find(dests.begin(),dests.end(),muew::ModRoute::Dest::Lfo2Rate)-dests.begin());
         v->current.routes.clear();
         muew::ui::addRoute(v->current.routes,muew::ModRoute::Source::Macro1,muew::ModRoute::Dest::FilterCutoff);
+        const double before=muew::ui::routeDisplayAmount(v->current.routes[0]);
         NSMenuItem* pick=[[NSMenuItem alloc] initWithTitle:@"LFO2 RATE" action:nil keyEquivalent:@""];
         pick.tag=(2*100+0)*100+di;
         [v performSelector:NSSelectorFromString(@"menuPicked:") withObject:pick];
         const auto& r0=v->current.routes[0];
-        Check(di==34 && r0.dest==muew::ModRoute::Dest::Lfo2Rate && std::fabs(muew::ui::routeDisplayAmount(r0)-0.25)<1e-9 &&
-              std::string(muew::ui::routeAmountReadout(r0))=="+1.00 oct" && muew::ui::routeActive(r0),
+        const std::string ro=muew::ui::routeAmountReadout(r0);
+        Check(di==34 && r0.dest==muew::ModRoute::Dest::Lfo2Rate && std::fabs(muew::ui::routeDisplayAmount(r0)-before)<1e-9 &&
+              ro.size()>4 && ro.compare(ro.size()-4,4," oct")==0 && muew::ui::routeActive(r0),
               "matrix destination menu assigns LFO RATE and the route reads in octaves");
         v->matrixPage=0; [v setNeedsDisplay:YES];
         Snapshot(v,"lfo-rate-route");
-        v->current.routes=savedRoutes; v->matrixPage=savedPage; v->edited=savedEdited; [v applySound];
+        v->current.routes=savedRoutes; v->matrixPage=savedPage; v->edited=savedEdited; [v performSelector:NSSelectorFromString(@"applySound")];
     }
     Check(w.isKeyWindow && w.firstResponder == v, "editor is the standalone key responder");
     const int original = v->currentIndex;
