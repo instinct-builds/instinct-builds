@@ -163,6 +163,7 @@ static int SortForColumn(int c);
         for (int i=0;i<9;++i) add(1,i,[self catRow:i]);
         for (int c : {0,1,2,4}) add(2,c,[self tableHeader:c]);
         for (int i=1;i<=5;++i) add(6,i,[self minRatingStar:i-1]);
+        add(7,0,[self browserClearRect]);
         add(3,0,[self browserClose]);
         browserAXControls=[controls copy];
     }
@@ -181,7 +182,7 @@ static int SortForColumn(int c);
     }
     NSMutableArray* children=[NSMutableArray arrayWithObject:search];
     // Navigation precedes results. Close is last so it cannot interrupt rows.
-    [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,22)]];
+    [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,23)]];
     [children addObject:browserAXList];
     [children addObjectsFromArray:browserAXDetailControls];
     [children addObject:browserAXControls.lastObject];
@@ -202,6 +203,7 @@ static int SortForColumn(int c);
         static NSArray* names=@[@"Bank",@"Name",@"Type",@"Author",@"Rating"];
         return [NSString stringWithFormat:@"Sort: %@, %@",names[index],sortMode==SortForColumn(index) ? @"selected" : @"not selected"];
     }
+    if (kind==7) return [NSString stringWithFormat:@"Clear all filters, %@",[self browserFiltersActive] ? @"available" : @"nothing to clear"];
     if (kind==6) return [NSString stringWithFormat:@"Minimum rating: %d %@, %@",index,index==1 ? @"star" : @"stars",
         filter.minRating==index ? @"selected" : @"not selected"];
     if (kind==4) {
@@ -235,6 +237,7 @@ static int SortForColumn(int c);
     if (kind==0 && index>=0 && index<4) { [self chooseBrowserBank:index]; return YES; }
     if (kind==1 && index>=0 && index<9) { [self chooseBrowserType:index]; return YES; }
     if (kind==2 && (index==0 || index==1 || index==2 || index==4)) { [self chooseBrowserSort:index]; return YES; }
+    if (kind==7 && index==0) return [self clearBrowserFilters];
     if (kind==6 && index>=1 && index<=5) { [self chooseBrowserMinRating:index]; return YES; }
     if (kind==3 && index==0) { [self setBrowserOpen:false]; return YES; }
     return NO;
@@ -4501,6 +4504,8 @@ static NSArray<NSString*>* BankRows() { return @[@"All banks", @"Factory", @"Use
 - (NSRect)catRow:(int)i { return NSMakeRect(40, [self top] - 186 - i * 20, 170, 18); } // 0 All, 1-7 categories, 8 favorites
 - (NSRect)tagChip:(int)i { return NSMakeRect(40 + (i % 2) * 86, [self top] - 404 - (i / 2) * 22, 82, 18); }
 - (NSRect)minRatingStar:(int)s { return NSMakeRect(40 + s * 22, 66, 22, 20); } // 0.87.0: floor of s+1 stars
+- (NSRect)browserClearRect { NSRect b=[self browserRect]; return NSMakeRect(324, NSMaxY(b)-31, 96, 18); } // 0.88.0
+- (BOOL)browserFiltersActive { return !filter.category.empty() || filter.favoritesOnly || !filter.tags.empty() || filter.bank!=-1 || filter.minRating>0 || !filter.query.empty(); }
 - (CGFloat)tableTop { return [self top] - 62; }
 - (int)tableRows { return (int)std::floor(([self tableTop] - 54) / 20); }
 - (NSRect)tableHeader:(int)c { // 0 #, 1 NAME, 2 TYPE, 3 AUTHOR, 4 RATING
@@ -4615,6 +4620,11 @@ static int SortForColumn(int c) {
     const ui::Library& lib = ui::library();
     TextA([NSString stringWithFormat:@"%d of %d sounds", (int)visible.size(), lib.count()], NSMakeRect(170, t - 28, 140, 14), 9,
           C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentLeft);
+    if ([self browserFiltersActive]) {
+        NSRect cr=[self browserClearRect];
+        FillRound(cr, 9, C(0x9d7df2, .28));
+        TextA(@"CLEAR FILTERS", NSMakeRect(cr.origin.x, cr.origin.y+3, cr.size.width, 13), 8, C(0xc9b8ff), NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
     TextA(@"\u2715", [self browserClose], 12, C(0x9ca6b4), NSFontWeightRegular, NSTextAlignmentCenter);
     [self drawKeyboardCloseFocus:[self browserClose]];
     [C(0x232c37) setFill]; NSRectFill(NSMakeRect(b.origin.x + 12, t - 42, b.size.width - 24, 1));
@@ -4822,6 +4832,11 @@ static int SortForColumn(int c) {
     else filter.category=i==0 ? std::string() : factoryCategories()[i-1];
     bscroll=0; [self refilter];
 }
+- (BOOL)clearBrowserFilters {
+    if (![self browserFiltersActive]) return NO;
+    filter=PresetFilter(); search.stringValue=@""; browserSearchSelection=NSMakeRange(NSNotFound,0);
+    browserCursorSlug.clear(); bscroll=0; [self refilter]; return YES;
+}
 - (void)chooseBrowserMinRating:(int)stars {
     ui::setMinRating(filter, stars);
     bscroll=0; [self refilter];
@@ -4846,6 +4861,7 @@ static int SortForColumn(int c) {
             if (filter.tags.count(t)) filter.tags.erase(t); else filter.tags.insert(t);
             bscroll = 0; [self refilter]; return;
         }
+    if ([self browserFiltersActive] && NSPointInRect(p, [self browserClearRect])) { [self clearBrowserFilters]; return; }
     for (int s = 0; s < 5; ++s)
         if (NSPointInRect(p, [self minRatingStar:s])) { [self chooseBrowserMinRating:s + 1]; return; }
     for (int c = 0; c < 5; ++c)

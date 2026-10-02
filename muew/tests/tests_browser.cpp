@@ -105,7 +105,7 @@ int main() {
     check(user::importFile(dir.string(), (dir / "missing.muew").string(), lib) == -1, "Import of a missing file fails cleanly");
     fs::remove_all(dir); fs::remove(ext);
 
-    // 0.87.0: minimum-rating floor composes with every other filter.
+    // 0.88.0: minimum-rating floor composes with every other filter.
     {
         ui::Library rl; std::set<std::string> rf; ui::Ratings rr;
         ui::setRating(rr, rl.slug(0), 5); ui::setRating(rr, rl.slug(1), 3); ui::setRating(rr, rl.slug(2), 1);
