@@ -38,9 +38,14 @@ codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 lipo "$APP_DIR/Contents/MacOS/$APP" -verify_arch arm64 x86_64
 hdiutil create -volname "$APP" -srcfolder "$APP_DIR" -ov -format UDZO "$APP-$VERSION.dmg"
-# CI runners intermittently return EAGAIN on verify right after create; retry, never mask a real failure.
-for attempt in 1 2 3 4; do
+# CI runners intermittently return EAGAIN on verify right after create (it has
+# outlasted 4 tight retries); flush, then retry with growing backoff, never mask
+# a real failure: the final attempt still exits non-zero.
+sync
+MAX_VERIFY=8
+for attempt in $(seq 1 "$MAX_VERIFY"); do
   if hdiutil verify "$APP-$VERSION.dmg"; then break; fi
-  [ "$attempt" = 4 ] && { echo "hdiutil verify failed after $attempt attempts"; exit 1; }
-  echo "hdiutil verify attempt $attempt failed, retrying"; sleep 5
+  [ "$attempt" = "$MAX_VERIFY" ] && { echo "hdiutil verify failed after $attempt attempts"; exit 1; }
+  delay=$((attempt * 5))
+  echo "hdiutil verify attempt $attempt failed, retrying in ${delay}s"; sleep "$delay"
 done
