@@ -201,6 +201,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         Check(v->filter.minRating==0,"native mouseDown on the lit star clears the floor");
         {   // 0.89.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
             id surprise=[v accessibilityChildren][24];
+            const int surpriseOrigin=v->currentIndex;
             v->filter=muew::PresetFilter(); v->filter.category="Lead"; [v refilter];
             std::set<int> allowed(v->visible.begin(),v->visible.end());
             Check(v->visible.size()>2 && [[surprise accessibilityLabel] hasPrefix:@"Surprise me, load a random sound from "],
@@ -227,7 +228,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             Snapshot(v,"surprise-empty");
             v->filter=muew::PresetFilter(); v->search.stringValue=@""; [v refilter];
             Snapshot(v,"surprise-all");
-            [v loadPresetIndex:sound]; [v refilter];
+            [v loadPresetIndex:surpriseOrigin]; [v refilter];
         }
         {   // 0.89.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
             id clear=[v accessibilityChildren][23];
