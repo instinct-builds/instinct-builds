@@ -128,6 +128,9 @@ struct ReviewGalleryTests {
         var queueCatalog = catalog
         let queueApplied = queueCatalog.applyFeedback(queued)
         #expect(queueApplied.favorites == 2 && queueApplied.notes == 3)
+        let queueCSV = queueCatalog.clientNotesCSV()
+        #expect(queueCatalog.clientNoteCount == 3 && queueCSV.components(separatedBy: "\r\n").count == 5)
+        #expect(queueCSV.contains("\"\(manifest.title)\""))
         let warningFile = try read("storage-warning-0.json")
         #expect(warningFile.items.first?.note == "Keep this note")
         let survived = try read("reload-0.json")

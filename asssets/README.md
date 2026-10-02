@@ -1218,3 +1218,18 @@ partial and invalid files are retried. Chrome exit and timeout report the
 last port-file state and stderr tail instead of an unhandled IndexError.
 Deterministic tests cover these races and failure diagnostics before the
 real-browser suite runs. Product behavior and feedback format are unchanged.
+
+
+## 1.80.0: client notes as a revision list
+
+- File > Export Client Notes as CSV… saves one row per imported client note:
+  asset title, source filename, reviewer label, gallery title and note text.
+  It stays disabled until a note exists. Rows are sorted by asset, so a
+  designer can work down the list. No images, folder paths or hashes.
+- Titles and notes that start like a spreadsheet formula are saved as text.
+  Commas, quotes and line breaks in notes stay in one quoted cell.
+- Reviewer names are the local draft labels typed in the gallery, not proof
+  of who wrote the note. The CSV is a copy; it changes nothing in the library.
+- Tests: unit tests for ordering and escaping, plus the Chrome-produced queue
+  feedback imported natively and checked for row count and gallery title.
+  The save dialog itself is not exercised in CI.

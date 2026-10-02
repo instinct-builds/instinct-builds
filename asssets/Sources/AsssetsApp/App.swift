@@ -70,6 +70,8 @@ struct ASSSETSApp: App {
                     .keyboardShortcut("g", modifiers: [.command, .option]).disabled(library.selection.isEmpty)
                 Button("Export Current View as Review Gallery…") { library.exportGallery(library.filtered.map(\.id), title: library.browsingTitle) }
                 Button("Import Client Feedback…") { library.importFeedback() }
+                Button("Export Client Notes as CSV…") { library.exportClientNotesCSV() }
+                    .disabled(library.catalog.clientNoteCount == 0)
                 Button("Recover Last Published Gallery…") { library.reopenPublicationRecovery() }
                     .disabled(!library.hasPublicationRecovery)
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
@@ -1079,6 +1081,31 @@ final class StudioLibrary: ObservableObject {
     }
 
     /// Export exactly the currently matched receipts, including rows hidden by Show Recent.
+    func exportClientNotesCSV(to demoURL: URL? = nil) {
+        guard catalog.clientNoteCount > 0 else { flash("No client notes to export"); return }
+        let destination: URL
+        if let demoURL { destination = demoURL }
+        else {
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = "ASSSETS client notes.csv"
+            panel.allowedContentTypes = [.commaSeparatedText]
+            panel.canCreateDirectories = true
+            panel.message = "Asset titles, filenames, reviewer labels and note text. No images or file paths."
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destination = url
+        }
+        let count = catalog.clientNoteCount
+        do {
+            try catalog.clientNotesCSV().write(to: destination, atomically: true, encoding: .utf8)
+            if demoURL == nil {
+                flash("Saved \(count) client note\(count == 1 ? "" : "s") as CSV")
+                NSWorkspace.shared.activateFileViewerSelecting([destination])
+            }
+        } catch {
+            flash("Could not save client notes CSV")
+        }
+    }
+
     func exportSourceReceiptCSV(_ matched: [SourceRefreshRecord], to demoURL: URL? = nil) {
         guard !matched.isEmpty else { flash("No matching receipts to export"); return }
         let destination: URL
