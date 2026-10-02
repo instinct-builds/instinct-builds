@@ -217,6 +217,7 @@ struct MUEWEditorHost {
 - (void)saveRatings;
 - (void)resetMatrixTrace;
 - (NSRect)matrixTraceReset;
+- (NSRect)minRatingStar:(int)s;
 - (int)browserCursorPosition;
 - (void)moveBrowserCursor:(int)direction;
 - (NSArray*)browserAccessibilityRows;

@@ -181,6 +181,24 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         Snapshot(v,"min-rating-floor");
         [ax[21] accessibilityPerformPress];
         Check(v->filter.minRating==0,"snapshot floor clears");
+        auto clickStar=[&](int star) {
+            NSRect r=[v minRatingStar:star];
+            NSEvent* e=[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:NSMakePoint(NSMidX(r),NSMidY(r)) modifierFlags:0
+                timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+            [v mouseDown:e];
+        };
+        const int onCount=(int)host->on.size();
+        clickStar(2);
+        const bool setThree=v->filter.minRating==3;
+        bool allThree=true;
+        for (int idx : v->visible) allThree=allThree && muew::ui::ratingOf(v->ratings,muew::ui::library().slug(idx))>=3;
+        clickStar(2);
+        const bool cleared=v->filter.minRating==0 && v->visible.size()==before;
+        clickStar(4);
+        Check(setThree && allThree && cleared && v->filter.minRating==5 && host->patches==floorPatches && (int)host->on.size()==onCount,
+              "native mouseDown on minimum-rating stars sets, clears and re-sets the floor without load or note");
+        clickStar(4);
+        Check(v->filter.minRating==0,"native mouseDown on the lit star clears the floor");
         v->ratings=savedRatings; v->sortMode=muew::ui::SortBank; [v refilter];
     }
     const int sound=v->currentIndex, patches=host->patches;
