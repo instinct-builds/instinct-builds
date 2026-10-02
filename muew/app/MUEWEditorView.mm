@@ -4518,11 +4518,11 @@ static NSArray<NSString*>* BankRows() { return @[@"All banks", @"Factory", @"Use
 - (CGFloat)tableTop { return [self top] - 62; }
 - (int)tableRows { return (int)std::floor(([self tableTop] - 54) / 20); }
 - (NSRect)tableHeader:(int)c { // 0 #, 1 NAME, 2 TYPE, 3 AUTHOR, 4 RATING
-    static const CGFloat x[] = {228, 262, 452, 526, 624}, w[] = {30, 186, 70, 94, 76};
+    static const CGFloat x[] = {228, 262, 452, 526, 616}, w[] = {30, 186, 70, 86, 76}; // 0.91.1: rating column 8px left of 0.91.0 so the row heart stands apart
     return NSMakeRect(x[c], [self tableTop] + 2, w[c], 16);
 }
 - (NSRect)tableRow:(int)r { return NSMakeRect(226, [self tableTop] - (r + 1) * 20, 476, 19); }
-- (NSRect)rowStar:(int)r star:(int)s { NSRect row = [self tableRow:r]; return NSMakeRect(624 + s * 13, row.origin.y + 2, 13, 15); }
+- (NSRect)rowStar:(int)r star:(int)s { NSRect row = [self tableRow:r]; return NSMakeRect(616 + s * 13, row.origin.y + 2, 13, 15); }
 - (NSRect)rowHeart:(int)r { NSRect row=[self tableRow:r]; return NSMakeRect(NSMaxX(row)-13, row.origin.y+2, 12, 15); } // 0.91.0
 - (NSRect)infoStar:(int)s { return NSMakeRect(728 + s * 20, [self top] - 104, 20, 20); }
 - (NSRect)infoButton:(int)i { // 0 favorite, 1 + save, 2 import, 3 export
@@ -4719,10 +4719,11 @@ static int SortForColumn(int c) {
               NSMakeRect(226, y, 28, 13), 8, C(0x5f6b7b), NSFontWeightMedium, NSTextAlignmentCenter);
         Text(S(p.info.name), NSMakeRect(262, y - 1, 186, 15), 11, sel ? C(0x75ead8) : C(0xdde3ea), sel ? NSFontWeightSemibold : NSFontWeightRegular);
         Text(S(p.info.category), NSMakeRect(452, y, 70, 13), 9, C(0x8793a3), NSFontWeightMedium);
-        Text(S(p.info.author), NSMakeRect(526, y, 94, 13), 9, bk == ui::BankFactory ? C(0x5f6b7b) : C(0x3a8f84), NSFontWeightMedium);
+        Text(S(p.info.author), NSMakeRect(526, y, 86, 13), 9, bk == ui::BankFactory ? C(0x5f6b7b) : C(0x3a8f84), NSFontWeightMedium);
         [self stars:ui::ratingOf(ratings, lib.slug(idx)) in:[self rowStar:r star:0] step:13 size:10];
         bool fav = favorites.count(lib.slug(idx)) > 0;
-        TextA(fav ? @"\u2665" : @"\u2661", NSMakeRect(NSMaxX(row) - 14, y - 1, 14, 14), 10, fav ? C(0xf2ab55) : C(0x3a4452), NSFontWeightRegular, NSTextAlignmentCenter);
+        if (fav) TextA(@"\u2665", NSMakeRect(NSMaxX(row) - 14, y - 1, 14, 14), 10, C(0xf2ab55), NSFontWeightRegular, NSTextAlignmentCenter);
+        else TextA(@"\u2661", NSMakeRect(NSMaxX(row) - 14, y, 14, 12), 8, C(0x2c3541), NSFontWeightLight, NSTextAlignmentCenter);
     }
     if (browserListFocus && [self hasEditorKeyboardFocus]) {
         NSRect list = NSMakeRect(223, 52, 486, [self tableTop]-52+19);
