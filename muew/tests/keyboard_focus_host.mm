@@ -33,7 +33,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.91.1-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.92.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -199,7 +199,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
               "native mouseDown on minimum-rating stars sets, clears and re-sets the floor without load or note");
         clickStar(4);
         Check(v->filter.minRating==0,"native mouseDown on the lit star clears the floor");
-        {   // 0.91.1 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
+        {   // 0.92.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
             id surprise=[v accessibilityChildren][24];
             const int surpriseOrigin=v->currentIndex;
             v->filter=muew::PresetFilter(); v->filter.category="Lead"; [v refilter];
@@ -221,7 +221,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             const int wasN=v->currentIndex, pN=host->patches;
             [v mouseDown:se];
             Check(v->currentIndex!=wasN && allowed.count(v->currentIndex) && host->patches==pN+1,"native mouseDown on SURPRISE ME loads one visible sound");
-            {   // 0.91.1 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
+            {   // 0.92.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
                 id back=[v accessibilityChildren][25];
                 v->loadBack.clear(); [v refilter];
                 Check([[back accessibilityLabel] isEqualToString:@"Back to previous sound, nothing earlier"] && ![back accessibilityPerformPress],
@@ -246,7 +246,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                 Check(c0!=a0 && v->currentIndex==a0 && host->patches==pC+1,"native mouseDown on BACK restores the previous sound");
                 (void)c0;
             }
-            {   // 0.91.1 row heart: toggles that row's favorite without loading, selecting or playing
+            {   // 0.92.0 row heart: toggles that row's favorite without loading, selecting or playing
                 v->filter=muew::PresetFilter(); v->filter.category="Lead"; v->sortMode=muew::ui::SortName; v->bscroll=0; [v refilter];
                 const int rowIdx=v->visible[0]; const std::string rowSlug=muew::ui::library().slug(rowIdx);
                 const bool wasFav=v->favorites.count(rowSlug)>0;
@@ -278,7 +278,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             Snapshot(v,"surprise-all");
             [v loadPresetIndex:surpriseOrigin]; [v refilter];
         }
-        {   // 0.91.1 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
+        {   // 0.92.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
             id clear=[v accessibilityChildren][23];
             const int clearPatches=host->patches; const int clearOn=(int)host->on.size();
             Check([[clear accessibilityLabel] isEqualToString:@"Clear all filters, nothing to clear"] && ![clear accessibilityPerformPress],
@@ -358,6 +358,34 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [sortName accessibilityPerformPress];
     Check(v->sortMode==muew::ui::SortName && v->currentIndex==original,
           "accessible sort press reorders without loading");
+    {   // 0.92.0 sort direction: the active header reverses; a new column starts at its natural direction
+        const std::vector<int> asc=v->visible; std::vector<int> expectDesc(asc.rbegin(),asc.rend());
+        const int pS=host->patches, onS=(int)host->on.size();
+        Check(asc.size()>2 && !v->sortReverse && [[sortName accessibilityLabel] isEqualToString:@"Sort: Name, selected, ascending"],
+              "active Name sort starts ascending");
+        [sortName accessibilityPerformPress];
+        Check(v->sortReverse && v->visible==expectDesc && [[sortName accessibilityLabel] isEqualToString:@"Sort: Name, selected, descending"] &&
+              v->currentIndex==original && host->patches==pS,"second Name press reverses the list without loading");
+        Snapshot(v,"sort-reverse");
+        auto clickHeader=[&](int c){
+            NSRect r=[v tableHeader:c];
+            NSEvent* e=[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:NSMakePoint(NSMidX(r),NSMidY(r)) modifierFlags:0
+                timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+            [v mouseDown:e];
+        };
+        clickHeader(1);
+        Check(!v->sortReverse && v->visible==asc,"native click on the active header restores ascending order");
+        clickHeader(1); clickHeader(2);
+        Check(v->sortMode==muew::ui::SortCategory && !v->sortReverse,"choosing another column starts at its natural direction");
+        id sortRating=[v accessibilityChildren][17];
+        clickHeader(4);
+        Check(v->sortMode==muew::ui::SortRating && !v->sortReverse && [[sortRating accessibilityLabel] isEqualToString:@"Sort: Rating, selected, descending"],
+              "Rating starts descending");
+        [sortRating accessibilityPerformPress];
+        Check(v->sortReverse && [[sortRating accessibilityLabel] isEqualToString:@"Sort: Rating, selected, ascending"] &&
+              (int)host->on.size()==onS && host->patches==pS && v->currentIndex==original,"Rating reverses to ascending without load or note");
+        v->sortMode=muew::ui::SortName; v->sortReverse=false; [v refilter];
+    }
     [v setBrowserOpen:false];
     Check([v accessibilityChildren].count==1 && ![retainedBank accessibilityPerformPress],
           "closed navigation disappears and retained control refuses press");

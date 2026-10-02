@@ -126,6 +126,7 @@ static int SortForColumn(int c);
         for (NSString* s in favs) favorites.insert(std::string(s.UTF8String));
         browserOpen = false; bscroll = 0; browserCursorSlug.clear(); browserListFocus = false; browserSearchSelection = NSMakeRange(NSNotFound,0); browserAXControls = nil; browserAXControlEpoch = 0; browserAXDetailControls=nil; browserAXDetailEpoch=0; browserDialogActive=false; browserDialogQueued=false; browserNativeDialog=nil; browserAXList = nil; browserAXGeneration = 0; browserAXRows = nil; browserAXRowsGeneration = NSNotFound; browserAXRowsCurrentIndex = -2; browserAXRowsScroll = -1;
         sortMode = std::clamp((int)[MUEWDefaults() integerForKey:@"MUEWSort"], 0, ui::SortModeCount - 1);
+        sortReverse = [MUEWDefaults() boolForKey:@"MUEWSortReverse"];
         NSDictionary* rd = [MUEWDefaults() dictionaryForKey:@"MUEWRatings"];
         for (NSString* k in rd) if ([rd[k] isKindOfClass:[NSNumber class]]) ui::setRating(ratings, std::string(k.UTF8String), [rd[k] intValue]);
         user::load(UserPresetDir(), ui::library());
@@ -203,7 +204,9 @@ static int SortForColumn(int c);
     }
     if (kind==2) {
         static NSArray* names=@[@"Bank",@"Name",@"Type",@"Author",@"Rating"];
-        return [NSString stringWithFormat:@"Sort: %@, %@",names[index],sortMode==SortForColumn(index) ? @"selected" : @"not selected"];
+        if (sortMode!=SortForColumn(index)) return [NSString stringWithFormat:@"Sort: %@, not selected",names[index]];
+        const bool descending=(sortMode==ui::SortRating)!=sortReverse;
+        return [NSString stringWithFormat:@"Sort: %@, selected, %@",names[index],descending ? @"descending" : @"ascending"];
     }
     if (kind==9) return [NSString stringWithFormat:@"Back to previous sound, %@",loadBack.empty() ? @"nothing earlier" : @"available"];
     if (kind==8) return [NSString stringWithFormat:@"Surprise me, load a random sound from %d shown",(int)visible.size()];
@@ -344,7 +347,7 @@ static int SortForColumn(int c);
 
 - (void)refilter {
     ++browserAXGeneration;
-    visible = ui::visiblePresets(filter, favorites, ui::library(), ratings, sortMode);
+    visible = ui::visiblePresets(filter, favorites, ui::library(), ratings, sortMode, sortReverse);
     if (!browserCursorSlug.empty()) {
         bool stillVisible = false;
         for (int idx : visible) if (ui::library().slug(idx) == browserCursorSlug) { stillVisible = true; break; }
@@ -353,6 +356,7 @@ static int SortForColumn(int c);
     if (browserOpen && browserAXList) NSAccessibilityPostNotification(browserAXList, NSAccessibilityLayoutChangedNotification);
     for (id control in browserAXDetailControls) NSAccessibilityPostNotification(control,NSAccessibilityValueChangedNotification);
     [MUEWDefaults() setInteger:sortMode forKey:@"MUEWSort"];
+    [MUEWDefaults() setBool:sortReverse forKey:@"MUEWSortReverse"];
     int rows = [self listRows];
     int maxScroll = std::max(0, (int)visible.size() - rows);
     scroll = std::clamp(scroll, 0, maxScroll);
@@ -4695,7 +4699,7 @@ static int SortForColumn(int c) {
     NSArray* heads = @[@"#", @"NAME", @"TYPE", @"AUTHOR", @"RATING"];
     for (int c = 0; c < 5; ++c) {
         bool on = SortForColumn(c) == sortMode && (c != 0 || sortMode == ui::SortBank) && c != 3;
-        NSString* h = on ? [heads[c] stringByAppendingString:c == 4 ? @" \u25BC" : @" \u25B2"] : heads[c];
+        NSString* h = on ? [heads[c] stringByAppendingString:((c == 4) != sortReverse) ? @" \u25BC" : @" \u25B2"] : heads[c];
         Text(h, [self tableHeader:c], 8, on ? C(0x75ead8) : C(0x6f7b8b), NSFontWeightBold);
     }
     [C(0x232c37) setFill]; NSRectFill(NSMakeRect(226, [self tableTop], 476, 1));
@@ -4881,7 +4885,10 @@ static int SortForColumn(int c) {
     bscroll=0; [self refilter];
 }
 - (void)chooseBrowserSort:(int)c {
-    sortMode=SortForColumn(c); [self refilter]; [self revealInTable];
+    const int next=SortForColumn(c);
+    if (next==sortMode) sortReverse=!sortReverse; // 0.92.0: the active header reverses
+    else { sortMode=next; sortReverse=false; }
+    [self refilter]; [self revealInTable];
 }
 
 - (void)browserMouseDown:(NSPoint)p {

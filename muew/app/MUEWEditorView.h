@@ -182,6 +182,7 @@ struct MUEWEditorHost {
     // ratings by slug, and the table scroll offset.
     bool browserOpen;
     int sortMode;
+    bool sortReverse; // 0.92.0: reverse of the column's natural direction
     muew::ui::Ratings ratings;
     int bscroll;
     std::string browserCursorSlug; // proposed row, distinct from the loaded preset
@@ -225,6 +226,7 @@ struct MUEWEditorHost {
 - (NSRect)browserSurpriseRect;
 - (BOOL)surpriseBrowserPick;
 - (NSRect)browserBackRect;
+- (NSRect)tableHeader:(int)c;
 - (NSRect)rowHeart:(int)r;
 - (void)toggleFavorite:(int)idx;
 - (BOOL)browserBack;

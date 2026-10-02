@@ -7,6 +7,7 @@
 #include "preset_bank.h"
 #include "oscillator.h"
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <map>
 #include <set>
@@ -730,11 +731,13 @@ inline void setRating(Ratings& r, const std::string& slug, int stars) {
     stars = std::clamp(stars, 0, 5);
     if (stars == 0 || ratingOf(r, slug) == stars) r.erase(slug); else r[slug] = stars;
 }
-inline void sortPresets(std::vector<int>& v, int mode, const Library& lib, const Ratings& ratings) {
+// 0.92.0: `reverse` flips the column's natural direction (name/type/bank
+// ascending, rating descending). Ties keep their bank or name order either way.
+inline void sortPresets(std::vector<int>& v, int mode, const Library& lib, const Ratings& ratings, bool reverse = false) {
     auto name = [&](int i) { return muewLower(lib.at(i).info.name); };
     switch (mode) {
     case SortName:
-        std::stable_sort(v.begin(), v.end(), [&](int a, int b) { return name(a) < name(b); });
+        std::stable_sort(v.begin(), v.end(), [&](int a, int b) { return reverse ? name(a) > name(b) : name(a) < name(b); });
         break;
     case SortCategory: {
         auto rank = [&](int i) {
@@ -744,14 +747,20 @@ inline void sortPresets(std::vector<int>& v, int mode, const Library& lib, const
         };
         std::stable_sort(v.begin(), v.end(), [&](int a, int b) {
             int x = rank(a), y = rank(b);
-            return x != y ? x < y : name(a) < name(b);
+            if (x != y) return reverse ? x > y : x < y;
+            return name(a) < name(b);
         });
         break;
     }
     case SortRating:
-        std::stable_sort(v.begin(), v.end(), [&](int a, int b) { return ratingOf(ratings, lib.slug(a)) > ratingOf(ratings, lib.slug(b)); });
+        std::stable_sort(v.begin(), v.end(), [&](int a, int b) {
+            int x = ratingOf(ratings, lib.slug(a)), y = ratingOf(ratings, lib.slug(b));
+            return reverse ? x < y : x > y;
+        });
         break;
-    default: std::sort(v.begin(), v.end()); break;
+    default:
+        if (reverse) std::sort(v.begin(), v.end(), std::greater<int>()); else std::sort(v.begin(), v.end());
+        break;
     }
 }
 
@@ -766,12 +775,12 @@ inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std
     return out;
 }
 inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std::string>& favorites,
-                                       const Library& lib, const Ratings& ratings, int sort) {
+                                       const Library& lib, const Ratings& ratings, int sort, bool reverse = false) {
     std::vector<int> out = visiblePresets(f, favorites, lib);
     if (f.minRating > 0)
         out.erase(std::remove_if(out.begin(), out.end(),
                                  [&](int i) { return ratingOf(ratings, lib.slug(i)) < f.minRating; }), out.end());
-    sortPresets(out, sort, lib, ratings);
+    sortPresets(out, sort, lib, ratings, reverse);
     return out;
 }
 // How many presets a sidebar row would show if picked (the other filters kept).

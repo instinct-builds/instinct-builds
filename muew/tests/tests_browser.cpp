@@ -105,7 +105,7 @@ int main() {
     check(user::importFile(dir.string(), (dir / "missing.muew").string(), lib) == -1, "Import of a missing file fails cleanly");
     fs::remove_all(dir); fs::remove(ext);
 
-    // 0.91.1: minimum-rating floor composes with every other filter.
+    // 0.92.0: minimum-rating floor composes with every other filter.
     {
         ui::Library rl; std::set<std::string> rf; ui::Ratings rr;
         ui::setRating(rr, rl.slug(0), 5); ui::setRating(rr, rl.slug(1), 3); ui::setRating(rr, rl.slug(2), 1);
@@ -126,7 +126,7 @@ int main() {
         check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).size() == 1, "clearing a rating drops the sound from the floor");
     }
 
-    // 0.91.1: SURPRISE selection.
+    // 0.92.0: SURPRISE selection.
     {
         check(ui::pickSurprise({}, 3, 7) == -1, "surprise on an empty list is -1");
         check(ui::pickSurprise({5}, 5, 9) == 5, "a single visible sound is returned even when loaded");
@@ -135,7 +135,7 @@ int main() {
         check(never && covers[0] && covers[1] && covers[2], "surprise never repeats the loaded sound and reaches every other visible sound");
     }
 
-    // 0.91.1: BACK history.
+    // 0.92.0: BACK history.
     {
         std::vector<int> h;
         ui::backPush(h, -1, 4, 108); ui::backPush(h, 4, 4, 108); ui::backPush(h, 200, 5, 108);
@@ -147,6 +147,28 @@ int main() {
         std::vector<int> big;
         for (int i = 0; i < 80; ++i) ui::backPush(big, i, i + 1, 108);
         check(big.size() == 32 && big.front() == 48 && big.back() == 79, "history keeps the newest 32");
+    }
+
+    // 0.92.0: sort direction.
+    {
+        ui::Library dl; ui::Ratings dr;
+        ui::setRating(dr, dl.slug(0), 2); ui::setRating(dr, dl.slug(1), 5); ui::setRating(dr, dl.slug(2), 2);
+        for (int mode : {(int)ui::SortBank, (int)ui::SortName, (int)ui::SortCategory, (int)ui::SortRating}) {
+            auto fwd = ui::visiblePresets({}, {}, dl, dr, mode, false);
+            auto rev = ui::visiblePresets({}, {}, dl, dr, mode, true);
+            check(fwd.size() == rev.size() && fwd.size() == (size_t)dl.count(), "reversed sort keeps every sound");
+            std::vector<int> a = fwd, b = rev; std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end());
+            check(a == b, "reversed sort is a permutation");
+        }
+        auto n1 = ui::visiblePresets({}, {}, dl, dr, ui::SortName, false), n2 = ui::visiblePresets({}, {}, dl, dr, ui::SortName, true);
+        check(std::equal(n1.begin(), n1.end(), n2.rbegin()), "name reverse is the exact reverse (names are unique)");
+        auto b1 = ui::visiblePresets({}, {}, dl, dr, ui::SortBank, false), b2 = ui::visiblePresets({}, {}, dl, dr, ui::SortBank, true);
+        check(std::equal(b1.begin(), b1.end(), b2.rbegin()), "bank reverse is the exact reverse");
+        auto r1 = ui::visiblePresets({}, {}, dl, dr, ui::SortRating, false), r2 = ui::visiblePresets({}, {}, dl, dr, ui::SortRating, true);
+        check(r1[0] == 1 && ui::ratingOf(dr, dl.slug(r2[0])) == 0 && ui::ratingOf(dr, dl.slug(r2.back())) == 5,
+              "rating is descending by default and ascending reversed (unrated first)");
+        auto pos = [](const std::vector<int>& v, int x) { return std::find(v.begin(), v.end(), x) - v.begin(); };
+        check(r1[1] == 0 && r1[2] == 2 && pos(r2, 0) < pos(r2, 2), "rating ties keep bank order in both directions");
     }
 
     if (g_fail == 0) { printf("\nALL BROWSER TESTS PASSED\n"); return 0; }
