@@ -221,6 +221,8 @@ struct MUEWEditorHost {
 - (NSRect)browserClearRect;
 - (BOOL)browserFiltersActive;
 - (BOOL)clearBrowserFilters;
+- (NSRect)browserSurpriseRect;
+- (BOOL)surpriseBrowserPick;
 - (int)browserCursorPosition;
 - (void)moveBrowserCursor:(int)direction;
 - (NSArray*)browserAccessibilityRows;

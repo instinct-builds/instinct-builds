@@ -791,6 +791,16 @@ inline std::vector<int> visiblePresets(const PresetFilter& f, const std::set<std
     return visiblePresets(f, favorites, library());
 }
 
+// 0.89.0: SURPRISE picks one library index from the visible list. It never
+// repeats the loaded sound when another choice exists. -1 for an empty list.
+// `roll` is any value; the caller supplies the randomness so tests are exact.
+inline int pickSurprise(const std::vector<int>& visible, int loaded, unsigned roll) {
+    if (visible.empty()) return -1;
+    std::vector<int> pool;
+    for (int i : visible) if (i != loaded) pool.push_back(i);
+    if (pool.empty()) return visible[0];
+    return pool[roll % pool.size()];
+}
 inline int indexOfSlug(const std::string& slug) {
     for (int i = 0; i < kFactoryPresetCount; ++i)
         if (slug == kFactoryPresetTexts[i].slug) return i;
