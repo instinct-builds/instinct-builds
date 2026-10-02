@@ -586,7 +586,7 @@ jobs:
             fi
             exit "$focus_status"
           fi
-          for state in type-refine-search type-refine-list matrix-reset-before matrix-reset-after matrix-reset-hidden-before matrix-reset-hidden-after text output-detail browser browser-cursor handoff-search handoff-list handoff-search-return handoff-search-caret handoff-search-return-caret; do test -s "out/MUEW-0.87.0-focus-$state.png"; done
+          for state in min-rating-floor type-refine-search type-refine-list matrix-reset-before matrix-reset-after matrix-reset-hidden-before matrix-reset-hidden-after text output-detail browser browser-cursor handoff-search handoff-list handoff-search-return handoff-search-caret handoff-search-return-caret; do test -s "out/MUEW-0.87.0-focus-$state.png"; done
       - name: Probe standalone accessibility from a separate process
         timeout-minutes: 10
         run: |

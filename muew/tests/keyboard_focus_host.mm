@@ -169,6 +169,20 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     }
     const auto savedFavorites=v->favorites;
     const auto savedRatings=v->ratings;
+    {   // lit-state pixels: a seeded 4-star floor over a narrowed list
+        const int floorPatches=host->patches;
+        v->ratings.clear();
+        for (int i=0;i<12;++i) muew::ui::setRating(v->ratings,muew::ui::library().slug(i*3),(i%5)+1);
+        v->filter.bank=-1; v->filter.category=""; v->sortMode=muew::ui::SortRating; [v refilter];
+        const size_t before=v->visible.size();
+        Check([ax[21] accessibilityPerformPress] && v->filter.minRating==4 && v->visible.size()<before && !v->visible.empty() &&
+              [[ax[21] accessibilityLabel] isEqualToString:@"Minimum rating: 4 stars, selected"] && host->patches==floorPatches,
+              "seeded 4-star floor narrows the list through the AX press without loading");
+        Snapshot(v,"min-rating-floor");
+        [ax[21] accessibilityPerformPress];
+        Check(v->filter.minRating==0,"snapshot floor clears");
+        v->ratings=savedRatings; v->sortMode=muew::ui::SortBank; [v refilter];
+    }
     const int sound=v->currentIndex, patches=host->patches;
     const std::string loadedSlug=muew::ui::library().slug(sound);
     [v moveBrowserCursor:1];
