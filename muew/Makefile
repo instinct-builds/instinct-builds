@@ -347,6 +347,9 @@ build/muew-tests-lforate93: tests/tests_lforate93.cpp src/layers.h src/voice.h s
 build/muew-tests-envtime94: tests/tests_envtime94.cpp src/layers.h src/voice.h src/preset.h src/ui_model.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
+build/muew-tests-osc1level95: tests/tests_osc1level95.cpp src/layers.h src/voice.h src/preset.h src/ui_model.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
 build/muew-demo-noisemod52: src/render_demo_noisemod52.cpp src/synth.h src/wav_writer.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 

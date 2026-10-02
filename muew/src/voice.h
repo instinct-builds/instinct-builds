@@ -42,7 +42,8 @@ struct ModRoute {
                       Osc1SpecMorph = 30, Osc2SpecMorph = 31, // 0.33.0: live spectral morph
                       NoiseColor = 32, // 0.52.0: modulated AIR/GRAIN/DUST color, never CLASSIC
                       Lfo1Rate = 33, Lfo2Rate = 34, Lfo3Rate = 35, Lfo4Rate = 36, // 0.93.0: octaves of LFO rate
-                      AmpEnvTime = 37, ModEnvTime = 38, Env3Time = 39 } dest; // 0.94.0: octaves of envelope A/D/R time (+ = slower)
+                      AmpEnvTime = 37, ModEnvTime = 38, Env3Time = 39, // 0.94.0: octaves of envelope A/D/R time (+ = slower)
+                      Osc1Level = 40 } dest; // 0.95.0: oscillator A gain offset around unity (-1 mutes A, +0.5 is 1.5x)
     double amount = 0.0; // semitones for pitch, Hz-scaled multiplier for cutoff, 0..1 for level
     // 0.16.0: response curve and aux source. curve bends the source value
     // (-1 log .. 0 linear .. +1 exp, symmetric for bipolar sources); aux is
@@ -318,7 +319,8 @@ public:
             if (r.source == ModRoute::Source::LFO3) usesLfo3_ = true;
             if (r.source == ModRoute::Source::LFO4) usesLfo4_ = true;
         }
-        usesLfoRateAny_ = false; usesEnvTimeAny_ = false;
+        usesLfoRateAny_ = false; usesEnvTimeAny_ = false; usesOsc1Level_ = false;
+        for (const auto& r : routes) if (r.dest == ModRoute::Dest::Osc1Level && !sourceIsRack((int)r.source)) usesOsc1Level_ = true;
         for (int i = 0; i < 3; ++i) usesEnvTime_[i] = false;
         for (int i = 0; i < 4; ++i) usesLfoRate_[i] = false;
         for (const auto& r : routes) {
@@ -624,7 +626,7 @@ public:
         }
         float osc2Level = static_cast<float>(
             std::clamp(params_.osc2Level + modSum(ModRoute::Dest::Osc2Level), 0.0, 1.0));
-        const float g1 = 1.0f - osc2Level * 0.5f, g2 = osc2Level;
+        const float g1 = (1.0f - osc2Level * 0.5f) * (usesOsc1Level_ ? static_cast<float>(std::clamp(1.0 + modSum(ModRoute::Dest::Osc1Level), 0.0, 1.5)) : 1.0f), g2 = osc2Level;
         // 0.12.0: engage the DC blocker for the rest of the note the first time
         // an oscillator that can carry DC is heard. Sounds that never do so
         // never run it, and stay sample-identical to 0.11.0.
@@ -965,6 +967,7 @@ private:
     Envelope env3_;
     bool usesLfo3_ = false, usesLfo4_ = false;
     bool usesLfoRate_[4] = {false, false, false, false}, usesLfoRateAny_ = false; // 0.93.0
+    bool usesOsc1Level_ = false; // 0.95.0
     bool usesEnvTime_[3] = {false, false, false}, usesEnvTimeAny_ = false; // 0.94.0
     double svPrev_[kModSources] = {};
     const CustomTable* custom1_ = nullptr; const CustomTable* custom2_ = nullptr;

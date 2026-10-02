@@ -952,6 +952,21 @@ int main() {
         printf("ENV TIME destination 39 recalled through AU; 40 published parameter IDs unchanged\n");
     }
 
+    // 0.95.0: LEVEL A destination 40 is appended; existing route lines carry it.
+    {
+        muew::Preset p = muew::factoryPresets()[0], got;
+        muew::ModRoute r; r.source=muew::ModRoute::Source::LFO1; r.dest=muew::ModRoute::Dest::Osc1Level; r.amount=-.5;
+        if (p.routes.empty()) p.routes.push_back(r); else p.routes[0]=r;
+        AudioUnit t=openUnit();
+        bool ok=t && setState(t,p) && getState(t,got);
+        auto saved=got.serialize();
+        if (!ok || !(got==p) || saved.find("\nroute 0 40 -0.5") == std::string::npos) {
+            printf("FAIL: AU LEVEL A route state\n"); return 1;
+        }
+        AudioUnitUninitialize(t); AudioComponentInstanceDispose(t);
+        printf("LEVEL A destination 40 recalled through AU; 40 published parameter IDs unchanged\n");
+    }
+
     // 0.53.0: stereo width is a separate optional line, not a new AU parameter.
     {
         muew::Preset p=muew::factoryPresets()[0],got;

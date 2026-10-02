@@ -21,7 +21,7 @@ static double phaseAfter(VoiceParams vp, const std::vector<ModRoute>& routes, in
 static double wrap(double x) { return x - std::floor(x); }
 int main() {
     ck((int)D::Lfo1Rate == 33 && (int)D::Lfo4Rate == 36 && params::Count == 40 &&
-       ui::matrixDests().size() == 40 && ui::matrixDests()[32] == D::NoiseColor && ui::matrixDests()[36] == D::Lfo4Rate &&
+       ui::matrixDests().size() == 41 && ui::matrixDests()[32] == D::NoiseColor && ui::matrixDests()[36] == D::Lfo4Rate &&
        std::string(ui::destName(D::Lfo3Rate)) == "LFO3 RATE", "destinations 33-36 appended, AU IDs unchanged, labels visible");
     ck(ui::routeScale(D::Lfo1Rate) == 4.0, "full scale is four octaves");
     VoiceParams vp; vp.lfo2Rate = 1.0; vp.macros[0] = 1.0;
@@ -57,8 +57,8 @@ int main() {
     p.routes = {{S::Macro1, D::Lfo2Rate, 1.0}, {S::LFO1, D::Lfo4Rate, -0.5}, {S::Keytrack, D::Lfo1Rate, 0.75}};
     auto text = p.serialize(); Preset q;
     ck(q.parse(text) && q == p && text.find(" 34 ") != std::string::npos, "routes round-trip with numeric IDs 33-36");
-    Preset junk; junk.routes = {{S::Macro1, (D)40, 1.0}};
-    Preset back2; ck(!back2.parse(junk.serialize()) || back2.routes.empty(), "unknown destination 40 is still refused");
+    Preset junk; junk.routes = {{S::Macro1, (D)41, 1.0}};
+    Preset back2; ck(!back2.parse(junk.serialize()) || back2.routes.empty(), "unknown destination 41 is still refused");
     bool factories = factoryPresets().size() == 108;
     for (const auto& f : factoryPresets()) for (const auto& r : f.routes) factories &= (int)r.dest < 33;
     ck(factories, "all 108 factory presets predate destination 33");

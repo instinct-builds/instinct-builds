@@ -24,7 +24,7 @@ static double levelAfter(const VoiceParams& vp, const std::vector<ModRoute>& rou
     return v.envelope(env).level();
 }
 int main() {
-    ck((int)D::AmpEnvTime == 37 && (int)D::Env3Time == 39 && params::Count == 40 && ui::matrixDests().size() == 40 &&
+    ck((int)D::AmpEnvTime == 37 && (int)D::Env3Time == 39 && params::Count == 40 && ui::matrixDests().size() == 41 &&
        ui::matrixDests()[39] == D::Env3Time && std::string(ui::destName(D::ModEnvTime)) == "MOD ENV TIME", "destinations 37-39 appended, AU IDs unchanged, labels visible");
     ck(ui::routeScale(D::AmpEnvTime) == 4.0, "full scale is four octaves");
     const int N = 2205; // 50 ms: halfway up a 100 ms attack
@@ -58,8 +58,8 @@ int main() {
     Preset p; p.routes = {{S::Macro1, D::AmpEnvTime, 1.0}, {S::Velocity, D::ModEnvTime, -0.5}, {S::LFO1, D::Env3Time, 0.75}};
     auto text = p.serialize(); Preset q;
     ck(q.parse(text) && q == p && text.find(" 37 ") != std::string::npos, "routes round-trip with numeric IDs 37-39");
-    Preset junk; junk.routes = {{S::Macro1, (D)40, 1.0}};
-    Preset b2; ck(!b2.parse(junk.serialize()) || b2.routes.empty(), "unknown destination 40 is still refused");
+    Preset junk; junk.routes = {{S::Macro1, (D)41, 1.0}};
+    Preset b2; ck(!b2.parse(junk.serialize()) || b2.routes.empty(), "unknown destination 41 is still refused");
     bool factories = factoryPresets().size() == 108;
     for (const auto& f : factoryPresets()) for (const auto& r : f.routes) factories &= (int)r.dest < 37;
     ck(factories, "all 108 factory presets predate destination 37");

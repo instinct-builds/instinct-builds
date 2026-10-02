@@ -91,6 +91,7 @@ inline const char* destName(ModRoute::Dest d) {
     case ModRoute::Dest::AmpEnvTime: return "AMP ENV TIME"; // 0.94.0
     case ModRoute::Dest::ModEnvTime: return "MOD ENV TIME";
     case ModRoute::Dest::Env3Time: return "ENV3 TIME";
+    case ModRoute::Dest::Osc1Level: return "LEVEL A"; // 0.95.0
     }
     return "?";
 }
@@ -222,7 +223,8 @@ inline const std::vector<ModRoute::Dest>& matrixDests() {
                                   D::Osc1SpecMorph, D::Osc2SpecMorph, // 0.33.0
                                   D::NoiseColor, // 0.52.0 appended
                                   D::Lfo1Rate, D::Lfo2Rate, D::Lfo3Rate, D::Lfo4Rate, // 0.93.0 appended
-                                  D::AmpEnvTime, D::ModEnvTime, D::Env3Time}; // 0.94.0 appended
+                                  D::AmpEnvTime, D::ModEnvTime, D::Env3Time, // 0.94.0 appended
+                                  D::Osc1Level}; // 0.95.0 appended
     return v;
 }
 // A new route starts at a musical quarter of full scale.
