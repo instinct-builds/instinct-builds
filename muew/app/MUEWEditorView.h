@@ -50,6 +50,7 @@ struct MUEWEditorHost {
     MUEWEditorHost* host; // not owned
     muew::Preset current;
     int currentIndex;
+    std::vector<int> loadBack; // 0.90.0: previously loaded library indices, newest last
     bool edited;
     muew::PresetFilter filter;
     int chip;
@@ -223,6 +224,8 @@ struct MUEWEditorHost {
 - (BOOL)clearBrowserFilters;
 - (NSRect)browserSurpriseRect;
 - (BOOL)surpriseBrowserPick;
+- (NSRect)browserBackRect;
+- (BOOL)browserBack;
 - (int)browserCursorPosition;
 - (void)moveBrowserCursor:(int)direction;
 - (NSArray*)browserAccessibilityRows;

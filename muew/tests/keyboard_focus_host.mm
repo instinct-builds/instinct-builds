@@ -33,7 +33,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.89.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.90.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -142,10 +142,10 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     // Query AppKit's exposed tree as a client: the native Search survives,
     // while rows represent immutable slugs. Reading/traversal is inert.
     NSArray* ax=[v accessibilityChildren];
-    Check(ax.count==36 && ax[0]==v->search && [[ax[25] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
-          [[ax[25] accessibilityLabel] isEqualToString:@"Preset results"],
+    Check(ax.count==37 && ax[0]==v->search && [[ax[26] accessibilityRole] isEqualToString:NSAccessibilityListRole] &&
+          [[ax[26] accessibilityLabel] isEqualToString:@"Preset results"],
           "accessibility tree exposes native Search, navigation and named results list");
-    id list=ax.count>25 ? ax[25] : nil;
+    id list=ax.count>26 ? ax[26] : nil;
     id bankFactory=ax.count>2 ? ax[2] : nil;
     id typeLead=ax.count>7 ? ax[7] : nil;
     id sortName=ax.count>15 ? ax[15] : nil;
@@ -153,7 +153,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
           [[typeLead accessibilityLabel] containsString:@"Type: Lead"] &&
           [[sortName accessibilityLabel] containsString:@"Sort: Name"],
           "accessible navigation controls have exact names and stable order");
-    id favorite=ax[31], rating=ax[28];
+    id favorite=ax[32], rating=ax[29];
     {
         id floor5=ax[22];
         const int floorPatches=host->patches;
@@ -199,7 +199,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
               "native mouseDown on minimum-rating stars sets, clears and re-sets the floor without load or note");
         clickStar(4);
         Check(v->filter.minRating==0,"native mouseDown on the lit star clears the floor");
-        {   // 0.89.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
+        {   // 0.90.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
             id surprise=[v accessibilityChildren][24];
             const int surpriseOrigin=v->currentIndex;
             v->filter=muew::PresetFilter(); v->filter.category="Lead"; [v refilter];
@@ -221,6 +221,31 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             const int wasN=v->currentIndex, pN=host->patches;
             [v mouseDown:se];
             Check(v->currentIndex!=wasN && allowed.count(v->currentIndex) && host->patches==pN+1,"native mouseDown on SURPRISE ME loads one visible sound");
+            {   // 0.90.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
+                id back=[v accessibilityChildren][25];
+                v->loadBack.clear(); [v refilter];
+                Check([[back accessibilityLabel] isEqualToString:@"Back to previous sound, nothing earlier"] && ![back accessibilityPerformPress],
+                      "back is inert with no history");
+                const int a0=v->currentIndex;
+                [surprise accessibilityPerformPress]; const int b0=v->currentIndex;
+                [surprise accessibilityPerformPress];
+                Snapshot(v,"back-active");
+                const int pB=host->patches, onB=(int)host->on.size();
+                const bool first=[back accessibilityPerformPress] && v->currentIndex==b0 && host->patches==pB+1;
+                const bool second=[back accessibilityPerformPress] && v->currentIndex==a0 && host->patches==pB+2;
+                const bool third=![back accessibilityPerformPress] && v->currentIndex==a0 && host->patches==pB+2;
+                Check(first && second && third && v->loadBack.empty() && (int)host->on.size()==onB &&
+                      [[back accessibilityLabel] isEqualToString:@"Back to previous sound, nothing earlier"],
+                      "back AX press restores previous sounds newest first, loads once each, adds no history, plays no note");
+                [surprise accessibilityPerformPress]; const int c0=v->currentIndex;
+                NSRect brr=[v browserBackRect];
+                NSEvent* be=[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:NSMakePoint(NSMidX(brr),NSMidY(brr)) modifierFlags:0
+                    timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+                const int pC=host->patches;
+                [v mouseDown:be];
+                Check(c0!=a0 && v->currentIndex==a0 && host->patches==pC+1,"native mouseDown on BACK restores the previous sound");
+                (void)c0;
+            }
             v->search.stringValue=@"zzzz-no-match"; v->filter.query="zzzz-no-match"; [v refilter];
             const int emptyIdx=v->currentIndex, emptyP=host->patches;
             Check(v->visible.empty() && ![surprise accessibilityPerformPress] && v->currentIndex==emptyIdx && host->patches==emptyP,
@@ -230,7 +255,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             Snapshot(v,"surprise-all");
             [v loadPresetIndex:surpriseOrigin]; [v refilter];
         }
-        {   // 0.89.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
+        {   // 0.90.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
             id clear=[v accessibilityChildren][23];
             const int clearPatches=host->patches; const int clearOn=(int)host->on.size();
             Check([[clear accessibilityLabel] isEqualToString:@"Clear all filters, nothing to clear"] && ![clear accessibilityPerformPress],
@@ -256,7 +281,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         }
         v->ratings=savedRatings; v->sortMode=muew::ui::SortBank; [v refilter];
     }
-    ax=[v accessibilityChildren]; favorite=ax[31]; rating=ax[28]; // loads in the blocks above retire older loaded-sound controls
+    ax=[v accessibilityChildren]; favorite=ax[32]; rating=ax[29]; // loads in the blocks above retire older loaded-sound controls
     const int sound=v->currentIndex, patches=host->patches;
     const std::string loadedSlug=muew::ui::library().slug(sound);
     [v moveBrowserCursor:1];
@@ -264,15 +289,15 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
           host->patches==patches && v->currentIndex==sound,
           "favorite targets loaded sound, not proposed row, without loading");
     Check([rating accessibilityPerformPress] && muew::ui::ratingOf(v->ratings,loadedSlug)==(muew::ui::ratingOf(savedRatings,loadedSlug)==3 ? 0 : 3) &&
-          favorite==[v accessibilityChildren][31],"rating shares loaded-sound path and survives refilter");
+          favorite==[v accessibilityChildren][32],"rating shares loaded-sound path and survives refilter");
     Snapshot(v,"accessible-detail");
     [v loadPresetIndex:(sound+1)%muew::ui::library().count()];
     Check(![favorite accessibilityPerformPress] && ![rating accessibilityPerformPress],
           "retained loaded-sound controls refuse to target newly loaded preset");
     [v loadPresetIndex:sound];
     v->favorites=savedFavorites; v->ratings=savedRatings; [v saveFavorites]; [v saveRatings]; [v refilter];
-    for (int index=32;index<=34;++index) {
-        const char* phase=index==32 ? "Save dialog launch" : index==33 ? "Import dialog launch" : "Export dialog launch";
+    for (int index=33;index<=35;++index) {
+        const char* phase=index==33 ? "Save dialog launch" : index==34 ? "Import dialog launch" : "Export dialog launch";
         muew_proof::Phase(phase);
         const int before=host->patches;
         __block BOOL modalSeen=NO;
@@ -315,7 +340,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
           "closed navigation disappears and retained control refuses press");
     [v setBrowserOpen:true];
     v->filter.bank=-1; v->filter.category=""; v->sortMode=muew::ui::SortBank; [v refilter];
-    ax=[v accessibilityChildren]; list=ax[25];
+    ax=[v accessibilityChildren]; list=ax[26];
     NSArray* rows=[list accessibilityChildren];
     Check(rows.count>1 && [[rows[0] accessibilityRole] isEqualToString:NSAccessibilityButtonRole] &&
           [[rows[0] accessibilityLabel] containsString:@"1 of 108"] &&

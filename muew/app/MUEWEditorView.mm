@@ -165,6 +165,7 @@ static int SortForColumn(int c);
         for (int i=1;i<=5;++i) add(6,i,[self minRatingStar:i-1]);
         add(7,0,[self browserClearRect]);
         add(8,0,[self browserSurpriseRect]);
+        add(9,0,[self browserBackRect]);
         add(3,0,[self browserClose]);
         browserAXControls=[controls copy];
     }
@@ -183,7 +184,7 @@ static int SortForColumn(int c);
     }
     NSMutableArray* children=[NSMutableArray arrayWithObject:search];
     // Navigation precedes results. Close is last so it cannot interrupt rows.
-    [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,24)]];
+    [children addObjectsFromArray:[browserAXControls subarrayWithRange:NSMakeRange(0,25)]];
     [children addObject:browserAXList];
     [children addObjectsFromArray:browserAXDetailControls];
     [children addObject:browserAXControls.lastObject];
@@ -204,6 +205,7 @@ static int SortForColumn(int c);
         static NSArray* names=@[@"Bank",@"Name",@"Type",@"Author",@"Rating"];
         return [NSString stringWithFormat:@"Sort: %@, %@",names[index],sortMode==SortForColumn(index) ? @"selected" : @"not selected"];
     }
+    if (kind==9) return [NSString stringWithFormat:@"Back to previous sound, %@",loadBack.empty() ? @"nothing earlier" : @"available"];
     if (kind==8) return [NSString stringWithFormat:@"Surprise me, load a random sound from %d shown",(int)visible.size()];
     if (kind==7) return [NSString stringWithFormat:@"Clear all filters, %@",[self browserFiltersActive] ? @"available" : @"nothing to clear"];
     if (kind==6) return [NSString stringWithFormat:@"Minimum rating: %d %@, %@",index,index==1 ? @"star" : @"stars",
@@ -241,6 +243,7 @@ static int SortForColumn(int c);
     if (kind==2 && (index==0 || index==1 || index==2 || index==4)) { [self chooseBrowserSort:index]; return YES; }
     if (kind==7 && index==0) return [self clearBrowserFilters];
     if (kind==8 && index==0) return [self surpriseBrowserPick];
+    if (kind==9 && index==0) return [self browserBack];
     if (kind==6 && index>=1 && index<=5) { [self chooseBrowserMinRating:index]; return YES; }
     if (kind==3 && index==0) { [self setBrowserOpen:false]; return YES; }
     return NO;
@@ -421,9 +424,11 @@ static int SortForColumn(int c);
         }
 }
 
+static bool loadingBack = false; // 0.90.0: BACK restores without growing its own history
 - (void)loadPresetIndex:(int)i {
     const ui::Library& lib = ui::library();
     if (i < 0 || i >= lib.count()) return;
+    if (!loadingBack) ui::backPush(loadBack, currentIndex, i, lib.count()); // 0.90.0
     ++browserAXDetailEpoch; browserAXDetailControls=nil;
     currentIndex = i;
     current = lib.at(i);
@@ -4635,6 +4640,12 @@ static int SortForColumn(int c) {
         TextA(@"SURPRISE ME", NSMakeRect(sr.origin.x, sr.origin.y+3, sr.size.width, 13), 8,
               visible.empty() ? C(0x5f6b7b) : C(0x75ead8), NSFontWeightSemibold, NSTextAlignmentCenter);
     }
+    {
+        NSRect br=[self browserBackRect];
+        FillRound(br, 9, loadBack.empty() ? C(0x1d232d) : C(0x21423e));
+        TextA(@"\u25C0 BACK", NSMakeRect(br.origin.x, br.origin.y+3, br.size.width, 13), 8,
+              loadBack.empty() ? C(0x5f6b7b) : C(0x75ead8), NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
     TextA(@"\u2715", [self browserClose], 12, C(0x9ca6b4), NSFontWeightRegular, NSTextAlignmentCenter);
     [self drawKeyboardCloseFocus:[self browserClose]];
     [C(0x232c37) setFill]; NSRectFill(NSMakeRect(b.origin.x + 12, t - 42, b.size.width - 24, 1));
@@ -4842,6 +4853,14 @@ static int SortForColumn(int c) {
     else filter.category=i==0 ? std::string() : factoryCategories()[i-1];
     bscroll=0; [self refilter];
 }
+- (NSRect)browserBackRect { NSRect b=[self browserRect]; return NSMakeRect(518, NSMaxY(b)-31, 52, 18); } // 0.90.0
+- (BOOL)browserBack {
+    const int target=ui::backPop(loadBack, currentIndex, ui::library().count());
+    if (target<0) return NO;
+    loadingBack=true; [self loadPresetIndex:target]; loadingBack=false;
+    browserCursorSlug.clear(); [self revealInTable]; [self setNeedsDisplay:YES];
+    return YES;
+}
 - (BOOL)surpriseBrowserPick {
     int pick=ui::pickSurprise(visible,currentIndex,(unsigned)arc4random());
     if (pick<0) return NO;
@@ -4879,6 +4898,7 @@ static int SortForColumn(int c) {
             if (filter.tags.count(t)) filter.tags.erase(t); else filter.tags.insert(t);
             bscroll = 0; [self refilter]; return;
         }
+    if (NSPointInRect(p, [self browserBackRect])) { [self browserBack]; return; }
     if (NSPointInRect(p, [self browserSurpriseRect])) { [self surpriseBrowserPick]; return; }
     if ([self browserFiltersActive] && NSPointInRect(p, [self browserClearRect])) { [self clearBrowserFilters]; return; }
     for (int s = 0; s < 5; ++s)

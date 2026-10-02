@@ -801,6 +801,18 @@ inline int pickSurprise(const std::vector<int>& visible, int loaded, unsigned ro
     if (pool.empty()) return visible[0];
     return pool[roll % pool.size()];
 }
+// 0.90.0: BACK history. A load records the sound it replaces (never itself),
+// capped at 32. Pop skips stale or current entries; -1 when nothing earlier.
+inline void backPush(std::vector<int>& h, int current, int next, int count) {
+    if (current < 0 || current >= count || current == next) return;
+    h.push_back(current);
+    if (h.size() > 32) h.erase(h.begin());
+}
+inline int backPop(std::vector<int>& h, int current, int count) {
+    while (!h.empty() && (h.back() < 0 || h.back() >= count || h.back() == current)) h.pop_back();
+    if (h.empty()) return -1;
+    int t = h.back(); h.pop_back(); return t;
+}
 inline int indexOfSlug(const std::string& slug) {
     for (int i = 0; i < kFactoryPresetCount; ++i)
         if (slug == kFactoryPresetTexts[i].slug) return i;

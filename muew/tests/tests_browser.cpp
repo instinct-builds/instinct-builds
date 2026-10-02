@@ -105,7 +105,7 @@ int main() {
     check(user::importFile(dir.string(), (dir / "missing.muew").string(), lib) == -1, "Import of a missing file fails cleanly");
     fs::remove_all(dir); fs::remove(ext);
 
-    // 0.89.0: minimum-rating floor composes with every other filter.
+    // 0.90.0: minimum-rating floor composes with every other filter.
     {
         ui::Library rl; std::set<std::string> rf; ui::Ratings rr;
         ui::setRating(rr, rl.slug(0), 5); ui::setRating(rr, rl.slug(1), 3); ui::setRating(rr, rl.slug(2), 1);
@@ -126,13 +126,27 @@ int main() {
         check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).size() == 1, "clearing a rating drops the sound from the floor");
     }
 
-    // 0.89.0: SURPRISE selection.
+    // 0.90.0: SURPRISE selection.
     {
         check(ui::pickSurprise({}, 3, 7) == -1, "surprise on an empty list is -1");
         check(ui::pickSurprise({5}, 5, 9) == 5, "a single visible sound is returned even when loaded");
         bool never=true, covers[3]={false,false,false};
         for (unsigned r=0;r<30;++r) { int p=ui::pickSurprise({4,5,6,7}, 5, r); never=never && p!=5 && p>=4 && p<=7; if (p==4) covers[0]=true; if (p==6) covers[1]=true; if (p==7) covers[2]=true; }
         check(never && covers[0] && covers[1] && covers[2], "surprise never repeats the loaded sound and reaches every other visible sound");
+    }
+
+    // 0.90.0: BACK history.
+    {
+        std::vector<int> h;
+        ui::backPush(h, -1, 4, 108); ui::backPush(h, 4, 4, 108); ui::backPush(h, 200, 5, 108);
+        check(h.empty() && ui::backPop(h, 4, 108) == -1, "no history for first load, same sound, or invalid index");
+        ui::backPush(h, 4, 9, 108); ui::backPush(h, 9, 2, 108);
+        check(ui::backPop(h, 2, 108) == 9 && ui::backPop(h, 9, 108) == 4 && ui::backPop(h, 4, 108) == -1, "BACK walks previous sounds newest first");
+        h = {7, 3, 3};
+        check(ui::backPop(h, 3, 108) == 7, "BACK skips an entry equal to the loaded sound");
+        std::vector<int> big;
+        for (int i = 0; i < 80; ++i) ui::backPush(big, i, i + 1, 108);
+        check(big.size() == 32 && big.front() == 48 && big.back() == 79, "history keeps the newest 32");
     }
 
     if (g_fail == 0) { printf("\nALL BROWSER TESTS PASSED\n"); return 0; }
