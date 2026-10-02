@@ -235,7 +235,7 @@ int main(int argc,const char** argv) {
                sorted.count ? String((__bridge AXUIElementRef)sorted[0],kAXDescriptionAttribute).UTF8String : "");
         NSString* afterSort=sorted.count ? String((__bridge AXUIElementRef)sorted[0],kAXDescriptionAttribute) : @"";
         ok=ok && action==kAXErrorSuccess && sorted.count>0 &&
-           ![beforeSort isEqualToString:afterSort] && [String(sort,kAXDescriptionAttribute) hasSuffix:@", selected"];
+           ![beforeSort isEqualToString:afterSort] && [String(sort,kAXDescriptionAttribute) isEqualToString:@"Sort: Name, selected, ascending"];
         action=AXUIElementPerformAction(close,kAXPressAction);
         AXUIElementRef hidden=Find(window,@"AXList",@"Preset results");
         AXError stale=AXUIElementPerformAction(bank,kAXPressAction);
