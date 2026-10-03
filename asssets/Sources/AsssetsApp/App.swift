@@ -2909,6 +2909,9 @@ final class StudioLibrary: ObservableObject {
         if n > 1 { flash("Tagged \(n) assets") }
     }
     func removeTag(_ tag: String, from ids: Set<UUID>) { mutate("Remove Tag") { $0.removeTag(tag, from: ids) } }
+    func setClientNoteResolved(_ n: ClientNote, on id: UUID, resolved: Bool) {
+        mutate(resolved ? "Resolve Note" : "Reopen Note") { _ = $0.setClientNote(n, on: id, resolved: resolved) }
+    }
     func removeClientNote(_ n: ClientNote, from id: UUID) {
         mutate("Remove Note") { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].clientNotes.removeAll { $0 == n } } }
     }
@@ -10376,17 +10379,24 @@ struct Inspector: View {
                             }
                         }
                         if !asset.clientNotes.isEmpty {
-                            InspectorLabel(text: "CLIENT NOTES").id("inspector-notes")
+                            InspectorLabel(text: asset.clientNotes.contains(where: \.resolved) ? "CLIENT NOTES · \(asset.clientNotes.filter { !$0.resolved }.count) OPEN" : "CLIENT NOTES").id("inspector-notes")
                             ForEach(asset.clientNotes, id: \.self) { n in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 6) {
                                         Image(systemName: "text.bubble.fill").foregroundStyle(Color(red: 1, green: 0.36, blue: 0.54))
                                         Text(n.reviewer).font(.caption.weight(.semibold))
                                         Spacer()
+                                        Button { model.setClientNoteResolved(n, on: asset.id, resolved: !n.resolved) } label: {
+                                            Image(systemName: n.resolved ? "checkmark.circle.fill" : "circle").font(.system(size: 11, weight: .semibold))
+                                        }
+                                        .buttonStyle(.plain).foregroundStyle(n.resolved ? Color.green : Color.secondary)
+                                        .help(n.resolved ? "Resolved on this Mac. Click to reopen. The client is not told." : "Mark this note resolved on this Mac. The client is not told.")
+                                        .accessibilityLabel(n.resolved ? "Reopen note" : "Mark note resolved")
                                         Button { model.removeClientNote(n, from: asset.id) } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
                                             .buttonStyle(.plain).foregroundStyle(.tertiary).help("Remove this note")
                                     }
                                     Text(n.text).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                        .strikethrough(n.resolved).opacity(n.resolved ? 0.55 : 1)
                                 }
                                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(Color(red: 1, green: 0.36, blue: 0.54).opacity(0.08), in: RoundedRectangle(cornerRadius: 9))

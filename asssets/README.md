@@ -1233,3 +1233,22 @@ real-browser suite runs. Product behavior and feedback format are unchanged.
 - Tests: unit tests for ordering and escaping, plus the Chrome-produced queue
   feedback imported natively and checked for row count and gallery title.
   The save dialog itself is not exercised in CI.
+
+
+## 1.81.0: tick off client notes
+
+- Each client note in the inspector has a circle button: mark it resolved to
+  strike it through and dim it, click again to reopen. The heading shows how
+  many notes are still open once any are resolved.
+- This is a local checklist on this Mac. It does not change the gallery, the
+  client's feedback file or what the client sees, and nobody is notified.
+- Re-importing a reviewer's file keeps a tick only on a note whose text on the
+  same asset is unchanged. Edited, new or withdrawn notes come back open, so a
+  changed request is never hidden as done. Another reviewer's identical text is a
+  separate note with its own tick.
+- Client Notes CSV gains a Status column (Open or Resolved).
+- Older libraries open unchanged: notes without the field are open, and open
+  notes are saved exactly as before.
+- Tests: tick and untick, identical vs edited re-import, other reviewer
+  isolation, stale-note guard, legacy decode and encode. The inspector button
+  is not exercised by a native click in CI.

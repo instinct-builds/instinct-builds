@@ -6,7 +6,24 @@ public struct ClientNote: Codable, Hashable, Sendable {
     public var reviewer: String
     public var text: String
     public var gallery: String
-    public init(reviewer: String, text: String, gallery: String) { self.reviewer = reviewer; self.text = text; self.gallery = gallery }
+    /// 1.81: the designer's local "done" tick. Never sent to the client; older catalogs decode as open.
+    public var resolved: Bool
+    public init(reviewer: String, text: String, gallery: String, resolved: Bool = false) {
+        self.reviewer = reviewer; self.text = text; self.gallery = gallery; self.resolved = resolved
+    }
+    enum CodingKeys: String, CodingKey { case reviewer, text, gallery, resolved }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        reviewer = try c.decode(String.self, forKey: .reviewer)
+        text = try c.decode(String.self, forKey: .text)
+        gallery = try c.decode(String.self, forKey: .gallery)
+        resolved = try c.decodeIfPresent(Bool.self, forKey: .resolved) ?? false
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(reviewer, forKey: .reviewer); try c.encode(text, forKey: .text); try c.encode(gallery, forKey: .gallery)
+        if resolved { try c.encode(true, forKey: .resolved) }
+    }
 }
 
 public enum ReviewGallery {
@@ -391,7 +408,10 @@ extension StudioCatalog {
         let index = Dictionary(uniqueKeysWithValues: assets.enumerated().map { ($1.id.uuidString.uppercased(), $0) })
         // A replacement drops this reviewer's previous notes even when a formerly
         // shared asset is no longer present in the new feedback file.
+        // A resolved tick survives a re-import only for a note whose text did not change.
+        var resolvedBefore: [Int: Set<String>] = [:]
         for i in assets.indices {
+            resolvedBefore[i] = Set(assets[i].clientNotes.filter { $0.resolved && Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }.map(\.text))
             assets[i].clientNotes.removeAll { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }
         }
         for e in scoped.items {
@@ -400,7 +420,7 @@ extension StudioCatalog {
                 r.favorites += 1
             }
             let text = FeedbackNoteText.saved(e.note)
-            if !text.isEmpty { r.notes += 1; assets[i].clientNotes.append(ClientNote(reviewer: reviewer, text: text, gallery: f.gallery)) }
+            if !text.isEmpty { r.notes += 1; assets[i].clientNotes.append(ClientNote(reviewer: reviewer, text: text, gallery: f.gallery, resolved: resolvedBefore[i]?.contains(text) == true)) }
         }
         if r.favorites > 0 {
             let rules = SmartRules(requiredTags: [ReviewGallery.clientPickTag])
