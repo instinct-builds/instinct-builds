@@ -8,6 +8,7 @@
 #import "MUEWMainMenu.h"
 #import "MUEWMidiInput.h"
 #include "synth.h"
+#include "session_state.h"
 #include <mutex>
 #include <atomic>
 #include <chrono>
@@ -64,7 +65,9 @@ struct StandaloneHost : MUEWEditorHost {
     v->host = binding;
     w.contentView = v;
     int start = ui::indexOfSlug("formant-talker");
-    [v loadPresetIndex:start >= 0 ? start : 0];
+    // 0.100.0: reopen on the sound that was on screen at quit. The proof launches keep their fixed start.
+    if (getenv("MUEW_AX_PROOF") || getenv("MUEW_AX_CONTROL") || getenv("MUEW_NO_SESSION") || ![self restoreSession])
+        [v loadPresetIndex:start >= 0 ? start : 0];
     // Only the AX IPC proof launch opts into an open browser. Normal launches
     // and AU embedding retain their existing initial state.
     if (getenv("MUEW_AX_PROOF")) { muew_proof::Watchdog("AX standalone target",150); [v setBrowserOpen:true]; }
@@ -139,6 +142,24 @@ struct StandaloneHost : MUEWEditorHost {
         [view showVoiceMorph:va count:gVoiceMorphN[0].load() b:vb count:gVoiceMorphN[1].load()]; // 0.36.0
     }];
 }
+- (BOOL)restoreSession {
+    NSString* t = [[NSUserDefaults standardUserDefaults] stringForKey:@"MUEWSession"];
+    if (!t) return NO;
+    std::string slug; Preset p;
+    if (!session::decode(std::string(t.UTF8String), slug, p)) return NO;
+    int idx = slug.empty() ? -1 : ui::indexOfSlug(slug);
+    if (idx >= 0 && p == ui::library().at(idx)) { [v loadPresetIndex:idx]; return YES; } // untouched library sound
+    binding->applyPreset(p, idx, true);
+    [v adoptPreset:p index:idx edited:true];
+    return YES;
+}
+- (void)saveSession {
+    if (getenv("MUEW_AX_PROOF") || getenv("MUEW_AX_CONTROL") || getenv("MUEW_NO_SESSION")) return;
+    std::string slug = v->currentIndex >= 0 ? ui::library().slug(v->currentIndex) : std::string();
+    [[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithUTF8String:session::encode(slug, v->current).c_str()] forKey:@"MUEWSession"];
+}
+- (void)applicationWillTerminate:(NSNotification*)n { [self saveSession]; }
+- (void)applicationDidResignActive:(NSNotification*)n { [self saveSession]; }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)s { return YES; }
 @end
 
