@@ -74,6 +74,8 @@ struct ASSSETSApp: App {
                     .disabled(library.catalog.clientNoteCount == 0)
                 Button("Export Client Decisions as CSV…") { library.exportClientDecisionsCSV() }
                     .disabled(library.catalog.clientDecisionCount == 0)
+                Button("Copy Revision Brief") { library.copyRevisionBrief() }
+                    .disabled(library.catalog.clientNoteCount == 0 && library.catalog.clientDecisionCount == 0)
                 Button("Recover Last Published Gallery…") { library.reopenPublicationRecovery() }
                     .disabled(!library.hasPublicationRecovery)
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
@@ -1109,6 +1111,23 @@ final class StudioLibrary: ObservableObject {
         } catch {
             flash("Could not save client notes CSV")
         }
+    }
+
+    /// Copies a plain-text revision to-do for the selection, or the current view when nothing is selected.
+    @discardableResult
+    func copyRevisionBrief() -> RevisionBrief.Result {
+        let order = filtered.map(\.id)
+        let ids = selection.isEmpty ? order : order.filter(selection.contains)
+        let byID = Dictionary(uniqueKeysWithValues: catalog.assets.map { ($0.id, $0) })
+        let result = RevisionBrief.render(ids.compactMap { byID[$0] })
+        guard result.assets > 0 else {
+            flash("Nothing to brief: no change requests or open notes in \(selection.isEmpty ? "this view" : "the selection")")
+            return result
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(result.text, forType: .string)
+        flash("Copied revision brief: \(result.assets) \(result.assets == 1 ? "asset" : "assets"), \(result.notes) open \(result.notes == 1 ? "note" : "notes")")
+        return result
     }
 
     func exportClientDecisionsCSV() {
@@ -4046,6 +4065,26 @@ final class StudioLibrary: ObservableObject {
             }
             let marker = "done saveable=\(saveable) name=\(draftName.replacingOccurrences(of: " ", with: "_")) saved=\(saved != nil) filterCleared=\(decisionFilter == .any) before=\(before) after=\(after) summary=\(saved?.rules.summary.replacingOccurrences(of: " ", with: "_") ?? "none")"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-decision-smart.txt"), atomically: true, encoding: .utf8)
+        case "revision-brief":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(3).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-03", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            for (who, entries) in [("Jordan", [(0, "Try a warmer backdrop", "changes"), (1, "", "approved"), (2, "Fix the shadow", "")]), ("Sam", [(0, "", "changes")])] {
+                importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: who,
+                    items: entries.map { .init(id: ids[$0.0].uuidString, favorite: false, note: $0.1, status: $0.2.isEmpty ? nil : $0.2) })], unreadable: 0)
+            }
+            if let done = catalog.assets.first(where: { $0.id == ids[2] })?.clientNotes.first { setClientNoteResolved(done, on: ids[2], resolved: true) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 9.3) {
+                self.selection = []
+                let r = self.copyRevisionBrief()
+                let pasted = NSPasteboard.general.string(forType: .string)
+                try? r.text.write(to: self.supportRoot.appendingPathComponent("demo-revision-brief.md"), atomically: true, encoding: .utf8)
+                let marker = "done assets=\(r.assets) notes=\(r.notes) pasteboard=\(pasted == r.text) lines=\(r.text.split(separator: "\n", omittingEmptySubsequences: false).count) resolvedLeftOut=\(!r.text.contains("Fix the shadow")) approvedLeftOut=\(r.assets == 1)"
+                try? marker.write(to: self.supportRoot.appendingPathComponent("demo-revision-brief.txt"), atomically: true, encoding: .utf8)
+            }
         case "decision-filter":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString

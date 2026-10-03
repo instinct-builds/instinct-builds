@@ -1448,3 +1448,28 @@ left-align change was a guess and is kept only because it is harmless.
 CI now records the summary, search field and filter row frames
 (`demo-header-frames.txt`, shipped in the artifact) and fails the demo if any
 starts left of the window. The row is not checked for right-edge overflow.
+
+
+## 1.87.0: copy a revision brief
+
+- File > Copy Revision Brief puts a plain-text to-do on the
+  clipboard for the selected assets, or for everything in the current view when
+  nothing is selected. It lists assets where any reviewer asked for changes and
+  assets with unresolved notes, each with who asked for changes and the open
+  notes (multi-line notes stay together). Approved assets, resolved notes and
+  assets with nothing open are left out. A toast reports the counts; with nothing
+  to list it says so and copies nothing.
+- It is text for pasting into an email or chat: titles, source filenames,
+  reviewer labels and note text. No folder paths, hashes or images. A closing line
+  says reviewer names are labels typed into the gallery, not verified identities.
+  Nothing is sent anywhere and no feedback or decision changes.
+- Tests cover inclusion rules, multi-line notes, de-duplicated reviewers, and
+  that no path or resolved text leaks. The `revision-brief` demo imports two
+  reviewers, resolves one note, copies the brief from the live menu code path,
+  and checks the pasteboard string equals the generated text:
+  `done assets=1 notes=1 pasteboard=true lines=8 resolvedLeftOut=true
+  approvedLeftOut=true`. CI ships the brief as a .md file and the capture is
+  taken while the toast is still up. The menu item is not natively clicked.
+- Not built after checking: undoing a feedback import. Undo restores assets and
+  collection lists but not boards or the pick ledger, so it would leave a
+  half-undone import that looks complete.

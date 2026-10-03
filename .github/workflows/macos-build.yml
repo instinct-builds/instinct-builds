@@ -295,6 +295,13 @@ jobs:
           shoot notes-resolve 1440x900 notes-resolve demo-notes-resolve.txt
           grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
           cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
+          rm -f "$SUP/demo-revision-brief.txt" "$SUP/demo-revision-brief.md"
+          shoot revision-brief 1440x900 revision-brief demo-revision-brief.txt before
+          cat "$SUP/demo-revision-brief.txt"
+          grep -q '^done assets=1 notes=1 pasteboard=true lines=8 resolvedLeftOut=true approvedLeftOut=true$' "$SUP/demo-revision-brief.txt"
+          cat "$SUP/demo-revision-brief.md"
+          cp "$SUP/demo-revision-brief.txt" "ASSSETS-$ASSSETS_VERSION-revision-brief.txt"
+          cp "$SUP/demo-revision-brief.md" "ASSSETS-$ASSSETS_VERSION-revision-brief.md"
           rm -f "$SUP/demo-header-frames.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt
           cat "$SUP/demo-decision-smart.txt"
@@ -553,6 +560,8 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-filter.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-filter-view.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-revision-brief.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-revision-brief.md
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart-frame.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt

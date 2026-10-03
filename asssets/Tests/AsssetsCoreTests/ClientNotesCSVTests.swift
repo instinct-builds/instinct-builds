@@ -190,6 +190,29 @@ struct ClientNotesCSVTests {
         #expect(c.assets.filter(rules.matches).isEmpty)
     }
 
+    @Test func revisionBriefListsChangeRequestsAndOpenNotesOnly() {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/b/billboard.png")!, b = c.importFile(path: "/b/card.png")!, ok = c.importFile(path: "/b/ok.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-10-03", assets: [a, b, ok])!)
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Jordan", items: [
+            .init(id: a.uuidString, favorite: false, note: "Warmer backdrop\nand less glare", status: "changes"),
+            .init(id: b.uuidString, favorite: false, note: "Done already"),
+            .init(id: ok.uuidString, favorite: false, note: "", status: "approved")]))
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Sam", items: [
+            .init(id: a.uuidString, favorite: false, note: "", status: "changes")]))
+        let done = c.assets.first { $0.id == b }!.clientNotes[0]
+        _ = c.setClientNote(done, on: b, resolved: true)
+        let r = RevisionBrief.render(c.assets)
+        #expect(r.assets == 1 && r.notes == 1)
+        #expect(r.text.hasPrefix("Revision brief: 1 asset, 1 open note\n\n• billboard.png"))
+        #expect(r.text.contains("  Changes requested by Jordan, Sam\n"))
+        #expect(r.text.contains("  Open note, Jordan: Warmer backdrop\n    and less glare\n"))
+        #expect(!r.text.contains("card.png") && !r.text.contains("ok.png") && !r.text.contains("Done already") && !r.text.contains("/b/"))
+        #expect(r.text.hasSuffix("not verified identities.\n"))
+        #expect(RevisionBrief.render([]).text.isEmpty && RevisionBrief.render(c.assets.filter { $0.id == ok }).assets == 0)
+    }
+
     @Test func noNotesIsHeaderOnly() {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)

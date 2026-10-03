@@ -127,3 +127,35 @@ public enum ClientDecisionFilter: String, CaseIterable, Codable, Sendable {
 extension StudioCatalog {
     public func assetCount(matching f: ClientDecisionFilter) -> Int { assets.filter(f.matches).count }
 }
+
+/// A plain-text to-do for the next revision pass: assets a reviewer asked to change, and their open notes.
+/// Reviewer names are local draft labels from the feedback file, not verified identities.
+public enum RevisionBrief {
+    public struct Result: Equatable, Sendable { public var text: String; public var assets: Int; public var notes: Int }
+
+    public static func render(_ assets: [StudioAsset]) -> Result {
+        var blocks: [String] = [], noteTotal = 0
+        for a in assets {
+            let changers = a.clientDecisions.filter { $0.status == .changes }.map(\.reviewer)
+            let open = a.clientNotes.filter { !$0.resolved }
+            guard !changers.isEmpty || !open.isEmpty else { continue }
+            let file = a.importedPath.map { URL(fileURLWithPath: $0).lastPathComponent }
+            var lines = ["• " + a.title + (file.map { $0 == a.title ? "" : " (\($0))" } ?? "")]
+            if !changers.isEmpty { lines.append("  Changes requested by " + uniqued(changers).joined(separator: ", ")) }
+            for n in open {
+                let body = n.text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+                lines.append("  Open note, " + n.reviewer + ": " + body[0])
+                for extra in body.dropFirst() { lines.append("    " + extra) }
+                noteTotal += 1
+            }
+            blocks.append(lines.joined(separator: "\n"))
+        }
+        guard !blocks.isEmpty else { return Result(text: "", assets: 0, notes: 0) }
+        let head = "Revision brief: \(blocks.count) \(blocks.count == 1 ? "asset" : "assets"), \(noteTotal) open \(noteTotal == 1 ? "note" : "notes")"
+        let foot = "Reviewer names are labels typed into the review gallery, not verified identities."
+        return Result(text: ([head, ""] + blocks + ["", foot]).joined(separator: "\n") + "\n", assets: blocks.count, notes: noteTotal)
+    }
+    private static func uniqued(_ names: [String]) -> [String] {
+        var seen = Set<String>(); return names.filter { seen.insert($0.lowercased()).inserted }
+    }
+}
