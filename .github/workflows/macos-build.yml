@@ -296,11 +296,13 @@ jobs:
           grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
           cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt
+          cat "$SUP/demo-decision-smart.txt"
           grep -q '^done saveable=true name=Needs_Changes saved=true filterCleared=true before=2 after=3 summary=client_requested_changes$' "$SUP/demo-decision-smart.txt"
           cp "$SUP/demo-decision-smart.txt" "ASSSETS-$ASSSETS_VERSION-decision-smart.txt"
           rm -f "$SUP/demo-decision-filter-view.txt"
           shoot decision-filter 1440x900 decision-filter demo-decision-filter.txt
-          grep -q '^done changes=2 approved=1 shown=2 match=true canSave=false$' "$SUP/demo-decision-filter.txt"
+          cat "$SUP/demo-decision-filter.txt"
+          grep -q '^done changes=2 approved=1 shown=2 match=true canSave=true$' "$SUP/demo-decision-filter.txt"
           cp "$SUP/demo-decision-filter.txt" "ASSSETS-$ASSSETS_VERSION-decision-filter.txt"
           for i in $(seq 1 30); do [ -s "$SUP/demo-decision-filter-view.txt" ] && break; sleep 1; done
           cat "$SUP/demo-decision-filter-view.txt"
@@ -308,6 +310,7 @@ jobs:
           cp "$SUP/demo-decision-filter-view.txt" "ASSSETS-$ASSSETS_VERSION-decision-filter-view.txt"
           rm -f "$SUP/demo-client-decisions-view.txt"
           shoot client-decisions 1440x900 client-decisions demo-client-decisions.txt
+          cat "$SUP/demo-client-decisions.txt"
           grep -q '^done total=3 first=2 approved=1 changes=1 csvRows=4 board=true$' "$SUP/demo-client-decisions.txt"
           cp "$SUP/demo-client-decisions.txt" "ASSSETS-$ASSSETS_VERSION-client-decisions.txt"
           for i in $(seq 1 30); do [ -s "$SUP/demo-client-decisions-view.txt" ] && break; sleep 1; done

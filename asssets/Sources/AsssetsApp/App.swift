@@ -4036,7 +4036,11 @@ final class StudioLibrary: ObservableObject {
             importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Alex",
                 items: [.init(id: ids[3].uuidString, favorite: false, note: "", status: "changes")])], unreadable: 0)
             let after = saved.map { s in catalog.assets.filter(s.rules.matches).count } ?? -1
-            if let saved { show(smart: saved.id) }
+            if let saved {
+                show(smart: saved.id)
+                // The sidebar scrolls to the selected collection after a short delay; re-select once the window is up.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { self.selectedSmart = nil; self.show(smart: saved.id) }
+            }
             let marker = "done saveable=\(saveable) name=\(draftName.replacingOccurrences(of: " ", with: "_")) saved=\(saved != nil) filterCleared=\(decisionFilter == .any) before=\(before) after=\(after) summary=\(saved?.rules.summary.replacingOccurrences(of: " ", with: "_") ?? "none")"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-decision-smart.txt"), atomically: true, encoding: .utf8)
         case "decision-filter":
@@ -7746,7 +7750,7 @@ struct Sidebar: View {
     @State private var renameBoardText = ""
     @State private var templateNameText = ""
     var body: some View {
-        ScrollView {
+        ScrollViewReader { proxy in ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 10) {
                     ZStack {
@@ -7835,6 +7839,7 @@ struct Sidebar: View {
                         let n = model.catalog.smartAssets(smart.id).count
                         let badge: Color? = n == 0 ? nil : smart.rules.rights == .expired ? Theme.danger : smart.rules.rights == .expiringSoon ? Theme.warning : nil
                         SidebarRow(title: smart.name, symbol: smart.symbol, count: n, selected: model.selectedSmart == smart.id, accent: .smart, badge: badge) { model.show(smart: smart.id) }
+                            .id(smart.id)
                             .contextMenu {
                                 Button("Edit Rules…") { model.beginEdit(smart: smart.id) }
                                 Button("Rights Report…") { model.exportRightsReport(model.catalog.smartAssets(smart.id).map(\.id), title: smart.name,
@@ -7884,6 +7889,12 @@ struct Sidebar: View {
                     .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 8)
             }
             .padding(12)
+        }
+        // A smart collection chosen by Save Search or a link must be visible in the list.
+        .onChange(of: model.selectedSmart) { _, id in
+            guard let id else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { withAnimation { proxy.scrollTo(id, anchor: .center) } }
+        }
         }
         .background(Theme.sidebar)
         .alert("Rename Collection", isPresented: Binding(get: { model.renamingCollection != nil }, set: { if !$0 { model.renamingCollection = nil } })) {
@@ -8094,6 +8105,7 @@ struct AssetBrowser: View {
                 }
                 if let id = model.selectedSmart, let smart = model.catalog.smartCollection(id) {
                     Label(smart.rules.summary, systemImage: "line.3.horizontal.decrease.circle").font(.caption).foregroundStyle(Theme.smart).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)

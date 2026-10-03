@@ -1403,3 +1403,19 @@ line instead of leaving a misleading picture. Demo only; no product change.
   must read `saveable=true name=Needs_Changes saved=true filterCleared=true
   before=2 after=3 summary=client_requested_changes`. The editor row is not
   natively clicked.
+
+
+## 1.86.1: harness fixes caught after 1.86.0
+
+- The 1.85.0 decision-filter demo still expected `canSave=false`. 1.86.0 made
+  Save Search work with a Decisions filter on, and the expectation did not move
+  in the same patch, so that build failed its own check. The marker now expects
+  `canSave=true`. The new assertions print the actual marker line before the
+  grep for the decision demos, so a future mismatch shows what was observed.
+- Selecting a smart collection (including a new one from Save Search) now scrolls
+  the sidebar to it, so a long list no longer hides the collection just made. The
+  `decision-smart` demo re-selects it after 3 seconds so the capture shows the
+  sidebar after that scroll. Whether the row is on screen is checked by looking
+  at the PNG; there is no automated visibility assertion.
+- The smart collection summary line under the header is left-aligned in a full
+  width frame, which should fix the clipped "ient requested changes" start.
