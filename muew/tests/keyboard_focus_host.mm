@@ -37,7 +37,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.101.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.102.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -190,17 +190,17 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                 while (in.connectedSources<=base && until.timeIntervalSinceNow>0) { [in refresh]; pump(0.05); }
                 Check(in.connectedSources>base, "the input connects a newly appearing MIDI source");
                 Byte buf[256]; MIDIPacketList* pl=(MIDIPacketList*)buf; MIDIPacket* pk=MIDIPacketListInit(pl);
-                const Byte msg[]={0x90,60,100, 0xB0,1,127, 0xE0,127,127};
+                const Byte msg[]={0x90,60,100, 0xB0,1,127, 0xE0,127,127, 0xC0,5};
                 pk=MIDIPacketListAdd(pl,sizeof buf,pk,0,sizeof msg,msg); (void)pk;
                 MIDIReceived(src,pl);
                 until=[NSDate dateWithTimeIntervalSinceNow:3.0];
-                while (until.timeIntervalSinceNow>0) { @synchronized(got) { if (got.count>=3) break; } pump(0.05); }
+                while (until.timeIntervalSinceNow>0) { @synchronized(got) { if (got.count>=4) break; } pump(0.05); }
                 NSArray* ev; @synchronized(got) { ev=[got copy]; }
                 auto F=[&](NSUInteger i,NSUInteger j)->double { return [[(NSArray*)[ev objectAtIndex:i] objectAtIndex:j] doubleValue]; };
-                Check(ev.count==3 && (int)F(0,0)==muew::MidiEvent::NoteOn && (int)F(0,1)==60 && fabs(F(0,2)-100/127.0)<1e-6 &&
+                Check(ev.count==4 && (int)F(3,0)==muew::MidiEvent::Program && (int)F(3,1)==5 && (int)F(0,0)==muew::MidiEvent::NoteOn && (int)F(0,1)==60 && fabs(F(0,2)-100/127.0)<1e-6 &&
                       (int)F(1,0)==muew::MidiEvent::Wheel && F(1,2)==1.0 &&
                       (int)F(2,0)==muew::MidiEvent::Bend && fabs(F(2,2)-1.0)<1e-6,
-                      "a note, a mod wheel and a pitch bend sent to a virtual source arrive parsed, in order");
+                      "a note, a mod wheel, a pitch bend and a program change sent to a virtual source arrive parsed, in order");
                 MIDIEndpointDispose(src); MIDIClientDispose(pc);
             }
         }

@@ -138,6 +138,7 @@ struct StandaloneHost : MUEWEditorHost {
     NSError* err = nil;
     [engine startAndReturnError:&err];
     // 0.99.0: hardware MIDI keyboards and controllers play the standalone (all channels).
+    MUEWEditorView* view0 = v;
     midi = [[MUEWMidiInput alloc] initWithHandler:^(const MidiEvent& e) {
         std::lock_guard<std::mutex> g(*l);
         switch (e.kind) {
@@ -149,6 +150,10 @@ struct StandaloneHost : MUEWEditorHost {
         case MidiEvent::Bend: s->setPitchBend(e.value); break;
         case MidiEvent::Sustain: s->setSustain(e.value > 0.5f); break;
         case MidiEvent::AllNotesOff: s->allNotesOff(); break;
+        case MidiEvent::Program: { // 0.102.0: program N is factory sound N; off the main thread, after the lock is released
+            const int prog = e.note; MUEWEditorView* vw = view0;
+            if (prog < kFactoryPresetCount) dispatch_async(dispatch_get_main_queue(), ^{ [vw loadPresetIndex:prog]; });
+            break; }
         }
     }];
     MUEWEditorView* view = v; // 0.30.0: feed the header voice / CPU meter

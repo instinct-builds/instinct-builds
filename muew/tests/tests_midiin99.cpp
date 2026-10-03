@@ -35,7 +35,11 @@ int main() {
     e = P({0x90, 60, 100, 62, 90, 64, 80});
     ck(e.size() == 3 && e[1].note == 62 && e[2].note == 64 && e[2].kind == MidiEvent::NoteOn, "running status keeps playing notes");
     e = P({0xC0, 5});
-    ck(e.empty(), "program change is ignored");
+    ck(e.size() == 1 && e[0].kind == MidiEvent::Program && e[0].note == 5, "program change carries its number (0.102.0)");
+    e = P({0xC3, 127, 0x90, 60, 90});
+    ck(e.size() == 2 && e[0].kind == MidiEvent::Program && e[0].note == 127 && e[1].kind == MidiEvent::NoteOn, "program change from any channel, then a note");
+    e = P({0xC0});
+    ck(e.empty(), "a program change with no number is dropped");
     e = P({0x90, 60, 0xF8, 100});
     ck(e.size() == 1 && e[0].kind == MidiEvent::NoteOn && e[0].note == 60 && std::fabs(e[0].value - 100 / 127.0f) < 1e-6f, "a realtime byte inside a message does not break it");
     e = P({0xF0, 0x7E, 0x00, 0x09, 0x01, 0xF7, 0x90, 60, 100});

@@ -1,6 +1,6 @@
 // 0.99.0 MIDI byte-stream parser for the standalone's hardware input.
 // Mirrors the AU's controller map: mod wheel (CC1), sustain (CC64), all sound /
-// notes off (CC120/123), channel and poly pressure, 14-bit pitch bend. Omni:
+// notes off (CC120/123), program change (0.102.0), channel and poly pressure, 14-bit pitch bend. Omni:
 // every channel plays. A packet may hold several messages, use running status,
 // or interleave realtime bytes; SysEx and anything else is skipped, and a
 // message cut short is dropped.
@@ -12,7 +12,7 @@
 namespace muew {
 
 struct MidiEvent {
-    enum Kind { NoteOn, NoteOff, Wheel, Aftertouch, PolyAftertouch, Bend, Sustain, AllNotesOff } kind;
+    enum Kind { NoteOn, NoteOff, Wheel, Aftertouch, PolyAftertouch, Bend, Sustain, AllNotesOff, Program } kind; // Program: note = program number (0.102.0)
     int note = 0;
     float value = 0.0f; // velocity / controller 0..1 / bend -1..1
 };
@@ -30,7 +30,8 @@ inline std::vector<MidiEvent> parseMidiBytes(const uint8_t* d, size_t n) {
             if (data[0] == 1) out.push_back({MidiEvent::Wheel, 0, (data[1] & 0x7F) / 127.0f});
             else if (data[0] == 64) out.push_back({MidiEvent::Sustain, 0, data[1] >= 64 ? 1.0f : 0.0f});
             else if (data[0] == 120 || data[0] == 123) out.push_back({MidiEvent::AllNotesOff, 0, 0.0f});
-        } else if (type == 0xD0) out.push_back({MidiEvent::Aftertouch, 0, (data[0] & 0x7F) / 127.0f});
+        } else if (type == 0xC0) out.push_back({MidiEvent::Program, data[0] & 0x7F, 0.0f});
+        else if (type == 0xD0) out.push_back({MidiEvent::Aftertouch, 0, (data[0] & 0x7F) / 127.0f});
         else if (type == 0xA0) out.push_back({MidiEvent::PolyAftertouch, data[0] & 0x7F, (data[1] & 0x7F) / 127.0f});
         else if (type == 0xE0) {
             const int raw = ((data[1] & 0x7F) << 7) | (data[0] & 0x7F);
