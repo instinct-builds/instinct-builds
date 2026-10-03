@@ -16,6 +16,7 @@
 
 using namespace muew;
 
+static bool gSessionNoSave = false; // 0.101.0 relaunch proof only
 static std::atomic<float> gCpu{0}; // 0.30.0 header meter: smoothed real-time load
 static std::atomic<int> gVoices{0};
 static std::atomic<float> gMorphA{-1.0f}, gMorphB{-1.0f}; // 0.35.0 live morph meter
@@ -91,6 +92,28 @@ struct StandaloneHost : MUEWEditorHost {
         }];
     }
     [w center]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
+    // 0.101.0 relaunch proof: MUEW_SESSION_REPORT=<file> writes what the editor shows after launch, optionally
+    // after MUEW_SESSION_STEP=edit (change the cutoff, as an editor edit would) or =corrupt (store garbage and
+    // do not overwrite it at quit), then quits through the normal terminate path. Hard 60 s exit.
+    if (const char* rep = getenv("MUEW_SESSION_REPORT")) {
+        muew_proof::Watchdog("session relaunch proof", 60);
+        NSString* path = [NSString stringWithUTF8String:rep];
+        const char* stepc = getenv("MUEW_SESSION_STEP");
+        std::string step = stepc ? stepc : "";
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (step == "edit") { v->current.voice.filterCutoff = 777; binding->applyPreset(v->current, v->currentIndex, true); }
+            if (step == "corrupt") {
+                gSessionNoSave = true;
+                [[NSUserDefaults standardUserDefaults] setObject:@"not a session" forKey:@"MUEWSession"];
+                [[NSUserDefaults standardUserDefaults] synchronize];
+            }
+            const bool edited = v->currentIndex >= 0 ? !(v->current == ui::library().at(v->currentIndex)) : true;
+            NSString* line = [NSString stringWithFormat:@"name=%s index=%d cutoff=%d edited=%d\n",
+                              v->current.info.name.c_str(), v->currentIndex, (int)v->current.voice.filterCutoff, edited ? 1 : 0];
+            [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            [NSApp terminate:nil];
+        });
+    }
     engine = [AVAudioEngine new];
     AVAudioFormat* fmt = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100 channels:2];
     Synth* s = &synth; std::mutex* l = &lock;
@@ -154,9 +177,10 @@ struct StandaloneHost : MUEWEditorHost {
     return YES;
 }
 - (void)saveSession {
-    if (getenv("MUEW_AX_PROOF") || getenv("MUEW_AX_CONTROL") || getenv("MUEW_NO_SESSION")) return;
+    if (gSessionNoSave || getenv("MUEW_AX_PROOF") || getenv("MUEW_AX_CONTROL") || getenv("MUEW_NO_SESSION")) return;
     std::string slug = v->currentIndex >= 0 ? ui::library().slug(v->currentIndex) : std::string();
     [[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithUTF8String:session::encode(slug, v->current).c_str()] forKey:@"MUEWSession"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 - (void)applicationWillTerminate:(NSNotification*)n { [self saveSession]; }
 - (void)applicationDidResignActive:(NSNotification*)n { [self saveSession]; }
