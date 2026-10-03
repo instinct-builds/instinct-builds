@@ -295,6 +295,14 @@ jobs:
           shoot notes-resolve 1440x900 notes-resolve demo-notes-resolve.txt
           grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
           cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
+          rm -f "$SUP/demo-client-decisions-view.txt"
+          shoot client-decisions 1440x900 client-decisions demo-client-decisions.txt
+          grep -q '^done total=3 first=2 approved=1 changes=1 csvRows=4 board=true$' "$SUP/demo-client-decisions.txt"
+          cp "$SUP/demo-client-decisions.txt" "ASSSETS-$ASSSETS_VERSION-client-decisions.txt"
+          for i in $(seq 1 30); do [ -s "$SUP/demo-client-decisions-view.txt" ] && break; sleep 1; done
+          cat "$SUP/demo-client-decisions-view.txt"
+          grep -q '^view selected=true title=true decisions=2 grid=true$' "$SUP/demo-client-decisions-view.txt"
+          cp "$SUP/demo-client-decisions-view.txt" "ASSSETS-$ASSSETS_VERSION-client-decisions-view.txt"
           rm -f "$SUP/demo-notes-resolve-all-view.txt"
           shoot notes-resolve-all 1440x900 notes-resolve-all demo-notes-resolve-all.txt
           grep -q '^done changed=4/2 open=2 openAssets=1 thirdOpen=true repeat=0$' "$SUP/demo-notes-resolve-all.txt"
@@ -521,6 +529,8 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-open-filter.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-resolve-all.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-resolve-all-view.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-client-decisions.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-client-decisions-view.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt

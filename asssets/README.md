@@ -1334,3 +1334,30 @@ selected in `demo-notes-resolve-all-view.txt`, and CI requires
 `view selected=true title=true notes=2 open=0 grid=true` before keeping the
 capture. If the selection is not the resolved asset, the build fails with that
 line instead of leaving a misleading picture. Demo only; no product change.
+
+
+## 1.84.0: keep the client's Approve / Request changes decisions
+
+- A client's Approve and Request changes buttons used to matter only when the
+  gallery was shared from a board. For an ordinary gallery the decisions were
+  dropped on import, so a designer saw picks and notes but not who approved what.
+  Imported decisions are now saved on each asset, board or not.
+- The inspector shows a CLIENT DECISIONS section ("Approved · Jordan",
+  "Changes · Sam"). Several reviewers can disagree on one asset; each keeps
+  their own decision. File > Export Client Decisions as CSV… saves one row per
+  decision (title, filename, reviewer label, gallery, decision), with no image
+  or path, and the import toast reports how many decisions were saved.
+- Re-importing a reviewer's file replaces that reviewer's earlier decisions for
+  that gallery, like notes. A new file with no decision for an asset removes the
+  old one, and an empty valid file clears the round. Unknown status text is
+  ignored. Board status behavior is unchanged.
+- Reviewer names are local draft labels, not verified identities. Decisions are
+  a local record on this Mac and change nothing in the gallery or feedback file.
+  Older libraries open unchanged and assets without decisions save exactly as
+  before. This does not add a decision filter or smart-collection rule.
+- Tests cover per-reviewer storage without a board, replacement, withdrawal, bad
+  status text, CSV, and the saved/old JSON shape. The `client-decisions` demo
+  imports two reviewers into a boardless gallery, checks `total=3 first=2
+  approved=1 changes=1 csvRows=4 board=true`, selects the asset by id, and CI
+  requires `view selected=true title=true decisions=2 grid=true` before keeping
+  the capture. The save dialog and menu item are not natively clicked.

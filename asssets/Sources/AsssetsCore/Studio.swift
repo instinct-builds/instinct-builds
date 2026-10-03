@@ -58,6 +58,12 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     public var rejectedTags: [String] = []
     /// Notes clients left in a review gallery (1.9), one per reviewer per gallery.
     public var clientNotes: [ClientNote] = []
+    /// Approve / Request changes decisions from imported client feedback (1.84). Stored only when present.
+    public var clientDecisionList: [ClientDecision]? = nil
+    public var clientDecisions: [ClientDecision] {
+        get { clientDecisionList ?? [] }
+        set { clientDecisionList = newValue.isEmpty ? nil : newValue }
+    }
     /// Version stack this asset belongs to (1.10); nil when it stands alone.
     public var stackID: UUID? = nil
     /// Set when the user unstacked it; auto-detection then leaves it alone.
@@ -85,7 +91,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         self.resolution = resolution; self.sourceKey = sourceKey
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, stackID, unstacked, rating, label, rights, licenseDocs, placementRecipe, sourceFingerprint, sourcePreviewHash }
+    enum CodingKeys: String, CodingKey { case id, title, kind, tags, collection, palette, seed, favorite, importedPath, resolution, sourceKey, autoTags, rejectedTags, clientNotes, clientDecisionList, stackID, unstacked, rating, label, rights, licenseDocs, placementRecipe, sourceFingerprint, sourcePreviewHash }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -102,6 +108,7 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
         autoTags = try c.decodeIfPresent([String].self, forKey: .autoTags) ?? []
         rejectedTags = try c.decodeIfPresent([String].self, forKey: .rejectedTags) ?? []
         clientNotes = try c.decodeIfPresent([ClientNote].self, forKey: .clientNotes) ?? []
+        clientDecisionList = try? c.decodeIfPresent([ClientDecision].self, forKey: .clientDecisionList)
         stackID = try c.decodeIfPresent(UUID.self, forKey: .stackID)
         unstacked = try c.decodeIfPresent(Bool.self, forKey: .unstacked) ?? false
         rating = min(5, max(0, try c.decodeIfPresent(Int.self, forKey: .rating) ?? 0))

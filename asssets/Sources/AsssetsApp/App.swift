@@ -72,6 +72,8 @@ struct ASSSETSApp: App {
                 Button("Import Client Feedback…") { library.importFeedback() }
                 Button("Export Client Notes as CSV…") { library.exportClientNotesCSV() }
                     .disabled(library.catalog.clientNoteCount == 0)
+                Button("Export Client Decisions as CSV…") { library.exportClientDecisionsCSV() }
+                    .disabled(library.catalog.clientDecisionCount == 0)
                 Button("Recover Last Published Gallery…") { library.reopenPublicationRecovery() }
                     .disabled(!library.hasPublicationRecovery)
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
@@ -785,10 +787,10 @@ final class StudioLibrary: ObservableObject {
             let preview = next.previewFeedback(f)
             guard preview.rosterIssue == nil else { total.unknown += f.items.count; continue }
             let r = next.applyFeedback(f, imported: today)
-            if r.favorites + r.notes + r.statuses + r.withdrawn > 0 ||
+            if r.favorites + r.notes + r.statuses + r.decisions + r.withdrawn > 0 ||
                 (preview.replaces && (f.items.isEmpty || preview.hasVerifiedEntry)) { applied = true }
             total.favorites += r.favorites; total.notes += r.notes; total.unknown += r.unknown
-            total.statuses += r.statuses; total.withdrawn += r.withdrawn
+            total.statuses += r.statuses; total.decisions += r.decisions; total.withdrawn += r.withdrawn
             total.notesRemoved += r.notesRemoved; total.notesReplaced += r.notesReplaced
             total.smartCollection = r.smartCollection ?? total.smartCollection
             total.board = r.board ?? total.board
@@ -811,6 +813,7 @@ final class StudioLibrary: ObservableObject {
         if total.withdrawn > 0 { msg += ", \(total.withdrawn) \(total.withdrawn == 1 ? "pick" : "picks") withdrawn" }
         if total.notesRemoved > 0 { msg += ", \(total.notesRemoved) \(total.notesRemoved == 1 ? "note" : "notes") removed" }
         if total.notesReplaced > 0 { msg += ", \(total.notesReplaced) \(total.notesReplaced == 1 ? "note" : "notes") replaced" }
+        if total.decisions > 0 { msg += ", \(total.decisions) client \(total.decisions == 1 ? "decision" : "decisions")" }
         if total.statuses > 0 { msg += ", \(total.statuses) \(total.statuses == 1 ? "status" : "statuses") updated" }
         if !reviewers.isEmpty { msg += " from " + reviewers.joined(separator: ", ") }
         if total.unknown > 0 { msg += " · \(total.unknown) skipped (outside gallery, duplicate, missing or legacy)" }
@@ -1104,6 +1107,22 @@ final class StudioLibrary: ObservableObject {
         } catch {
             flash("Could not save client notes CSV")
         }
+    }
+
+    func exportClientDecisionsCSV() {
+        let count = catalog.clientDecisionCount
+        guard count > 0 else { flash("No client decisions to export"); return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "ASSSETS client decisions.csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.canCreateDirectories = true
+        panel.message = "Asset titles, filenames, reviewer labels and Approved or Changes. No images or file paths."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try catalog.clientDecisionsCSV().write(to: url, atomically: true, encoding: .utf8)
+            flash("Saved \(count) client decision\(count == 1 ? "" : "s") as CSV")
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch { flash("Could not save client decisions CSV") }
     }
 
     func exportSourceReceiptCSV(_ matched: [SourceRefreshRecord], to demoURL: URL? = nil) {
@@ -3959,6 +3978,38 @@ final class StudioLibrary: ObservableObject {
             let third = catalog.assets.first(where: { $0.id == ids[2] })?.clientNotes.allSatisfy { !$0.resolved } == true
             let marker = "done changed=\(before.notes)/\(before.assets) open=\(catalog.openClientNoteCount) openAssets=\(catalog.openClientNoteAssetCount) thirdOpen=\(third) repeat=\(catalog.clientNotesToChange(on: Set(ids.prefix(2)), resolved: true).notes)"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-resolve-all.txt"), atomically: true, encoding: .utf8)
+        case "client-decisions":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(3).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-03", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }   // no board: decisions must still be kept
+            }
+            for (who, entries) in [("Jordan", [(0, "approved"), (1, "changes")]), ("Sam", [(0, "changes")])] {
+                let f = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: who,
+                    items: entries.map { .init(id: ids[$0.0].uuidString, favorite: false, note: "", status: $0.1) })
+                importFeedback(feedback: [f], unreadable: 0)
+            }
+            let target = ids[0]
+            let targetTitle = catalog.assets.first(where: { $0.id == target })?.title ?? ""
+            func focusTarget() {
+                selection = [target]; focusID = target; anchorID = target
+                scrollInspectorToTags = true
+                inspectorAnchor = nil
+                DispatchQueue.main.async { self.inspectorAnchor = "inspector-decisions" }
+            }
+            search = targetTitle
+            focusTarget()
+            for delay in [2.0, 4.0] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) { focusTarget() } }
+            let mine = catalog.assets.first(where: { $0.id == target })?.clientDecisions ?? []
+            let csvRows = catalog.clientDecisionsCSV().components(separatedBy: "\r\n").filter { !$0.isEmpty }.count
+            let marker = "done total=\(catalog.clientDecisionCount) first=\(mine.count) approved=\(mine.filter { $0.status == .approved }.count) changes=\(mine.filter { $0.status == .changes }.count) csvRows=\(csvRows) board=\(catalog.galleryRosters.first?.board == nil)"
+            try? marker.write(to: supportRoot.appendingPathComponent("demo-client-decisions.txt"), atomically: true, encoding: .utf8)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
+                let shown = self.selection.first.flatMap { id in self.catalog.assets.first(where: { $0.id == id }) }
+                let view = "view selected=\(self.selection == [target]) title=\(shown?.title == targetTitle) decisions=\(shown?.clientDecisions.count ?? -1) grid=\(self.filtered.map(\.id) == [target])"
+                try? view.write(to: self.supportRoot.appendingPathComponent("demo-client-decisions-view.txt"), atomically: true, encoding: .utf8)
+            }
         case "notes-open-filter":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
@@ -10522,6 +10573,24 @@ struct Inspector: View {
                                 .background(Color(red: 1, green: 0.36, blue: 0.54).opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
                                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color(red: 1, green: 0.36, blue: 0.54).opacity(0.35)))
                             }
+                        }
+                        if !asset.clientDecisions.isEmpty {
+                            InspectorLabel(text: "CLIENT DECISIONS").id("inspector-decisions")
+                            VStack(alignment: .leading, spacing: 5) {
+                                ForEach(asset.clientDecisions, id: \.self) { d in
+                                    HStack(spacing: 6) {
+                                        Image(systemName: d.status == .approved ? "checkmark.circle.fill" : "arrow.uturn.backward.circle.fill")
+                                            .foregroundStyle(d.status == .approved ? Color.green : Theme.warning)
+                                        Text(d.status.label).font(.caption.weight(.semibold))
+                                        Text(d.reviewer).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                        Spacer()
+                                    }
+                                }
+                                Text("From imported feedback. Reviewer names are local draft labels, not verified identities.").font(.caption2).foregroundStyle(.tertiary)
+                            }
+                            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.hairline))
                         }
                         InspectorLabel(text: "TAGS").id("inspector-tags")
                         WrapLayout(spacing: 5) { ForEach(asset.tags, id: \.self) { tag in TagChip(tag: tag) { model.removeTag(tag, from: [asset.id]) } } }

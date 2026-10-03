@@ -26,6 +26,14 @@ public struct ClientNote: Codable, Hashable, Sendable {
     }
 }
 
+/// A client's Approve / Request changes decision on one asset in one review round (1.84).
+public struct ClientDecision: Codable, Hashable, Sendable {
+    public var reviewer: String
+    public var gallery: String
+    public var status: CardStatus
+    public init(reviewer: String, gallery: String, status: CardStatus) { self.reviewer = reviewer; self.gallery = gallery; self.status = status }
+}
+
 public enum ReviewGallery {
     public static let clientPickTag = "client-pick"
     public static let clientPicksName = "Client Picks"
@@ -362,6 +370,8 @@ extension StudioCatalog {
         public var notesRemoved = 0, notesReplaced = 0
         /// Board cards whose status the client's Approve / Request changes moved (1.23).
         public var statuses = 0
+        /// Approve / Request changes decisions stored on assets, whether or not the gallery came from a board (1.84).
+        public var decisions = 0
         public var smartCollection: UUID?
         /// The board the gallery was shared from, when the round was pinned onto it (1.20).
         public var board: UUID?
@@ -414,10 +424,17 @@ extension StudioCatalog {
             resolvedBefore[i] = Set(assets[i].clientNotes.filter { $0.resolved && Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }.map(\.text))
             assets[i].clientNotes.removeAll { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }
         }
+        for i in assets.indices {
+            assets[i].clientDecisions.removeAll { Self.sameFeedbackRound($0.gallery, $0.reviewer, f.gallery, reviewer) }
+        }
         for e in scoped.items {
             guard let i = index[e.id.uppercased()] else { r.unknown += 1; continue }
             if e.favorite {
                 r.favorites += 1
+            }
+            if let status = e.cardStatus, status != .open {
+                assets[i].clientDecisions.append(ClientDecision(reviewer: reviewer, gallery: f.gallery, status: status))
+                r.decisions += 1
             }
             let text = FeedbackNoteText.saved(e.note)
             if !text.isEmpty { r.notes += 1; assets[i].clientNotes.append(ClientNote(reviewer: reviewer, text: text, gallery: f.gallery, resolved: resolvedBefore[i]?.contains(text) == true)) }

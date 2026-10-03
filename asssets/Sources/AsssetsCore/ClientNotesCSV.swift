@@ -78,3 +78,27 @@ public enum FilterSelection {
         return ([first], first)
     }
 }
+
+/// One row per client decision. Names are local draft labels from the feedback file.
+public enum ClientDecisionsCSV {
+    public static let columns = ["Asset title", "Source filename", "Reviewer", "Gallery", "Decision"]
+    public static func render(_ assets: [StudioAsset], galleryTitles: [String: String]) -> String {
+        var lines = [columns]
+        for a in assets.sorted(by: { ($0.title.lowercased(), $0.id.uuidString) < ($1.title.lowercased(), $1.id.uuidString) }) {
+            let file = a.importedPath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+            for d in a.clientDecisions.sorted(by: { ($0.gallery, $0.reviewer.lowercased()) < ($1.gallery, $1.reviewer.lowercased()) }) {
+                lines.append([a.title, file, d.reviewer, galleryTitles[d.gallery.lowercased()] ?? "Unknown gallery", d.status.label])
+            }
+        }
+        return lines.map { $0.map(ClientNotesCSV.quoted).joined(separator: ",") }.joined(separator: "\r\n") + "\r\n"
+    }
+}
+
+extension StudioCatalog {
+    public var clientDecisionCount: Int { assets.reduce(0) { $0 + $1.clientDecisions.count } }
+    public func clientDecisionsCSV() -> String {
+        var titles: [String: String] = [:]
+        for r in galleryRosters { titles[r.gallery.lowercased()] = r.title }
+        return ClientDecisionsCSV.render(assets, galleryTitles: titles)
+    }
+}

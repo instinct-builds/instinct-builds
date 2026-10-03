@@ -121,6 +121,33 @@ struct ClientNotesCSVTests {
         #expect(c.clientNotesToChange(on: [], resolved: true).notes == 0)
     }
 
+    @Test func decisionsAreStoredPerReviewerWithoutABoardAndReplacedOnReimport() throws {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/notes/a.png")!, b = c.importFile(path: "/notes/b.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-10-03", assets: [a, b])!)
+        func fb(_ who: String, _ items: [ReviewGallery.Feedback.Entry]) -> ReviewGallery.Feedback { .init(gallery: g, title: "Round", reviewer: who, items: items) }
+        let first = c.applyFeedback(fb("Jordan", [.init(id: a.uuidString, favorite: false, note: "", status: "approved"),
+                                                  .init(id: b.uuidString, favorite: false, note: "Fix", status: "changes")]))
+        #expect(first.decisions == 2 && c.clientDecisionCount == 2)
+        _ = c.applyFeedback(fb("Sam", [.init(id: a.uuidString, favorite: false, note: "", status: "changes"),
+                                       .init(id: b.uuidString, favorite: false, note: "x", status: "bogus")]))
+        #expect(c.clientDecisionCount == 3)
+        #expect(c.assets.first { $0.id == a }!.clientDecisions.map(\.status).sorted { $0.rawValue < $1.rawValue } == [.approved, .changes])
+        let again = c.applyFeedback(fb("Jordan", [.init(id: a.uuidString, favorite: false, note: "", status: "changes")]))
+        #expect(again.decisions == 1 && c.clientDecisionCount == 2)
+        #expect(c.assets.first { $0.id == b }!.clientDecisions.isEmpty)
+        _ = c.applyFeedback(fb("Jordan", []))
+        #expect(c.clientDecisionCount == 1)
+        let csv = c.clientDecisionsCSV()
+        #expect(csv.hasPrefix("\"Asset title\",\"Source filename\",\"Reviewer\",\"Gallery\",\"Decision\"\r\n"))
+        #expect(csv.contains("\"Sam\",\"Round\",\"Changes\"") && !csv.contains("/notes/"))
+        let json = String(decoding: try JSONEncoder().encode(c.assets.first { $0.id == b }!), as: UTF8.self)
+        #expect(!json.contains("clientDecisionList"))
+        let saved = try JSONDecoder().decode(StudioAsset.self, from: JSONEncoder().encode(c.assets.first { $0.id == a }!))
+        #expect(saved.clientDecisions.count == 1 && saved.clientDecisions[0].reviewer == "Sam")
+    }
+
     @Test func noNotesIsHeaderOnly() {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)
