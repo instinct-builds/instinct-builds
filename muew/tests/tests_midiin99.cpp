@@ -1,6 +1,7 @@
 // 0.99.0 standalone MIDI input parser.
 #include "../src/midi_in.h"
 #include "../src/output_gain.h"
+#include "../src/perf_state.h"
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -62,5 +63,15 @@ int main() {
       ck(l2[0]==0&&r2[3]==0, "silence holds on the next block");
       g.setFromMidi(1.0f); float l3[4]={1,1,1,1}, r3[4]={1,1,1,1}; g.apply(l3,r3,4);
       ck(l3[3]==1&&l3[0]<1&&g.current()==1.0f, "back to full ramps up and lands on exactly unity"); }
+    { PerfTracker pt; auto s0 = pt.snapshot();
+      ck(s0.wheel == 0 && s0.aftertouch == 0 && s0.bend == 0 && pt.lastNote() == -1 && !pt.sustain(), "performance tracker starts neutral (0.107.0)");
+      for (auto& ev : P({0x90, 64, 100, 0xB0, 1, 127, 0xD0, 64, 0xE0, 0, 0, 0xB0, 64, 127})) pt.apply(ev);
+      auto s1 = pt.snapshot();
+      ck(pt.lastNote() == 64 && s1.wheel == 1.0 && std::fabs(s1.aftertouch - 64 / 127.0) < 1e-6 && s1.bend == -1.0 && pt.sustain(), "note, wheel, pressure, bend and sustain are tracked");
+      for (auto& ev : P({0x80, 64, 0})) pt.apply(ev);
+      ck(pt.lastNote() == 64, "last note stays after release, as the AU shows it");
+      for (auto& ev : P({0xB0, 123, 0})) pt.apply(ev);
+      ck(!pt.sustain(), "all notes off clears the sustain light");
+      pt.noteFromKeyboard(50); ck(pt.lastNote() == 50, "computer keyboard notes count as the last note"); }
     printf("%s\n", failures ? "MIDI IN 99 FAILED" : "ALL MIDI IN 99 TESTS PASSED"); return failures ? 1 : 0;
 }

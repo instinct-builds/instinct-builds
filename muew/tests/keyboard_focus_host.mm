@@ -4,6 +4,7 @@
 #import "MUEWMainMenu.h"
 #import "MUEWMidiInput.h"
 #include "output_gain.h"
+#include "perf_state.h"
 #include <cstdio>
 #include <algorithm>
 #include <cmath>
@@ -38,7 +39,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.106.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.107.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -211,6 +212,20 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                     Check(fabs(l[63]-want)<1e-6 && fabs(r[63]-want)<1e-6 && l[0]>want && l[0]<1.0f, "the first block ramps from unity to the target without a jump");
                     for (int i=0;i<64;i++) l[i]=r[i]=1.0f; g.apply(l,r,64);
                     Check(fabs(l[0]-want)<1e-6 && fabs(l[63]-want)<1e-6, "the next block holds the target");
+                }
+                if (ev.count==5) { // 0.107.0 performance display: the same arrived events drive what the editor shows
+                    muew::PerfTracker pt;
+                    for (NSArray* a in ev) pt.apply(muew::MidiEvent{(muew::MidiEvent::Kind)[a[0] intValue],[a[1] intValue],(float)[a[2] doubleValue]});
+                    [v showPerformance:pt.snapshot() note:pt.lastNote() sustain:pt.sustain()];
+                    NSString* t1=[v valueForKey:@"muewPerformanceText"];
+                    Check([t1 containsString:@"wheel=1.000"] && [t1 containsString:@"bend=1.000"] && [t1 containsString:@"note=60"] && [t1 containsString:@"sustain=0"],
+                          "wheel, bend and last note from MIDI reach the performance display");
+                    pt.apply(muew::MidiEvent{muew::MidiEvent::Sustain,0,1.0f}); pt.apply(muew::MidiEvent{muew::MidiEvent::Aftertouch,0,0.5f});
+                    [v showPerformance:pt.snapshot() note:pt.lastNote() sustain:pt.sustain()];
+                    NSString* t2=[v valueForKey:@"muewPerformanceText"];
+                    Check([t2 containsString:@"sustain=1"] && [t2 containsString:@"at=0.500"], "sustain and pressure reach the display too");
+                    pt.apply(muew::MidiEvent{muew::MidiEvent::AllNotesOff,0,0.0f}); [v showPerformance:pt.snapshot() note:pt.lastNote() sustain:pt.sustain()];
+                    [v showPerformance:muew::Performance{} note:-1 sustain:false];
                 }
                 MIDIEndpointDispose(src); MIDIClientDispose(pc);
             }

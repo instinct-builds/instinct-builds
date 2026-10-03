@@ -9,6 +9,7 @@
 #import "MUEWMidiInput.h"
 #include "synth.h"
 #include "output_gain.h"
+#include "perf_state.h"
 #include "session_state.h"
 #include <mutex>
 #include <atomic>
@@ -18,6 +19,7 @@
 using namespace muew;
 
 static bool gSessionNoSave = false; // 0.101.0 relaunch proof only
+static muew::PerfTracker gPerf; // 0.107.0: what the editor shows as wheel / pressure / bend / last note / sustain
 static muew::OutputGain gOutGain; // 0.104.0 / 0.105.0: MIDI CC7 output gain, standalone only
 static std::atomic<float> gCpu{0}; // 0.30.0 header meter: smoothed real-time load
 static std::atomic<int> gVoices{0};
@@ -41,7 +43,7 @@ struct StandaloneHost : MUEWEditorHost {
         synth->setFX(p.fx);
     }
     bool playsNotes() const override { return true; }
-    void noteOn(int n, float v) override { std::lock_guard<std::mutex> g(*lock); synth->noteOn(n, v); }
+    void noteOn(int n, float v) override { gPerf.noteFromKeyboard(n); std::lock_guard<std::mutex> g(*lock); synth->noteOn(n, v); }
     void noteOff(int n) override { std::lock_guard<std::mutex> g(*lock); synth->noteOff(n); }
 };
 
@@ -163,6 +165,7 @@ struct StandaloneHost : MUEWEditorHost {
     // 0.99.0: hardware MIDI keyboards and controllers play the standalone (all channels).
     MUEWEditorView* view0 = v;
     midi = [[MUEWMidiInput alloc] initWithHandler:^(const MidiEvent& e) {
+        gPerf.apply(e); // 0.107.0
         std::lock_guard<std::mutex> g(*l);
         switch (e.kind) {
         case MidiEvent::NoteOn: s->noteOn(e.note, e.value); break;
@@ -183,6 +186,7 @@ struct StandaloneHost : MUEWEditorHost {
     MUEWEditorView* view = v; // 0.30.0: feed the header voice / CPU meter
     meter = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15 repeats:YES block:^(NSTimer*) {
         const auto& vp = view->current.voice;
+        [view showPerformance:gPerf.snapshot() note:gPerf.lastNote() sustain:gPerf.sustain()]; // 0.107.0: hardware wheel / bend / pressure / sustain are visible
         [view showEngineVoices:gVoices.load() limit:vp.voiceMode != 0 ? 1 : vp.polyVoices cpu:gCpu.load() render:false];
         [view showOutputLeft:gOutputPeak[0].load() right:gOutputPeak[1].load() drive:gMasterDrive.load()];
         float route[kMaxRoutes]; for (int i = 0; i < kMaxRoutes; ++i) route[i] = gRouteMeter[i].load();
