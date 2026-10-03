@@ -205,7 +205,7 @@ struct ClientNotesCSVTests {
         _ = c.setClientNote(done, on: b, resolved: true)
         let r = RevisionBrief.render(c.assets)
         #expect(r.assets == 1 && r.notes == 1)
-        #expect(r.text.hasPrefix("Revision brief: 1 asset, 1 open note\n\n• billboard.png"))
+        #expect(r.text.hasPrefix("Revision brief: 1 asset, 1 open note\n\n• Billboard (billboard.png)\n"))
         #expect(r.text.contains("  Changes requested by Jordan, Sam\n"))
         #expect(r.text.contains("  Open note, Jordan: Warmer backdrop\n    and less glare\n"))
         #expect(!r.text.contains("card.png") && !r.text.contains("ok.png") && !r.text.contains("Done already") && !r.text.contains("/b/"))

@@ -1450,7 +1450,7 @@ CI now records the summary, search field and filter row frames
 starts left of the window. The row is not checked for right-edge overflow.
 
 
-## 1.87.0: copy a revision brief
+## 1.87.1: copy a revision brief
 
 - File > Copy Revision Brief puts a plain-text to-do on the
   clipboard for the selected assets, or for everything in the current view when
