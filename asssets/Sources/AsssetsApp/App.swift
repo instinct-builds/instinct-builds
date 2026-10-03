@@ -1302,6 +1302,8 @@ final class StudioLibrary: ObservableObject {
     /// Rating and label chips above the grid (1.11).
     @Published var ratingFilter = RatingFilter()
     /// 1.82: only assets with an unresolved client note. A local view filter, not a saved rule.
+    /// 1.85: only assets whose client decisions match. A local view filter, not a saved rule.
+    @Published var decisionFilter: ClientDecisionFilter = .any { didSet { if decisionFilter != oldValue { followFilterWithSelection() } } }
     @Published var openNotesFilter = false { didSet { if openNotesFilter != oldValue { followFilterWithSelection() } } }
     /// A hidden asset must not stay in the inspector. Selection moves to the first visible asset, or clears.
     func followFilterWithSelection() {
@@ -1317,7 +1319,7 @@ final class StudioLibrary: ObservableObject {
     var filteredFileCount: Int { unstackedFiltered.filter(passesPinnedFilters).count }
     /// Rating, label, keyword and color filters that sit on top of the collection and search box.
     func passesPinnedFilters(_ a: StudioAsset) -> Bool {
-        ratingFilter.matches(a) && (!openNotesFilter || a.hasOpenClientNotes) && (keywordFilter.map(a.tags.contains) ?? true) && (colorQuery.map { ColorSearch.matches($0, a) } ?? true)
+        ratingFilter.matches(a) && (!openNotesFilter || a.hasOpenClientNotes) && decisionFilter.matches(a) && (keywordFilter.map(a.tags.contains) ?? true) && (colorQuery.map { ColorSearch.matches($0, a) } ?? true)
     }
     var filtered: [StudioAsset] {
         let list = unstackedFiltered.filter(passesPinnedFilters)
@@ -1343,7 +1345,7 @@ final class StudioLibrary: ObservableObject {
         if let t = similarTo { return "Similar to " + (catalog.assets.first { $0.id == t }?.title ?? "asset") }
         return selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection
     }
-    var canSaveSearch: Bool { selectedSmart == nil && !openNotesFilter && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil || colorQuery != nil) }
+    var canSaveSearch: Bool { selectedSmart == nil && !openNotesFilter && decisionFilter == .any && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil || colorQuery != nil) }
 
     // MARK: File metadata and keywords (1.13)
 
@@ -4009,6 +4011,29 @@ final class StudioLibrary: ObservableObject {
                 let shown = self.selection.first.flatMap { id in self.catalog.assets.first(where: { $0.id == id }) }
                 let view = "view selected=\(self.selection == [target]) title=\(shown?.title == targetTitle) decisions=\(shown?.clientDecisions.count ?? -1) grid=\(self.filtered.map(\.id) == [target])"
                 try? view.write(to: self.supportRoot.appendingPathComponent("demo-client-decisions-view.txt"), atomically: true, encoding: .utf8)
+            }
+        case "decision-filter":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(4).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-03", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            for (who, entries) in [("Jordan", [(0, "approved"), (1, "changes"), (2, "approved")]), ("Sam", [(2, "changes")])] {
+                importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: who,
+                    items: entries.map { .init(id: ids[$0.0].uuidString, favorite: false, note: "", status: $0.1) })], unreadable: 0)
+            }
+            selection = [ids[0]]; focusID = ids[0]; anchorID = ids[0]   // approved with no changes: hidden by the filter
+            decisionFilter = .changes
+            let shown = filtered.map(\.id)
+            let marker = "done changes=\(catalog.assetCount(matching: .changes)) approved=\(catalog.assetCount(matching: .approved)) shown=\(shown.count) match=\(Set(shown) == Set([ids[1], ids[2]])) canSave=\(canSaveSearch)"
+            try? marker.write(to: supportRoot.appendingPathComponent("demo-decision-filter.txt"), atomically: true, encoding: .utf8)
+            func follow() { if !self.selection.isSubset(of: Set(self.filtered.map(\.id))) { self.followFilterWithSelection() } }
+            for delay in [2.0, 4.0] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) { follow() } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
+                let visible = Set(self.filtered.map(\.id))
+                let view = "view selectedVisible=\(!self.selection.isEmpty && self.selection.isSubset(of: visible)) notFirst=\(!self.selection.contains(ids[0])) filter=\(self.decisionFilter.rawValue)"
+                try? view.write(to: self.supportRoot.appendingPathComponent("demo-decision-filter-view.txt"), atomically: true, encoding: .utf8)
             }
         case "notes-open-filter":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
@@ -8082,6 +8107,20 @@ struct AssetBrowser: View {
                                     .font(.system(size: 11.5, weight: .semibold)).padding(.horizontal, 9).padding(.vertical, 5)
                                     .background(Theme.accent.opacity(0.35), in: Capsule()).overlay(Capsule().stroke(Theme.accent))
                             }.buttonStyle(.plain).help("Stop filtering by this keyword")
+                        }
+                        if model.decisionFilter != .any || model.catalog.clientDecisionCount > 0 {
+                            Menu {
+                                ForEach(ClientDecisionFilter.allCases, id: \.self) { f in
+                                    Button("\(f.label)\(f == .any ? "" : " · \(model.catalog.assetCount(matching: f))")") { model.decisionFilter = f }
+                                }
+                            } label: {
+                                Label(model.decisionFilter == .any ? "Decisions" : model.decisionFilter.label, systemImage: "checkmark.bubble").font(.system(size: 11.5, weight: .semibold))
+                            }
+                            .menuStyle(.borderlessButton).fixedSize()
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(model.decisionFilter == .any ? Color.white.opacity(0.05) : Theme.accent.opacity(0.3), in: Capsule())
+                            .overlay(Capsule().stroke(model.decisionFilter == .any ? Theme.hairline : Theme.accent))
+                            .help("Show assets by what clients decided in imported feedback. A view on this Mac, not a saved rule.")
                         }
                         if model.openNotesFilter || model.catalog.clientNoteCount > 0 {
                             Button { model.openNotesFilter.toggle() } label: {

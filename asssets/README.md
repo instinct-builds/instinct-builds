@@ -1361,3 +1361,23 @@ line instead of leaving a misleading picture. Demo only; no product change.
   approved=1 changes=1 csvRows=4 board=true`, selects the asset by id, and CI
   requires `view selected=true title=true decisions=2 grid=true` before keeping
   the capture. The save dialog and menu item are not natively clicked.
+
+
+## 1.85.0: filter by what clients decided
+
+- Once any client decision exists, the filter bar shows a Decisions menu:
+  Any decision, Changes requested, or Approved, no changes, each with its asset
+  count. Changes requested means at least one reviewer asked for changes.
+  Approved, no changes means someone approved and nobody asked for changes, so
+  an asset where reviewers disagree appears under Changes, not Approved.
+- It combines with search, type, rating, label, keyword and Open notes. It is a
+  view filter on this Mac, not a saved rule: Save Search is unavailable while it
+  is on, and Export Current View as Review Gallery follows the filtered list.
+- If the selected asset is hidden by the filter, the inspector moves to the first
+  visible asset or clears, as with Open notes. Reviewer names remain local draft
+  labels and decisions are a local record.
+- No decision-based smart collection yet; assets nobody decided on have no
+  filter of their own. The unit test covers Changes, Approved and disagreement.
+  The native `decision-filter` demo imports four assets' decisions (including one
+  split), turns on Changes, and checks `changes=2 approved=1 shown=2 match=true
+  canSave=false` plus a 7 second selection check. The menu is not natively clicked.

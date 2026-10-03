@@ -295,6 +295,14 @@ jobs:
           shoot notes-resolve 1440x900 notes-resolve demo-notes-resolve.txt
           grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
           cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
+          rm -f "$SUP/demo-decision-filter-view.txt"
+          shoot decision-filter 1440x900 decision-filter demo-decision-filter.txt
+          grep -q '^done changes=2 approved=1 shown=2 match=true canSave=false$' "$SUP/demo-decision-filter.txt"
+          cp "$SUP/demo-decision-filter.txt" "ASSSETS-$ASSSETS_VERSION-decision-filter.txt"
+          for i in $(seq 1 30); do [ -s "$SUP/demo-decision-filter-view.txt" ] && break; sleep 1; done
+          cat "$SUP/demo-decision-filter-view.txt"
+          grep -q '^view selectedVisible=true notFirst=true filter=changes$' "$SUP/demo-decision-filter-view.txt"
+          cp "$SUP/demo-decision-filter-view.txt" "ASSSETS-$ASSSETS_VERSION-decision-filter-view.txt"
           rm -f "$SUP/demo-client-decisions-view.txt"
           shoot client-decisions 1440x900 client-decisions demo-client-decisions.txt
           grep -q '^done total=3 first=2 approved=1 changes=1 csvRows=4 board=true$' "$SUP/demo-client-decisions.txt"
@@ -531,6 +539,8 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-resolve-all-view.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-client-decisions.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-client-decisions-view.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-filter.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-filter-view.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt

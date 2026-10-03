@@ -102,3 +102,24 @@ extension StudioCatalog {
         return ClientDecisionsCSV.render(assets, galleryTitles: titles)
     }
 }
+
+/// 1.85: a view filter over imported client decisions. "Changes" means any reviewer asked for changes;
+/// "Approved" means someone approved and nobody asked for changes.
+public enum ClientDecisionFilter: String, CaseIterable, Sendable {
+    case any, changes, approved
+    public var label: String {
+        switch self { case .any: return "Any decision"; case .changes: return "Changes requested"; case .approved: return "Approved, no changes" }
+    }
+    public func matches(_ a: StudioAsset) -> Bool {
+        let d = a.clientDecisions.map(\.status)
+        switch self {
+        case .any: return true
+        case .changes: return d.contains(.changes)
+        case .approved: return d.contains(.approved) && !d.contains(.changes)
+        }
+    }
+}
+
+extension StudioCatalog {
+    public func assetCount(matching f: ClientDecisionFilter) -> Int { assets.filter(f.matches).count }
+}

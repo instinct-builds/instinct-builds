@@ -148,6 +148,24 @@ struct ClientNotesCSVTests {
         #expect(saved.clientDecisions.count == 1 && saved.clientDecisions[0].reviewer == "Sam")
     }
 
+    @Test func decisionFilterSeparatesChangesFromCleanApprovals() {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/d/a.png")!, b = c.importFile(path: "/d/b.png")!, m = c.importFile(path: "/d/m.png")!, n = c.importFile(path: "/d/n.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-10-03", assets: [a, b, m, n])!)
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Jordan", items: [
+            .init(id: a.uuidString, favorite: false, note: "", status: "approved"),
+            .init(id: b.uuidString, favorite: false, note: "", status: "changes"),
+            .init(id: m.uuidString, favorite: false, note: "", status: "approved")]))
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Sam", items: [
+            .init(id: m.uuidString, favorite: false, note: "", status: "changes")]))
+        #expect(c.assetCount(matching: .changes) == 2)   // b and the split asset m
+        #expect(c.assetCount(matching: .approved) == 1)  // only a: m has a change request
+        #expect(c.assetCount(matching: .any) == 4)
+        #expect(ClientDecisionFilter.approved.matches(c.assets.first { $0.id == n }!) == false)
+        #expect(ClientDecisionFilter.changes.matches(c.assets.first { $0.id == m }!))
+    }
+
     @Test func noNotesIsHeaderOnly() {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)
