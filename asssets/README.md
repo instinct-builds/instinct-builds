@@ -1477,3 +1477,7 @@ starts left of the window. The row is not checked for right-edge overflow.
 ## 1.88.1: search finds client notes
 
 The search box (and a saved smart collection's text rule) now also matches client note text, so typing "shadow" finds every asset whose imported feedback mentions it. Resolved notes stay searchable, so ticking a note off does not make it vanish. Terms still combine with AND across title, tags, colors and notes. Notes are local records of imported feedback; nothing is sent to the client. The CI `note-search` demo writes `done shadow=1 warmer=1 none=0 visible=1 resolvedStillFound=true`.
+
+## 1.89.0: search finds reviewers too
+
+Reviewer labels on client notes are searchable alongside the note text, so "jordan" finds every asset Jordan left a note on. Labels are the names typed into the review gallery, not verified identities. Local only; nothing is sent to the client.

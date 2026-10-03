@@ -125,7 +125,8 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     /// What search and smart rules match against: the user's tags plus pending suggestions.
     public var searchTags: [String] { tags + suggestedTags }
     /// 1.88: client note text is searchable, resolved notes included, so a note stays findable after it is ticked off.
-    public var searchNoteText: [String] { clientNotes.map(\.text) }
+    /// 1.89: the reviewer label on each note is searchable too, so "jordan" finds everything Jordan wrote.
+    public var searchNoteText: [String] { clientNotes.flatMap { [$0.text, $0.reviewer] } }
 
     public var isStarter: Bool { sourceKey?.hasPrefix("starter:") ?? false }
 }

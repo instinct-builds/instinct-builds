@@ -305,7 +305,7 @@ jobs:
           rm -f "$SUP/demo-note-search.txt"
           shoot note-search 1440x900 note-search demo-note-search.txt
           cat "$SUP/demo-note-search.txt"
-          grep -q '^done shadow=1 warmer=1 none=0 visible=1 resolvedStillFound=true$' "$SUP/demo-note-search.txt"
+          grep -q '^done shadow=1 warmer=1 none=0 jordan=2 visible=1 resolvedStillFound=true$' "$SUP/demo-note-search.txt"
           cp "$SUP/demo-note-search.txt" "ASSSETS-$ASSSETS_VERSION-note-search.txt"
           rm -f "$SUP/demo-header-frames.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt

@@ -233,4 +233,15 @@ struct ClientNotesCSVTests {
         #expect(c.filtered(search: "shadow tone", kind: nil, collection: StudioCatalog.allAssets).isEmpty)
         #expect(SmartRules(text: "cooler").matches(c.assets.first { $0.id == b }!))
     }
+
+    @Test func searchMatchesReviewerLabelsOnNotes() {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/r/one.png")!, b = c.importFile(path: "/r/two.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "R", created: "2026-10-03", assets: [a, b])!)
+        _ = c.applyFeedback(.init(gallery: g, title: "R", reviewer: "Jordan", items: [.init(id: a.uuidString, favorite: false, note: "Crop")]))
+        _ = c.applyFeedback(.init(gallery: g, title: "R", reviewer: "Sam", items: [.init(id: b.uuidString, favorite: false, note: "Crop")]))
+        #expect(c.filtered(search: "jordan", kind: nil, collection: StudioCatalog.allAssets).map(\.id) == [a])
+        #expect(c.filtered(search: "sam crop", kind: nil, collection: StudioCatalog.allAssets).map(\.id) == [b])
+    }
 }

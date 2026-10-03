@@ -4081,7 +4081,8 @@ final class StudioLibrary: ObservableObject {
                 let shadowHits = self.catalog.filtered(search: "shadow", kind: nil, collection: StudioCatalog.allAssets).count
                 let warmerHits = self.catalog.filtered(search: "warmer", kind: nil, collection: StudioCatalog.allAssets).count
                 let noneHits = self.catalog.filtered(search: "zzzz", kind: nil, collection: StudioCatalog.allAssets).count
-                let marker = "done shadow=\(shadowHits) warmer=\(warmerHits) none=\(noneHits) visible=\(self.filtered.count) resolvedStillFound=\(self.filtered.first?.id == ids[2])"
+                let jordanHits = self.catalog.filtered(search: "jordan", kind: nil, collection: StudioCatalog.allAssets).count
+                let marker = "done shadow=\(shadowHits) warmer=\(warmerHits) none=\(noneHits) jordan=\(jordanHits) visible=\(self.filtered.count) resolvedStillFound=\(self.filtered.first?.id == ids[2])"
                 try? marker.write(to: self.supportRoot.appendingPathComponent("demo-note-search.txt"), atomically: true, encoding: .utf8)
             }
         case "revision-brief":
@@ -8172,7 +8173,7 @@ struct AssetBrowser: View {
                 }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search titles, tags, colors, notes…", text: $model.search).textFieldStyle(.plain)
+                    TextField("Search titles, tags, colors, notes, reviewers…", text: $model.search).textFieldStyle(.plain)
                     if !model.search.isEmpty { Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
                     ColorSearchButton()
                 }
