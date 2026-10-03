@@ -1,5 +1,6 @@
 // 0.99.0 standalone MIDI input parser.
 #include "../src/midi_in.h"
+#include "../src/output_gain.h"
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -53,5 +54,13 @@ int main() {
     ck(e.size() == 1 && e[0].note == 61, "stray data bytes before any status are ignored");
     e = P({0xFE, 0xF8});
     ck(e.empty(), "active sensing and clock do nothing");
+    { OutputGain g; float l[4]={1,1,1,1}, r[4]={1,1,1,1}; g.apply(l,r,4);
+      ck(l[0]==1&&l[3]==1&&r[3]==1, "unity gain leaves the block bit-identical");
+      g.setFromMidi(0.0f); g.apply(l,r,4);
+      ck(l[3]==0&&l[0]>0&&l[0]<1&&r[3]==0, "gain to zero ramps down across the block, ends silent (0.105.0)");
+      float l2[4]={1,1,1,1}, r2[4]={1,1,1,1}; g.apply(l2,r2,4);
+      ck(l2[0]==0&&r2[3]==0, "silence holds on the next block");
+      g.setFromMidi(1.0f); float l3[4]={1,1,1,1}, r3[4]={1,1,1,1}; g.apply(l3,r3,4);
+      ck(l3[3]==1&&l3[0]<1&&g.current()==1.0f, "back to full ramps up and lands on exactly unity"); }
     printf("%s\n", failures ? "MIDI IN 99 FAILED" : "ALL MIDI IN 99 TESTS PASSED"); return failures ? 1 : 0;
 }
