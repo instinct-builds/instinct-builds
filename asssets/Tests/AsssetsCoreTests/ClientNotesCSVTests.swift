@@ -64,6 +64,25 @@ struct ClientNotesCSVTests {
         #expect(!String(decoding: try JSONEncoder().encode(ClientNote(reviewer: "R", text: "t", gallery: "g")), as: UTF8.self).contains("resolved"))
     }
 
+    @Test func assetsWithOpenNotesLeaveTheListWhenFullyResolved() {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/notes/a.png")!, b = c.importFile(path: "/notes/b.png")!, none = c.importFile(path: "/notes/none.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-10-02", assets: [a, b, none])!)
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Sam", items: [
+            .init(id: a.uuidString, favorite: false, note: "One"), .init(id: b.uuidString, favorite: false, note: "Two")]))
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Alex", items: [
+            .init(id: a.uuidString, favorite: false, note: "Three")]))
+        #expect(c.openClientNoteAssetCount == 2)
+        let first = c.assets.first { $0.id == a }!.clientNotes
+        for n in first { _ = c.setClientNote(n, on: a, resolved: true) }
+        #expect(c.openClientNoteAssetCount == 1 && c.assets.first { $0.id == a }!.hasOpenClientNotes == false)
+        #expect(c.assets.first { $0.id == none }!.hasOpenClientNotes == false)
+        let reopened = c.assets.first { $0.id == a }!.clientNotes[0]
+        _ = c.setClientNote(reopened, on: a, resolved: false)
+        #expect(c.openClientNoteAssetCount == 2)
+    }
+
     @Test func noNotesIsHeaderOnly() {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)

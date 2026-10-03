@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 APP=ASSSETS
 PRODUCT=asssets
-VERSION=${VERSION:-1.81.1}
+VERSION=${VERSION:-1.82.0}
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 APP_DIR="$STAGE/$APP.app"

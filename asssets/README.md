@@ -1264,3 +1264,21 @@ dimmed note and the "CLIENT NOTES · 1 OPEN" heading) and checks the marker
 `notes=2 open=1 resolved=1 csv=true`, which also verifies the exported CSV has
 one Open and one Resolved row. No product behavior changes. The button itself
 is still not clicked by a native UI test.
+
+
+## 1.82.0: find assets with open client notes
+
+- Once any client note exists, the filter bar shows "Open notes · n", where n is
+  the number of assets with at least one note not yet resolved. Click it to show
+  only those assets; click again to show everything. An asset leaves the list when
+  its last open note is resolved, and comes back if a note is reopened.
+- It combines with search, media type, rating, label and keyword filters. It is
+  a view filter on this Mac: it is not a saved search or smart collection, so
+  Save Search is unavailable while it is on. Export Current View as Review
+  Gallery follows the same filtered list, like every other filter.
+- Resolved ticks stay local; nothing about this changes feedback files or
+  what the client sees.
+- Tests cover the count, leaving and returning to the list, and assets with no
+  notes. The native `notes-open-filter` demo imports notes for two assets,
+  resolves one fully, turns the filter on and captures the grid at 1440x900;
+  its marker checks one asset shown, the right asset, and Save Search off.

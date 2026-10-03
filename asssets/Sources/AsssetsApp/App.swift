@@ -1282,6 +1282,8 @@ final class StudioLibrary: ObservableObject {
     @Published var expandedStacks: Set<UUID> = []
     /// Rating and label chips above the grid (1.11).
     @Published var ratingFilter = RatingFilter()
+    /// 1.82: only assets with an unresolved client note. A local view filter, not a saved rule.
+    @Published var openNotesFilter = false
     /// Stars a compare "keep" gives an asset; 0 leaves ratings alone. Remembered between launches.
     @Published var keepRating = UserDefaults.standard.integer(forKey: "compareKeepRating") {
         didSet { UserDefaults.standard.set(keepRating, forKey: "compareKeepRating") }
@@ -1290,7 +1292,7 @@ final class StudioLibrary: ObservableObject {
     var filteredFileCount: Int { unstackedFiltered.filter(passesPinnedFilters).count }
     /// Rating, label, keyword and color filters that sit on top of the collection and search box.
     func passesPinnedFilters(_ a: StudioAsset) -> Bool {
-        ratingFilter.matches(a) && (keywordFilter.map(a.tags.contains) ?? true) && (colorQuery.map { ColorSearch.matches($0, a) } ?? true)
+        ratingFilter.matches(a) && (!openNotesFilter || a.hasOpenClientNotes) && (keywordFilter.map(a.tags.contains) ?? true) && (colorQuery.map { ColorSearch.matches($0, a) } ?? true)
     }
     var filtered: [StudioAsset] {
         let list = unstackedFiltered.filter(passesPinnedFilters)
@@ -1316,7 +1318,7 @@ final class StudioLibrary: ObservableObject {
         if let t = similarTo { return "Similar to " + (catalog.assets.first { $0.id == t }?.title ?? "asset") }
         return selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection
     }
-    var canSaveSearch: Bool { selectedSmart == nil && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil || colorQuery != nil) }
+    var canSaveSearch: Bool { selectedSmart == nil && !openNotesFilter && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil || colorQuery != nil) }
 
     // MARK: File metadata and keywords (1.13)
 
@@ -3906,6 +3908,26 @@ final class StudioLibrary: ObservableObject {
             let statusOK = rows.count == 3 && rows.filter { $0.hasSuffix("\"Resolved\"") }.count == 1 && rows.filter { $0.hasSuffix("\"Open\"") }.count == 1
             let marker = "done notes=\(notes.count) open=\(catalog.openClientNoteCount) resolved=\(notes.filter(\.resolved).count) csv=\(statusOK)"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-resolve.txt"), atomically: true, encoding: .utf8)
+        case "notes-open-filter":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(3).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-02", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            let f = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan", items: [
+                .init(id: ids[0].uuidString, favorite: false, note: "Try a warmer backdrop"),
+                .init(id: ids[1].uuidString, favorite: false, note: "Crop the left edge tighter")])
+            importFeedback(feedback: [f], unreadable: 0)
+            if let done = catalog.assets.first(where: { $0.id == ids[0] })?.clientNotes.first {
+                setClientNoteResolved(done, on: ids[0], resolved: true)
+            }
+            openNotesFilter = true
+            var after = catalog
+            if let last = after.assets.first(where: { $0.id == ids[1] })?.clientNotes.first { _ = after.setClientNote(last, on: ids[1], resolved: true) }
+            let shown = filtered.map(\.id)
+            let marker = "done assets=\(catalog.openClientNoteAssetCount) shown=\(shown.count) match=\(shown == [ids[1]]) emptyAfterResolve=\(after.openClientNoteAssetCount == 0) canSave=\(canSaveSearch)"
+            try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-open-filter.txt"), atomically: true, encoding: .utf8)
         case "feedback-preview", "feedback-imported":
             // A third reviewer's file with Approve / Request changes, against the Lobby Refresh round.
             let id = makeDemoApproval().0
@@ -7956,6 +7978,19 @@ struct AssetBrowser: View {
                                     .font(.system(size: 11.5, weight: .semibold)).padding(.horizontal, 9).padding(.vertical, 5)
                                     .background(Theme.accent.opacity(0.35), in: Capsule()).overlay(Capsule().stroke(Theme.accent))
                             }.buttonStyle(.plain).help("Stop filtering by this keyword")
+                        }
+                        if model.openNotesFilter || model.catalog.clientNoteCount > 0 {
+                            Button { model.openNotesFilter.toggle() } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "text.bubble.fill").font(.system(size: 9))
+                                    Text("Open notes · \(model.catalog.openClientNoteAssetCount)").lineLimit(1)
+                                    if model.openNotesFilter { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
+                                }
+                                .font(.system(size: 11.5, weight: .semibold)).padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(Color(red: 1, green: 0.36, blue: 0.54).opacity(model.openNotesFilter ? 0.3 : 0.1), in: Capsule())
+                                .overlay(Capsule().stroke(Color(red: 1, green: 0.36, blue: 0.54).opacity(model.openNotesFilter ? 0.95 : 0.4)))
+                            }.buttonStyle(.plain)
+                            .help(model.openNotesFilter ? "Show every asset again" : "Show only assets with a client note not yet resolved on this Mac")
                         }
                         RatingFilterChips()
                     }.fixedSize()

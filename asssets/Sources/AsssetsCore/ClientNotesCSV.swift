@@ -31,6 +31,8 @@ public enum ClientNotesCSV {
 
 extension StudioCatalog {
     public var clientNoteCount: Int { assets.reduce(0) { $0 + $1.clientNotes.count } }
+    /// Assets that still carry at least one unresolved client note.
+    public var openClientNoteAssetCount: Int { assets.filter(\.hasOpenClientNotes).count }
     public var openClientNoteCount: Int { assets.reduce(0) { $0 + $1.clientNotes.filter { !$0.resolved }.count } }
     /// Ticks or unticks exactly this note. Returns false when the note is gone (for example after a re-import).
     @discardableResult public mutating func setClientNote(_ note: ClientNote, on id: UUID, resolved: Bool) -> Bool {
@@ -45,4 +47,8 @@ extension StudioCatalog {
         for r in galleryRosters { titles[r.gallery.lowercased()] = r.title }
         return ClientNotesCSV.render(assets, galleryTitles: titles)
     }
+}
+
+extension StudioAsset {
+    public var hasOpenClientNotes: Bool { clientNotes.contains { !$0.resolved } }
 }
