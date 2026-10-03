@@ -1282,3 +1282,15 @@ is still not clicked by a native UI test.
   notes. The native `notes-open-filter` demo imports notes for two assets,
   resolves one fully, turns the filter on and captures the grid at 1440x900;
   its marker checks one asset shown, the right asset, and Save Search off.
+
+
+## 1.82.1: the inspector follows the Open notes filter
+
+Turning Open notes on, or resolving the last open note on the selected asset
+while it is on, no longer leaves a hidden asset in the inspector. Hidden assets
+drop out of the selection; if nothing visible is still selected, the first
+visible asset is selected, or the selection clears when the list is empty. The
+rule is a small core function with its own test. The native `notes-open-filter`
+demo now selects an asset with no notes first, and its marker must report
+`follows=true`, meaning the selection moved to the asset that still has an open
+note. The capture should show that asset in the inspector with its open note.

@@ -83,6 +83,20 @@ struct ClientNotesCSVTests {
         #expect(c.openClientNoteAssetCount == 2)
     }
 
+    @Test func hiddenSelectionMovesToTheFirstVisibleAsset() {
+        let a = UUID(), b = UUID(), c = UUID()
+        let hidden = FilterSelection.reconcile(selection: [c], focus: c, visible: [a, b])
+        #expect(hidden.selection == [a] && hidden.focus == a)
+        let kept = FilterSelection.reconcile(selection: [b], focus: b, visible: [a, b])
+        #expect(kept.selection == [b] && kept.focus == b)
+        let partial = FilterSelection.reconcile(selection: [b, c], focus: c, visible: [a, b])
+        #expect(partial.selection == [b] && partial.focus == b)
+        let none = FilterSelection.reconcile(selection: [c], focus: c, visible: [])
+        #expect(none.selection.isEmpty && none.focus == nil)
+        let empty = FilterSelection.reconcile(selection: [], focus: nil, visible: [a])
+        #expect(empty.selection == [a])
+    }
+
     @Test func noNotesIsHeaderOnly() {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)

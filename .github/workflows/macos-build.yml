@@ -296,7 +296,7 @@ jobs:
           grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
           cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
           shoot notes-open-filter 1440x900 notes-open-filter demo-notes-open-filter.txt
-          grep -q '^done assets=1 shown=1 match=true emptyAfterResolve=true canSave=false$' "$SUP/demo-notes-open-filter.txt"
+          grep -q '^done assets=1 shown=1 match=true emptyAfterResolve=true follows=true canSave=false$' "$SUP/demo-notes-open-filter.txt"
           cp "$SUP/demo-notes-open-filter.txt" "ASSSETS-$ASSSETS_VERSION-notes-open-filter.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported

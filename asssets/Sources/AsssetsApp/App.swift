@@ -1283,7 +1283,13 @@ final class StudioLibrary: ObservableObject {
     /// Rating and label chips above the grid (1.11).
     @Published var ratingFilter = RatingFilter()
     /// 1.82: only assets with an unresolved client note. A local view filter, not a saved rule.
-    @Published var openNotesFilter = false
+    @Published var openNotesFilter = false { didSet { if openNotesFilter != oldValue { followFilterWithSelection() } } }
+    /// A hidden asset must not stay in the inspector. Selection moves to the first visible asset, or clears.
+    func followFilterWithSelection() {
+        let r = FilterSelection.reconcile(selection: selection, focus: focusID, visible: filtered.map(\.id))
+        guard r.selection != selection || r.focus != focusID else { return }
+        selection = r.selection; focusID = r.focus; anchorID = r.focus
+    }
     /// Stars a compare "keep" gives an asset; 0 leaves ratings alone. Remembered between launches.
     @Published var keepRating = UserDefaults.standard.integer(forKey: "compareKeepRating") {
         didSet { UserDefaults.standard.set(keepRating, forKey: "compareKeepRating") }
@@ -2913,6 +2919,7 @@ final class StudioLibrary: ObservableObject {
     func removeTag(_ tag: String, from ids: Set<UUID>) { mutate("Remove Tag") { $0.removeTag(tag, from: ids) } }
     func setClientNoteResolved(_ n: ClientNote, on id: UUID, resolved: Bool) {
         mutate(resolved ? "Resolve Note" : "Reopen Note") { _ = $0.setClientNote(n, on: id, resolved: resolved) }
+        if openNotesFilter { followFilterWithSelection() }
     }
     func removeClientNote(_ n: ClientNote, from id: UUID) {
         mutate("Remove Note") { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].clientNotes.removeAll { $0 == n } } }
@@ -3922,11 +3929,13 @@ final class StudioLibrary: ObservableObject {
             if let done = catalog.assets.first(where: { $0.id == ids[0] })?.clientNotes.first {
                 setClientNoteResolved(done, on: ids[0], resolved: true)
             }
+            selection = [ids[2]]; focusID = ids[2]; anchorID = ids[2]   // an asset with no notes, hidden by the filter
             openNotesFilter = true
+            inspectorAnchor = "inspector-notes"
             var after = catalog
             if let last = after.assets.first(where: { $0.id == ids[1] })?.clientNotes.first { _ = after.setClientNote(last, on: ids[1], resolved: true) }
             let shown = filtered.map(\.id)
-            let marker = "done assets=\(catalog.openClientNoteAssetCount) shown=\(shown.count) match=\(shown == [ids[1]]) emptyAfterResolve=\(after.openClientNoteAssetCount == 0) canSave=\(canSaveSearch)"
+            let marker = "done assets=\(catalog.openClientNoteAssetCount) shown=\(shown.count) match=\(shown == [ids[1]]) emptyAfterResolve=\(after.openClientNoteAssetCount == 0) follows=\(selection == [ids[1]] && focusID == ids[1]) canSave=\(canSaveSearch)"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-open-filter.txt"), atomically: true, encoding: .utf8)
         case "feedback-preview", "feedback-imported":
             // A third reviewer's file with Approve / Request changes, against the Lobby Refresh round.

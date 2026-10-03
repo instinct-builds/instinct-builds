@@ -52,3 +52,16 @@ extension StudioCatalog {
 extension StudioAsset {
     public var hasOpenClientNotes: Bool { clientNotes.contains { !$0.resolved } }
 }
+
+/// Keeps the inspector honest when a view filter hides what was selected.
+public enum FilterSelection {
+    /// Hidden assets drop out. If nothing visible remains selected, the first visible asset
+    /// takes over; with no visible asset the selection clears.
+    public static func reconcile(selection: Set<UUID>, focus: UUID?, visible: [UUID]) -> (selection: Set<UUID>, focus: UUID?) {
+        let shown = Set(visible)
+        let kept = selection.intersection(shown)
+        if !kept.isEmpty { return (kept, focus.flatMap { kept.contains($0) ? $0 : nil } ?? visible.first(where: kept.contains)) }
+        guard let first = visible.first else { return ([], nil) }
+        return ([first], first)
+    }
+}
