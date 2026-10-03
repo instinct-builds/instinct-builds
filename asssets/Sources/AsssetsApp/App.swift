@@ -823,6 +823,7 @@ final class StudioLibrary: ObservableObject {
               let decoded = StudioCatalog.decode(disk), decoded == next else {
             flash("Feedback save could not be verified. No in-memory changes were applied; check the catalog before retrying."); return
         }
+        _ = history.record("Import Client Feedback", before: catalog, after: next, includeFeedbackState: true)
         catalog = next
         var msg = "\(total.favorites) client \(total.favorites == 1 ? "pick" : "picks"), \(total.notes) \(total.notes == 1 ? "note" : "notes")"
         if total.withdrawn > 0 { msg += ", \(total.withdrawn) \(total.withdrawn == 1 ? "pick" : "picks") withdrawn" }
@@ -1600,6 +1601,7 @@ final class StudioLibrary: ObservableObject {
     func undo() {
         if NSApp.keyWindow?.firstResponder is NSText { NSApp.sendAction(Selector(("undo:")), to: nil, from: nil); return }
         var c = catalog
+        if let why = history.blockedUndoReason(catalog), let label = history.undoLabel { flash("Can't undo \(label): \(why)."); return }
         guard let label = history.undo(&c) else { return }
         catalog = c; save(); dropMissingSelection()
         flash("Undid \(label)")
@@ -1607,6 +1609,7 @@ final class StudioLibrary: ObservableObject {
     func redo() {
         if NSApp.keyWindow?.firstResponder is NSText { NSApp.sendAction(Selector(("redo:")), to: nil, from: nil); return }
         var c = catalog
+        if let why = history.blockedRedoReason(catalog), let label = history.redoLabel { flash("Can't redo \(label): \(why)."); return }
         guard let label = history.redo(&c) else { return }
         catalog = c; save(); dropMissingSelection()
         flash("Redid \(label)")
@@ -4219,6 +4222,32 @@ final class StudioLibrary: ObservableObject {
                 let kept = ((try? FileManager.default.contentsOfDirectory(atPath: self.supportRoot.path)) ?? []).contains { $0.hasPrefix("studio-catalog.before-restore-") }
                 let marker = "done wrote=\(wrote != nil && before > 1) removed=\(removed == before - 1) restored=\(restored == before) beforeKept=\(kept)"
                 try? marker.write(to: self.supportRoot.appendingPathComponent("demo-library-backup.txt"), atomically: true, encoding: .utf8)
+            }
+        case "feedback-undo":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(3).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-03", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            show(collection: StudioCatalog.allAssets)
+            let beforeImport = catalog
+            importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan",
+                items: [(0, "Try a warmer backdrop", true), (1, "", false), (2, "Fix the shadow", true)].map { .init(id: ids[$0.0].uuidString, favorite: $0.2, note: $0.1, status: $0.0 == 1 ? "approved" : "changes") })], unreadable: 0)
+            let afterImport = catalog
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                let imported = self.catalog.clientNoteCount == 2 && !self.catalog.feedbackPickLedger.isEmpty && self.history.undoLabel == "Import Client Feedback"
+                var c = self.catalog
+                _ = self.history.undo(&c); self.catalog = c; self.save()
+                let equalsBefore = self.catalog == beforeImport
+                c = self.catalog
+                _ = self.history.redo(&c); self.catalog = c; self.save()
+                let redoEquals = self.catalog == afterImport
+                c = self.catalog
+                _ = self.history.undo(&c); self.catalog = c; self.save()
+                self.flash("Undid Import Client Feedback")
+                let marker = "done imported=\(imported) equalsBefore=\(equalsBefore) redoEquals=\(redoEquals) notes=\(self.catalog.clientNoteCount) ledger=\(self.catalog.feedbackPickLedger.count)"
+                try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-undo.txt"), atomically: true, encoding: .utf8)
             }
         case "catalog-recovery":
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {

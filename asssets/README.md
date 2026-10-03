@@ -1505,3 +1505,11 @@ Limits: the backup is catalog data only. It does not contain the asset files, th
 ## 1.91.1: CI harness fix, no product change
 
 The `shoot` helper killed the app as soon as a demo's first marker landed, while three demos (decision-filter, client-decisions, notes-resolve-all) write a second view marker a few seconds later. On a slow runner that file never appeared and the step failed. `shoot` now takes an `ALSO=<file>` environment variable and keeps the app alive until that file lands (60 s cap). The three demos use it. Nothing in the app changed.
+
+## 1.92.0: undo a client feedback import
+
+Import Client Feedback now appears in Edit as "Undo Import Client Feedback". The step records the assets the import touched plus everything else an import can change: boards (pinned reviews), the client pick ledger and its ownership sets, saved gallery rosters, and the smart collection it may create. Undo puts all of it back, so the catalog equals what it was before the import. A unit test asserts that equality. Redo does the same in reverse.
+
+There is no partial Undo. If boards, picks or rosters changed after the import (for example a later import or a board edit), Undo is refused with a message and nothing is touched, because reverting would discard those later changes. Other edits, such as tags and ratings, keep their own Undo steps in order. Suggested tags, previews and newly watched files that landed in between are kept, as with every Undo step.
+
+Limits: undo history lives in memory, so it is gone after a quit. Reverting an import does not tell the client anything, and the gallery file you already received is not changed. The CI `feedback-undo` demo imports, undoes and writes a marker.

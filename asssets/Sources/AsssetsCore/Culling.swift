@@ -132,6 +132,20 @@ public struct UndoStep: Equatable, Sendable {
     var before: [UUID: (Int, StudioAsset)]
     var after: [UUID: (Int, StudioAsset)]
     var lists: (before: Lists, after: Lists)?
+    /// 1.92: only a step that opts in (a client feedback import) also carries boards and the pick ledger.
+    var feedback: (before: FeedbackState, after: FeedbackState)?
+
+    /// Everything an import can change outside the assets and lists: boards (pinned reviews), the pick ledger and its
+    /// ownership sets, and gallery rosters. Undo restores all of it or none of it.
+    struct FeedbackState: Equatable, Sendable {
+        var boards: [Moodboard], ledger: [FeedbackPickRound], owned: Set<UUID>, preserved: Set<UUID>, rosters: [GalleryRoster]
+        init(_ c: StudioCatalog) {
+            boards = c.boards; ledger = c.feedbackPickLedger; owned = c.ledgerOwnedPickTags; preserved = c.preservedPickTags; rosters = c.galleryRosters
+        }
+        func apply(to c: inout StudioCatalog) {
+            c.boards = boards; c.feedbackPickLedger = ledger; c.ledgerOwnedPickTags = owned; c.preservedPickTags = preserved; c.galleryRosters = rosters
+        }
+    }
 
     struct Lists: Equatable, Sendable {
         var userCollections: [String], dismissedKeys: [String], smartCollections: [StudioSmartCollection]
@@ -143,7 +157,7 @@ public struct UndoStep: Equatable, Sendable {
         l.label == r.label && l.before.keys == r.before.keys && l.after.keys == r.after.keys
     }
 
-    init?(label: String, before b: StudioCatalog, after a: StudioCatalog) {
+    init?(label: String, before b: StudioCatalog, after a: StudioCatalog, includeFeedbackState: Bool = false) {
         let bi = Dictionary(uniqueKeysWithValues: b.assets.enumerated().map { ($0.element.id, ($0.offset, $0.element)) })
         let ai = Dictionary(uniqueKeysWithValues: a.assets.enumerated().map { ($0.element.id, ($0.offset, $0.element)) })
         var before: [UUID: (Int, StudioAsset)] = [:], after: [UUID: (Int, StudioAsset)] = [:]
@@ -153,8 +167,11 @@ public struct UndoStep: Equatable, Sendable {
         }
         let lb = Lists(b), la = Lists(a)
         let changedIDs = Set(bi.keys).union(ai.keys).filter { bi[$0]?.1 != ai[$0]?.1 }
-        guard !changedIDs.isEmpty || lb != la else { return nil }
+        let fbBefore = FeedbackState(b), fbAfter = FeedbackState(a)
+        let feedbackChanged = includeFeedbackState && fbBefore != fbAfter
+        guard !changedIDs.isEmpty || lb != la || feedbackChanged else { return nil }
         self.label = label
+        if feedbackChanged { feedback = (before: fbBefore, after: fbAfter) }
         self.before = before.filter { changedIDs.contains($0.key) }
         self.after = after.filter { changedIDs.contains($0.key) }
         self.changed = changedIDs
@@ -164,7 +181,15 @@ public struct UndoStep: Equatable, Sendable {
 
     /// Puts one side back: assets that side had are restored (keeping newer suggested tags, size and palette),
     /// assets it lacked are removed.
-    func restore(_ side: [UUID: (Int, StudioAsset)], lists: Lists?, into c: inout StudioCatalog) {
+    /// Why this step cannot be put back now, or nil. A feedback step is all-or-nothing: if boards, picks or rosters
+    /// are no longer what the step expects, reverting would discard later changes, so nothing is reverted.
+    func blockedReason(undoing: Bool, in c: StudioCatalog) -> String? {
+        guard let fb = feedback else { return nil }
+        let expected = undoing ? fb.after : fb.before
+        return FeedbackState(c) == expected ? nil : "boards or client picks changed after it, so reverting would discard those changes"
+    }
+
+    func restore(_ side: [UUID: (Int, StudioAsset)], lists: Lists?, feedback fb: FeedbackState? = nil, into c: inout StudioCatalog) {
         for id in changed where side[id] == nil { c.assets.removeAll { $0.id == id } }
         for (id, (pos, saved)) in side.sorted(by: { $0.value.0 < $1.value.0 }) {
             if let i = c.assets.firstIndex(where: { $0.id == id }) {
@@ -176,6 +201,7 @@ public struct UndoStep: Equatable, Sendable {
             }
         }
         lists?.apply(to: &c)
+        fb?.apply(to: &c)
     }
 }
 
@@ -190,25 +216,29 @@ public struct UndoHistory: Sendable {
 
     /// Records an edit. Nothing is recorded when the edit changed nothing. A new edit clears redo.
     @discardableResult
-    public mutating func record(_ label: String, before: StudioCatalog, after: StudioCatalog) -> Bool {
-        guard let step = UndoStep(label: label, before: before, after: after) else { return false }
+    public mutating func record(_ label: String, before: StudioCatalog, after: StudioCatalog, includeFeedbackState: Bool = false) -> Bool {
+        guard let step = UndoStep(label: label, before: before, after: after, includeFeedbackState: includeFeedbackState) else { return false }
         undoStack.append(step)
         if undoStack.count > Self.limit { undoStack.removeFirst(undoStack.count - Self.limit) }
         redoStack.removeAll()
         return true
     }
 
+    /// 1.92: non-nil when the next undo or redo would discard later board or pick changes. Nothing is popped or changed.
+    public func blockedUndoReason(_ c: StudioCatalog) -> String? { undoStack.last?.blockedReason(undoing: true, in: c) }
+    public func blockedRedoReason(_ c: StudioCatalog) -> String? { redoStack.last?.blockedReason(undoing: false, in: c) }
+
     /// Returns the label of the undone edit.
     public mutating func undo(_ c: inout StudioCatalog) -> String? {
         guard let step = undoStack.popLast() else { return nil }
-        step.restore(step.before, lists: step.lists?.before, into: &c)
+        step.restore(step.before, lists: step.lists?.before, feedback: step.feedback?.before, into: &c)
         redoStack.append(step)
         return step.label
     }
 
     public mutating func redo(_ c: inout StudioCatalog) -> String? {
         guard let step = redoStack.popLast() else { return nil }
-        step.restore(step.after, lists: step.lists?.after, into: &c)
+        step.restore(step.after, lists: step.lists?.after, feedback: step.feedback?.after, into: &c)
         undoStack.append(step)
         return step.label
     }

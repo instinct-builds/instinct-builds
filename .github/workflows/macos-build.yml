@@ -321,6 +321,11 @@ jobs:
           grep -q '^done wrote=true removed=true restored=true beforeKept=true$' "$SUP/demo-library-backup.txt"
           cp "$SUP/demo-library-backup.txt" "ASSSETS-$ASSSETS_VERSION-library-backup.txt"
           rm -f "$SUP/demo-library-backup.json" "$SUP"/studio-catalog.before-restore-*.json
+          rm -f "$SUP/demo-feedback-undo.txt"
+          shoot feedback-undo 1440x900 feedback-undo demo-feedback-undo.txt before
+          cat "$SUP/demo-feedback-undo.txt"
+          grep -q '^done imported=true equalsBefore=true redoEquals=true notes=0 ledger=0$' "$SUP/demo-feedback-undo.txt"
+          cp "$SUP/demo-feedback-undo.txt" "ASSSETS-$ASSSETS_VERSION-feedback-undo.txt"
           rm -f "$SUP/demo-header-frames.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt
           cat "$SUP/demo-decision-smart.txt"
@@ -584,6 +589,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-note-search.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-catalog-recovery.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-library-backup.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-undo.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart-frame.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
