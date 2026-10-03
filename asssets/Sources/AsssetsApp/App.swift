@@ -76,6 +76,7 @@ struct ASSSETSApp: App {
                     .disabled(library.catalog.clientDecisionCount == 0)
                 Button("Copy Revision Brief") { library.copyRevisionBrief() }
                     .disabled(library.catalog.clientNoteCount == 0 && library.catalog.clientDecisionCount == 0)
+                Button("Restore Library from Backup…") { library.presentRestoreFromBackup() }
                 Button("Recover Last Published Gallery…") { library.reopenPublicationRecovery() }
                     .disabled(!library.hasPublicationRecovery)
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
@@ -128,6 +129,14 @@ final class StudioLibrary: ObservableObject {
     @Published var pendingRemoval: Set<UUID> = []
     @Published var renamingCollection: String?
     @Published var toast: String?
+    /// 1.90: set when the catalog file existed but could not be read. Shown as a banner until dismissed.
+    @Published var recoveryNotice: String?
+    var recoveryPreserved: URL?
+    /// True only when an unreadable file could be neither moved nor copied aside: nothing may overwrite it.
+    var catalogSaveBlocked = false
+    private var didSnapshotThisLaunch = false
+    var backupsURL: URL { supportRoot.appendingPathComponent(CatalogRecovery.backupsFolder, isDirectory: true) }
+    var demoPlantedAssets = -1
     @Published var licenseRepairReview: LicenseRepairSelection?
     @Published var licenseDetachmentReview: MissingLicenseDetachment?
     @Published var licenseCleanupReview: LicenseCleanupReview?
@@ -1183,6 +1192,7 @@ final class StudioLibrary: ObservableObject {
     init() {
         supportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ASSSETS", isDirectory: true)
         try? FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
+        if Self.launchDemoName == "catalog-recovery" { plantCorruptCatalogForDemo() }
         // Recover pending paperwork before install() can rewrite the catalog digest.
         let recovered = reconcileLicenseCleanup()
         if recovered { install() }
@@ -1295,13 +1305,90 @@ final class StudioLibrary: ObservableObject {
     }
 
     private func loadCatalog() -> StudioCatalog? {
-        for url in [catalogURL, legacyURL] {
-            if let data = try? Data(contentsOf: url), let c = StudioCatalog.decode(data), !c.assets.isEmpty { return c }
+        switch CatalogRecovery.load(catalogURL: catalogURL, legacyURL: legacyURL) {
+        case .fresh:
+            return nil
+        case .loaded(let c):
+            if !didSnapshotThisLaunch {
+                didSnapshotThisLaunch = true
+                if !isDemoRecoveryRun { CatalogRecovery.snapshot(catalogURL: FileManager.default.fileExists(atPath: catalogURL.path) ? catalogURL : legacyURL, backups: backupsURL) }
+            }
+            return c
+        case .unreadable(let original, let preserved):
+            recoveryPreserved = preserved
+            recoveryNotice = CatalogRecovery.notice(original: original, preserved: preserved)
+            if preserved == nil { catalogSaveBlocked = true }
+            return nil
         }
-        return nil
+    }
+
+    static var launchDemoName: String? {
+        let args = ProcessInfo.processInfo.arguments
+        return args.firstIndex(of: "-asssets-demo").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+    }
+    private var isDemoRecoveryRun: Bool { Self.launchDemoName == "catalog-recovery" }
+
+    /// Demo only: snapshot the pristine catalog, then plant a truncated catalog file where the real one lives.
+    private func plantCorruptCatalogForDemo() {
+        if let data = try? Data(contentsOf: catalogURL), let c = StudioCatalog.decode(data), !c.assets.isEmpty {
+            CatalogRecovery.snapshot(catalogURL: catalogURL, backups: backupsURL)
+            demoPlantedAssets = c.assets.count
+        }
+        try? Data(Self.demoCorruptText.utf8).write(to: catalogURL, options: .atomic)
+    }
+    static let demoCorruptText = "{\"assets\": [ {\"id\": \"truncated"
+
+    func dismissRecoveryNotice() { recoveryNotice = nil }
+
+    func revealPreservedCatalog() {
+        if let u = recoveryPreserved { NSWorkspace.shared.activateFileViewerSelecting([u]) }
+    }
+
+    private static func backupLabel(_ b: CatalogRecovery.Backup) -> String {
+        let raw = b.url.deletingPathExtension().lastPathComponent.dropFirst("catalog-".count)
+        let parts = raw.split(separator: "-")
+        let inp = DateFormatter(); inp.locale = Locale(identifier: "en_US_POSIX"); inp.dateFormat = "yyyyMMdd-HHmmss"
+        var when = String(raw)
+        if parts.count >= 2, let d = inp.date(from: String(parts[0]) + "-" + String(parts[1])) { when = d.formatted(date: .abbreviated, time: .shortened) }
+        return "\(when)  ·  \(b.assets) \(b.assets == 1 ? "asset" : "assets"), \(b.boards) \(b.boards == 1 ? "board" : "boards")"
+    }
+
+    /// Two steps: choose a snapshot (counts shown), then confirm with current-versus-backup counts. Nothing changes before that.
+    func presentRestoreFromBackup() {
+        let list = CatalogRecovery.backups(backups: backupsURL)
+        guard !list.isEmpty else { flash("No backups yet. ASSSETS keeps one snapshot per launch, the newest \(CatalogRecovery.keepSnapshots)."); return }
+        let pick = NSAlert()
+        pick.messageText = "Restore library from a backup"
+        pick.informativeText = "Snapshots are taken each time ASSSETS opens a readable library. Nothing changes until you confirm on the next step."
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 360, height: 26))
+        for b in list { popup.addItem(withTitle: Self.backupLabel(b)) }
+        pick.accessoryView = popup
+        pick.addButton(withTitle: "Continue"); pick.addButton(withTitle: "Cancel")
+        guard pick.runModal() == .alertFirstButtonReturn, list.indices.contains(popup.indexOfSelectedItem) else { return }
+        let chosen = list[popup.indexOfSelectedItem]
+        let confirm = NSAlert()
+        confirm.messageText = "Replace the current library?"
+        confirm.informativeText = "Current: \(catalog.assets.count) assets, \(catalog.boards.count) boards.\nBackup: \(chosen.assets) assets, \(chosen.boards) boards.\n\nThe current catalog file is kept next to it as studio-catalog.before-restore-<time>.json, so this can be reversed by hand."
+        confirm.addButton(withTitle: "Restore Backup"); confirm.addButton(withTitle: "Cancel")
+        guard confirm.runModal() == .alertFirstButtonReturn else { return }
+        performRestore(chosen)
+    }
+
+    @discardableResult
+    func performRestore(_ b: CatalogRecovery.Backup) -> Bool {
+        guard let r = CatalogRecovery.restore(b, catalogURL: catalogURL) else {
+            flash("Could not restore that backup. The current library was not changed."); return false
+        }
+        catalog = r.catalog
+        history = UndoHistory()
+        selection = []; focusID = nil
+        catalogSaveBlocked = false; recoveryNotice = nil
+        flash("Restored \(b.assets) \(b.assets == 1 ? "asset" : "assets") and \(b.boards) \(b.boards == 1 ? "board" : "boards") from a backup")
+        return true
     }
 
     func save() {
+        if catalogSaveBlocked { return }
         if cleanupEntryExists(cleanupJournalURL) { return } // preserve the digest until recovery settles
         if let data = try? catalog.encoded() { try? data.write(to: catalogURL, options: .atomic) }
     }
@@ -4084,6 +4171,17 @@ final class StudioLibrary: ObservableObject {
                 let jordanHits = self.catalog.filtered(search: "jordan", kind: nil, collection: StudioCatalog.allAssets).count
                 let marker = "done shadow=\(shadowHits) warmer=\(warmerHits) none=\(noneHits) jordan=\(jordanHits) visible=\(self.filtered.count) resolvedStillFound=\(self.filtered.first?.id == ids[2])"
                 try? marker.write(to: self.supportRoot.appendingPathComponent("demo-note-search.txt"), atomically: true, encoding: .utf8)
+            }
+        case "catalog-recovery":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                let fm = FileManager.default
+                let names = (try? fm.contentsOfDirectory(atPath: self.supportRoot.path)) ?? []
+                let kept = names.filter { $0.hasPrefix("studio-catalog.corrupt-") }
+                let keptIntact = kept.contains { (try? String(contentsOfFile: self.supportRoot.appendingPathComponent($0).path, encoding: .utf8)) == Self.demoCorruptText }
+                let list = CatalogRecovery.backups(backups: self.backupsURL)
+                let previewMatches = self.demoPlantedAssets > 0 && list.first?.assets == self.demoPlantedAssets
+                let marker = "done corruptKept=\(keptIntact) noticeShown=\(self.recoveryNotice != nil) previewMatches=\(previewMatches) saveBlocked=\(self.catalogSaveBlocked)"
+                try? marker.write(to: self.supportRoot.appendingPathComponent("demo-catalog-recovery.txt"), atomically: true, encoding: .utf8)
             }
         case "revision-brief":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
@@ -7802,6 +7900,25 @@ struct StudioView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.toast)
+        .overlay(alignment: .top) {
+            if let notice = model.recoveryNotice {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Library couldn't be read", systemImage: "exclamationmark.triangle.fill").font(.callout.weight(.semibold)).foregroundStyle(.orange)
+                    Text(notice).font(.callout).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        if model.recoveryPreserved != nil { Button("Reveal in Finder") { model.revealPreservedCatalog() } }
+                        Button("Restore from Backup…") { model.presentRestoreFromBackup() }.buttonStyle(.borderedProminent)
+                        Button("Dismiss") { model.dismissRecoveryNotice() }
+                    }.controlSize(.small)
+                }
+                .padding(14).frame(maxWidth: 560, alignment: .leading)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.orange.opacity(0.5)))
+                .padding(.top, 54)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.recoveryNotice)
     }
 }
 

@@ -1481,3 +1481,15 @@ The search box (and a saved smart collection's text rule) now also matches clien
 ## 1.89.0: search finds reviewers too
 
 Reviewer labels on client notes are searchable alongside the note text, so "jordan" finds every asset Jordan left a note on. Labels are the names typed into the review gallery, not verified identities. Local only; nothing is sent to the client.
+
+## 1.90.0: an unreadable library is preserved, never overwritten
+
+Before 1.90 a catalog file that failed to decode fell through to an empty catalog, and the next save replaced the real file. Now:
+
+- A file that exists but cannot be read or decoded is moved aside as `studio-catalog.corrupt-<date>-<time>.json` (a numeric suffix keeps an earlier `.corrupt` copy from ever being replaced). If the move fails it is copied; if that also fails, saving through the normal path is blocked and the banner says so.
+- A banner at the top of the window says the library couldn't be read and where the original is preserved, with Reveal in Finder, Restore from Backup and Dismiss.
+- A missing file, or a readable file with no assets, is still the silent fresh-install path. Only a failed decode of an existing file triggers the recovery UX.
+- Each launch that loads a readable library copies it to `Backups/catalog-<date>-<time>.json` and keeps the newest 5.
+- File > Restore Library from Backup… lists the snapshots with asset and board counts, then asks again with current versus backup counts. Restoring keeps the file it replaces as `studio-catalog.before-restore-<time>.json` and clears undo history, so the undo stack cannot point at pre-restore state.
+
+Limits, stated plainly: snapshots are taken at launch, so edits made since the last launch are not in the newest one. A handful of flows (gallery roster, license cleanup) write the catalog directly rather than through the normal save, so the blocked-save state does not cover them; that state only arises when an unreadable file can be neither moved nor copied. Restore and the banner are proven by unit tests and by the CI `catalog-recovery` demo, which plants a truncated file and writes `done corruptKept=true noticeShown=true previewMatches=true saveBlocked=false`; the two-step restore dialog itself is not driven by CI. Backups are plain copies of the catalog JSON and do not include asset files or licence documents.
