@@ -295,9 +295,14 @@ jobs:
           shoot notes-resolve 1440x900 notes-resolve demo-notes-resolve.txt
           grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
           cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
+          rm -f "$SUP/demo-notes-resolve-all-view.txt"
           shoot notes-resolve-all 1440x900 notes-resolve-all demo-notes-resolve-all.txt
           grep -q '^done changed=4/2 open=2 openAssets=1 thirdOpen=true repeat=0$' "$SUP/demo-notes-resolve-all.txt"
           cp "$SUP/demo-notes-resolve-all.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve-all.txt"
+          for i in $(seq 1 30); do [ -s "$SUP/demo-notes-resolve-all-view.txt" ] && break; sleep 1; done
+          cat "$SUP/demo-notes-resolve-all-view.txt"
+          grep -q '^view selected=true title=true notes=2 open=0 grid=true$' "$SUP/demo-notes-resolve-all-view.txt"
+          cp "$SUP/demo-notes-resolve-all-view.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve-all-view.txt"
           shoot notes-open-filter 1440x900 notes-open-filter demo-notes-open-filter.txt
           grep -q '^done assets=1 shown=1 match=true emptyAfterResolve=true follows=true canSave=false$' "$SUP/demo-notes-open-filter.txt"
           cp "$SUP/demo-notes-open-filter.txt" "ASSSETS-$ASSSETS_VERSION-notes-open-filter.txt"
@@ -515,6 +520,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-resolve.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-open-filter.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-resolve-all.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-resolve-all-view.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt

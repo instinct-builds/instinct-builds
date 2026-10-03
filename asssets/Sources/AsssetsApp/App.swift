@@ -3938,15 +3938,23 @@ final class StudioLibrary: ObservableObject {
             }
             let before = catalog.clientNotesToChange(on: Set(ids.prefix(2)), resolved: true)
             setClientNotesResolved(on: Set(ids.prefix(2)), resolved: true)
-            selection = [ids[0]]; focusID = ids[0]; anchorID = ids[0]
-            scrollInspectorToTags = true
-            inspectorAnchor = "inspector-notes"
-            // The first scroll can land before this asset's inspector is laid out; ask again once it is.
-            for delay in [2.0, 4.0] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    self.inspectorAnchor = nil
-                    DispatchQueue.main.async { self.inspectorAnchor = "inspector-notes" }
-                }
+            // Narrow the grid to the asset that holds the resolved notes so the selection cannot point elsewhere,
+            // select it by id, and re-assert that after the window settles. The view marker records what was really selected.
+            let target = ids[0]
+            let targetTitle = catalog.assets.first(where: { $0.id == target })?.title ?? ""
+            func focusTarget() {
+                selection = [target]; focusID = target; anchorID = target
+                scrollInspectorToTags = true
+                inspectorAnchor = nil
+                DispatchQueue.main.async { self.inspectorAnchor = "inspector-notes" }
+            }
+            search = targetTitle
+            focusTarget()
+            for delay in [2.0, 4.0] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) { focusTarget() } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
+                let shown = self.selection.first.flatMap { id in self.catalog.assets.first(where: { $0.id == id }) }
+                let view = "view selected=\(self.selection == [target]) title=\(shown?.title == targetTitle) notes=\(shown?.clientNotes.count ?? -1) open=\(shown?.clientNotes.filter { !$0.resolved }.count ?? -1) grid=\(self.filtered.map(\.id) == [target])"
+                try? view.write(to: self.supportRoot.appendingPathComponent("demo-notes-resolve-all-view.txt"), atomically: true, encoding: .utf8)
             }
             let third = catalog.assets.first(where: { $0.id == ids[2] })?.clientNotes.allSatisfy { !$0.resolved } == true
             let marker = "done changed=\(before.notes)/\(before.assets) open=\(catalog.openClientNoteCount) openAssets=\(catalog.openClientNoteAssetCount) thirdOpen=\(third) repeat=\(catalog.clientNotesToChange(on: Set(ids.prefix(2)), resolved: true).notes)"

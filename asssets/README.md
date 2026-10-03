@@ -1322,3 +1322,15 @@ scroll to Client Notes, and asks again at 2 and 4 seconds in case the first
 request lands before the inspector is laid out. The capture (at 9 seconds)
 should show both notes struck through with "CLIENT NOTES · 0 OPEN". Demo only;
 no product change.
+
+
+## 1.83.2: bulk-resolve capture drives the asset directly
+
+Re-asking for the scroll did not change the 1.83.1 frame, so timing was the
+wrong diagnosis. The demo now narrows the grid to the one asset that holds the
+resolved notes, selects it by id, and re-asserts that selection and the
+Client Notes scroll at 2 and 4 seconds. At 7 seconds it records what was really
+selected in `demo-notes-resolve-all-view.txt`, and CI requires
+`view selected=true title=true notes=2 open=0 grid=true` before keeping the
+capture. If the selection is not the resolved asset, the build fails with that
+line instead of leaving a misleading picture. Demo only; no product change.
