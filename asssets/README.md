@@ -1312,3 +1312,13 @@ note. The capture should show that asset in the inspector with its open note.
   on three assets, resolves two assets through the same model call, and its marker
   must read `changed=4/2 open=2 openAssets=1 thirdOpen=true repeat=0`. The context
   menu item itself is not natively clicked in CI.
+
+
+## 1.83.1: scroll proof for bulk resolve
+
+The 1.83.0 capture showed the top of the inspector, not Client Notes. The
+`notes-resolve-all` demo now selects the resolved asset, asks the inspector to
+scroll to Client Notes, and asks again at 2 and 4 seconds in case the first
+request lands before the inspector is laid out. The capture (at 9 seconds)
+should show both notes struck through with "CLIENT NOTES · 0 OPEN". Demo only;
+no product change.

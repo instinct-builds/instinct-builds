@@ -3939,7 +3939,15 @@ final class StudioLibrary: ObservableObject {
             let before = catalog.clientNotesToChange(on: Set(ids.prefix(2)), resolved: true)
             setClientNotesResolved(on: Set(ids.prefix(2)), resolved: true)
             selection = [ids[0]]; focusID = ids[0]; anchorID = ids[0]
+            scrollInspectorToTags = true
             inspectorAnchor = "inspector-notes"
+            // The first scroll can land before this asset's inspector is laid out; ask again once it is.
+            for delay in [2.0, 4.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    self.inspectorAnchor = nil
+                    DispatchQueue.main.async { self.inspectorAnchor = "inspector-notes" }
+                }
+            }
             let third = catalog.assets.first(where: { $0.id == ids[2] })?.clientNotes.allSatisfy { !$0.resolved } == true
             let marker = "done changed=\(before.notes)/\(before.assets) open=\(catalog.openClientNoteCount) openAssets=\(catalog.openClientNoteAssetCount) thirdOpen=\(third) repeat=\(catalog.clientNotesToChange(on: Set(ids.prefix(2)), resolved: true).notes)"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-resolve-all.txt"), atomically: true, encoding: .utf8)
