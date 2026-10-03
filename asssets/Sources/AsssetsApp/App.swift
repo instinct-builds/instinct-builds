@@ -133,6 +133,8 @@ final class StudioLibrary: ObservableObject {
     private var cleanupDemoFault: String?
     private var reportDemoFault: String?
     @Published var selectedSmart: UUID?
+    /// Demo only: sidebar sections forced closed so a capture can show the one under test.
+    var demoCollapsedSections: Set<String> = []
     /// Moodboard shown in place of the grid (1.16), its selected card, and the note being edited.
     @Published var selectedBoard: UUID?
     /// Selected cards on the open board (1.18: several at once). `boardItem` is the single selection, when there is one.
@@ -4025,6 +4027,7 @@ final class StudioLibrary: ObservableObject {
                     items: entries.map { .init(id: ids[$0.0].uuidString, favorite: false, note: "", status: $0.1) })], unreadable: 0)
             }
             // The real path: filter, then Save Search, then the saved collection.
+            demoCollapsedSections = ["LIBRARY", "COLLECTIONS", "BOARDS", "WATCH FOLDERS", "MEDIA", "KEYWORDS"]
             decisionFilter = .changes
             let saveable = canSaveSearch
             beginNewSmart()
@@ -7992,8 +7995,9 @@ struct SidebarSection<Content: View>: View {
     var trailing: AnyView? = nil
     @ViewBuilder let content: Content
     /// Collapsed section titles, remembered across launches.
+    @EnvironmentObject var model: StudioLibrary
     @AppStorage(SidebarSections.key) private var collapsedRaw = ""
-    private var collapsed: Bool { SidebarSections.decode(collapsedRaw).contains(title) }
+    private var collapsed: Bool { model.demoCollapsedSections.contains(title) || SidebarSections.decode(collapsedRaw).contains(title) }
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
@@ -8106,6 +8110,14 @@ struct AssetBrowser: View {
                 if let id = model.selectedSmart, let smart = model.catalog.smartCollection(id) {
                     Label(smart.rules.summary, systemImage: "line.3.horizontal.decrease.circle").font(.caption).foregroundStyle(Theme.smart).lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(GeometryReader { g in
+                            Color.clear.onAppear {
+                                guard model.isDemo else { return }
+                                let f = g.frame(in: .global)
+                                try? "summary minX=\(Int(f.minX)) width=\(Int(f.width)) text=\(smart.rules.summary)".write(
+                                    to: model.supportRoot.appendingPathComponent("demo-summary-frame.txt"), atomically: true, encoding: .utf8)
+                            }
+                        })
                 }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)

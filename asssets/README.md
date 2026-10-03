@@ -1371,12 +1371,13 @@ line instead of leaving a misleading picture. Demo only; no product change.
   Approved, no changes means someone approved and nobody asked for changes, so
   an asset where reviewers disagree appears under Changes, not Approved.
 - It combines with search, type, rating, label, keyword and Open notes. It is a
-  view filter on this Mac, not a saved rule: Save Search is unavailable while it
-  is on, and Export Current View as Review Gallery follows the filtered list.
+  view filter on this Mac. Since 1.86 Save Search works with a Decisions
+  filter (it saves a smart collection); it stays unavailable while Open notes
+  is on. Export Current View as Review Gallery follows the filtered list.
 - If the selected asset is hidden by the filter, the inspector moves to the first
   visible asset or clears, as with Open notes. Reviewer names remain local draft
   labels and decisions are a local record.
-- No decision-based smart collection yet; assets nobody decided on have no
+- Decision-based smart collections arrived in 1.86; assets nobody decided on have no
   filter of their own. The unit test covers Changes, Approved and disagreement.
   The native `decision-filter` demo imports four assets' decisions (including one
   split), turns on Changes, and checks `changes=2 approved=1 shown=2 match=true
@@ -1419,3 +1420,16 @@ line instead of leaving a misleading picture. Demo only; no product change.
   at the PNG; there is no automated visibility assertion.
 - The smart collection summary line under the header is left-aligned in a full
   width frame, which should fix the clipped "ient requested changes" start.
+
+
+## 1.86.2: sidebar and header proof
+
+- The `decision-smart` capture closes the other sidebar sections (demo only,
+  through a harness flag that does not touch saved preferences), so the new
+  Needs Changes collection sits near the top and cannot be below the fold.
+  1.86.1's scroll did not show it; the cause was not found, so this proves the
+  row by layout instead of by scroll.
+- The header summary line records its on-screen frame to
+  `demo-summary-frame.txt` (demo only) so a clipped start shows up as a
+  negative minX instead of a guess from the picture. The clipping itself is not
+  fixed yet. CI prints the file.

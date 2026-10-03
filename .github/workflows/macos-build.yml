@@ -299,6 +299,8 @@ jobs:
           cat "$SUP/demo-decision-smart.txt"
           grep -q '^done saveable=true name=Needs_Changes saved=true filterCleared=true before=2 after=3 summary=client_requested_changes$' "$SUP/demo-decision-smart.txt"
           cp "$SUP/demo-decision-smart.txt" "ASSSETS-$ASSSETS_VERSION-decision-smart.txt"
+          cat "$SUP/demo-summary-frame.txt" || true
+          cp "$SUP/demo-summary-frame.txt" "ASSSETS-$ASSSETS_VERSION-decision-smart-frame.txt" || true
           rm -f "$SUP/demo-decision-filter-view.txt"
           shoot decision-filter 1440x900 decision-filter demo-decision-filter.txt
           cat "$SUP/demo-decision-filter.txt"
@@ -548,6 +550,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-filter.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-filter-view.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart-frame.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
