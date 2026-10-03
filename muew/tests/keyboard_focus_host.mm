@@ -39,7 +39,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.107.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.108.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -227,7 +227,15 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                     pt.apply(muew::MidiEvent{muew::MidiEvent::AllNotesOff,0,0.0f}); [v showPerformance:pt.snapshot() note:pt.lastNote() sustain:pt.sustain()];
                     [v showPerformance:muew::Performance{} note:-1 sustain:false];
                 }
-                MIDIEndpointDispose(src); MIDIClientDispose(pc);
+                { // 0.108.0 unplug: the source disappears while "held": the input drops it and releases everything once
+                    MIDIEndpointDispose(src); src=0;
+                    until=[NSDate dateWithTimeIntervalSinceNow:3.0];
+                    while (in.connectedSources>base && until.timeIntervalSinceNow>0) { [in refresh]; pump(0.05); }
+                    NSArray* ev2; @synchronized(got) { ev2=[got copy]; }
+                    Check(in.connectedSources==base, "a source that disappears is dropped");
+                    Check(ev2.count==6 && [[ev2[5] objectAtIndex:0] intValue]==muew::MidiEvent::AllNotesOff, "unplugging releases all notes exactly once");
+                }
+                if (src) MIDIEndpointDispose(src); MIDIClientDispose(pc);
             }
         }
         // 0.97.0 REVERT: back to the loaded sound as one undoable step

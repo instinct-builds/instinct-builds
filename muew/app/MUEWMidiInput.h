@@ -50,6 +50,9 @@
         present.insert(uid);
         if (!connected.count(uid) && MIDIPortConnectSource(port, src, NULL) == noErr) connected.insert(uid);
     }
-    for (auto it = connected.begin(); it != connected.end();) it = present.count(*it) ? std::next(it) : connected.erase(it); // unplugged: reconnect on return
+    bool dropped = false;
+    for (auto it = connected.begin(); it != connected.end();) { if (present.count(*it)) ++it; else { it = connected.erase(it); dropped = true; } } // unplugged: reconnect on return
+    // 0.108.0: a controller unplugged with a key or the pedal held never sends its note-offs; release everything so nothing sounds forever.
+    if (dropped) [self deliver:muew::MidiEvent{muew::MidiEvent::AllNotesOff, 0, 0.0f}];
 }
 @end
