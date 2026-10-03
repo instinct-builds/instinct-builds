@@ -143,6 +143,23 @@ struct StandaloneHost : MUEWEditorHost {
     [engine connect:source to:engine.mainMixerNode format:fmt];
     NSError* err = nil;
     [engine startAndReturnError:&err];
+    // 0.106.0: a device change (headphones, AirPods, a display's speakers) stops the engine; bring it back on the new route.
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audioConfigChanged:) name:AVAudioEngineConfigurationChangeNotification object:engine];
+    if (const char* erep = getenv("MUEW_ENGINE_REPORT")) { // CI proof: stop the engine, post the change, report whether it came back
+        muew_proof::Watchdog("engine restart proof", 30);
+        NSString* path = [NSString stringWithUTF8String:erep]; AVAudioEngine* eng = engine;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (!eng.isRunning) { [@"before=0 SKIP no running audio engine on this runner\n" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil]; [NSApp terminate:nil]; return; }
+            [eng stop];
+            const bool stopped = !eng.isRunning;
+            [[NSNotificationCenter defaultCenter] postNotificationName:AVAudioEngineConfigurationChangeNotification object:eng];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                NSString* line = [NSString stringWithFormat:@"before=1 stopped=%d after=%d\n", stopped ? 1 : 0, eng.isRunning ? 1 : 0];
+                [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                [NSApp terminate:nil];
+            });
+        });
+    }
     // 0.99.0: hardware MIDI keyboards and controllers play the standalone (all channels).
     MUEWEditorView* view0 = v;
     midi = [[MUEWMidiInput alloc] initWithHandler:^(const MidiEvent& e) {
@@ -176,6 +193,9 @@ struct StandaloneHost : MUEWEditorHost {
         float va[8], vb[8]; for (int i = 0; i < 8; ++i) { va[i] = gVoiceMorph[0][i].load(); vb[i] = gVoiceMorph[1][i].load(); }
         [view showVoiceMorph:va count:gVoiceMorphN[0].load() b:vb count:gVoiceMorphN[1].load()]; // 0.36.0
     }];
+}
+- (void)audioConfigChanged:(NSNotification*)n {
+    if (engine && !engine.isRunning) { NSError* e = nil; [engine startAndReturnError:&e]; }
 }
 - (BOOL)restoreSession {
     NSString* t = [[NSUserDefaults standardUserDefaults] stringForKey:@"MUEWSession"];
