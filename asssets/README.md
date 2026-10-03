@@ -1294,3 +1294,21 @@ rule is a small core function with its own test. The native `notes-open-filter`
 demo now selects an asset with no notes first, and its marker must report
 `follows=true`, meaning the selection moved to the asset that still has an open
 note. The capture should show that asset in the inspector with its open note.
+
+
+## 1.83.0: resolve a whole batch of client notes
+
+- Right-click one or more assets: "Resolve n Client Notes" ticks every open
+  note on the selection in one step, and "Reopen n Client Notes" undoes it. Each
+  item appears only when it would change something, and its number is exactly how
+  many notes will change. A toast reports notes and assets changed. Edit > Undo
+  restores them in one step.
+- Only the selected assets are touched. It is the same local checklist as the
+  per-note circle: nothing is sent to the client and feedback files do not change.
+- With Open notes on, resolving the last open note on the selection moves the
+  inspector to the next visible asset, as in 1.82.1.
+- Tests cover exact counts, repeat = zero change, reopening, and that unselected
+  assets are untouched. The native `notes-resolve-all` demo imports two reviewers
+  on three assets, resolves two assets through the same model call, and its marker
+  must read `changed=4/2 open=2 openAssets=1 thirdOpen=true repeat=0`. The context
+  menu item itself is not natively clicked in CI.

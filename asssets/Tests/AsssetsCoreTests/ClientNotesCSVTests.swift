@@ -97,6 +97,30 @@ struct ClientNotesCSVTests {
         #expect(empty.selection == [a])
     }
 
+    @Test func bulkResolveTouchesOnlySelectedAssetsAndCountsRealChanges() {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/notes/a.png")!, b = c.importFile(path: "/notes/b.png")!, other = c.importFile(path: "/notes/o.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-10-03", assets: [a, b, other])!)
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Sam", items: [
+            .init(id: a.uuidString, favorite: false, note: "A1"), .init(id: b.uuidString, favorite: false, note: "B1"),
+            .init(id: other.uuidString, favorite: false, note: "O1")]))
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Alex", items: [
+            .init(id: a.uuidString, favorite: false, note: "A2")]))
+        let one = c.assets.first { $0.id == a }!.clientNotes[0]
+        _ = c.setClientNote(one, on: a, resolved: true)
+        let preview = c.clientNotesToChange(on: [a, b], resolved: true)
+        #expect(preview.notes == 2 && preview.assets == 2)
+        let done = c.setClientNotes(on: [a, b], resolved: true)
+        #expect(done.notes == 2 && done.assets == 2)
+        #expect(c.openClientNoteCount == 1 && c.assets.first { $0.id == other }!.hasOpenClientNotes)
+        let again = c.setClientNotes(on: [a, b], resolved: true)
+        #expect(again.notes == 0 && again.assets == 0)
+        let reopened = c.setClientNotes(on: [b], resolved: false)
+        #expect(reopened.notes == 1 && c.openClientNoteAssetCount == 2)
+        #expect(c.clientNotesToChange(on: [], resolved: true).notes == 0)
+    }
+
     @Test func noNotesIsHeaderOnly() {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)

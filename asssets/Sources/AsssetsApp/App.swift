@@ -2921,6 +2921,14 @@ final class StudioLibrary: ObservableObject {
         mutate(resolved ? "Resolve Note" : "Reopen Note") { _ = $0.setClientNote(n, on: id, resolved: resolved) }
         if openNotesFilter { followFilterWithSelection() }
     }
+    /// Ticks or unticks every client note on the given assets as one undo step. Local checklist only.
+    func setClientNotesResolved(on ids: Set<UUID>, resolved: Bool) {
+        let change = catalog.clientNotesToChange(on: ids, resolved: resolved)
+        guard change.notes > 0 else { return }
+        mutate(resolved ? "Resolve Notes" : "Reopen Notes") { _ = $0.setClientNotes(on: ids, resolved: resolved) }
+        flash("\(resolved ? "Resolved" : "Reopened") \(change.notes) note\(change.notes == 1 ? "" : "s") on \(change.assets) asset\(change.assets == 1 ? "" : "s")")
+        if openNotesFilter { followFilterWithSelection() }
+    }
     func removeClientNote(_ n: ClientNote, from id: UUID) {
         mutate("Remove Note") { c in if let i = c.assets.firstIndex(where: { $0.id == id }) { c.assets[i].clientNotes.removeAll { $0 == n } } }
     }
@@ -3915,6 +3923,26 @@ final class StudioLibrary: ObservableObject {
             let statusOK = rows.count == 3 && rows.filter { $0.hasSuffix("\"Resolved\"") }.count == 1 && rows.filter { $0.hasSuffix("\"Open\"") }.count == 1
             let marker = "done notes=\(notes.count) open=\(catalog.openClientNoteCount) resolved=\(notes.filter(\.resolved).count) csv=\(statusOK)"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-resolve.txt"), atomically: true, encoding: .utf8)
+        case "notes-resolve-all":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(3).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-03", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            for (who, a, b) in [("Jordan", "Try a warmer backdrop", "Crop the left edge tighter"), ("Sam", "Warmer is fine", "Keep the crop")] {
+                let f = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: who, items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: a), .init(id: ids[1].uuidString, favorite: false, note: b),
+                    .init(id: ids[2].uuidString, favorite: false, note: "Leave this one open")])
+                importFeedback(feedback: [f], unreadable: 0)
+            }
+            let before = catalog.clientNotesToChange(on: Set(ids.prefix(2)), resolved: true)
+            setClientNotesResolved(on: Set(ids.prefix(2)), resolved: true)
+            selection = [ids[0]]; focusID = ids[0]; anchorID = ids[0]
+            inspectorAnchor = "inspector-notes"
+            let third = catalog.assets.first(where: { $0.id == ids[2] })?.clientNotes.allSatisfy { !$0.resolved } == true
+            let marker = "done changed=\(before.notes)/\(before.assets) open=\(catalog.openClientNoteCount) openAssets=\(catalog.openClientNoteAssetCount) thirdOpen=\(third) repeat=\(catalog.clientNotesToChange(on: Set(ids.prefix(2)), resolved: true).notes)"
+            try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-resolve-all.txt"), atomically: true, encoding: .utf8)
         case "notes-open-filter":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
@@ -8404,6 +8432,13 @@ struct AssetMenu: View {
         let many = ids.count > 1
         let allFav = model.catalog.assets.filter { ids.contains($0.id) }.allSatisfy { $0.favorite }
         Button(allFav ? "Remove from Favorites" : (many ? "Favorite \(ids.count) Assets" : "Add to Favorites")) { model.toggleFavorite(ids) }
+        let toResolve = model.catalog.clientNotesToChange(on: ids, resolved: true), toReopen = model.catalog.clientNotesToChange(on: ids, resolved: false)
+        if toResolve.notes > 0 {
+            Button("Resolve \(toResolve.notes) Client Note\(toResolve.notes == 1 ? "" : "s")") { model.setClientNotesResolved(on: ids, resolved: true) }
+        }
+        if toReopen.notes > 0 {
+            Button("Reopen \(toReopen.notes) Client Note\(toReopen.notes == 1 ? "" : "s")") { model.setClientNotesResolved(on: ids, resolved: false) }
+        }
         Menu("Rating") {
             ForEach(0...5, id: \.self) { n in Button(n == 0 ? "No Rating" : String(repeating: "★", count: n)) { model.rate(ids, n) } }
         }

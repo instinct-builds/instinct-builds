@@ -34,6 +34,19 @@ extension StudioCatalog {
     /// Assets that still carry at least one unresolved client note.
     public var openClientNoteAssetCount: Int { assets.filter(\.hasOpenClientNotes).count }
     public var openClientNoteCount: Int { assets.reduce(0) { $0 + $1.clientNotes.filter { !$0.resolved }.count } }
+    /// How many notes on these assets would change if all were set to `resolved`.
+    public func clientNotesToChange(on ids: Set<UUID>, resolved: Bool) -> (notes: Int, assets: Int) {
+        let hit = assets.filter { ids.contains($0.id) }.map { $0.clientNotes.filter { $0.resolved != resolved }.count }.filter { $0 > 0 }
+        return (hit.reduce(0, +), hit.count)
+    }
+    /// Sets every client note on these assets in one step. Returns what actually changed.
+    @discardableResult public mutating func setClientNotes(on ids: Set<UUID>, resolved: Bool) -> (notes: Int, assets: Int) {
+        let changed = clientNotesToChange(on: ids, resolved: resolved)
+        for i in assets.indices where ids.contains(assets[i].id) {
+            for j in assets[i].clientNotes.indices { assets[i].clientNotes[j].resolved = resolved }
+        }
+        return changed
+    }
     /// Ticks or unticks exactly this note. Returns false when the note is gone (for example after a re-import).
     @discardableResult public mutating func setClientNote(_ note: ClientNote, on id: UUID, resolved: Bool) -> Bool {
         guard let i = assets.firstIndex(where: { $0.id == id }),
