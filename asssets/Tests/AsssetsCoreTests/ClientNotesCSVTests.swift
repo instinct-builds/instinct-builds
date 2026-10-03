@@ -166,6 +166,30 @@ struct ClientNotesCSVTests {
         #expect(ClientDecisionFilter.changes.matches(c.assets.first { $0.id == m }!))
     }
 
+    @Test func smartRuleOnDecisionsFollowsFeedbackAndStaysBackwardCompatible() throws {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/s/a.png")!, b = c.importFile(path: "/s/b.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "Round", created: "2026-10-03", assets: [a, b])!)
+        let rules = SmartRules(decision: .changes)
+        #expect(!rules.isEmpty && rules.summary == "client requested changes")
+        #expect(c.assets.filter(rules.matches).isEmpty)
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Jordan", items: [
+            .init(id: a.uuidString, favorite: false, note: "", status: "changes"),
+            .init(id: b.uuidString, favorite: false, note: "", status: "approved")]))
+        #expect(c.assets.filter(rules.matches).map(\.id) == [a])
+        #expect(c.assets.filter(SmartRules(decision: .approved).matches).map(\.id) == [b])
+        #expect(SmartRules(decision: .any).isEmpty)
+        let data = try JSONEncoder().encode(rules)
+        #expect(try JSONDecoder().decode(SmartRules.self, from: data).decision == .changes)
+        #expect(!String(decoding: try JSONEncoder().encode(SmartRules(text: "x")), as: UTF8.self).contains("decision"))
+        let old = #"{"text":"cats"}"#.data(using: .utf8)!
+        #expect(try JSONDecoder().decode(SmartRules.self, from: old).decision == nil)
+        // Two reviewers who later withdraw leave the collection without anyone editing it.
+        _ = c.applyFeedback(.init(gallery: g, title: "Round", reviewer: "Jordan", items: []))
+        #expect(c.assets.filter(rules.matches).isEmpty)
+    }
+
     @Test func noNotesIsHeaderOnly() {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)

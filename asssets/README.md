@@ -1381,3 +1381,25 @@ line instead of leaving a misleading picture. Demo only; no product change.
   The native `decision-filter` demo imports four assets' decisions (including one
   split), turns on Changes, and checks `changes=2 approved=1 shown=2 match=true
   canSave=false` plus a 7 second selection check. The menu is not natively clicked.
+
+
+## 1.86.0: save a client-decision filter as a smart collection
+
+- The Client row in the smart collection editor chooses Any decision, Changes
+  requested or Approved, no changes. With a Decisions filter on, Save Search is
+  available again and starts a collection named Needs Changes or Client Approved
+  (rename as usual). The saved collection updates itself: a decision imported
+  later, or a reviewer's round replaced or withdrawn, moves assets in or out
+  without editing the collection. The sidebar summary reads "client requested
+  changes" or "client approved, no changes".
+- Rules mean the same as the 1.85 filter: Changes is any reviewer asking for
+  changes, Approved is an approval with no change request. Reviewer names stay
+  local draft labels and decisions are a local record on this Mac.
+- Open notes is still a view filter only, so Save Search stays off while it is on.
+- Older smart collections open unchanged, and rules without a decision save
+  exactly as before. The unit test covers matching, summary, empty rule, JSON
+  shape, old JSON, and withdrawal. The `decision-smart` demo drives the real
+  filter, Save Search and commit path, imports a later decision, and its marker
+  must read `saveable=true name=Needs_Changes saved=true filterCleared=true
+  before=2 after=3 summary=client_requested_changes`. The editor row is not
+  natively clicked.

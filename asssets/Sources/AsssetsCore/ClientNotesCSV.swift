@@ -105,7 +105,7 @@ extension StudioCatalog {
 
 /// 1.85: a view filter over imported client decisions. "Changes" means any reviewer asked for changes;
 /// "Approved" means someone approved and nobody asked for changes.
-public enum ClientDecisionFilter: String, CaseIterable, Sendable {
+public enum ClientDecisionFilter: String, CaseIterable, Codable, Sendable {
     case any, changes, approved
     public var label: String {
         switch self { case .any: return "Any decision"; case .changes: return "Changes requested"; case .approved: return "Approved, no changes" }
@@ -117,6 +117,10 @@ public enum ClientDecisionFilter: String, CaseIterable, Sendable {
         case .changes: return d.contains(.changes)
         case .approved: return d.contains(.approved) && !d.contains(.changes)
         }
+    }
+    /// Smart-collection wording.
+    public var summary: String {
+        switch self { case .any: return ""; case .changes: return "client requested changes"; case .approved: return "client approved, no changes" }
     }
 }
 

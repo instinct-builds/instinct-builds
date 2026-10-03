@@ -1345,7 +1345,7 @@ final class StudioLibrary: ObservableObject {
         if let t = similarTo { return "Similar to " + (catalog.assets.first { $0.id == t }?.title ?? "asset") }
         return selectedSmart.flatMap { catalog.smartCollection($0)?.name } ?? selectedCollection
     }
-    var canSaveSearch: Bool { selectedSmart == nil && !openNotesFilter && decisionFilter == .any && (!search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil || colorQuery != nil) }
+    var canSaveSearch: Bool { selectedSmart == nil && !openNotesFilter && (decisionFilter != .any || !search.trimmingCharacters(in: .whitespaces).isEmpty || selectedKind != nil || ratingFilter.isActive || keywordFilter != nil || colorQuery != nil) }
 
     // MARK: File metadata and keywords (1.13)
 
@@ -2873,11 +2873,12 @@ final class StudioLibrary: ObservableObject {
         ratingFilter.apply(to: &rules)
         if let k = keywordFilter, !rules.requiredTags.contains(k) { rules.requiredTags.append(k) }
         rules.color = colorQuery
+        if decisionFilter != .any { rules.decision = decisionFilter }
         if selectedCollection == StudioCatalog.favorites { rules.favoritesOnly = true }
         else if selectedCollection != StudioCatalog.allAssets { rules.collection = selectedCollection }
         let t = search.trimmingCharacters(in: .whitespaces)
         let colorName = colorQuery.map { "Near " + $0.hex }
-        smartEditor = SmartEditorState(existing: nil, name: t.isEmpty ? (colorName ?? selectedKind?.rawValue ?? (ratingFilter.minRating > 0 ? "\(ratingFilter.minRating) Stars and Up" : "Smart Collection")) : t.capitalized, rules: rules)
+        smartEditor = SmartEditorState(existing: nil, name: t.isEmpty ? (colorName ?? selectedKind?.rawValue ?? (ratingFilter.minRating > 0 ? "\(ratingFilter.minRating) Stars and Up" : (decisionFilter == .changes ? "Needs Changes" : decisionFilter == .approved ? "Client Approved" : "Smart Collection"))) : t.capitalized, rules: rules)
     }
     func beginEdit(smart id: UUID) {
         guard let s = catalog.smartCollection(id) else { return }
@@ -2892,7 +2893,7 @@ final class StudioLibrary: ObservableObject {
         } else {
             var id = UUID()
             mutate { id = $0.createSmartCollection(named: state.name, rules: rules) }
-            search = ""; selectedKind = nil; ratingFilter = RatingFilter(); keywordFilter = nil; colorQuery = nil
+            search = ""; selectedKind = nil; ratingFilter = RatingFilter(); keywordFilter = nil; colorQuery = nil; decisionFilter = .any
             show(smart: id)
             flash("Saved smart collection \(catalog.smartCollection(id)?.name ?? "")")
         }
@@ -4012,6 +4013,32 @@ final class StudioLibrary: ObservableObject {
                 let view = "view selected=\(self.selection == [target]) title=\(shown?.title == targetTitle) decisions=\(shown?.clientDecisions.count ?? -1) grid=\(self.filtered.map(\.id) == [target])"
                 try? view.write(to: self.supportRoot.appendingPathComponent("demo-client-decisions-view.txt"), atomically: true, encoding: .utf8)
             }
+        case "decision-smart":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(4).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-03", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            for (who, entries) in [("Jordan", [(0, "approved"), (1, "changes"), (2, "approved")]), ("Sam", [(2, "changes")])] {
+                importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: who,
+                    items: entries.map { .init(id: ids[$0.0].uuidString, favorite: false, note: "", status: $0.1) })], unreadable: 0)
+            }
+            // The real path: filter, then Save Search, then the saved collection.
+            decisionFilter = .changes
+            let saveable = canSaveSearch
+            beginNewSmart()
+            let draftName = smartEditor?.name ?? ""
+            if let state = smartEditor { commit(state) }
+            let saved = catalog.smartCollections.first { $0.rules.decision == .changes }
+            let before = saved.map { s in catalog.assets.filter(s.rules.matches).count } ?? -1
+            // A new decision elsewhere changes the saved collection without editing it.
+            importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Alex",
+                items: [.init(id: ids[3].uuidString, favorite: false, note: "", status: "changes")])], unreadable: 0)
+            let after = saved.map { s in catalog.assets.filter(s.rules.matches).count } ?? -1
+            if let saved { show(smart: saved.id) }
+            let marker = "done saveable=\(saveable) name=\(draftName.replacingOccurrences(of: " ", with: "_")) saved=\(saved != nil) filterCleared=\(decisionFilter == .any) before=\(before) after=\(after) summary=\(saved?.rules.summary.replacingOccurrences(of: " ", with: "_") ?? "none")"
+            try? marker.write(to: supportRoot.appendingPathComponent("demo-decision-smart.txt"), atomically: true, encoding: .utf8)
         case "decision-filter":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
@@ -8756,6 +8783,12 @@ struct SmartEditor: View {
                     Picker("Collection", selection: $state.rules.collection) {
                         Text("Any collection").tag(String?.none)
                         ForEach(model.catalog.collections.filter { $0 != StudioCatalog.allAssets && $0 != StudioCatalog.favorites }, id: \.self) { Text($0).tag(String?.some($0)) }
+                    }.labelsHidden().frame(maxWidth: 240)
+                }
+                GridRow {
+                    Text("Client").foregroundStyle(.secondary)
+                    Picker("Client decision", selection: Binding(get: { state.rules.decision ?? .any }, set: { state.rules.decision = $0 == .any ? nil : $0 })) {
+                        ForEach(ClientDecisionFilter.allCases, id: \.self) { Text($0.label).tag($0) }
                     }.labelsHidden().frame(maxWidth: 240)
                 }
                 GridRow {
