@@ -12,10 +12,13 @@
 namespace muew {
 
 struct MidiEvent {
-    enum Kind { NoteOn, NoteOff, Wheel, Aftertouch, PolyAftertouch, Bend, Sustain, AllNotesOff, Program } kind; // Program: note = program number (0.102.0)
+    enum Kind { NoteOn, NoteOff, Wheel, Aftertouch, PolyAftertouch, Bend, Sustain, AllNotesOff, Program, Volume } kind; // Program: note = program number (0.102.0)
     int note = 0;
     float value = 0.0f; // velocity / controller 0..1 / bend -1..1
 };
+
+// 0.104.0: CC7 channel volume as an output gain: squared (a perceptual taper), 127 is exactly unity.
+inline float midiVolumeGain(float v) { return v <= 0.0f ? 0.0f : (v >= 1.0f ? 1.0f : v * v); }
 
 inline std::vector<MidiEvent> parseMidiBytes(const uint8_t* d, size_t n) {
     std::vector<MidiEvent> out;
@@ -28,6 +31,7 @@ inline std::vector<MidiEvent> parseMidiBytes(const uint8_t* d, size_t n) {
         else if (type == 0x80 || type == 0x90) out.push_back({MidiEvent::NoteOff, data[0] & 0x7F, 0.0f});
         else if (type == 0xB0) {
             if (data[0] == 1) out.push_back({MidiEvent::Wheel, 0, (data[1] & 0x7F) / 127.0f});
+            else if (data[0] == 7) out.push_back({MidiEvent::Volume, 0, (data[1] & 0x7F) / 127.0f}); // 0.104.0
             else if (data[0] == 64) out.push_back({MidiEvent::Sustain, 0, data[1] >= 64 ? 1.0f : 0.0f});
             else if (data[0] == 120 || data[0] == 123) out.push_back({MidiEvent::AllNotesOff, 0, 0.0f});
         } else if (type == 0xC0) out.push_back({MidiEvent::Program, data[0] & 0x7F, 0.0f});

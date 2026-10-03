@@ -22,7 +22,10 @@ int main() {
     ck(e.size() == 2 && e[0].kind == MidiEvent::Sustain && e[0].value == 1.0f && e[1].value == 0.0f, "sustain CC64 is on at 64 and above");
     e = P({0xB0, 123, 0, 0xB0, 120, 0});
     ck(e.size() == 2 && e[0].kind == MidiEvent::AllNotesOff && e[1].kind == MidiEvent::AllNotesOff, "CC123 and CC120 are all notes off");
-    e = P({0xB0, 7, 100, 0xB0, 74, 20});
+    e = P({0xB2, 7, 127, 0xB0, 7, 0, 0xB0, 7, 64});
+    ck(e.size() == 3 && e[0].kind == MidiEvent::Volume && e[0].value == 1.0f && e[1].value == 0.0f && std::fabs(e[2].value - 64 / 127.0f) < 1e-6, "CC7 volume 0..1 on any channel (0.104.0)");
+    ck(midiVolumeGain(1.0f) == 1.0f && midiVolumeGain(0.0f) == 0.0f && std::fabs(midiVolumeGain(0.5f) - 0.25f) < 1e-6 && midiVolumeGain(2.0f) == 1.0f && midiVolumeGain(-1.0f) == 0.0f, "volume gain: unity at 127, silent at 0, squared taper, clamped");
+    e = P({0xB0, 11, 100, 0xB0, 74, 20});
     ck(e.empty(), "other controllers are ignored");
     e = P({0xD0, 127});
     ck(e.size() == 1 && e[0].kind == MidiEvent::Aftertouch && e[0].value == 1.0f, "channel pressure takes one data byte");

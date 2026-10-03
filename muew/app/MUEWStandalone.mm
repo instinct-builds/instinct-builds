@@ -17,6 +17,7 @@
 using namespace muew;
 
 static bool gSessionNoSave = false; // 0.101.0 relaunch proof only
+static std::atomic<float> gVolume{1.0f}; // 0.104.0: MIDI CC7 output gain, standalone only
 static std::atomic<float> gCpu{0}; // 0.30.0 header meter: smoothed real-time load
 static std::atomic<int> gVoices{0};
 static std::atomic<float> gMorphA{-1.0f}, gMorphB{-1.0f}; // 0.35.0 live morph meter
@@ -126,6 +127,14 @@ struct StandaloneHost : MUEWEditorHost {
         std::lock_guard<std::mutex> g(*l);
         const auto t0 = std::chrono::steady_clock::now(); // 0.30.0 header meter
         s->renderPlanar(left, right, (int)count);
+        { // 0.104.0: CC7 gain after the synth, ramped across the block so a change never clicks; unity when untouched
+            static float gainNow = 1.0f; const float target = gVolume.load();
+            if (gainNow != 1.0f || target != 1.0f) {
+                const float step = count ? (target - gainNow) / (float)count : 0.0f; float g = gainNow;
+                for (AVAudioFrameCount i = 0; i < count; ++i) { g += step; left[i] *= g; right[i] *= g; }
+                gainNow = target;
+            }
+        }
         gOutputPeak[0] = s->outputMeter().left; gOutputPeak[1] = s->outputMeter().right;
         gMasterDrive = s->outputMeter().drive;
         const double used = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), budget = count / 44100.0;
@@ -153,6 +162,7 @@ struct StandaloneHost : MUEWEditorHost {
         case MidiEvent::Bend: s->setPitchBend(e.value); break;
         case MidiEvent::Sustain: s->setSustain(e.value > 0.5f); break;
         case MidiEvent::AllNotesOff: s->allNotesOff(); break;
+        case MidiEvent::Volume: gVolume = midiVolumeGain(e.value); break; // 0.104.0
         case MidiEvent::Program: { // 0.102.0: program N is factory sound N; off the main thread, after the lock is released
             const int prog = e.note; MUEWEditorView* vw = view0;
             if (prog < kFactoryPresetCount) dispatch_async(dispatch_get_main_queue(), ^{ [vw loadPresetIndex:prog]; });
