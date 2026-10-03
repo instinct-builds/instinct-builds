@@ -37,7 +37,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.102.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.103.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];

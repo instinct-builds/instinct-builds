@@ -91,7 +91,10 @@ struct StandaloneHost : MUEWEditorHost {
             [line writeToFile:response atomically:YES encoding:NSUTF8StringEncoding error:nil];
         }];
     }
-    [w center]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
+    [w center];
+    // 0.103.0: reopen where the window was left (position only; the editor has a fixed size). Proof launches stay centered.
+    if (!getenv("MUEW_AX_PROOF") && !getenv("MUEW_AX_CONTROL") && !getenv("MUEW_NO_SESSION") && !getenv("MUEW_SESSION_REPORT")) [w setFrameAutosaveName:@"MUEWMainWindow"];
+    [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
     // 0.101.0 relaunch proof: MUEW_SESSION_REPORT=<file> writes what the editor shows after launch, optionally
     // after MUEW_SESSION_STEP=edit (change the cutoff, as an editor edit would) or =corrupt (store garbage and
     // do not overwrite it at quit), then quits through the normal terminate path. Hard 60 s exit.
