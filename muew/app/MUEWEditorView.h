@@ -44,6 +44,7 @@ struct MUEWEditorHost {
     virtual bool playsNotes() const { return false; }
     virtual void noteOn(int, float) {}
     virtual void noteOff(int) {}
+    virtual void allNotesOff() {} // 0.109.0: Edit > All Notes Off (standalone); the AU host owns its notes
 };
 
 @interface MUEWEditorView : NSView <NSSearchFieldDelegate> {
@@ -225,6 +226,7 @@ struct MUEWEditorHost {
 - (void)undo:(id)sender;
 - (void)redo:(id)sender;
 - (void)revertSound:(id)sender;
+- (void)panic:(id)sender; // 0.109.0
 - (BOOL)validateMenuItem:(NSMenuItem*)item;
 // Saves the current sound as a user preset and selects it (the + Save button
 // after its name prompt). Returns NO if the file could not be written.

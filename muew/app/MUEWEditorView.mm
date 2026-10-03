@@ -446,11 +446,13 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
 - (void)undo:(id)sender { if (wtEdit >= 0) [self wtStep:NO]; else [self performHistoryStep:NO]; }
 - (void)redo:(id)sender { if (wtEdit >= 0) [self wtStep:YES]; else [self performHistoryStep:YES]; }
 - (void)revertSound:(id)sender { [self revertToLoaded]; }
+- (void)panic:(id)sender { [self releaseHeldKeyboardNotes]; if (host) host->allNotesOff(); } // 0.109.0
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     const SEL a = item.action;
     if (a == @selector(undo:)) return wtEdit >= 0 || (!browserOpen && editHistory.canUndo());
     if (a == @selector(redo:)) return wtEdit >= 0 || (!browserOpen && editHistory.canRedo());
     if (a == @selector(revertSound:)) return !browserOpen && [self canRevert];
+    if (a == @selector(panic:)) return host && host->playsNotes();
     return YES;
 }
 - (BOOL)revertToLoaded { // 0.97.0: back to the loaded sound as one undoable step

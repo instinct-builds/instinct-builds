@@ -45,6 +45,7 @@ struct StandaloneHost : MUEWEditorHost {
     bool playsNotes() const override { return true; }
     void noteOn(int n, float v) override { gPerf.noteFromKeyboard(n); std::lock_guard<std::mutex> g(*lock); synth->noteOn(n, v); }
     void noteOff(int n) override { std::lock_guard<std::mutex> g(*lock); synth->noteOff(n); }
+    void allNotesOff() override { gPerf.apply(muew::MidiEvent{muew::MidiEvent::AllNotesOff, 0, 0.0f}); std::lock_guard<std::mutex> g(*lock); synth->allNotesOff(); } // 0.109.0
 };
 
 @interface AppDelegate : NSObject <NSApplicationDelegate> {

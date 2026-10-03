@@ -35,6 +35,8 @@ static NSMenu* MUEWMakeMainMenu() {
     MUEWMenuItem(edit, @"Copy", @selector(copy:), @"c");
     MUEWMenuItem(edit, @"Paste", @selector(paste:), @"v");
     MUEWMenuItem(edit, @"Select All", @selector(selectAll:), @"a");
+    [edit addItem:[NSMenuItem separatorItem]];
+    MUEWMenuItem(edit, @"All Notes Off", @selector(panic:), @".");  // 0.109.0: Cmd-. releases every sounding note
 
     NSMenuItem* winItem = [NSMenuItem new]; [bar addItem:winItem];
     NSMenu* win = [[NSMenu alloc] initWithTitle:@"Window"]; winItem.submenu = win;
