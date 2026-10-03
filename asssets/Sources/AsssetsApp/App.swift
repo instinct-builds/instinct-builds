@@ -76,7 +76,9 @@ struct ASSSETSApp: App {
                     .disabled(library.catalog.clientDecisionCount == 0)
                 Button("Copy Revision Brief") { library.copyRevisionBrief() }
                     .disabled(library.catalog.clientNoteCount == 0 && library.catalog.clientDecisionCount == 0)
+                Button("Back Up Library…") { library.exportBackup() }
                 Button("Restore Library from Backup…") { library.presentRestoreFromBackup() }
+                Button("Restore Library from File…") { library.restoreFromFile() }
                 Button("Recover Last Published Gallery…") { library.reopenPublicationRecovery() }
                     .disabled(!library.hasPublicationRecovery)
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
@@ -1365,7 +1367,38 @@ final class StudioLibrary: ObservableObject {
         pick.accessoryView = popup
         pick.addButton(withTitle: "Continue"); pick.addButton(withTitle: "Cancel")
         guard pick.runModal() == .alertFirstButtonReturn, list.indices.contains(popup.indexOfSelectedItem) else { return }
-        let chosen = list[popup.indexOfSelectedItem]
+        confirmAndRestore(list[popup.indexOfSelectedItem])
+    }
+
+    /// 1.91: save the whole library catalog to a file the user picks. Verified by reading it back.
+    func exportBackup() {
+        let panel = NSSavePanel()
+        panel.title = "Back Up Library"
+        panel.message = "Saves tags, notes, boards, ratings and rights records as one file. It does not include the asset files or license documents themselves."
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "ASSSETS-Library-\(CatalogRecovery.stamp()).json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if let b = CatalogRecovery.export(catalog, to: url) {
+            flash("Backed up \(b.assets) \(b.assets == 1 ? "asset" : "assets") and \(b.boards) \(b.boards == 1 ? "board" : "boards") to \(url.lastPathComponent)")
+        } else {
+            flash("Could not write a verified backup. Nothing was saved.")
+        }
+    }
+
+    /// 1.91: restore from a backup file the user picks. Same preview and confirmation as the automatic snapshots.
+    func restoreFromFile() {
+        let panel = NSOpenPanel()
+        panel.title = "Restore Library from File"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let b = CatalogRecovery.inspect(url) else {
+            flash("That file isn't a readable ASSSETS library backup. Nothing changed."); return
+        }
+        confirmAndRestore(b)
+    }
+
+    private func confirmAndRestore(_ chosen: CatalogRecovery.Backup) {
         let confirm = NSAlert()
         confirm.messageText = "Replace the current library?"
         confirm.informativeText = "Current: \(catalog.assets.count) assets, \(catalog.boards.count) boards.\nBackup: \(chosen.assets) assets, \(chosen.boards) boards.\n\nThe current catalog file is kept next to it as studio-catalog.before-restore-<time>.json, so this can be reversed by hand."
@@ -4171,6 +4204,21 @@ final class StudioLibrary: ObservableObject {
                 let jordanHits = self.catalog.filtered(search: "jordan", kind: nil, collection: StudioCatalog.allAssets).count
                 let marker = "done shadow=\(shadowHits) warmer=\(warmerHits) none=\(noneHits) jordan=\(jordanHits) visible=\(self.filtered.count) resolvedStillFound=\(self.filtered.first?.id == ids[2])"
                 try? marker.write(to: self.supportRoot.appendingPathComponent("demo-note-search.txt"), atomically: true, encoding: .utf8)
+            }
+        case "library-backup":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                let before = self.catalog.assets.count
+                let file = self.supportRoot.appendingPathComponent("demo-library-backup.json")
+                try? FileManager.default.removeItem(at: file)
+                let wrote = CatalogRecovery.export(self.catalog, to: file)
+                let victim = self.catalog.assets.first?.id
+                if let victim { self.mutate { _ = $0.remove([victim]) } }
+                let removed = self.catalog.assets.count
+                var restored = -1
+                if let wrote, self.performRestore(wrote) { restored = self.catalog.assets.count }
+                let kept = ((try? FileManager.default.contentsOfDirectory(atPath: self.supportRoot.path)) ?? []).contains { $0.hasPrefix("studio-catalog.before-restore-") }
+                let marker = "done wrote=\(wrote != nil && before > 1) removed=\(removed == before - 1) restored=\(restored == before) beforeKept=\(kept)"
+                try? marker.write(to: self.supportRoot.appendingPathComponent("demo-library-backup.txt"), atomically: true, encoding: .utf8)
             }
         case "catalog-recovery":
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {

@@ -313,6 +313,12 @@ jobs:
           grep -q '^done corruptKept=true noticeShown=true previewMatches=true saveBlocked=false$' "$SUP/demo-catalog-recovery.txt"
           cp "$SUP/demo-catalog-recovery.txt" "ASSSETS-$ASSSETS_VERSION-catalog-recovery.txt"
           rm -f "$SUP"/studio-catalog.corrupt-*.json; rm -rf "$SUP/Backups"
+          rm -f "$SUP/demo-library-backup.txt" "$SUP/demo-library-backup.json" "$SUP"/studio-catalog.before-restore-*.json
+          shoot library-backup 1440x900 library-backup demo-library-backup.txt before
+          cat "$SUP/demo-library-backup.txt"
+          grep -q '^done wrote=true removed=true restored=true beforeKept=true$' "$SUP/demo-library-backup.txt"
+          cp "$SUP/demo-library-backup.txt" "ASSSETS-$ASSSETS_VERSION-library-backup.txt"
+          rm -f "$SUP/demo-library-backup.json" "$SUP"/studio-catalog.before-restore-*.json
           rm -f "$SUP/demo-header-frames.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt
           cat "$SUP/demo-decision-smart.txt"
@@ -575,6 +581,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-revision-brief.md
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-note-search.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-catalog-recovery.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-library-backup.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart-frame.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt

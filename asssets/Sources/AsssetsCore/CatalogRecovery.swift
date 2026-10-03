@@ -97,6 +97,21 @@ public enum CatalogRecovery {
         return (c, kept)
     }
 
+    /// 1.91: a user-chosen file. Counts come from a full decode, so the preview is what a restore would load.
+    public static func inspect(_ url: URL) -> Backup? {
+        guard let data = try? Data(contentsOf: url), let c = StudioCatalog.decode(data), !c.assets.isEmpty else { return nil }
+        return Backup(url: url, assets: c.assets.count, boards: c.boards.count)
+    }
+
+    /// 1.91: writes the in-memory catalog (including edits not yet saved) to a file the user chose, then reads it
+    /// back and compares counts. Returns nil, and removes the partial file, when the copy cannot be verified.
+    public static func export(_ catalog: StudioCatalog, to url: URL, fm: FileManager = .default) -> Backup? {
+        guard let data = try? catalog.encoded(), (try? data.write(to: url, options: .atomic)) != nil else { return nil }
+        if let b = inspect(url), b.assets == catalog.assets.count, b.boards == catalog.boards.count { return b }
+        try? fm.removeItem(at: url)
+        return nil
+    }
+
     public static func notice(original: String, preserved: URL?) -> String {
         if let preserved {
             return "Your library couldn't be read. The original is preserved as \(preserved.lastPathComponent). Nothing was overwritten."

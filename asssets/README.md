@@ -1493,3 +1493,11 @@ Before 1.90 a catalog file that failed to decode fell through to an empty catalo
 - File > Restore Library from Backup… lists the snapshots with asset and board counts, then asks again with current versus backup counts. Restoring keeps the file it replaces as `studio-catalog.before-restore-<time>.json` and clears undo history, so the undo stack cannot point at pre-restore state.
 
 Limits, stated plainly: snapshots are taken at launch, so edits made since the last launch are not in the newest one. A handful of flows (gallery roster, license cleanup) write the catalog directly rather than through the normal save, so the blocked-save state does not cover them; that state only arises when an unreadable file can be neither moved nor copied. Restore and the banner are proven by unit tests and by the CI `catalog-recovery` demo, which plants a truncated file and writes `done corruptKept=true noticeShown=true previewMatches=true saveBlocked=false`; the two-step restore dialog itself is not driven by CI. Backups are plain copies of the catalog JSON and do not include asset files or licence documents.
+
+## 1.91.0: back up and restore the library yourself
+
+- File > Back Up Library… saves the whole catalog (tags, notes, decisions, boards, ratings, rights records) as one JSON file in a place you choose. It writes the in-memory library, so edits not yet saved to disk are included, then reads the file back and compares asset and board counts. If that check fails it says so and removes the partial file.
+- File > Restore Library from File… takes any such file, shows asset and board counts against the current library, and asks before replacing anything. The replaced catalog file is kept as `studio-catalog.before-restore-<time>.json`. A file that is not a readable library backup changes nothing.
+- The 1.90 automatic snapshots and these files share one restore path.
+
+Limits: the backup is catalog data only. It does not contain the asset files, thumbnails or license documents, and asset paths inside it are the paths on the Mac that made it. On another Mac, restore the files to the same locations or use Relink Folder afterwards. The CI `library-backup` demo exports, removes an asset, restores through the same function and writes `done wrote=true removed=true restored=true beforeKept=true`; the open and save panels themselves are not driven by CI.

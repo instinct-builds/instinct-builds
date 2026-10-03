@@ -77,4 +77,17 @@ struct CatalogRecoveryTests {
         #expect(CatalogRecovery.restore(bad, catalogURL: url) == nil)
         #expect(try Data(contentsOf: url) == unchanged)
     }
+
+    @Test func exportVerifiesReadbackAndInspectShowsCounts() throws {
+        let d = tmp(), out = d.appendingPathComponent("mine.json")
+        var c = goodCatalog(3)
+        c.boards = []
+        let b = CatalogRecovery.export(c, to: out)
+        #expect(b?.assets == 3 && b?.boards == 0)
+        #expect(CatalogRecovery.inspect(out)?.assets == 3)
+        try Data("nope".utf8).write(to: d.appendingPathComponent("bad.json"))
+        #expect(CatalogRecovery.inspect(d.appendingPathComponent("bad.json")) == nil)
+        #expect(CatalogRecovery.inspect(d.appendingPathComponent("missing.json")) == nil)
+        #expect(CatalogRecovery.export(c, to: d.appendingPathComponent("no-such-dir/x.json")) == nil)
+    }
 }
