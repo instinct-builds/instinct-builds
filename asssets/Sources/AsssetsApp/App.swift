@@ -4078,8 +4078,10 @@ final class StudioLibrary: ObservableObject {
             show(collection: StudioCatalog.allAssets)
             search = "shadow"
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                func count(_ q: String) -> Int { self.catalog.filtered(search: q, kind: nil, collection: StudioCatalog.allAssets).count }
-                let marker = "done shadow=\(count("shadow")) warmer=\(count("warmer")) none=\(count("zzzz")) visible=\(self.filtered.count) resolvedStillFound=\(self.filtered.first?.id == ids[2])"
+                let shadowHits = self.catalog.filtered(search: "shadow", kind: nil, collection: StudioCatalog.allAssets).count
+                let warmerHits = self.catalog.filtered(search: "warmer", kind: nil, collection: StudioCatalog.allAssets).count
+                let noneHits = self.catalog.filtered(search: "zzzz", kind: nil, collection: StudioCatalog.allAssets).count
+                let marker = "done shadow=\(shadowHits) warmer=\(warmerHits) none=\(noneHits) visible=\(self.filtered.count) resolvedStillFound=\(self.filtered.first?.id == ids[2])"
                 try? marker.write(to: self.supportRoot.appendingPathComponent("demo-note-search.txt"), atomically: true, encoding: .utf8)
             }
         case "revision-brief":
