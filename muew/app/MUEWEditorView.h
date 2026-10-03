@@ -218,6 +218,9 @@ struct MUEWEditorHost {
 - (NSPoint)knobCenter:(int)k;
 - (NSInteger)hitKnob:(NSPoint)p;
 - (NSRect)redoRect;
+- (NSRect)revertRect;
+- (BOOL)canRevert;
+- (BOOL)revertToLoaded;
 // Saves the current sound as a user preset and selects it (the + Save button
 // after its name prompt). Returns NO if the file could not be written.
 - (BOOL)saveUserPresetNamed:(NSString*)name;

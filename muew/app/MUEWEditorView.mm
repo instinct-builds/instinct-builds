@@ -146,7 +146,7 @@ static int SortForColumn(int c);
     if (!browserOpen) { // 0.96.0: UNDO / REDO follow the search field
         if (!historyAXControls) {
             NSMutableArray* c = [NSMutableArray array];
-            for (int k = 10; k <= 11; ++k) {
+            for (int k = 10; k <= 12; ++k) {
                 MUEWBrowserAXControl* control = [MUEWBrowserAXControl accessibilityElementWithRole:NSAccessibilityButtonRole frame:NSZeroRect label:@"" parent:self];
                 control.editor = self; control.kind = k; control.index = 0; control.epoch = 0;
                 [c addObject:control];
@@ -155,7 +155,8 @@ static int SortForColumn(int c);
         }
         ((MUEWBrowserAXControl*)historyAXControls[0]).accessibilityFrameInParentSpace = [self undoRect];
         ((MUEWBrowserAXControl*)historyAXControls[1]).accessibilityFrameInParentSpace = [self redoRect];
-        return @[search, historyAXControls[0], historyAXControls[1]];
+        ((MUEWBrowserAXControl*)historyAXControls[2]).accessibilityFrameInParentSpace = [self revertRect];
+        return @[search, historyAXControls[0], historyAXControls[1], historyAXControls[2]];
     }
     if (!browserAXList) {
         MUEWBrowserAXList* list = [MUEWBrowserAXList accessibilityElementWithRole:NSAccessibilityListRole
@@ -222,6 +223,7 @@ static int SortForColumn(int c);
         return [NSString stringWithFormat:@"Sort: %@, selected, %@",names[index],descending ? @"descending" : @"ascending"];
     }
     if (kind==10) return [NSString stringWithFormat:@"Undo last edit, %@",editHistory.canUndo() ? @"available" : @"nothing to undo"];
+    if (kind==12) return [NSString stringWithFormat:@"Revert to loaded sound, %@",[self canRevert] ? @"available" : @"nothing to revert"];
     if (kind==11) return [NSString stringWithFormat:@"Redo edit, %@",editHistory.canRedo() ? @"available" : @"nothing to redo"];
     if (kind==9) return [NSString stringWithFormat:@"Back to previous sound, %@",loadBack.empty() ? @"nothing earlier" : @"available"];
     if (kind==8) return [NSString stringWithFormat:@"Surprise me, load a random sound from %d shown",(int)visible.size()];
@@ -239,6 +241,7 @@ static int SortForColumn(int c);
     return @"Close preset browser";
 }
 - (BOOL)activateBrowserAXControl:(int)kind index:(int)index epoch:(NSUInteger)epoch {
+    if (kind==12) return [self revertToLoaded];
     if (kind==10 || kind==11) return [self performHistoryStep:kind==11];
     if (!browserOpen || browserDialogActive || browserDialogQueued) return NO;
     if (kind==4 || kind==5) {
@@ -421,7 +424,7 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
     current = p;
     routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f);
     wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); arpActions.clear();
-    edited = editHistory.canUndo() ? true : histBaseEdited;
+    edited = currentIndex >= 0 && currentIndex < ui::library().count() ? !(current == ui::library().at(currentIndex)) : (editHistory.canUndo() || histBaseEdited);
     [self applySound];
     histSuppress = false;
     ++browserAXDetailEpoch; browserAXDetailControls = nil;
@@ -437,14 +440,28 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
 }
 - (NSRect)undoRect { return NSMakeRect(28, self.bounds.size.height - 76, 44, 16); }
 - (NSRect)redoRect { return NSMakeRect(76, self.bounds.size.height - 76, 44, 16); }
+- (NSRect)revertRect { return NSMakeRect(124, self.bounds.size.height - 76, 52, 16); }
+- (BOOL)canRevert { return currentIndex >= 0 && currentIndex < ui::library().count() && !(current == ui::library().at(currentIndex)); }
+- (BOOL)revertToLoaded { // 0.97.0: back to the loaded sound as one undoable step
+    if (browserOpen || ![self canRevert]) return NO;
+    histGesture = false; [self historyNote];
+    current = ui::library().at(currentIndex);
+    routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; std::fill_n(routeMeters, kMaxRoutes, 0.0f);
+    wtHistory[0].clear(); wtHistory[1].clear(); wtRange.clear(); arpActions.clear();
+    edited = false;
+    [self applySound]; // the history records the revert, so UNDO brings the edits back
+    ++browserAXDetailEpoch; browserAXDetailControls = nil;
+    [self setNeedsDisplay:YES];
+    return YES;
+}
 - (void)drawHistoryButtons {
-    const bool can[2] = {editHistory.canUndo(), editHistory.canRedo()};
-    const NSRect rs[2] = {[self undoRect], [self redoRect]};
-    for (int i = 0; i < 2; ++i) {
+    const bool can[3] = {editHistory.canUndo(), editHistory.canRedo(), [self canRevert]};
+    const NSRect rs[3] = {[self undoRect], [self redoRect], [self revertRect]};
+    for (int i = 0; i < 3; ++i) {
         FillRound(rs[i], 4, can[i] ? C(0x16202a) : C(0x0e1218));
         [(can[i] ? C(0x2f6f66) : C(0x1c232d)) setStroke];
         [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(rs[i], .5, .5) xRadius:4 yRadius:4] stroke];
-        TextA(i == 0 ? @"UNDO" : @"REDO", NSMakeRect(rs[i].origin.x, rs[i].origin.y + 2, rs[i].size.width, 12), 8,
+        TextA(i == 0 ? @"UNDO" : i == 1 ? @"REDO" : @"REVERT", NSMakeRect(rs[i].origin.x, rs[i].origin.y + 2, rs[i].size.width, 12), 8,
               can[i] ? C(0x75ead8) : C(0x46515f), NSFontWeightSemibold, NSTextAlignmentCenter);
     }
 }
@@ -5089,6 +5106,7 @@ static int SortForColumn(int c) {
             }
     if (NSPointInRect(p, [self undoRect])) { [self performHistoryStep:NO]; return; }
     if (NSPointInRect(p, [self redoRect])) { [self performHistoryStep:YES]; return; }
+    if (NSPointInRect(p, [self revertRect])) { [self revertToLoaded]; return; }
     if (NSPointInRect(p, [self prevRect])) { [self stepPreset:-1]; return; }
     if (NSPointInRect(p, [self nextRect])) { [self stepPreset:1]; return; }
     NSArray* chips = ChipLabels();
