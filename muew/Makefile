@@ -353,6 +353,9 @@ build/muew-tests-osc1level95: tests/tests_osc1level95.cpp src/layers.h src/voice
 build/muew-tests-edithistory96: tests/tests_edithistory96.cpp src/edit_history.h src/preset.h src/factory_bank.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
+build/muew-tests-midiin99: tests/tests_midiin99.cpp src/midi_in.h | build
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
 build/muew-demo-noisemod52: src/render_demo_noisemod52.cpp src/synth.h src/wav_writer.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 

@@ -6,6 +6,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import "MUEWEditorView.h"
 #import "MUEWMainMenu.h"
+#import "MUEWMidiInput.h"
 #include "synth.h"
 #include <mutex>
 #include <atomic>
@@ -41,7 +42,7 @@ struct StandaloneHost : MUEWEditorHost {
 };
 
 @interface AppDelegate : NSObject <NSApplicationDelegate> {
-    NSWindow* w; MUEWEditorView* v; StandaloneHost* binding; AVAudioEngine* engine; AVAudioSourceNode* source; Synth synth; std::mutex lock; NSTimer* meter;
+    NSWindow* w; MUEWEditorView* v; StandaloneHost* binding; AVAudioEngine* engine; AVAudioSourceNode* source; Synth synth; std::mutex lock; MUEWMidiInput* midi; NSTimer* meter;
 }
 @end
 
@@ -110,6 +111,20 @@ struct StandaloneHost : MUEWEditorHost {
     [engine connect:source to:engine.mainMixerNode format:fmt];
     NSError* err = nil;
     [engine startAndReturnError:&err];
+    // 0.99.0: hardware MIDI keyboards and controllers play the standalone (all channels).
+    midi = [[MUEWMidiInput alloc] initWithHandler:^(const MidiEvent& e) {
+        std::lock_guard<std::mutex> g(*l);
+        switch (e.kind) {
+        case MidiEvent::NoteOn: s->noteOn(e.note, e.value); break;
+        case MidiEvent::NoteOff: s->noteOff(e.note); break;
+        case MidiEvent::Wheel: s->setModWheel(e.value); break;
+        case MidiEvent::Aftertouch: s->setAftertouch(e.value); break;
+        case MidiEvent::PolyAftertouch: s->setPolyAftertouch(e.note, e.value); break;
+        case MidiEvent::Bend: s->setPitchBend(e.value); break;
+        case MidiEvent::Sustain: s->setSustain(e.value > 0.5f); break;
+        case MidiEvent::AllNotesOff: s->allNotesOff(); break;
+        }
+    }];
     MUEWEditorView* view = v; // 0.30.0: feed the header voice / CPU meter
     meter = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15 repeats:YES block:^(NSTimer*) {
         const auto& vp = view->current.voice;

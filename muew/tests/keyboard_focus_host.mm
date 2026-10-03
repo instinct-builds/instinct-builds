@@ -2,6 +2,7 @@
 #import <AppKit/AppKit.h>
 #import "MUEWEditorView.h"
 #import "MUEWMainMenu.h"
+#import "MUEWMidiInput.h"
 #include <cstdio>
 #include <algorithm>
 #include <cmath>
@@ -36,13 +37,13 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.98.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.99.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
     Check(data.length > 10000 && [data writeToFile:path atomically:YES], name);
 }
-// 0.98.0: with the browser closed the tree is the native Search plus the UNDO / REDO buttons; no browser
+// 0.99.0: with the browser closed the tree is the native Search plus the UNDO / REDO buttons; no browser
 // control or results list may remain. Checked by content so later header controls do not break it.
 static BOOL ClosedAXTree(MUEWEditorView* v) {
     NSArray* ax=[v accessibilityChildren];
@@ -173,6 +174,35 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             Check(!(v->current==menuBefore), "Edit > Undo goes through the same history");
             [v redo:redoI];
             Check(v->current==menuBefore, "Edit > Redo restores the edit");
+        }
+        {   // 0.99.0 hardware MIDI input: a real CoreMIDI virtual source into MUEWMidiInput, bounded by 3 s waits
+            NSMutableArray* got=[NSMutableArray array];
+            MUEWMidiInput* in=[[MUEWMidiInput alloc] initWithHandler:^(const muew::MidiEvent& e){
+                @synchronized(got) { [got addObject:@[@((int)e.kind),@(e.note),@(e.value)]]; } }];
+            auto pump=[](double s){ [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:s]]; };
+            MIDIClientRef pc=0; MIDIEndpointRef src=0; OSStatus ce=noErr, se=noErr;
+            if (in.available) { ce=MIDIClientCreate(CFSTR("MUEW proof client"),NULL,NULL,&pc); se=ce==noErr ? MIDISourceCreate(pc,CFSTR("MUEW proof source"),&src) : ce; }
+            if (!in.available) printf("SKIP: CoreMIDI client unavailable on this runner\n");
+            else if (se!=noErr) printf("SKIP: cannot create a virtual MIDI source (%d)\n",(int)se);
+            else {
+                const int base=in.connectedSources;
+                NSDate* until=[NSDate dateWithTimeIntervalSinceNow:3.0];
+                while (in.connectedSources<=base && until.timeIntervalSinceNow>0) { [in refresh]; pump(0.05); }
+                Check(in.connectedSources>base, "the input connects a newly appearing MIDI source");
+                Byte buf[256]; MIDIPacketList* pl=(MIDIPacketList*)buf; MIDIPacket* pk=MIDIPacketListInit(pl);
+                const Byte msg[]={0x90,60,100, 0xB0,1,127, 0xE0,127,127};
+                pk=MIDIPacketListAdd(pl,sizeof buf,pk,0,sizeof msg,msg); (void)pk;
+                MIDIReceived(src,pl);
+                until=[NSDate dateWithTimeIntervalSinceNow:3.0];
+                while (until.timeIntervalSinceNow>0) { @synchronized(got) { if (got.count>=3) break; } pump(0.05); }
+                NSArray* ev; @synchronized(got) { ev=[got copy]; }
+                auto F=[&](NSUInteger i,NSUInteger j)->double { return [[(NSArray*)[ev objectAtIndex:i] objectAtIndex:j] doubleValue]; };
+                Check(ev.count==3 && (int)F(0,0)==muew::MidiEvent::NoteOn && (int)F(0,1)==60 && fabs(F(0,2)-100/127.0)<1e-6 &&
+                      (int)F(1,0)==muew::MidiEvent::Wheel && F(1,2)==1.0 &&
+                      (int)F(2,0)==muew::MidiEvent::Bend && fabs(F(2,2)-1.0)<1e-6,
+                      "a note, a mod wheel and a pitch bend sent to a virtual source arrive parsed, in order");
+                MIDIEndpointDispose(src); MIDIClientDispose(pc);
+            }
         }
         // 0.97.0 REVERT: back to the loaded sound as one undoable step
         v->current.voice.osc2Level+=v->current.voice.osc2Level>0.5 ? -0.3 : 0.3; v->edited=true; [v voiceParamEdited:-1];
@@ -353,7 +383,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
               "native mouseDown on minimum-rating stars sets, clears and re-sets the floor without load or note");
         clickStar(4);
         Check(v->filter.minRating==0,"native mouseDown on the lit star clears the floor");
-        {   // 0.98.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
+        {   // 0.99.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
             id surprise=[v accessibilityChildren][24];
             const int surpriseOrigin=v->currentIndex;
             v->filter=muew::PresetFilter(); v->filter.category="Lead"; [v refilter];
@@ -375,7 +405,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             const int wasN=v->currentIndex, pN=host->patches;
             [v mouseDown:se];
             Check(v->currentIndex!=wasN && allowed.count(v->currentIndex) && host->patches==pN+1,"native mouseDown on SURPRISE ME loads one visible sound");
-            {   // 0.98.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
+            {   // 0.99.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
                 id back=[v accessibilityChildren][25];
                 v->loadBack.clear(); [v refilter];
                 Check([[back accessibilityLabel] isEqualToString:@"Back to previous sound, nothing earlier"] && ![back accessibilityPerformPress],
@@ -400,7 +430,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                 Check(c0!=a0 && v->currentIndex==a0 && host->patches==pC+1,"native mouseDown on BACK restores the previous sound");
                 (void)c0;
             }
-            {   // 0.98.0 row heart: toggles that row's favorite without loading, selecting or playing
+            {   // 0.99.0 row heart: toggles that row's favorite without loading, selecting or playing
                 v->filter=muew::PresetFilter(); v->filter.category="Lead"; v->sortMode=muew::ui::SortName; v->bscroll=0; [v refilter];
                 const int rowIdx=v->visible[0]; const std::string rowSlug=muew::ui::library().slug(rowIdx);
                 const bool wasFav=v->favorites.count(rowSlug)>0;
@@ -432,7 +462,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             Snapshot(v,"surprise-all");
             [v loadPresetIndex:surpriseOrigin]; [v refilter];
         }
-        {   // 0.98.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
+        {   // 0.99.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
             id clear=[v accessibilityChildren][23];
             const int clearPatches=host->patches; const int clearOn=(int)host->on.size();
             Check([[clear accessibilityLabel] isEqualToString:@"Clear all filters, nothing to clear"] && ![clear accessibilityPerformPress],
@@ -512,7 +542,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [sortName accessibilityPerformPress];
     Check(v->sortMode==muew::ui::SortName && v->currentIndex==original,
           "accessible sort press reorders without loading");
-    {   // 0.98.0 sort direction: the active header reverses; a new column starts at its natural direction
+    {   // 0.99.0 sort direction: the active header reverses; a new column starts at its natural direction
         const std::vector<int> asc=v->visible; std::vector<int> expectDesc(asc.rbegin(),asc.rend());
         const int pS=host->patches, onS=(int)host->on.size();
         Check(asc.size()>2 && !v->sortReverse && [[sortName accessibilityLabel] isEqualToString:@"Sort: Name, selected, ascending"],
