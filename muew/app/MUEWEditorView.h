@@ -211,6 +211,7 @@ struct MUEWEditorHost {
 // Show a sound that came from the engine side (host recall, host preset menu)
 // without echoing it back to the engine.
 - (void)adoptPreset:(const muew::Preset&)p index:(int)index edited:(bool)wasEdited;
+- (void)voiceParamEdited:(int)pid;
 - (void)historyNote;
 - (void)historyReset;
 - (BOOL)performHistoryStep:(BOOL)redo;
