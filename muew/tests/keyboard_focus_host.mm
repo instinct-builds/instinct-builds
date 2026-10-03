@@ -40,7 +40,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.109.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.110.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -236,7 +236,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                     pt.apply(muew::MidiEvent{muew::MidiEvent::AllNotesOff,0,0.0f}); [v showPerformance:pt.snapshot() note:pt.lastNote() sustain:pt.sustain()];
                     [v showPerformance:muew::Performance{} note:-1 sustain:false];
                 }
-                { // 0.109.0 unplug: the source disappears while "held": the input drops it and releases everything once
+                { // 0.108.0 unplug: the source disappears while "held": the input drops it and releases everything once
                     MIDIEndpointDispose(src); src=0;
                     until=[NSDate dateWithTimeIntervalSinceNow:3.0];
                     while (in.connectedSources>base && until.timeIntervalSinceNow>0) { [in refresh]; pump(0.05); }
