@@ -137,6 +137,8 @@ jobs:
             screencapture -x "ASSSETS-$ASSSETS_VERSION-$3.png"
             # Optional 4th arg: a file the demo writes in the background; keep the app alive until it lands.
             if [ -n "${4:-}" ]; then for i in $(seq 1 90); do [ -s "$SUP/$4" ] && break; sleep 1; done; echo "waited ${i}s for $4"; fi
+            # ALSO=<file>: a second file the demo writes later (a view marker). Keep the app alive until it lands, too.
+            if [ -n "${ALSO:-}" ]; then for i in $(seq 1 60); do [ -s "$SUP/$ALSO" ] && break; sleep 1; done; echo "waited ${i}s for $ALSO"; fi
             pkill -x ASSSETS || true; sleep 2
             [ -f /tmp/asssets-pristine.json ] || cp "$SUP/studio-catalog.json" /tmp/asssets-pristine.json
           }
@@ -329,7 +331,7 @@ jobs:
           # Every probed header row must start inside the window. A negative minX is the 1.86.2 clipping bug.
           awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^minX=/) { split($i, a, "="); if (a[2] + 0 < 0) bad = 1 } } END { exit bad }' "$SUP/demo-header-frames.txt"
           rm -f "$SUP/demo-decision-filter-view.txt"
-          shoot decision-filter 1440x900 decision-filter demo-decision-filter.txt
+          ALSO=demo-decision-filter-view.txt shoot decision-filter 1440x900 decision-filter demo-decision-filter.txt
           cat "$SUP/demo-decision-filter.txt"
           grep -q '^done changes=2 approved=1 shown=2 match=true canSave=true$' "$SUP/demo-decision-filter.txt"
           cp "$SUP/demo-decision-filter.txt" "ASSSETS-$ASSSETS_VERSION-decision-filter.txt"
@@ -338,7 +340,7 @@ jobs:
           grep -q '^view selectedVisible=true notFirst=true filter=changes$' "$SUP/demo-decision-filter-view.txt"
           cp "$SUP/demo-decision-filter-view.txt" "ASSSETS-$ASSSETS_VERSION-decision-filter-view.txt"
           rm -f "$SUP/demo-client-decisions-view.txt"
-          shoot client-decisions 1440x900 client-decisions demo-client-decisions.txt
+          ALSO=demo-client-decisions-view.txt shoot client-decisions 1440x900 client-decisions demo-client-decisions.txt
           cat "$SUP/demo-client-decisions.txt"
           grep -q '^done total=3 first=2 approved=1 changes=1 csvRows=4 board=true$' "$SUP/demo-client-decisions.txt"
           cp "$SUP/demo-client-decisions.txt" "ASSSETS-$ASSSETS_VERSION-client-decisions.txt"
@@ -347,7 +349,7 @@ jobs:
           grep -q '^view selected=true title=true decisions=2 grid=true$' "$SUP/demo-client-decisions-view.txt"
           cp "$SUP/demo-client-decisions-view.txt" "ASSSETS-$ASSSETS_VERSION-client-decisions-view.txt"
           rm -f "$SUP/demo-notes-resolve-all-view.txt"
-          shoot notes-resolve-all 1440x900 notes-resolve-all demo-notes-resolve-all.txt
+          ALSO=demo-notes-resolve-all-view.txt shoot notes-resolve-all 1440x900 notes-resolve-all demo-notes-resolve-all.txt
           grep -q '^done changed=4/2 open=2 openAssets=1 thirdOpen=true repeat=0$' "$SUP/demo-notes-resolve-all.txt"
           cp "$SUP/demo-notes-resolve-all.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve-all.txt"
           for i in $(seq 1 30); do [ -s "$SUP/demo-notes-resolve-all-view.txt" ] && break; sleep 1; done

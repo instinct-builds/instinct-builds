@@ -1501,3 +1501,7 @@ Limits, stated plainly: snapshots are taken at launch, so edits made since the l
 - The 1.90 automatic snapshots and these files share one restore path.
 
 Limits: the backup is catalog data only. It does not contain the asset files, thumbnails or license documents, and asset paths inside it are the paths on the Mac that made it. On another Mac, restore the files to the same locations or use Relink Folder afterwards. The CI `library-backup` demo exports, removes an asset, restores through the same function and writes `done wrote=true removed=true restored=true beforeKept=true`; the open and save panels themselves are not driven by CI.
+
+## 1.91.1: CI harness fix, no product change
+
+The `shoot` helper killed the app as soon as a demo's first marker landed, while three demos (decision-filter, client-decisions, notes-resolve-all) write a second view marker a few seconds later. On a slow runner that file never appeared and the step failed. `shoot` now takes an `ALSO=<file>` environment variable and keeps the app alive until that file lands (60 s cap). The three demos use it. Nothing in the app changed.
