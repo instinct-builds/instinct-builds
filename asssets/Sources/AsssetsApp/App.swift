@@ -3881,6 +3881,31 @@ final class StudioLibrary: ObservableObject {
                 let marker = "done picks=\(p?.picks ?? -1) skipped=\(p?.skippedCount ?? -1) outsider=\(p?.rows.last?.skipped ?? "missing")"
                 try? marker.write(to: supportRoot.appendingPathComponent("demo-feedback-roster.txt"), atomically: true, encoding: .utf8)
             }
+        case "notes-resolve":
+            // Real import path, then the same model call the inspector button makes.
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(2).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-02", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            for (who, text) in [("Jordan", "Try a warmer backdrop"), ("Sam", "Crop the left edge tighter")] {
+                let f = ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: who, items: [
+                    .init(id: ids[0].uuidString, favorite: false, note: text)])
+                importFeedback(feedback: [f], unreadable: 0)
+            }
+            if let done = catalog.assets.first(where: { $0.id == ids[0] })?.clientNotes.first(where: { $0.reviewer == "Jordan" }) {
+                setClientNoteResolved(done, on: ids[0], resolved: true)
+            }
+            selection = [ids[0]]; focusID = ids[0]; anchorID = ids[0]
+            inspectorAnchor = "inspector-notes"
+            let notes = catalog.assets.first(where: { $0.id == ids[0] })?.clientNotes ?? []
+            let csv = catalog.clientNotesCSV()
+            try? csv.write(to: supportRoot.appendingPathComponent("demo-notes-resolve.csv"), atomically: true, encoding: .utf8)
+            let rows = csv.components(separatedBy: "\r\n").filter { !$0.isEmpty }
+            let statusOK = rows.count == 3 && rows.filter { $0.hasSuffix("\"Resolved\"") }.count == 1 && rows.filter { $0.hasSuffix("\"Open\"") }.count == 1
+            let marker = "done notes=\(notes.count) open=\(catalog.openClientNoteCount) resolved=\(notes.filter(\.resolved).count) csv=\(statusOK)"
+            try? marker.write(to: supportRoot.appendingPathComponent("demo-notes-resolve.txt"), atomically: true, encoding: .utf8)
         case "feedback-preview", "feedback-imported":
             // A third reviewer's file with Approve / Request changes, against the Lobby Refresh round.
             let id = makeDemoApproval().0

@@ -1252,3 +1252,15 @@ real-browser suite runs. Product behavior and feedback format are unchanged.
 - Tests: tick and untick, identical vs edited re-import, other reviewer
   isolation, stale-note guard, legacy decode and encode. The inspector button
   is not exercised by a native click in CI.
+
+
+## 1.81.1: visual proof for resolved notes
+
+The native harness now has a `notes-resolve` demo. It imports two reviewers'
+notes on one asset through the real feedback path, resolves one with the same
+model call the inspector button uses, selects the asset and scrolls the
+inspector to Client Notes. CI captures that screen at 1440x900 (struck-through,
+dimmed note and the "CLIENT NOTES · 1 OPEN" heading) and checks the marker
+`notes=2 open=1 resolved=1 csv=true`, which also verifies the exported CSV has
+one Open and one Resolved row. No product behavior changes. The button itself
+is still not clicked by a native UI test.

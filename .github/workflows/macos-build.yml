@@ -292,6 +292,9 @@ jobs:
           shoot feedback-note-limit 1024x768 feedback-note-limit demo-feedback-note-limit.txt
           grep -q '^done submitted=4001 saved=4000 replaced=0 unchanged=true$' "$SUP/demo-feedback-note-limit.txt"
           cp "$SUP/demo-feedback-note-limit.txt" "ASSSETS-$ASSSETS_VERSION-feedback-note-limit.txt"
+          shoot notes-resolve 1440x900 notes-resolve demo-notes-resolve.txt
+          grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
+          cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
           shoot feedback-preview 1920x1200 feedback-preview
           shoot feedback-imported 1920x1200 feedback-imported
           shoot board-arrange-before 1920x1200 board-arrange-before
@@ -503,6 +506,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-batch-conflict.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-duplicate.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-note-limit.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-notes-resolve.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-folder-export-tree.txt
