@@ -94,7 +94,7 @@ public struct SmartRules: Codable, Equatable, Sendable {
         if let decision, !decision.matches(a) { return false }
         let terms = text.lowercased().split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
         guard !terms.isEmpty else { return true }
-        let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.searchTags + a.palette).joined(separator: " ").lowercased()
+        let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.searchTags + a.searchNoteText + a.palette).joined(separator: " ").lowercased()
         return terms.allSatisfy(hay.contains)
     }
 

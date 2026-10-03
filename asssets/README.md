@@ -1473,3 +1473,7 @@ starts left of the window. The row is not checked for right-edge overflow.
 - Not built after checking: undoing a feedback import. Undo restores assets and
   collection lists but not boards or the pick ledger, so it would leave a
   half-undone import that looks complete.
+
+## 1.88.0: search finds client notes
+
+The search box (and a saved smart collection's text rule) now also matches client note text, so typing "shadow" finds every asset whose imported feedback mentions it. Resolved notes stay searchable, so ticking a note off does not make it vanish. Terms still combine with AND across title, tags, colors and notes. Notes are local records of imported feedback; nothing is sent to the client. The CI `note-search` demo writes `done shadow=1 warmer=1 none=0 visible=1 resolvedStillFound=true`.

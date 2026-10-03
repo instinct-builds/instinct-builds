@@ -4065,6 +4065,23 @@ final class StudioLibrary: ObservableObject {
             }
             let marker = "done saveable=\(saveable) name=\(draftName.replacingOccurrences(of: " ", with: "_")) saved=\(saved != nil) filterCleared=\(decisionFilter == .any) before=\(before) after=\(after) summary=\(saved?.rules.summary.replacingOccurrences(of: " ", with: "_") ?? "none")"
             try? marker.write(to: supportRoot.appendingPathComponent("demo-decision-smart.txt"), atomically: true, encoding: .utf8)
+        case "note-search":
+            let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
+            let gallery = UUID().uuidString
+            let ids = Array(mocks.prefix(3).map(\.id))
+            if let roster = GalleryRoster(gallery: gallery, title: "Launch proof", created: "2026-10-03", assets: ids) {
+                mutate { _ = $0.recordGallery(roster) }
+            }
+            importFeedback(feedback: [ReviewGallery.Feedback(gallery: gallery, title: "Launch proof", reviewer: "Jordan",
+                items: [(0, "Try a warmer backdrop"), (2, "Fix the shadow")].map { .init(id: ids[$0.0].uuidString, favorite: false, note: $0.1) })], unreadable: 0)
+            if let done = catalog.assets.first(where: { $0.id == ids[2] })?.clientNotes.first { setClientNoteResolved(done, on: ids[2], resolved: true) }
+            show(collection: StudioCatalog.allAssets)
+            search = "shadow"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                func count(_ q: String) -> Int { self.catalog.filtered(search: q, kind: nil, collection: StudioCatalog.allAssets).count }
+                let marker = "done shadow=\(count("shadow")) warmer=\(count("warmer")) none=\(count("zzzz")) visible=\(self.filtered.count) resolvedStillFound=\(self.filtered.first?.id == ids[2])"
+                try? marker.write(to: self.supportRoot.appendingPathComponent("demo-note-search.txt"), atomically: true, encoding: .utf8)
+            }
         case "revision-brief":
             let mocks = catalog.assets.filter { $0.collection == "Device Mockups" }
             let gallery = UUID().uuidString
@@ -8153,7 +8170,7 @@ struct AssetBrowser: View {
                 }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search titles, tags, colors…", text: $model.search).textFieldStyle(.plain)
+                    TextField("Search titles, tags, colors, notes…", text: $model.search).textFieldStyle(.plain)
                     if !model.search.isEmpty { Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
                     ColorSearchButton()
                 }

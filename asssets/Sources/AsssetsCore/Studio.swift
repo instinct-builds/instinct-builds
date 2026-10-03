@@ -124,6 +124,8 @@ public struct StudioAsset: Identifiable, Hashable, Codable, Sendable {
     public var suggestedTags: [String] { autoTags.filter { !tags.contains($0) && !rejectedTags.contains($0) } }
     /// What search and smart rules match against: the user's tags plus pending suggestions.
     public var searchTags: [String] { tags + suggestedTags }
+    /// 1.88: client note text is searchable, resolved notes included, so a note stays findable after it is ticked off.
+    public var searchNoteText: [String] { clientNotes.map(\.text) }
 
     public var isStarter: Bool { sourceKey?.hasPrefix("starter:") ?? false }
 }
@@ -275,7 +277,7 @@ public struct StudioCatalog: Codable, Equatable, Sendable {
             case Self.favorites: guard a.favorite else { return false }
             default: guard a.collection == collection else { return false }
             }
-            let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.searchTags + a.palette).joined(separator: " ").lowercased()
+            let hay = ([a.title, a.kind.rawValue, a.collection, a.resolution] + a.searchTags + a.searchNoteText + a.palette).joined(separator: " ").lowercased()
             return terms.allSatisfy(hay.contains)
         }
     }

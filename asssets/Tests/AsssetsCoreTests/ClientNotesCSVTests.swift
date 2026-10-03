@@ -217,4 +217,20 @@ struct ClientNotesCSVTests {
         #expect(StudioCatalog().clientNoteCount == 0)
         #expect(StudioCatalog().clientNotesCSV().components(separatedBy: "\r\n").count == 2)
     }
+
+    @Test func searchMatchesClientNoteTextIncludingResolved() {
+        var c = StudioCatalog()
+        let a = c.importFile(path: "/s/one.png")!, b = c.importFile(path: "/s/two.png")!
+        let g = UUID().uuidString
+        _ = c.recordGallery(GalleryRoster(gallery: g, title: "R", created: "2026-10-03", assets: [a, b])!)
+        _ = c.applyFeedback(.init(gallery: g, title: "R", reviewer: "Jordan", items: [
+            .init(id: a.uuidString, favorite: false, note: "Fix the Shadow"),
+            .init(id: b.uuidString, favorite: false, note: "Cooler tone")]))
+        #expect(c.filtered(search: "shadow", kind: nil, collection: StudioCatalog.allAssets).map(\.id) == [a])
+        let note = c.assets.first { $0.id == a }!.clientNotes[0]
+        _ = c.setClientNote(note, on: a, resolved: true)
+        #expect(c.filtered(search: "shadow", kind: nil, collection: StudioCatalog.allAssets).map(\.id) == [a])
+        #expect(c.filtered(search: "shadow tone", kind: nil, collection: StudioCatalog.allAssets).isEmpty)
+        #expect(SmartRules(text: "cooler").matches(c.assets.first { $0.id == b }!))
+    }
 }

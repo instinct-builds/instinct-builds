@@ -302,6 +302,11 @@ jobs:
           cat "$SUP/demo-revision-brief.md"
           cp "$SUP/demo-revision-brief.txt" "ASSSETS-$ASSSETS_VERSION-revision-brief.txt"
           cp "$SUP/demo-revision-brief.md" "ASSSETS-$ASSSETS_VERSION-revision-brief.md"
+          rm -f "$SUP/demo-note-search.txt"
+          shoot note-search 1440x900 note-search demo-note-search.txt
+          cat "$SUP/demo-note-search.txt"
+          grep -q '^done shadow=1 warmer=1 none=0 visible=1 resolvedStillFound=true$' "$SUP/demo-note-search.txt"
+          cp "$SUP/demo-note-search.txt" "ASSSETS-$ASSSETS_VERSION-note-search.txt"
           rm -f "$SUP/demo-header-frames.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt
           cat "$SUP/demo-decision-smart.txt"
@@ -562,6 +567,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-revision-brief.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-revision-brief.md
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-note-search.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart-frame.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt
