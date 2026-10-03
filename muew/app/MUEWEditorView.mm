@@ -455,7 +455,7 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
     return YES;
 }
 - (void)drawHistoryButtons {
-    const bool can[3] = {editHistory.canUndo(), editHistory.canRedo(), [self canRevert]};
+    const bool can[3] = {editHistory.canUndo(), editHistory.canRedo(), (bool)[self canRevert]};
     const NSRect rs[3] = {[self undoRect], [self redoRect], [self revertRect]};
     for (int i = 0; i < 3; ++i) {
         FillRound(rs[i], 4, can[i] ? C(0x16202a) : C(0x0e1218));
