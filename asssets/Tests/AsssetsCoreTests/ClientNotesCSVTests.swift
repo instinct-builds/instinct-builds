@@ -39,7 +39,8 @@ struct ClientNotesCSVTests {
         _ = c.applyFeedback(fb("Alex", "Crop tighter", "Cooler"))
         #expect(c.openClientNoteCount == 4)
         let samA = c.assets.first { $0.id == a }!.clientNotes.first { $0.reviewer == "Sam" }!
-        #expect(c.setClientNote(samA, on: a, resolved: true) && c.openClientNoteCount == 3)
+        let ticked = c.setClientNote(samA, on: a, resolved: true)
+        #expect(ticked && c.openClientNoteCount == 3)
         // Alex's identical text on the same asset is a different note and stays open.
         #expect(c.assets.first { $0.id == a }!.clientNotes.first { $0.reviewer == "Alex" }!.resolved == false)
         _ = c.applyFeedback(fb("Sam", "Crop tighter", "Much warmer"))
@@ -48,7 +49,8 @@ struct ClientNotesCSVTests {
         #expect(after.first { $0.text == "Much warmer" }?.resolved == false)
         _ = c.applyFeedback(fb("Sam", "Crop tighter again", "Much warmer"))
         #expect(c.assets.flatMap(\.clientNotes).first { $0.text == "Crop tighter again" }?.resolved == false)
-        #expect(!c.setClientNote(samA, on: a, resolved: true))
+        let stale = c.setClientNote(samA, on: a, resolved: true)
+        #expect(!stale)
         let csv = c.clientNotesCSV()
         #expect(csv.contains("\"Open\"") && !csv.contains("\"Resolved\""))
         var d = StudioCatalog()
