@@ -295,12 +295,15 @@ jobs:
           shoot notes-resolve 1440x900 notes-resolve demo-notes-resolve.txt
           grep -q '^done notes=2 open=1 resolved=1 csv=true$' "$SUP/demo-notes-resolve.txt"
           cp "$SUP/demo-notes-resolve.txt" "ASSSETS-$ASSSETS_VERSION-notes-resolve.txt"
+          rm -f "$SUP/demo-header-frames.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt
           cat "$SUP/demo-decision-smart.txt"
           grep -q '^done saveable=true name=Needs_Changes saved=true filterCleared=true before=2 after=3 summary=client_requested_changes$' "$SUP/demo-decision-smart.txt"
           cp "$SUP/demo-decision-smart.txt" "ASSSETS-$ASSSETS_VERSION-decision-smart.txt"
-          cat "$SUP/demo-summary-frame.txt" || true
-          cp "$SUP/demo-summary-frame.txt" "ASSSETS-$ASSSETS_VERSION-decision-smart-frame.txt" || true
+          cat "$SUP/demo-header-frames.txt"
+          cp "$SUP/demo-header-frames.txt" "ASSSETS-$ASSSETS_VERSION-decision-smart-frame.txt"
+          # Every probed header row must start inside the window. A negative minX is the 1.86.2 clipping bug.
+          awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^minX=/) { split($i, a, "="); if (a[2] + 0 < 0) bad = 1 } } END { exit bad }' "$SUP/demo-header-frames.txt"
           rm -f "$SUP/demo-decision-filter-view.txt"
           shoot decision-filter 1440x900 decision-filter demo-decision-filter.txt
           cat "$SUP/demo-decision-filter.txt"

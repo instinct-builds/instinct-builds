@@ -1433,3 +1433,18 @@ line instead of leaving a misleading picture. Demo only; no product change.
   `demo-summary-frame.txt` (demo only) so a clipped start shows up as a
   negative minX instead of a guess from the picture. The clipping itself is not
   fixed yet. CI prints the file.
+
+
+## 1.86.3: header no longer overflows the window
+
+The 1.86.2 probe showed the smart collection summary starting 140 points left
+of the window (`minX=-140`). Cause: the pinned filter chips were fixed-size,
+and the Decisions and Open notes chips from 1.82 and 1.85 made the row wider
+than the column, which widened the whole header and pushed its left edge off
+screen (the search field and "All Media" chip were clipped too, not just the
+summary). The pinned chips now scroll sideways inside the row when there is not
+room for all of them, so the header cannot grow past the window. The 1.86.1
+left-align change was a guess and is kept only because it is harmless.
+CI now records the summary, search field and filter row frames
+(`demo-header-frames.txt`, shipped in the artifact) and fails the demo if any
+starts left of the window. The row is not checked for right-edge overflow.

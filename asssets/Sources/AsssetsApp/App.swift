@@ -8110,14 +8110,7 @@ struct AssetBrowser: View {
                 if let id = model.selectedSmart, let smart = model.catalog.smartCollection(id) {
                     Label(smart.rules.summary, systemImage: "line.3.horizontal.decrease.circle").font(.caption).foregroundStyle(Theme.smart).lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(GeometryReader { g in
-                            Color.clear.onAppear {
-                                guard model.isDemo else { return }
-                                let f = g.frame(in: .global)
-                                try? "summary minX=\(Int(f.minX)) width=\(Int(f.width)) text=\(smart.rules.summary)".write(
-                                    to: model.supportRoot.appendingPathComponent("demo-summary-frame.txt"), atomically: true, encoding: .utf8)
-                            }
-                        })
+                        .demoFrameProbe("summary", model)
                 }
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -8128,6 +8121,7 @@ struct AssetBrowser: View {
                 .padding(.horizontal, 12).padding(.vertical, 9)
                 .background(Theme.raised, in: RoundedRectangle(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11).stroke(Theme.hairline))
+                .demoFrameProbe("search", model)
                 HStack(spacing: 8) {
                     // Full chips when they fit; otherwise one "Media" menu instead of squeezed, cut-off chips.
                     ViewThatFits(in: .horizontal) {
@@ -8139,7 +8133,10 @@ struct AssetBrowser: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Pinned outside the scrolling media chips so an active rating or label filter is always visible.
+                    // The group scrolls sideways when the column is narrower than all its chips, so it can never push
+                    // the header wider than the window (1.86.3: Decisions and Open notes made the row too wide).
                     Rectangle().fill(Theme.hairline).frame(width: 1, height: 18)
+                    ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         if let q = model.colorQuery {
                             Button { model.clearColorSearch() } label: {
@@ -8187,8 +8184,12 @@ struct AssetBrowser: View {
                             .help(model.openNotesFilter ? "Show every asset again" : "Show only assets with a client note not yet resolved on this Mac")
                         }
                         RatingFilterChips()
-                    }.fixedSize()
+                    }.fixedSize().padding(.vertical, 1)
+                    }
+                    .layoutPriority(1)
+                    .frame(height: 30)
                 }
+                .demoFrameProbe("filterRow", model)
             }
             .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 10)
             Divider().overlay(Theme.hairline)
@@ -13787,3 +13788,22 @@ struct OnBoardsSection: View {
 @main struct LinuxBuildStub { static func main() { print("ASSSETS requires macOS 14 or later.") } }
 
 #endif
+
+
+/// Demo only: records where a view really sits, so a layout bug shows up as numbers instead of a guess from a picture.
+enum DemoFrames {
+    static var seen: [String: String] = [:]
+    static func record(_ name: String, _ f: CGRect, to url: URL) {
+        seen[name] = "\(name) minX=\(Int(f.minX)) maxX=\(Int(f.maxX)) width=\(Int(f.width))"
+        try? seen.keys.sorted().compactMap { seen[$0] }.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+}
+extension View {
+    func demoFrameProbe(_ name: String, _ model: StudioLibrary) -> some View {
+        background(GeometryReader { g in
+            Color.clear
+                .onAppear { if model.isDemo { DemoFrames.record(name, g.frame(in: .global), to: model.supportRoot.appendingPathComponent("demo-header-frames.txt")) } }
+                .onChange(of: g.frame(in: .global)) { _, f in if model.isDemo { DemoFrames.record(name, f, to: model.supportRoot.appendingPathComponent("demo-header-frames.txt")) } }
+        })
+    }
+}
