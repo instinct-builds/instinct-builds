@@ -442,6 +442,17 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
 - (NSRect)redoRect { return NSMakeRect(76, self.bounds.size.height - 76, 44, 16); }
 - (NSRect)revertRect { return NSMakeRect(124, self.bounds.size.height - 76, 52, 16); }
 - (BOOL)canRevert { return currentIndex >= 0 && currentIndex < ui::library().count() && !(current == ui::library().at(currentIndex)); }
+// 0.98.0 menu bar actions (responder chain). The wavetable editor keeps its own local undo while it is open.
+- (void)undo:(id)sender { if (wtEdit >= 0) [self wtStep:NO]; else [self performHistoryStep:NO]; }
+- (void)redo:(id)sender { if (wtEdit >= 0) [self wtStep:YES]; else [self performHistoryStep:YES]; }
+- (void)revertSound:(id)sender { [self revertToLoaded]; }
+- (BOOL)validateMenuItem:(NSMenuItem*)item {
+    const SEL a = item.action;
+    if (a == @selector(undo:)) return wtEdit >= 0 || (!browserOpen && editHistory.canUndo());
+    if (a == @selector(redo:)) return wtEdit >= 0 || (!browserOpen && editHistory.canRedo());
+    if (a == @selector(revertSound:)) return !browserOpen && [self canRevert];
+    return YES;
+}
 - (BOOL)revertToLoaded { // 0.97.0: back to the loaded sound as one undoable step
     if (browserOpen || ![self canRevert]) return NO;
     histGesture = false; [self historyNote];

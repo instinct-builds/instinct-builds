@@ -5,6 +5,7 @@
 #import <AppKit/AppKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import "MUEWEditorView.h"
+#import "MUEWMainMenu.h"
 #include "synth.h"
 #include <mutex>
 #include <atomic>
@@ -46,6 +47,9 @@ struct StandaloneHost : MUEWEditorHost {
 
 @implementation AppDelegate
 - (void)applicationDidFinishLaunching:(NSNotification*)n {
+    NSMenu* bar = MUEWMakeMainMenu(); // 0.98.0: Quit, Hide, Minimize, Close, Edit > Undo / Redo / Revert
+    [NSApp setMainMenu:bar];
+    [NSApp setWindowsMenu:[bar itemAtIndex:2].submenu];
     NSRect f = NSMakeRect(0, 0, 1000, 680);
     w = [[NSWindow alloc] initWithContentRect:f
                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable

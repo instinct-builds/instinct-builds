@@ -105,7 +105,7 @@ int main() {
     check(user::importFile(dir.string(), (dir / "missing.muew").string(), lib) == -1, "Import of a missing file fails cleanly");
     fs::remove_all(dir); fs::remove(ext);
 
-    // 0.97.0: minimum-rating floor composes with every other filter.
+    // 0.98.0: minimum-rating floor composes with every other filter.
     {
         ui::Library rl; std::set<std::string> rf; ui::Ratings rr;
         ui::setRating(rr, rl.slug(0), 5); ui::setRating(rr, rl.slug(1), 3); ui::setRating(rr, rl.slug(2), 1);
@@ -126,7 +126,7 @@ int main() {
         check(ui::visiblePresets(m, rf, rl, rr, ui::SortBank).size() == 1, "clearing a rating drops the sound from the floor");
     }
 
-    // 0.97.0: SURPRISE selection.
+    // 0.98.0: SURPRISE selection.
     {
         check(ui::pickSurprise({}, 3, 7) == -1, "surprise on an empty list is -1");
         check(ui::pickSurprise({5}, 5, 9) == 5, "a single visible sound is returned even when loaded");
@@ -135,7 +135,7 @@ int main() {
         check(never && covers[0] && covers[1] && covers[2], "surprise never repeats the loaded sound and reaches every other visible sound");
     }
 
-    // 0.97.0: BACK history.
+    // 0.98.0: BACK history.
     {
         std::vector<int> h;
         ui::backPush(h, -1, 4, 108); ui::backPush(h, 4, 4, 108); ui::backPush(h, 200, 5, 108);
@@ -149,7 +149,7 @@ int main() {
         check(big.size() == 32 && big.front() == 48 && big.back() == 79, "history keeps the newest 32");
     }
 
-    // 0.97.0: sort direction.
+    // 0.98.0: sort direction.
     {
         ui::Library dl; ui::Ratings dr;
         ui::setRating(dr, dl.slug(0), 2); ui::setRating(dr, dl.slug(1), 5); ui::setRating(dr, dl.slug(2), 2);

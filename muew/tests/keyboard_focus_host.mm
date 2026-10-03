@@ -1,6 +1,7 @@
 // Standalone-style editor keyboard/focus contract, run on the macOS CI desktop.
 #import <AppKit/AppKit.h>
 #import "MUEWEditorView.h"
+#import "MUEWMainMenu.h"
 #include <cstdio>
 #include <algorithm>
 #include <cmath>
@@ -35,13 +36,13 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.97.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.98.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
     Check(data.length > 10000 && [data writeToFile:path atomically:YES], name);
 }
-// 0.97.0: with the browser closed the tree is the native Search plus the UNDO / REDO buttons; no browser
+// 0.98.0: with the browser closed the tree is the native Search plus the UNDO / REDO buttons; no browser
 // control or results list may remain. Checked by content so later header controls do not break it.
 static BOOL ClosedAXTree(MUEWEditorView* v) {
     NSArray* ax=[v accessibilityChildren];
@@ -149,6 +150,30 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         Check(v->current==before, "clicking the UNDO button restores the sound");
         [v mouseDown:ME(NSEventTypeLeftMouseDown,NSMakePoint(NSMidX(rr),NSMidY(rr)))]; [v mouseUp:ME(NSEventTypeLeftMouseUp,NSMakePoint(NSMidX(rr),NSMidY(rr)))];
         Check(v->current==after, "clicking the REDO button redoes it");
+        {   // 0.98.0 menu bar: exact structure the standalone installs, validation and actions through the view
+            NSMenu* bar=MUEWMakeMainMenu();
+            auto item=[&](NSInteger menu,NSString* title)->NSMenuItem* {
+                for (NSMenuItem* it in [bar itemAtIndex:menu].submenu.itemArray) if ([it.title isEqualToString:title]) return it;
+                return nil; };
+            NSMenuItem *quit=item(0,@"Quit MUEW"), *hide=item(0,@"Hide MUEW"), *undoI=item(1,@"Undo"), *redoI=item(1,@"Redo"),
+                       *revertI=item(1,@"Revert to Loaded Sound"), *mini=item(2,@"Minimize"), *closeI=item(2,@"Close");
+            Check(bar.itemArray.count==3 && [[bar itemAtIndex:0].submenu.title isEqualToString:@"MUEW"] && [[bar itemAtIndex:1].submenu.title isEqualToString:@"Edit"] &&
+                  [[bar itemAtIndex:2].submenu.title isEqualToString:@"Window"], "menu bar has the MUEW, Edit and Window menus");
+            Check(quit && quit.action==@selector(terminate:) && [quit.keyEquivalent isEqualToString:@"q"] && quit.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
+                  hide && [hide.keyEquivalent isEqualToString:@"h"] && mini && [mini.keyEquivalent isEqualToString:@"m"] && closeI && [closeI.keyEquivalent isEqualToString:@"w"],
+                  "Quit, Hide, Minimize and Close carry the standard Command keys");
+            Check(undoI && redoI && [undoI.keyEquivalent isEqualToString:@"z"] && undoI.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
+                  [redoI.keyEquivalent isEqualToString:@"z"] && redoI.keyEquivalentModifierMask==(NSEventModifierFlagCommand|NSEventModifierFlagShift) &&
+                  undoI.action==@selector(undo:) && redoI.action==@selector(redo:) && revertI.action==@selector(revertSound:),
+                  "Edit has Undo (Cmd-Z), Redo (Shift-Cmd-Z) and Revert wired to the editor actions");
+            Check([v validateMenuItem:undoI]==v->editHistory.canUndo() && [v validateMenuItem:redoI]==v->editHistory.canRedo() &&
+                  [v validateMenuItem:revertI]==[v canRevert], "menu items enable exactly when the editor can act");
+            const muew::Preset menuBefore=v->current;
+            [v undo:undoI];
+            Check(!(v->current==menuBefore), "Edit > Undo goes through the same history");
+            [v redo:redoI];
+            Check(v->current==menuBefore, "Edit > Redo restores the edit");
+        }
         // 0.97.0 REVERT: back to the loaded sound as one undoable step
         v->current.voice.osc2Level+=v->current.voice.osc2Level>0.5 ? -0.3 : 0.3; v->edited=true; [v voiceParamEdited:-1];
         Check([v canRevert] && [[[v accessibilityChildren][3] accessibilityLabel] isEqualToString:@"Revert to loaded sound, available"],
@@ -328,7 +353,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
               "native mouseDown on minimum-rating stars sets, clears and re-sets the floor without load or note");
         clickStar(4);
         Check(v->filter.minRating==0,"native mouseDown on the lit star clears the floor");
-        {   // 0.97.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
+        {   // 0.98.0 SURPRISE ME: loads a visible, different sound exactly once, by AX and by native click
             id surprise=[v accessibilityChildren][24];
             const int surpriseOrigin=v->currentIndex;
             v->filter=muew::PresetFilter(); v->filter.category="Lead"; [v refilter];
@@ -350,7 +375,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             const int wasN=v->currentIndex, pN=host->patches;
             [v mouseDown:se];
             Check(v->currentIndex!=wasN && allowed.count(v->currentIndex) && host->patches==pN+1,"native mouseDown on SURPRISE ME loads one visible sound");
-            {   // 0.97.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
+            {   // 0.98.0 BACK: steps through previous sounds newest first, never pushes itself, loads exactly once per press
                 id back=[v accessibilityChildren][25];
                 v->loadBack.clear(); [v refilter];
                 Check([[back accessibilityLabel] isEqualToString:@"Back to previous sound, nothing earlier"] && ![back accessibilityPerformPress],
@@ -375,7 +400,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                 Check(c0!=a0 && v->currentIndex==a0 && host->patches==pC+1,"native mouseDown on BACK restores the previous sound");
                 (void)c0;
             }
-            {   // 0.97.0 row heart: toggles that row's favorite without loading, selecting or playing
+            {   // 0.98.0 row heart: toggles that row's favorite without loading, selecting or playing
                 v->filter=muew::PresetFilter(); v->filter.category="Lead"; v->sortMode=muew::ui::SortName; v->bscroll=0; [v refilter];
                 const int rowIdx=v->visible[0]; const std::string rowSlug=muew::ui::library().slug(rowIdx);
                 const bool wasFav=v->favorites.count(rowSlug)>0;
@@ -407,7 +432,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             Snapshot(v,"surprise-all");
             [v loadPresetIndex:surpriseOrigin]; [v refilter];
         }
-        {   // 0.97.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
+        {   // 0.98.0 CLEAR FILTERS: nothing to clear is inert; real filters clear together, via AX and native click
             id clear=[v accessibilityChildren][23];
             const int clearPatches=host->patches; const int clearOn=(int)host->on.size();
             Check([[clear accessibilityLabel] isEqualToString:@"Clear all filters, nothing to clear"] && ![clear accessibilityPerformPress],
@@ -487,7 +512,7 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [sortName accessibilityPerformPress];
     Check(v->sortMode==muew::ui::SortName && v->currentIndex==original,
           "accessible sort press reorders without loading");
-    {   // 0.97.0 sort direction: the active header reverses; a new column starts at its natural direction
+    {   // 0.98.0 sort direction: the active header reverses; a new column starts at its natural direction
         const std::vector<int> asc=v->visible; std::vector<int> expectDesc(asc.rbegin(),asc.rend());
         const int pS=host->patches, onS=(int)host->on.size();
         Check(asc.size()>2 && !v->sortReverse && [[sortName accessibilityLabel] isEqualToString:@"Sort: Name, selected, ascending"],

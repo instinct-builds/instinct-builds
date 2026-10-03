@@ -222,6 +222,10 @@ struct MUEWEditorHost {
 - (NSRect)revertRect;
 - (BOOL)canRevert;
 - (BOOL)revertToLoaded;
+- (void)undo:(id)sender;
+- (void)redo:(id)sender;
+- (void)revertSound:(id)sender;
+- (BOOL)validateMenuItem:(NSMenuItem*)item;
 // Saves the current sound as a user preset and selects it (the + Save button
 // after its name prompt). Returns NO if the file could not be written.
 - (BOOL)saveUserPresetNamed:(NSString*)name;
