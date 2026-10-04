@@ -42,6 +42,9 @@ struct StandaloneHost : MUEWEditorHost {
         synth->setParams(p.voice, p.routes);
         synth->setFX(p.fx);
     }
+    bool hasOutputVolume() const override { return true; } // 0.117.0
+    float outputVolume() const override { return gOutGain.position(); }
+    void setOutputVolume(float p) override { gOutGain.setPosition(p); }
     bool playsNotes() const override { return true; }
     void noteOn(int n, float v) override { gPerf.noteFromKeyboard(n); std::lock_guard<std::mutex> g(*lock); synth->noteOn(n, v); }
     void noteOff(int n) override { std::lock_guard<std::mutex> g(*lock); synth->noteOff(n); }

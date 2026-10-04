@@ -63,6 +63,12 @@ int main() {
       ck(l2[0]==0&&r2[3]==0, "silence holds on the next block");
       g.setFromMidi(1.0f); float l3[4]={1,1,1,1}, r3[4]={1,1,1,1}; g.apply(l3,r3,4);
       ck(l3[3]==1&&l3[0]<1&&g.current()==1.0f, "back to full ramps up and lands on exactly unity"); }
+    { OutputGain g; // 0.117.0 slider position is the CC7 scale
+      ck(g.position()==1.0f, "a fresh gain reads full position");
+      g.setPosition(0.5f); ck(std::fabs(g.target()-0.25f)<1e-6f && std::fabs(g.position()-0.5f)<1e-5f, "position 0.5 is gain 0.25 and reads back 0.5");
+      g.setPosition(0.0f); ck(g.position()==0.0f && g.target()==0.0f, "position 0 is silence");
+      g.setPosition(2.0f); ck(g.position()==1.0f, "position clamps to full");
+      g.setFromMidi(64.0f/127.0f); ck(std::fabs(g.position()-64.0f/127.0f)<1e-5f, "a CC7 move reads back as the same slider position"); }
     { PerfTracker pt; auto s0 = pt.snapshot();
       ck(s0.wheel == 0 && s0.aftertouch == 0 && s0.bend == 0 && pt.lastNote() == -1 && !pt.sustain(), "performance tracker starts neutral (0.107.0)");
       for (auto& ev : P({0x90, 64, 100, 0xB0, 1, 127, 0xD0, 64, 0xE0, 0, 0, 0xB0, 64, 127})) pt.apply(ev);

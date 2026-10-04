@@ -5,10 +5,14 @@
 #pragma once
 #include "midi_in.h"
 #include <atomic>
+#include <cmath>
 namespace muew {
 class OutputGain {
 public:
     void setFromMidi(float v) { target_.store(midiVolumeGain(v)); }
+    // 0.117.0: the editor's volume slider. Position is the CC7 scale (0..1); the gain is its squared taper.
+    void setPosition(float p) { setFromMidi(p); }
+    float position() const { const float t = target_.load(); return t <= 0.0f ? 0.0f : (t >= 1.0f ? 1.0f : std::sqrt(t)); }
     float target() const { return target_.load(); }
     float current() const { return now_; }
     void apply(float* left, float* right, int count) {

@@ -490,6 +490,26 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
     [self setNeedsDisplay:YES];
     return YES;
 }
+// 0.117.0: output volume slider in the header gap between REVERT and the engine box.
+- (NSRect)volumeRect { return NSMakeRect(184, self.bounds.size.height - 78, 80, 20); }
+- (NSRect)volumeTrack { NSRect r = [self volumeRect]; return NSMakeRect(r.origin.x + 26, r.origin.y + 7, r.size.width - 30, 6); }
+- (float)volumeAt:(NSPoint)p { NSRect t = [self volumeTrack]; return (float)std::clamp((p.x - t.origin.x) / t.size.width, 0.0, 1.0); }
+- (NSString*)muewVolumeText {
+    if (!host || !host->hasOutputVolume()) return @"none";
+    return [NSString stringWithFormat:@"%d%%", (int)std::lround(host->outputVolume() * 100.0f)];
+}
+- (void)drawVolume {
+    if (!host || !host->hasOutputVolume()) return;
+    const float v = host->outputVolume(); volShown = v;
+    NSRect r = [self volumeRect], t = [self volumeTrack];
+    TextA(@"VOL", NSMakeRect(r.origin.x, r.origin.y + 3, 24, 12), 8, C(0x8793a3), NSFontWeightSemibold, NSTextAlignmentLeft);
+    FillRound(t, 3, C(0x0e1218));
+    FillRound(NSMakeRect(t.origin.x, t.origin.y, std::max(6.0, t.size.width * v), t.size.height), 3, v >= 0.999f ? C(0x5adac8) : C(0x2f9d8f));
+    NSRect knob = NSMakeRect(t.origin.x + t.size.width * v - 4, NSMidY(t) - 5, 8, 10);
+    FillRound(knob, 3, volDrag ? C(0xf2ab55) : C(0xe6ebf1));
+    [C(0x232a35) setStroke];
+    [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(t, .5, .5) xRadius:3 yRadius:3] stroke];
+}
 - (void)drawHistoryButtons {
     const bool can[3] = {editHistory.canUndo(), editHistory.canRedo(), (bool)[self canRevert]};
     const NSRect rs[3] = {[self undoRect], [self redoRect], [self revertRect]};
@@ -2337,6 +2357,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     TextA(ro, NSMakeRect(r.origin.x, NSMaxY(r) - 9, r.size.width, 10), 7, C(0xd5dce5), NSFontWeightBold, NSTextAlignmentRight);
 }
 - (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus {
+    if (host && host->hasOutputVolume() && host->outputVolume() != volShown) [self setNeedsDisplayInRect:NSInsetRect([self volumeRect], -2, -2)]; // 0.117.0: CC7 moves the slider
     if (p.wheel == perfShown.wheel && p.aftertouch == perfShown.aftertouch && p.bend == perfShown.bend && note == perfNote && sus == perfSustain) return;
     perfShown = p; perfNote = note; perfSustain = sus;
     [self setNeedsDisplay:YES];
@@ -2403,6 +2424,7 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
     Text(@"MUEW", NSMakeRect(28, b.size.height - 59, 180, 38), 28, C(0xf5f7fa), NSFontWeightBold);
     Text(@"WAVETABLE INSTRUMENT", NSMakeRect(126, b.size.height - 50, 200, 16), 10, C(0x5adac8), NSFontWeightSemibold);
     [self drawHistoryButtons]; // 0.96.0
+    [self drawVolume]; // 0.117.0
     [self drawEngine]; // 0.30.0
 
     // Preset display
@@ -5083,6 +5105,12 @@ static int SortForColumn(int c) {
 - (void)mouseDragged:(NSEvent*)e { histGesture = true; [self mouseDraggedBody:e]; } // 0.96.0: one drag is one UNDO step
 - (void)mouseUp:(NSEvent*)e { [self mouseUpBody:e]; histGesture = false; [self historyNote]; }
 - (void)mouseDownBody:(NSEvent*)e {
+    if (!browserOpen && host && host->hasOutputVolume()) { // 0.117.0: header volume; double-click is full
+        NSPoint vp = [self convertPoint:e.locationInWindow fromView:nil];
+        if (NSPointInRect(vp, [self volumeRect])) {
+            volDrag = true; host->setOutputVolume(e.clickCount >= 2 ? 1.0f : [self volumeAt:vp]); [self setNeedsDisplay:YES]; return;
+        }
+    }
     // RESET TRACE is display-only, including when the standalone piano keys
     // are held. Other editor clicks keep their existing note-release safety.
     NSPoint tracePoint=[self convertPoint:e.locationInWindow fromView:nil];
@@ -5204,6 +5232,7 @@ static int SortForColumn(int c) {
 
 - (void)mouseDraggedBody:(NSEvent*)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    if (volDrag) { if (host) host->setOutputVolume([self volumeAt:p]); [self setNeedsDisplay:YES]; return; } // 0.117.0
     double scale = (e.modifierFlags & NSEventModifierFlagShift) ? 600.0 : 150.0; // shift = fine
     if (wtProfileSpanSelecting && wtProfile.valid) {
         // Drag onto a page chip to carry the anchored span across the 32-bin
@@ -5335,6 +5364,7 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseUpBody:(NSEvent*)e {
+    if (volDrag) { volDrag = false; [self setNeedsDisplay:YES]; return; } // 0.117.0
     if (wtProfileSpanSelecting) { wtProfileSpanSelecting = false; [self setNeedsDisplay:YES]; return; }
     if (wtTaperDrag >= 0) { wtTaperDrag = -1; return; }
     if (wtBrushActive) { [self wtBrushEnd]; return; }

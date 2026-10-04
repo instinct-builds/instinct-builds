@@ -44,6 +44,11 @@ struct MUEWEditorHost {
     virtual bool playsNotes() const { return false; }
     virtual void noteOn(int, float) {}
     virtual void noteOff(int) {}
+    // 0.117.0: app-level output volume (the standalone). Position is 0..1 on the CC7 scale; a host without
+    // one (the AU: the DAW has its own fader) returns false and the editor draws no control.
+    virtual bool hasOutputVolume() const { return false; }
+    virtual float outputVolume() const { return 1.0f; }
+    virtual void setOutputVolume(float) {}
     virtual void allNotesOff() {} // 0.109.0: Edit > All Notes Off (standalone); the AU host owns its notes
 };
 
@@ -54,6 +59,7 @@ struct MUEWEditorHost {
     int currentIndex;
     muew::ui::EditHistory<muew::Preset> editHistory; // 0.96.0: UNDO / REDO of editor-originated sound edits
     bool histGesture, histSuppress, histBaseEdited;
+    bool volDrag; float volShown; // 0.117.0 header output volume
     NSArray* historyAXControls;
     std::vector<int> loadBack; // 0.90.0: previously loaded library indices, newest last
     bool edited;
@@ -267,6 +273,8 @@ struct MUEWEditorHost {
 + (NSArray<NSString*>*)soundPathsFromPasteboard:(NSPasteboard*)pb;
 - (NSUInteger)acceptSoundFiles:(NSArray<NSString*>*)paths; // returns how many imported
 // 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
+- (NSString*)muewVolumeText; // 0.117.0
+- (NSRect)volumeRect;
 - (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus;
 // 0.25.0: the arp as the AU is playing it, for the ARP page's step display.
 - (void)showArpOn:(bool)on pool:(const int*)pool count:(int)n index:(int)index note:(int)note step:(int)step;

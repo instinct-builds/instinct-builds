@@ -24,6 +24,10 @@ static void Check(bool ok, const char* why) {
 struct KeyboardHost final : MUEWEditorHost {
     std::vector<int> on, off;
     int patches = 0, panics = 0;
+    float vol = 1.0f; // 0.117.0
+    bool hasOutputVolume() const override { return true; }
+    float outputVolume() const override { return vol; }
+    void setOutputVolume(float p) override { vol = p; }
     void allNotesOff() override { ++panics; }
     void applyPreset(const muew::Preset&, int, bool) override { ++patches; }
     bool playsNotes() const override { return true; }
@@ -40,7 +44,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.116.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.117.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -277,6 +281,25 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         [v adoptPreset:muew::ui::library().at(other) index:other edited:false];
         Check(!v->editHistory.canUndo() && !v->editHistory.canRedo(), "another sound is the undo boundary");
         [v adoptPreset:savedCurrent index:savedIndex edited:savedEdited]; [v historyReset];
+    }
+    { // 0.117.0 header output volume
+        auto ME=[&](NSEventType t,NSPoint pt,NSInteger n){ return [NSEvent mouseEventWithType:t location:pt modifierFlags:0
+            timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:w.windowNumber context:nil eventNumber:0 clickCount:n pressure:1]; };
+        const NSRect vr=[v volumeRect]; const double y=NSMidY(vr);
+        const NSRect tr=NSMakeRect(vr.origin.x+26,0,vr.size.width-30,0);
+        Check([[v muewVolumeText] isEqualToString:@"100%"], "the header volume reads full on a fresh host");
+        [v mouseDown:ME(NSEventTypeLeftMouseDown,NSMakePoint(tr.origin.x+tr.size.width*0.5,y),1)];
+        Check(std::fabs(host->vol-0.5f)<0.02f && [[v muewVolumeText] isEqualToString:@"50%"], "clicking the middle of the slider sets half position");
+        [v mouseDragged:ME(NSEventTypeLeftMouseDragged,NSMakePoint(tr.origin.x+tr.size.width*0.25,y),1)];
+        Check(std::fabs(host->vol-0.25f)<0.02f, "dragging moves it");
+        [v mouseDragged:ME(NSEventTypeLeftMouseDragged,NSMakePoint(tr.origin.x-40,y),1)];
+        Check(host->vol==0.0f, "dragging past the left end clamps to silence");
+        [v mouseUp:ME(NSEventTypeLeftMouseUp,NSMakePoint(tr.origin.x-40,y),1)];
+        host->vol=0.62f; [v setNeedsDisplay:YES]; Snapshot(v,"output-volume");
+        const size_t steps=v->editHistory.undoSteps();
+        [v mouseDown:ME(NSEventTypeLeftMouseDown,NSMakePoint(tr.origin.x+4,y),2)]; [v mouseUp:ME(NSEventTypeLeftMouseUp,NSMakePoint(tr.origin.x+4,y),2)];
+        Check(host->vol==1.0f && v->editHistory.undoSteps()==steps, "double-click returns to full and is not an undo step");
+        Check(ClosedAXTree(v), "the volume slider leaves the closed-browser AX tree unchanged");
     }
     Check(w.isKeyWindow && w.firstResponder == v, "editor is the standalone key responder");
     const int original = v->currentIndex;
