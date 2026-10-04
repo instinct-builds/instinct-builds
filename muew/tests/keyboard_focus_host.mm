@@ -40,7 +40,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.112.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.113.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -811,6 +811,23 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
     [v keyDown:Key(w,NSEventTypeKeyDown,@"B",11,NSEventModifierFlagShift)];
     Check([v->search.stringValue isEqualToString:@"B"] && v->filter.query=="B" && host->patches==refineLoads &&
           host->on.size()==refineOn && host->off.size()==refineOff,"empty-query type-to-refine preserves shifted character and stays inert");
+            {   // 0.113.0 drag and drop of sound files
+                NSString* dir=NSTemporaryDirectory();
+                NSString* good=[dir stringByAppendingPathComponent:@"Dropped Proof.muew"];
+                NSString* other=[dir stringByAppendingPathComponent:@"notes.txt"];
+                [@"muew-preset 2\nname Dropped Proof\ncategory Lead\nauthor Someone\nfilterCutoff 4321\n" writeToFile:good atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                [@"hello" writeToFile:other atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                NSPasteboard* pb=[NSPasteboard pasteboardWithUniqueName];
+                [pb writeObjects:@[[NSURL fileURLWithPath:good],[NSURL fileURLWithPath:other]]];
+                NSArray* found=[MUEWEditorView soundPathsFromPasteboard:pb];
+                Check(found.count==1 && [found[0] hasSuffix:@"Dropped Proof.muew"], "a drop of a sound file and a text file offers only the .muew");
+                NSPasteboard* pb2=[NSPasteboard pasteboardWithUniqueName]; [pb2 writeObjects:@[[NSURL fileURLWithPath:other]]];
+                Check([MUEWEditorView soundPathsFromPasteboard:pb2].count==0, "a drop with no sound file offers nothing");
+                Check([v acceptSoundFiles:@[]]==0 && [v acceptSoundFiles:@[other]]==0, "nothing or a non-sound file imports nothing");
+                Check([v acceptSoundFiles:found]==1 && v->current.info.name=="Dropped Proof" && (int)v->current.voice.filterCutoff==4321,
+                      "dropping the file imports it and loads that sound");
+                [pb releaseGlobally]; [pb2 releaseGlobally];
+            }
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
     fflush(stdout);
     // Bypass runner AppKit teardown after capturing assertions and pixels. The

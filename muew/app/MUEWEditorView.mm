@@ -114,6 +114,7 @@ static int SortForColumn(int c);
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         std::fill_n(heldKeyboardNotes, 13, -1);
+        [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]]; // 0.113.0: drop .muew sound files on the editor
         std::fill_n(routeMeters, kMaxRoutes, 0.0f); routeHold.clear(); routeTrace.clear(); routeTraceClock = 0; routeMeterClock = 0; outputDisplay.clear(); outputDetail.clear(); outputDetailOpen = false; outputMeterClock = 0;
         matrixPage = 0; modSel = 2; dragSource = -1; dropKnob = -1; dropFx = -1; dropAux = -1; curveDrag = -1; routeDrag = -1; modFieldDrag = -1; fxMove = -1; fxDrop = -1; fxDetail = -1; burstDetail = false; fxRowDrag = -1; msegEdit = -1; msegGrid = 2; msegPt = -1; msegSeg = -1; msegLoopEdge = -1; lfoXDrag = -1; warpAmtDrag = -1; filterXDrag = -1; voiceDrag = -1; perfNote = -1; perfSustain = false;
         arpDrag = -1; arpLiveOn = false; arpLiveIndex = -1; arpLiveNote = -1; arpLiveStep = 0; arpLivePoolN = 0;
@@ -4904,6 +4905,24 @@ static int SortForColumn(int c) {
     [self importPresetFile:panel.URL.path];
 }
 
++ (NSArray<NSString*>*)soundPathsFromPasteboard:(NSPasteboard*)pb {
+    NSArray* urls = [pb readObjectsForClasses:@[[NSURL class]] options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    NSMutableArray<NSString*>* out = [NSMutableArray array];
+    for (NSURL* u in urls) if ([u.pathExtension caseInsensitiveCompare:@"muew"] == NSOrderedSame) [out addObject:u.path];
+    return out;
+}
+- (NSUInteger)acceptSoundFiles:(NSArray<NSString*>*)paths {
+    if (browserDialogActive || browserDialogQueued) return 0;
+    NSUInteger n = 0;
+    for (NSString* path in paths) if ([self importPresetFile:path]) ++n;
+    return n;
+}
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+    return [MUEWEditorView soundPathsFromPasteboard:sender.draggingPasteboard].count ? NSDragOperationCopy : NSDragOperationNone;
+}
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    return [self acceptSoundFiles:[MUEWEditorView soundPathsFromPasteboard:sender.draggingPasteboard]] > 0;
+}
 - (BOOL)importPresetFile:(NSString*)path {
     int idx = user::importFile(UserPresetDir(), std::string(path.fileSystemRepresentation), ui::library());
     if (idx < 0) { NSBeep(); return NO; }

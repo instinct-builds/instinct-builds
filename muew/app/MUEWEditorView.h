@@ -260,6 +260,9 @@ struct MUEWEditorHost {
 - (BOOL)performBrowserLoadedRating:(int)stars;
 - (BOOL)accessibilityActivateBrowserSlug:(NSString*)slug generation:(NSUInteger)generation;
 - (BOOL)importPresetFile:(NSString*)path;
+// 0.113.0 drag and drop: the .muew files on a pasteboard (others ignored), and importing/loading them (last one wins).
++ (NSArray<NSString*>*)soundPathsFromPasteboard:(NSPasteboard*)pb;
+- (NSUInteger)acceptSoundFiles:(NSArray<NSString*>*)paths; // returns how many imported
 // 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
 - (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus;
 // 0.25.0: the arp as the AU is playing it, for the ARP page's step display.
