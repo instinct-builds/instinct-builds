@@ -207,6 +207,46 @@ struct StandaloneHost : MUEWEditorHost {
             break; }
         }
     }];
+    // 0.119.0 CI proof of the real MIDI path: MUEW_MIDI_PROOF=<file> creates an in-process virtual MIDI source, learns CC74 on
+    // CUTOFF from a CoreMIDI packet (CoreMIDI thread -> main thread dispatch -> editor), then a second packet must move CUTOFF.
+    if (const char* mrep = getenv("MUEW_MIDI_PROOF")) {
+        muew_proof::Watchdog("CoreMIDI learn proof", 40);
+        NSString* path = [NSString stringWithUTF8String:mrep]; MUEWMidiInput* in = midi; MUEWEditorView* vw = v;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            void (^finish)(NSString*) = ^(NSString* line) { [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil]; [NSApp terminate:nil]; };
+            if (!in.available) { finish(@"SKIP no CoreMIDI client on this runner\n"); return; }
+            MIDIClientRef pc = 0; MIDIEndpointRef src = 0;
+            const OSStatus ce = MIDIClientCreate(CFSTR("MUEW proof client"), NULL, NULL, &pc);
+            const OSStatus se = ce == noErr ? MIDISourceCreate(pc, CFSTR("MUEW proof source"), &src) : ce;
+            if (se != noErr) { finish([NSString stringWithFormat:@"SKIP cannot create a virtual MIDI source (%d)\n", (int)se]); return; }
+            void (^sendCC)(Byte, Byte) = ^(Byte cc, Byte val) {
+                Byte buf[64]; MIDIPacketList* pl = (MIDIPacketList*)buf; MIDIPacket* pk = MIDIPacketListInit(pl);
+                const Byte msg[] = {0xB0, cc, val}; pk = MIDIPacketListAdd(pl, sizeof buf, pk, 0, sizeof msg, msg); (void)pk;
+                MIDIReceived(src, pl);
+            };
+            const int base = in.connectedSources;
+            __block int phase = 0; __block NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:3.0];
+            __block int learned = 0, moved = 0, connected = 0;
+            [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer* t) {
+                const bool late = deadline.timeIntervalSinceNow < 0;
+                if (phase == 0) { // wait for the input to connect the new source
+                    [in refresh];
+                    if (in.connectedSources > base) { connected = 1; [vw beginMidiLearn:ui::Cutoff]; sendCC(74, 64); phase = 1; deadline = [NSDate dateWithTimeIntervalSinceNow:3.0]; }
+                    else if (late) phase = 3;
+                } else if (phase == 1) { // the packet must bind CC74 to CUTOFF
+                    if (vw->midiMap.paramFor(74) == ui::knobParam(ui::Cutoff) && vw->learnKnob < 0) {
+                        learned = 1; vw->current.voice.filterCutoff = 1000; sendCC(74, 127); phase = 2; deadline = [NSDate dateWithTimeIntervalSinceNow:3.0];
+                    } else if (late) phase = 3;
+                } else if (phase == 2) { // and the next one must move it
+                    if (vw->current.voice.filterCutoff > 17999) { moved = 1; phase = 3; } else if (late) phase = 3;
+                }
+                if (phase == 3) {
+                    [t invalidate];
+                    finish([NSString stringWithFormat:@"connected=%d learned=%d moved=%d cutoff=%d map=%s\n", connected, learned, moved, (int)vw->current.voice.filterCutoff, vw->midiMap.encode().c_str()]);
+                }
+            }];
+        });
+    }
     MUEWEditorView* view = v; // 0.30.0: feed the header voice / CPU meter
     meter = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15 repeats:YES block:^(NSTimer*) {
         const auto& vp = view->current.voice;
