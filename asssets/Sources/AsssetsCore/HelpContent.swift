@@ -39,6 +39,7 @@ public enum HelpContent {
         Section(title: "Bring files in", entries: [
             menu("Import Files…", "Add files to the library.", Shortcut("i")),
             menu("Watch Folder…", "New files in a folder land in the library on their own.", Shortcut("i", [.command, .shift])),
+            menu("Read Finder Tags from Files", "Adds tags you set in Finder as ASSSETS tags. Imports read them automatically. Nothing is removed."),
             Entry("Search box", "Matches titles, tags, colors, client note text and reviewer labels.", anchor: "Search titles, tags, colors, notes, reviewers…"),
         ]),
         Section(title: "Organize", entries: [
@@ -71,6 +72,7 @@ public enum HelpContent {
             menu("Export Selection As Shown…", "Export the selection as it appears.", Shortcut("e")),
             menu("Export Original Files…", "Copy the original files out.", Shortcut("e", [.command, .shift])),
             menu("Export with Presets…", "Export to sizes and crops from presets.", Shortcut("e", [.command, .option])),
+            Entry("Write Finder Tags on Folder Export", "Off by default. When on, exported copies get the asset's tags as Finder tags. Your library files are never written to.", anchor: "Toggle(\"Write Finder Tags on Folder Export\""),
             menu("Contact Sheet & Brand Kit…", "Build a contact sheet or brand kit.", Shortcut("p", [.command, .shift])),
             menu("Reveal in Finder", "Show the selection's files in Finder.", Shortcut("r", [.command, .shift])),
         ]),

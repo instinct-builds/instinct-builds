@@ -1529,3 +1529,13 @@ Limits: the test checks the menu declarations in the source, not that a key pres
 ## 1.93.1: proof that the undo toast is on screen
 
 The `feedback-undo` marker now ends with `toast=Undid_Import_Client_Feedback`, read from the published toast state 0.6 s after the undo (the toast lasts 2.6 s). That proves the toast was set and still showing without depending on screenshot timing. No product change.
+
+## 1.94.0: Finder tags
+
+Finder tags live in the `com.apple.metadata:_kMDItemUserTags` extended attribute. ASSSETS now reads and writes them without entitlements.
+
+- Import: when files are imported, their Finder tags become ASSSETS tags (names only; a colored tag like "Red" comes in as the tag "red"). File > Read Finder Tags from Files does the same for the selection, for files you tagged in Finder after importing. It only adds tags; it never removes one.
+- Export: File > Write Finder Tags on Folder Export (off by default, because ASSSETS tags can be internal notes) puts the asset's tags on the exported COPY as Finder tags. Tags the file already had keep their colors, and a tag already present with different capitalization is not duplicated.
+- The library's own files are never written to. This keeps the 1.13 promise that originals are untouched.
+
+Limits: only the folder exports (Export Selection As Shown and Export Original Files into a folder) write Finder tags; single-file export and drag-out do not. A tag containing a comma is split into two on import, because ASSSETS tags are comma-separated. Finder tag colors are not mapped to ASSSETS color labels. The CI `finder-tags` demo writes real extended attributes on a temp file and proves the round trip; Finder itself is not driven.

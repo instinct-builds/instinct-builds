@@ -331,6 +331,11 @@ jobs:
           cat "$SUP/demo-help-window.txt"
           grep -Eq '^done open=true sections=8 entries=[0-9]+ shortcuts=[0-9]+ first=Import_Files…=⌘I help=⌘\?$' "$SUP/demo-help-window.txt"
           cp "$SUP/demo-help-window.txt" "ASSSETS-$ASSSETS_VERSION-help-window.txt"
+          rm -f "$SUP/demo-finder-tags.txt"
+          shoot finder-tags 1440x900 finder-tags demo-finder-tags.txt before
+          cat "$SUP/demo-finder-tags.txt"
+          grep -q '^done imported=true copyTags=Client,Red,approved colorKept=true sourceUntouched=true$' "$SUP/demo-finder-tags.txt"
+          cp "$SUP/demo-finder-tags.txt" "ASSSETS-$ASSSETS_VERSION-finder-tags.txt"
           rm -f "$SUP/demo-header-frames.txt"
           shoot decision-smart 1440x900 decision-smart demo-decision-smart.txt
           cat "$SUP/demo-decision-smart.txt"
@@ -596,6 +601,7 @@ jobs:
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-library-backup.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-feedback-undo.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-help-window.txt
+            asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-finder-tags.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-decision-smart-frame.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-brand-kit-listing.txt
             asssets/out/ASSSETS-${{ env.ASSSETS_VERSION }}-sidecar.xmp.txt

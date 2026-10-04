@@ -85,6 +85,8 @@ struct ASSSETSApp: App {
                 Button("Recover Last Published Gallery…") { library.reopenPublicationRecovery() }
                     .disabled(!library.hasPublicationRecovery)
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
+                Button("Read Finder Tags from Files") { library.readFinderTags(library.selection) }.disabled(!library.canWriteMetadata)
+                Toggle("Write Finder Tags on Folder Export", isOn: $library.exportFinderTags)
                 Button("Reveal in Finder") { library.reveal(library.selection) }
                     .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
                 Button("Contact Sheet & Brand Kit…") { library.openContactSheetForCurrentView() }
@@ -1560,7 +1562,9 @@ final class StudioLibrary: ObservableObject {
         let set = Set(ids)
         for a in c.assets where set.contains(a.id) {
             guard let p = a.importedPath else { continue }
-            c.applyFileMetadata(XmpMetadata.read(path: p), to: a.id)
+            var m = XmpMetadata.read(path: p)
+            m.keywords += FinderTags.read(path: p) // 1.94: tags set in Finder come in as tags
+            c.applyFileMetadata(m, to: a.id)
         }
     }
 
@@ -1590,6 +1594,29 @@ final class StudioLibrary: ObservableObject {
         flash(msg)
     }
     var canWriteMetadata: Bool { selectedAssets.contains { !$0.isStarter && $0.importedPath != nil } }
+
+    /// 1.94: off by default, because ASSSETS tags can be internal. When on, folder exports put the asset's tags on the
+    /// exported COPY as Finder tags. The library's own files are never written to.
+    @Published var exportFinderTags = UserDefaults.standard.bool(forKey: "exportFinderTags") {
+        didSet { UserDefaults.standard.set(exportFinderTags, forKey: "exportFinderTags") }
+    }
+    @discardableResult
+    func tagExportedCopy(_ url: URL, from a: StudioAsset) -> FinderTags.WriteResult {
+        FinderTags.write(path: url.path, adding: catalog.fileMetadata(for: a.id)?.keywords ?? [])
+    }
+    /// Re-reads Finder tags from the selected files and adds any new ones as tags. Never removes a tag.
+    func readFinderTags(_ ids: Set<UUID>) {
+        var changed = 0, checked = 0
+        mutate("Read Finder Tags") { c in
+            for a in c.assets where ids.contains(a.id) {
+                guard !a.isStarter, let p = a.importedPath else { continue }
+                checked += 1
+                let names = FinderTags.read(path: p)
+                if !names.isEmpty, c.applyFileMetadata(FileMetadata(keywords: names), to: a.id) { changed += 1 }
+            }
+        }
+        flash(changed == 0 ? "No new Finder tags in \(checked) \(checked == 1 ? "file" : "files")" : "Added Finder tags to \(changed) \(changed == 1 ? "asset" : "assets")")
+    }
 
     /// Keyword picked in the sidebar; narrows the grid on top of everything else.
     @Published var keywordFilter: String?
@@ -3332,7 +3359,10 @@ final class StudioLibrary: ObservableObject {
         var taken = Set((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
         var written: [URL] = []
         for a in picked {
-            if let u = write(a, mode: mode, into: dir, taken: taken, copy: true) { taken.insert(u.lastPathComponent); written.append(u) }
+            if let u = write(a, mode: mode, into: dir, taken: taken, copy: true) {
+                taken.insert(u.lastPathComponent); written.append(u)
+                if exportFinderTags { tagExportedCopy(u, from: a) }
+            }
         }
         flash(written.count == picked.count ? "Exported \(written.count) files" : "Exported \(written.count) of \(picked.count) files")
         if !written.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(written) }
@@ -4330,6 +4360,40 @@ final class StudioLibrary: ObservableObject {
                     let marker = "done open=\(HelpWindow.shared.isOpen) sections=\(HelpContent.sections.count) entries=\(HelpContent.entryCount) shortcuts=\(HelpContent.shortcutCount) first=\(first?.title.replacingOccurrences(of: " ", with: "_") ?? "none")=\(first?.shortcut?.display ?? "none") help=\(HelpContent.sections.last?.entries.first?.shortcut?.display ?? "none")"
                     try? marker.write(to: self.supportRoot.appendingPathComponent("demo-help-window.txt"), atomically: true, encoding: .utf8)
                 }
+            }
+        case "finder-tags":
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("finder-tags-\(UUID().uuidString)", isDirectory: true)
+            let outDir = dir.appendingPathComponent("export", isDirectory: true)
+            try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+            let file = dir.appendingPathComponent("Client Logo.png")
+            let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==") ?? Data()
+            try? png.write(to: file)
+            FinderTags.writeEntries(path: file.path, entries: ["Client", "Red\n6"])
+            var newID: UUID?
+            mutate { c in
+                if let id = c.importFile(path: file.path) { newID = id; Self.readFileMetadata(&c, ids: [id]) }
+            }
+            show(collection: StudioCatalog.allAssets)
+            search = "client"
+            if let id = newID { selection = [id]; focusID = id }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                let tags = self.catalog.assets.first { $0.id == newID }?.tags ?? []
+                let imported = tags.contains("client") && tags.contains("red")
+                if let id = newID { self.addTags("approved", to: [id]) }
+                self.exportFinderTags = true
+                var copyTags: [String] = []
+                var rawKept = false
+                if let a = self.catalog.assets.first(where: { $0.id == newID }),
+                   let u = self.write(a, mode: .originals, into: outDir, taken: [], copy: true) {
+                    self.tagExportedCopy(u, from: a)
+                    copyTags = FinderTags.read(path: u.path)
+                    let raw = FinderTags.rawData(path: u.path).flatMap { (try? PropertyListSerialization.propertyList(from: $0, options: [], format: nil)) as? [String] } ?? []
+                    rawKept = raw.contains("Red\n6")
+                }
+                let sourceUntouched = FinderTags.read(path: file.path) == ["Client", "Red"]
+                self.exportFinderTags = false
+                let marker = "done imported=\(imported) copyTags=\(copyTags.joined(separator: ",")) colorKept=\(rawKept) sourceUntouched=\(sourceUntouched)"
+                try? marker.write(to: self.supportRoot.appendingPathComponent("demo-finder-tags.txt"), atomically: true, encoding: .utf8)
             }
         case "catalog-recovery":
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
