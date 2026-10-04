@@ -40,7 +40,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.115.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.116.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -160,9 +160,10 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                 for (NSMenuItem* it in [bar itemAtIndex:menu].submenu.itemArray) if ([it.title isEqualToString:title]) return it;
                 return nil; };
             NSMenuItem *quit=item(0,@"Quit MUEW"), *hide=item(0,@"Hide MUEW"), *undoI=item(2,@"Undo"), *redoI=item(2,@"Redo"),
-                       *revertI=item(2,@"Revert to Loaded Sound"), *mini=item(3,@"Minimize"), *closeI=item(3,@"Close");
-            Check(bar.itemArray.count==4 && [[bar itemAtIndex:0].submenu.title isEqualToString:@"MUEW"] && [[bar itemAtIndex:1].submenu.title isEqualToString:@"File"] &&
-                  [[bar itemAtIndex:2].submenu.title isEqualToString:@"Edit"] && [[bar itemAtIndex:3].submenu.title isEqualToString:@"Window"], "menu bar has the MUEW, File, Edit and Window menus");
+                       *revertI=item(2,@"Revert to Loaded Sound"), *mini=item(4,@"Minimize"), *closeI=item(4,@"Close");
+            Check(bar.itemArray.count==5 && [[bar itemAtIndex:0].submenu.title isEqualToString:@"MUEW"] && [[bar itemAtIndex:1].submenu.title isEqualToString:@"File"] &&
+                  [[bar itemAtIndex:2].submenu.title isEqualToString:@"Edit"] && [[bar itemAtIndex:3].submenu.title isEqualToString:@"Sound"] &&
+                  [[bar itemAtIndex:4].submenu.title isEqualToString:@"Window"], "menu bar has the MUEW, File, Edit, Sound and Window menus");
             Check(quit && quit.action==@selector(terminate:) && [quit.keyEquivalent isEqualToString:@"q"] && quit.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
                   hide && [hide.keyEquivalent isEqualToString:@"h"] && mini && [mini.keyEquivalent isEqualToString:@"m"] && closeI && [closeI.keyEquivalent isEqualToString:@"w"],
                   "Quit, Hide, Minimize and Close carry the standard Command keys");
@@ -851,6 +852,27 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
               "Find Sound opens the browser and the caret is in Search");
         [v findSound:findI];
         Check(v->browserOpen && [w.firstResponder isKindOfClass:[NSTextView class]], "Find Sound again keeps it open with Search active");
+    }
+    {   // 0.116.0 Sound menu: previous / next / random / favorite, through the same editor paths as the arrows, SURPRISE ME and the heart
+        NSMenu* sbar=MUEWMakeMainMenu(); NSMenu* sm=[sbar itemAtIndex:3].submenu;
+        auto sitem=[&](NSString* t)->NSMenuItem* { for (NSMenuItem* it in sm.itemArray) if ([it.title isEqualToString:t]) return it; return nil; };
+        NSMenuItem *prevI=sitem(@"Previous Sound"), *nextI=sitem(@"Next Sound"), *randI=sitem(@"Random Sound"), *favI=sitem(@"Favorite");
+        Check(prevI && prevI.action==@selector(previousSound:) && [prevI.keyEquivalent isEqualToString:@"["] && prevI.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
+              nextI && nextI.action==@selector(nextSound:) && [nextI.keyEquivalent isEqualToString:@"]"] && nextI.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
+              randI && randI.action==@selector(randomSound:) && [randI.keyEquivalent isEqualToString:@"r"] &&
+              favI && favI.action==@selector(toggleFavoriteSound:) && [favI.keyEquivalent isEqualToString:@"d"], "Sound menu has Previous, Next, Random and Favorite with their Command keys");
+        Check([v validateMenuItem:prevI] && [v validateMenuItem:nextI] && [v validateMenuItem:randI] && [v validateMenuItem:favI], "the Sound items are available with a sound loaded and no dialog open");
+        [v clearBrowserFilters]; [v loadPresetIndex:10]; // a known place in the full, unfiltered list (earlier checks leave a query active)
+        const int startIdx=v->currentIndex;
+        [v nextSound:nextI]; const int afterNext=v->currentIndex;
+        [v previousSound:prevI];
+        Check(afterNext!=startIdx && v->currentIndex==startIdx, "Next Sound moves on and Previous Sound comes back");
+        [v randomSound:randI];
+        Check(v->currentIndex!=startIdx || v->visible.size()<2, "Random Sound loads a different sound");
+        const bool wasFav=[v validateMenuItem:favI] && favI.state==NSControlStateValueOn;
+        [v toggleFavoriteSound:favI]; [v validateMenuItem:favI]; const bool nowFav=favI.state==NSControlStateValueOn;
+        [v toggleFavoriteSound:favI]; [v validateMenuItem:favI]; const bool backFav=favI.state==NSControlStateValueOn;
+        Check(nowFav!=wasFav && backFav==wasFav, "Favorite toggles the loaded sound's heart (checked in the menu) and toggles back");
     }
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
     fflush(stdout);

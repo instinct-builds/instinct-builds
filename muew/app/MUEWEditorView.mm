@@ -447,6 +447,10 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
 - (void)undo:(id)sender { if (wtEdit >= 0) [self wtStep:NO]; else [self performHistoryStep:NO]; }
 - (void)redo:(id)sender { if (wtEdit >= 0) [self wtStep:YES]; else [self performHistoryStep:YES]; }
 - (void)revertSound:(id)sender { [self revertToLoaded]; }
+- (void)previousSound:(id)sender { if (!browserDialogActive && !browserDialogQueued) [self stepPreset:-1]; } // 0.116.0: same as the arrow keys / header arrows
+- (void)nextSound:(id)sender { if (!browserDialogActive && !browserDialogQueued) [self stepPreset:1]; }
+- (void)randomSound:(id)sender { if (!browserDialogActive && !browserDialogQueued) [self surpriseBrowserPick]; } // same as SURPRISE ME
+- (void)toggleFavoriteSound:(id)sender { if (currentIndex >= 0 && !browserDialogActive && !browserDialogQueued) [self toggleFavorite:currentIndex]; }
 - (void)findSound:(id)sender { // 0.115.0: open the sound browser and put the caret in Search, selecting any previous query
     if (browserDialogActive || browserDialogQueued) return;
     if (!browserOpen) [self setBrowserOpen:true];
@@ -464,6 +468,12 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
     if (a == @selector(redo:)) return wtEdit >= 0 || (!browserOpen && editHistory.canRedo());
     if (a == @selector(revertSound:)) return !browserOpen && [self canRevert];
     if (a == @selector(panic:)) return host && host->playsNotes();
+    if (a == @selector(previousSound:) || a == @selector(nextSound:) || a == @selector(randomSound:)) return !browserDialogActive && !browserDialogQueued;
+    if (a == @selector(toggleFavoriteSound:)) {
+        const bool fav = currentIndex >= 0 && favorites.count(ui::library().slug(currentIndex));
+        item.state = fav ? NSControlStateValueOn : NSControlStateValueOff;
+        return currentIndex >= 0 && !browserDialogActive && !browserDialogQueued;
+    }
     if (a == @selector(findSound:)) return !browserDialogActive && !browserDialogQueued;
     if (a == @selector(saveSound:) || a == @selector(openSound:) || a == @selector(exportSound:)) return !browserDialogActive && !browserDialogQueued;
     return YES;

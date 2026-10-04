@@ -12,7 +12,7 @@ static NSMenuItem* MUEWMenuItem(NSMenu* m, NSString* title, SEL action, NSString
     return it;
 }
 
-// Items: [0] MUEW, [1] File, [2] Edit, [3] Window.
+// Items: [0] MUEW, [1] File, [2] Edit, [3] Sound, [4] Window.
 static NSMenu* MUEWMakeMainMenu() {
     NSMenu* bar = [NSMenu new];
     NSMenuItem* appItem = [NSMenuItem new]; [bar addItem:appItem];
@@ -46,6 +46,14 @@ static NSMenu* MUEWMakeMainMenu() {
     MUEWMenuItem(edit, @"Find Sound", @selector(findSound:), @"f"); // 0.115.0: Cmd-F opens the browser with the search field active
     [edit addItem:[NSMenuItem separatorItem]];
     MUEWMenuItem(edit, @"All Notes Off", @selector(panic:), @".");  // 0.109.0: Cmd-. releases every sounding note
+
+    NSMenuItem* soundItem = [NSMenuItem new]; [bar addItem:soundItem]; // 0.116.0: moving through sounds without the mouse
+    NSMenu* snd = [[NSMenu alloc] initWithTitle:@"Sound"]; soundItem.submenu = snd;
+    MUEWMenuItem(snd, @"Previous Sound", @selector(previousSound:), @"[");
+    MUEWMenuItem(snd, @"Next Sound", @selector(nextSound:), @"]");
+    MUEWMenuItem(snd, @"Random Sound", @selector(randomSound:), @"r");
+    [snd addItem:[NSMenuItem separatorItem]];
+    MUEWMenuItem(snd, @"Favorite", @selector(toggleFavoriteSound:), @"d"); // checked while the loaded sound is a favorite
 
     NSMenuItem* winItem = [NSMenuItem new]; [bar addItem:winItem];
     NSMenu* win = [[NSMenu alloc] initWithTitle:@"Window"]; winItem.submenu = win;

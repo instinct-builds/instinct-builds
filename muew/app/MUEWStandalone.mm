@@ -57,7 +57,7 @@ struct StandaloneHost : MUEWEditorHost {
 - (void)applicationDidFinishLaunching:(NSNotification*)n {
     NSMenu* bar = MUEWMakeMainMenu(); // 0.98.0: Quit, Hide, Minimize, Close, Edit > Undo / Redo / Revert
     [NSApp setMainMenu:bar];
-    [NSApp setWindowsMenu:[bar itemAtIndex:3].submenu];
+    [NSApp setWindowsMenu:[bar itemAtIndex:4].submenu];
     NSRect f = NSMakeRect(0, 0, 1000, 680);
     w = [[NSWindow alloc] initWithContentRect:f
                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
