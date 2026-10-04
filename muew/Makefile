@@ -365,5 +365,5 @@ build/muew-tests-noisew53: tests/tests_noisew53.cpp src/layers.h src/voice.h src
 build/muew-demo-noisew53: src/render_demo_noisew53.cpp src/synth.h src/wav_writer.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-build/muew-tests-session100: tests/tests_session100.cpp src/session_state.h src/preset.h | build
+build/muew-tests-session100: tests/tests_session100.cpp src/session_state.h src/preset.h src/user_presets.h | build
 	$(CXX) $(CXXFLAGS) -o $@ $<

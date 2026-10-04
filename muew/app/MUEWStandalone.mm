@@ -49,7 +49,7 @@ struct StandaloneHost : MUEWEditorHost {
 };
 
 @interface AppDelegate : NSObject <NSApplicationDelegate> {
-    NSWindow* w; MUEWEditorView* v; StandaloneHost* binding; AVAudioEngine* engine; AVAudioSourceNode* source; Synth synth; std::mutex lock; MUEWMidiInput* midi; NSTimer* meter;
+    NSWindow* w; MUEWEditorView* v; StandaloneHost* binding; AVAudioEngine* engine; AVAudioSourceNode* source; Synth synth; std::mutex lock; MUEWMidiInput* midi; NSTimer* meter; NSMutableArray* pendingOpen;
 }
 @end
 
@@ -74,6 +74,10 @@ struct StandaloneHost : MUEWEditorHost {
     // 0.100.0: reopen on the sound that was on screen at quit. The proof launches keep their fixed start.
     if (getenv("MUEW_AX_PROOF") || getenv("MUEW_AX_CONTROL") || getenv("MUEW_NO_SESSION") || ![self restoreSession])
         [v loadPresetIndex:start >= 0 ? start : 0];
+    // 0.112.0: a .muew opened from Finder / the Dock (or the CI proof's MUEW_OPEN_FILE) imports and loads after the usual start.
+    if (const char* of = getenv("MUEW_OPEN_FILE")) { if (!pendingOpen) pendingOpen = [NSMutableArray array]; [pendingOpen addObject:[NSString stringWithUTF8String:of]]; }
+    for (NSString* f in pendingOpen) [v importPresetFile:f];
+    pendingOpen = nil;
     // Only the AX IPC proof launch opts into an open browser. Normal launches
     // and AU embedding retain their existing initial state.
     if (getenv("MUEW_AX_PROOF")) { muew_proof::Watchdog("AX standalone target",150); [v setBrowserOpen:true]; }
@@ -201,6 +205,10 @@ struct StandaloneHost : MUEWEditorHost {
 }
 - (void)audioConfigChanged:(NSNotification*)n {
     if (engine && !engine.isRunning) { NSError* e = nil; [engine startAndReturnError:&e]; }
+}
+- (BOOL)application:(NSApplication*)app openFile:(NSString*)filename {
+    if (!v) { if (!pendingOpen) pendingOpen = [NSMutableArray array]; [pendingOpen addObject:filename]; return YES; } // launched by the file: the window is not built yet
+    return [v importPresetFile:filename];
 }
 - (BOOL)restoreSession {
     NSString* t = [[NSUserDefaults standardUserDefaults] stringForKey:@"MUEWSession"];
