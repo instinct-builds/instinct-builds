@@ -1513,3 +1513,7 @@ Import Client Feedback now appears in Edit as "Undo Import Client Feedback". The
 There is no partial Undo. If boards, picks or rosters changed after the import (for example a later import or a board edit), Undo is refused with a message and nothing is touched, because reverting would discard those later changes. Other edits, such as tags and ratings, keep their own Undo steps in order. Suggested tags, previews and newly watched files that landed in between are kept, as with every Undo step.
 
 Limits: undo history lives in memory, so it is gone after a quit. Reverting an import does not tell the client anything, and the gallery file you already received is not changed. The CI `feedback-undo` demo imports, undoes and writes a marker.
+
+## 1.92.1: undo no longer leaves an empty grid
+
+Importing feedback can create a smart collection or pin a board and switch the view to it. Undoing the import removed that collection, but the window still pointed at it and showed "Nothing here yet" under All Assets. Undo and Redo now return to All Assets when the collection or board being viewed no longer exists. The `feedback-undo` demo asserts `viewValid=true` (nothing selected, grid is not empty) and waits 0.6 s before writing its marker so the proof PNG captures the grid and the toast.

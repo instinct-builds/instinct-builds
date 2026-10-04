@@ -1614,9 +1614,12 @@ final class StudioLibrary: ObservableObject {
         catalog = c; save(); dropMissingSelection()
         flash("Redid \(label)")
     }
-    private func dropMissingSelection() {
+    func dropMissingSelection() {
         selection = selection.filter { id in catalog.assets.contains { $0.id == id } }
         if let f = focusID, !catalog.assets.contains(where: { $0.id == f }) { focusID = selection.first }
+        // 1.92.1: undoing a feedback import removes the smart collection or board it created. Never leave the grid pointing at one.
+        if let s = selectedSmart, !catalog.smartCollections.contains(where: { $0.id == s }) { show(collection: StudioCatalog.allAssets) }
+        if let b = selectedBoard, catalog.board(b) == nil { show(collection: StudioCatalog.allAssets) }
     }
 
     var sortKey: String { StudioCatalog.sortKey(collection: selectedCollection, smart: selectedSmart) }
@@ -4238,16 +4241,20 @@ final class StudioLibrary: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                 let imported = self.catalog.clientNoteCount == 2 && !self.catalog.feedbackPickLedger.isEmpty && self.history.undoLabel == "Import Client Feedback"
                 var c = self.catalog
-                _ = self.history.undo(&c); self.catalog = c; self.save()
+                _ = self.history.undo(&c); self.catalog = c; self.save(); self.dropMissingSelection()
                 let equalsBefore = self.catalog == beforeImport
                 c = self.catalog
-                _ = self.history.redo(&c); self.catalog = c; self.save()
+                _ = self.history.redo(&c); self.catalog = c; self.save(); self.dropMissingSelection()
                 let redoEquals = self.catalog == afterImport
                 c = self.catalog
-                _ = self.history.undo(&c); self.catalog = c; self.save()
+                _ = self.history.undo(&c); self.catalog = c; self.save(); self.dropMissingSelection()
                 self.flash("Undid Import Client Feedback")
-                let marker = "done imported=\(imported) equalsBefore=\(equalsBefore) redoEquals=\(redoEquals) notes=\(self.catalog.clientNoteCount) ledger=\(self.catalog.feedbackPickLedger.count)"
-                try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-undo.txt"), atomically: true, encoding: .utf8)
+                let viewValid = self.selectedSmart == nil && self.selectedBoard == nil && !self.filtered.isEmpty
+                let marker = "done imported=\(imported) equalsBefore=\(equalsBefore) redoEquals=\(redoEquals) notes=\(self.catalog.clientNoteCount) ledger=\(self.catalog.feedbackPickLedger.count) viewValid=\(viewValid)"
+                // Let the grid and toast render before the harness takes its screenshot.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-undo.txt"), atomically: true, encoding: .utf8)
+                }
             }
         case "catalog-recovery":
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
