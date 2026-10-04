@@ -14,6 +14,7 @@
 #include "arp_pattern_actions.h"
 #include "frame_range.h"
 #include "edit_history.h"
+#include "midi_map.h"
 #include "partial_edit.h"
 #include "partial_view.h"
 #include "partial_brush.h"
@@ -49,6 +50,10 @@ struct MUEWEditorHost {
     virtual bool hasOutputVolume() const { return false; }
     virtual float outputVolume() const { return 1.0f; }
     virtual void setOutputVolume(float) {}
+    // 0.118.0 MIDI learn (the standalone): the global per-user CC map is kept by the host between launches.
+    virtual bool supportsMidiLearn() const { return false; }
+    virtual std::string midiMapText() const { return std::string(); }
+    virtual void setMidiMapText(const std::string&) {}
     virtual void allNotesOff() {} // 0.109.0: Edit > All Notes Off (standalone); the AU host owns its notes
 };
 
@@ -60,6 +65,7 @@ struct MUEWEditorHost {
     muew::ui::EditHistory<muew::Preset> editHistory; // 0.96.0: UNDO / REDO of editor-originated sound edits
     bool histGesture, histSuppress, histBaseEdited;
     bool volDrag; float volShown; // 0.117.0 header output volume
+    muew::MidiMap midiMap; int learnKnob; bool midiGesture; // 0.118.0 MIDI learn (learnKnob -1 = not learning)
     NSArray* historyAXControls;
     std::vector<int> loadBack; // 0.90.0: previously loaded library indices, newest last
     bool edited;
@@ -274,6 +280,17 @@ struct MUEWEditorHost {
 - (NSUInteger)acceptSoundFiles:(NSArray<NSString*>*)paths; // returns how many imported
 // 0.24.0: live MIDI performance values for the WHL / AT / PB / KEY previews.
 - (NSString*)muewVolumeText; // 0.117.0
+// 0.118.0 MIDI learn: right-click a knob, MIDI Learn, move a controller.
+- (void)reloadMidiMap;
+- (NSMenu*)midiLearnMenuForKnob:(int)k;
+- (void)beginMidiLearn:(int)k;
+- (void)cancelMidiLearn;
+- (void)forgetMidiKnob:(int)k;
+- (void)clearMidiMappings:(id)sender;
+- (BOOL)midiController:(int)cc value:(float)v;
+- (void)finishMidiGesture;
+- (int)midiKnobForParam:(int)pid;
+- (NSString*)muewMidiMapText;
 - (NSRect)volumeRect;
 - (void)showPerformance:(const muew::Performance&)p note:(int)note sustain:(bool)sus;
 // 0.25.0: the arp as the AU is playing it, for the ARP page's step display.

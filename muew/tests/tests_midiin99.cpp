@@ -1,6 +1,7 @@
 // 0.99.0 standalone MIDI input parser.
 #include "../src/midi_in.h"
 #include "../src/output_gain.h"
+#include "../src/midi_map.h"
 #include "../src/perf_state.h"
 #include <cmath>
 #include <cstdio>
@@ -28,7 +29,10 @@ int main() {
     ck(e.size() == 3 && e[0].kind == MidiEvent::Volume && e[0].value == 1.0f && e[1].value == 0.0f && std::fabs(e[2].value - 64 / 127.0f) < 1e-6, "CC7 volume 0..1 on any channel (0.104.0)");
     ck(midiVolumeGain(1.0f) == 1.0f && midiVolumeGain(0.0f) == 0.0f && std::fabs(midiVolumeGain(0.5f) - 0.25f) < 1e-6 && midiVolumeGain(2.0f) == 1.0f && midiVolumeGain(-1.0f) == 0.0f, "volume gain: unity at 127, silent at 0, squared taper, clamped");
     e = P({0xB0, 11, 100, 0xB0, 74, 20});
-    ck(e.empty(), "other controllers are ignored");
+    ck(e.size() == 2 && e[0].kind == MidiEvent::Controller && e[0].note == 11 && e[1].note == 74 && std::fabs(e[1].value - 20 / 127.0f) < 1e-6,
+       "other controllers arrive as Controller events with their CC number (0.118.0)");
+    e = P({0xB0, 120, 0, 0xB0, 123, 0, 0xB0, 121, 0, 0xB0, 7, 5, 0xB0, 1, 5, 0xB0, 64, 127});
+    { int ctl = 0; for (auto& x : e) ctl += x.kind == MidiEvent::Controller; ck(ctl == 0, "channel-mode CCs and the fixed CC1 / 7 / 64 never become Controller events"); }
     e = P({0xD0, 127});
     ck(e.size() == 1 && e[0].kind == MidiEvent::Aftertouch && e[0].value == 1.0f, "channel pressure takes one data byte");
     e = P({0xA0, 64, 127});
@@ -69,6 +73,17 @@ int main() {
       g.setPosition(0.0f); ck(g.position()==0.0f && g.target()==0.0f, "position 0 is silence");
       g.setPosition(2.0f); ck(g.position()==1.0f, "position clamps to full");
       g.setFromMidi(64.0f/127.0f); ck(std::fabs(g.position()-64.0f/127.0f)<1e-5f, "a CC7 move reads back as the same slider position"); }
+    { MidiMap m; // 0.118.0 MIDI learn map
+      ck(m.count() == 0 && m.paramFor(74) == -1 && m.encode().empty(), "a fresh map is empty");
+      ck(m.set(74, 4) && m.paramFor(74) == 4 && m.ccFor(4) == 74 && m.count() == 1, "learn stores CC to parameter");
+      ck(m.set(21, 4) && m.paramFor(74) == -1 && m.ccFor(4) == 21 && m.count() == 1, "re-learning a parameter on a new CC drops its old CC");
+      ck(m.set(21, 5) && m.ccFor(4) == -1 && m.paramFor(21) == 5, "re-learning a CC on a new parameter replaces the pairing");
+      ck(!m.set(7, 3) && !m.set(1, 3) && !m.set(64, 3) && !m.set(120, 3) && !m.set(-1, 3) && !m.set(200, 3) && !m.set(10, -1), "fixed, channel-mode, out-of-range and bad-parameter learns are refused");
+      m.set(74, 4); ck(m.encode() == "21:5,74:4", "encoded in CC order");
+      MidiMap r; r.decode(m.encode()); ck(r.paramFor(21) == 5 && r.paramFor(74) == 4 && r.count() == 2 && r.encode() == m.encode(), "decode restores the exact map");
+      r.decode("74:4,garbage,:3,5:,x:1,7:2,300:1,12:9,-3:4,12:9999999999999"); ck(r.count() == 2 && r.paramFor(74) == 4 && r.paramFor(12) == 9, "decode skips malformed, fixed and out-of-range items and keeps the good ones");
+      r.forgetParam(4); ck(r.paramFor(74) == -1 && r.count() == 1, "forget by parameter"); r.forgetCC(12); ck(r.count() == 0, "forget by CC");
+      r.decode(""); ck(r.count() == 0, "empty text is an empty map"); }
     { PerfTracker pt; auto s0 = pt.snapshot();
       ck(s0.wheel == 0 && s0.aftertouch == 0 && s0.bend == 0 && pt.lastNote() == -1 && !pt.sustain(), "performance tracker starts neutral (0.107.0)");
       for (auto& ev : P({0x90, 64, 100, 0xB0, 1, 127, 0xD0, 64, 0xE0, 0, 0, 0xB0, 64, 127})) pt.apply(ev);

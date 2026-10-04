@@ -46,6 +46,7 @@ static NSMenu* MUEWMakeMainMenu() {
     MUEWMenuItem(edit, @"Find Sound", @selector(findSound:), @"f"); // 0.115.0: Cmd-F opens the browser with the search field active
     [edit addItem:[NSMenuItem separatorItem]];
     MUEWMenuItem(edit, @"All Notes Off", @selector(panic:), @".");  // 0.109.0: Cmd-. releases every sounding note
+    MUEWMenuItem(edit, @"Clear MIDI Mappings", @selector(clearMidiMappings:), @"", 0); // 0.118.0: right-click a knob to learn one
 
     NSMenuItem* soundItem = [NSMenuItem new]; [bar addItem:soundItem]; // 0.116.0: moving through sounds without the mouse
     NSMenu* snd = [[NSMenu alloc] initWithTitle:@"Sound"]; soundItem.submenu = snd;

@@ -111,6 +111,7 @@ static int SortForColumn(int c);
 
 - (instancetype)initWithFrame:(NSRect)f {
     if ((self = [super initWithFrame:f])) {
+        learnKnob = -1; // 0.118.0
         self.wantsLayer = YES;
         currentIndex = -1; edited = false; chip = 0; scroll = 0; dragKnob = -1; octave = 0;
         std::fill_n(heldKeyboardNotes, 13, -1);
@@ -468,6 +469,7 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
     if (a == @selector(redo:)) return wtEdit >= 0 || (!browserOpen && editHistory.canRedo());
     if (a == @selector(revertSound:)) return !browserOpen && [self canRevert];
     if (a == @selector(panic:)) return host && host->playsNotes();
+    if (a == @selector(clearMidiMappings:)) return host && host->supportsMidiLearn() && midiMap.count() > 0; // 0.118.0
     if (a == @selector(previousSound:) || a == @selector(nextSound:) || a == @selector(randomSound:)) return !browserDialogActive && !browserDialogQueued;
     if (a == @selector(toggleFavoriteSound:)) {
         const bool fav = currentIndex >= 0 && favorites.count(ui::library().slug(currentIndex));
@@ -491,6 +493,61 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
     return YES;
 }
 // 0.117.0: output volume slider in the header gap between REVERT and the engine box.
+// ---- 0.118.0 MIDI learn ----
+- (int)midiKnobForParam:(int)pid { for (int k = 0; k < ui::KnobCount; ++k) if (ui::knobParam(k) == pid) return k; return -1; }
+- (void)reloadMidiMap { learnKnob = -1; midiMap.clear(); if (host && host->supportsMidiLearn()) midiMap.decode(host->midiMapText()); [self setNeedsDisplay:YES]; }
+- (void)saveMidiMap { if (host && host->supportsMidiLearn()) host->setMidiMapText(midiMap.encode()); [self setNeedsDisplay:YES]; }
+- (NSString*)muewMidiMapText { return [NSString stringWithFormat:@"%s learning=%d", midiMap.encode().c_str(), learnKnob]; }
+- (void)beginMidiLearn:(int)k { if (host && host->supportsMidiLearn() && k >= 0 && k < ui::KnobCount) { learnKnob = k; [self setNeedsDisplay:YES]; } }
+- (void)cancelMidiLearn { if (learnKnob >= 0) { learnKnob = -1; [self setNeedsDisplay:YES]; } }
+- (void)forgetMidiKnob:(int)k { midiMap.forgetParam(ui::knobParam(k)); [self saveMidiMap]; }
+- (void)clearMidiMappings:(id)sender { learnKnob = -1; midiMap.clear(); [self saveMidiMap]; }
+- (void)midiLearnPick:(NSMenuItem*)item { [self beginMidiLearn:(int)[item.representedObject intValue]]; }
+- (void)midiForgetPick:(NSMenuItem*)item { [self forgetMidiKnob:(int)[item.representedObject intValue]]; }
+- (NSMenu*)midiLearnMenuForKnob:(int)k {
+    if (!host || !host->supportsMidiLearn() || k < 0 || k >= ui::KnobCount) return nil;
+    NSMenu* menu = [[NSMenu alloc] initWithTitle:@"MIDI"];
+    const int cc = midiMap.ccFor(ui::knobParam(k));
+    NSMenuItem* learn = [menu addItemWithTitle:learnKnob == k ? @"Cancel MIDI Learn" : @"MIDI Learn" action:learnKnob == k ? @selector(cancelMidiLearn) : @selector(midiLearnPick:) keyEquivalent:@""];
+    learn.target = self; learn.representedObject = @(k);
+    if (cc >= 0) {
+        NSMenuItem* f = [menu addItemWithTitle:[NSString stringWithFormat:@"Forget CC %d", cc] action:@selector(midiForgetPick:) keyEquivalent:@""];
+        f.target = self; f.representedObject = @(k);
+    }
+    if (midiMap.count() > 0) {
+        [menu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem* all = [menu addItemWithTitle:[NSString stringWithFormat:@"Clear All MIDI Mappings (%d)", midiMap.count()] action:@selector(clearMidiMappings:) keyEquivalent:@""];
+        all.target = self;
+    }
+    return menu;
+}
+- (void)rightMouseDown:(NSEvent*)e {
+    if (!browserOpen && host && host->supportsMidiLearn()) {
+        const NSInteger k = [self hitKnob:[self convertPoint:e.locationInWindow fromView:nil]];
+        if (k >= 0) { [NSMenu popUpContextMenu:[self midiLearnMenuForKnob:(int)k] withEvent:e forView:self]; return; }
+    }
+    [super rightMouseDown:e];
+}
+- (void)finishMidiGesture { if (midiGesture) { midiGesture = false; histGesture = false; [self historyNote]; } }
+// Main thread. A controller while learning is bound to the knob being learned; otherwise a mapped CC moves
+// its knob exactly as a drag would. A sweep is one UNDO step (closed 0.4 s after the last controller).
+- (BOOL)midiController:(int)cc value:(float)v {
+    if (!host || !host->supportsMidiLearn()) return NO;
+    if (learnKnob >= 0) {
+        if (!midiMap.set(cc, ui::knobParam(learnKnob))) return NO;
+        learnKnob = -1; [self saveMidiMap]; return YES;
+    }
+    const int k = [self midiKnobForParam:midiMap.paramFor(cc)];
+    if (k < 0 || dragKnob >= 0) return NO;
+    if (!midiGesture) { histGesture = true; midiGesture = true; }
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(finishMidiGesture) object:nil];
+    [self performSelector:@selector(finishMidiGesture) withObject:nil afterDelay:0.4];
+    ui::setKnob(current.voice, k, ui::from01(k, v));
+    edited = true;
+    [self knobEdited:k];
+    [self setNeedsDisplay:YES];
+    return YES;
+}
 - (NSRect)volumeRect { return NSMakeRect(184, self.bounds.size.height - 78, 80, 20); }
 - (NSRect)volumeTrack { NSRect r = [self volumeRect]; return NSMakeRect(r.origin.x + 26, r.origin.y + 7, r.size.width - 30, 6); }
 - (float)volumeAt:(NSPoint)p { NSRect t = [self volumeTrack]; return (float)std::clamp((p.x - t.origin.x) / t.size.width, 0.0, 1.0); }
@@ -1684,11 +1741,21 @@ static double RateFrom01(double n) { return 0.02 * std::pow(1000.0, std::clamp(n
         [(dropKnob == k ? SourceColor(ui::matrixSources()[dragSource]) : C(0x5f6b7b)) setStroke];
         t.lineWidth = dropKnob == k ? 2 : 1; [t stroke];
     }
-    NSString* label = dragKnob == k ? S(ui::knobReadout(current.voice, k)) : S(ui::knobLabel(k));
+    NSString* label = dragKnob == k ? S(ui::knobReadout(current.voice, k)) : learnKnob == k ? @"MOVE A CC" : S(ui::knobLabel(k));
     bool macro = ui::isMacro(k);
+    if (learnKnob == k) { // 0.118.0: waiting for a controller
+        NSBezierPath* t = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(c.x - rad - 8, c.y - rad - 8, rad * 2 + 16, rad * 2 + 16)];
+        CGFloat dash[2] = {4, 3}; [t setLineDash:dash count:2 phase:0];
+        [C(0xf2ab55) setStroke]; t.lineWidth = 2; [t stroke];
+    } else if (const int cc = midiMap.ccFor(ui::knobParam(k)); cc >= 0) { // 0.118.0: mapped
+        NSRect pill = NSMakeRect(c.x + rad - 8, c.y + rad - 3, 32, 11);
+        FillRound(pill, 4, C(0x0a0d12)); [C(0x2f6f66) setStroke];
+        [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(pill, .5, .5) xRadius:4 yRadius:4] stroke];
+        TextA([NSString stringWithFormat:@"CC%d", cc], NSMakeRect(pill.origin.x, pill.origin.y + 1, pill.size.width, 9), 7, C(0x75ead8), NSFontWeightSemibold, NSTextAlignmentCenter);
+    }
     CGFloat lw2 = std::max<CGFloat>(60, rad * 2 + 32);
     TextA(label, NSMakeRect(c.x - lw2 / 2, c.y - rad - (macro ? 18 : 25), lw2, 13), macro ? 8 : 10,
-          dragKnob == k ? accent : C(0xa8b2c1), macro ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
+          dragKnob == k ? accent : learnKnob == k ? C(0xf2ab55) : C(0xa8b2c1), macro ? NSFontWeightSemibold : NSFontWeightMedium, NSTextAlignmentCenter);
 }
 
 - (void)waveIn:(NSRect)r osc:(int)o shape:(int)shape warpMode:(int)wm warp:(double)w color:(NSColor*)col {
@@ -5099,6 +5166,7 @@ static int SortForColumn(int c) {
 }
 
 - (void)mouseDown:(NSEvent*)e {
+    if (learnKnob >= 0) [self cancelMidiLearn]; // 0.118.0: a click elsewhere leaves MIDI Learn
     if (histGesture) { histGesture = false; [self historyNote]; }
     [self mouseDownBody:e];
 }
@@ -5457,6 +5525,7 @@ static int NoteForKey(unichar ch) {
 }
 
 - (void)keyDown:(NSEvent*)e {
+    if (learnKnob >= 0 && e.keyCode == 53) { [self cancelMidiLearn]; return; } // 0.118.0: Esc leaves MIDI Learn
     if (!host || !host->playsNotes() || ![self hasEditorKeyboardFocus]) { [super keyDown:e]; return; }
     if (e.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption)) {
         [super keyDown:e]; return;

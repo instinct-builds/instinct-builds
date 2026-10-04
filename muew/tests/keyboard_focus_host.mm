@@ -24,6 +24,10 @@ static void Check(bool ok, const char* why) {
 struct KeyboardHost final : MUEWEditorHost {
     std::vector<int> on, off;
     int patches = 0, panics = 0;
+    std::string mapText; // 0.118.0 MIDI learn storage, standing in for the standalone's user defaults
+    bool supportsMidiLearn() const override { return true; }
+    std::string midiMapText() const override { return mapText; }
+    void setMidiMapText(const std::string& s) override { mapText = s; }
     float vol = 1.0f; // 0.117.0
     bool hasOutputVolume() const override { return true; }
     float outputVolume() const override { return vol; }
@@ -44,7 +48,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.117.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.118.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -300,6 +304,47 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
         [v mouseDown:ME(NSEventTypeLeftMouseDown,NSMakePoint(tr.origin.x+4,y),2)]; [v mouseUp:ME(NSEventTypeLeftMouseUp,NSMakePoint(tr.origin.x+4,y),2)];
         Check(host->vol==1.0f && v->editHistory.undoSteps()==steps, "double-click returns to full and is not an undo step");
         Check(ClosedAXTree(v), "the volume slider leaves the closed-browser AX tree unchanged");
+    }
+    {   // 0.118.0 MIDI learn: right-click menu content, learn, CC moves the knob, one undo step per sweep, forget, restore
+        const muew::Preset keepP=v->current; const int keepI=v->currentIndex; const bool keepE=v->edited;
+        const int K=muew::ui::Cutoff, P=muew::ui::knobParam(K);
+        host->mapText=""; [v reloadMidiMap];
+        auto titles=[&](NSMenu* m){ NSMutableArray* a=[NSMutableArray array]; for (NSMenuItem* i in m.itemArray) if (!i.isSeparatorItem) [a addObject:i.title]; return a; };
+        NSArray* t0=titles([v midiLearnMenuForKnob:K]);
+        Check(t0.count==1 && [t0[0] isEqualToString:@"MIDI Learn"], "right-click menu on an unmapped knob offers only MIDI Learn");
+        Check(![v midiController:74 value:0.5f], "an unmapped CC outside learn does nothing");
+        [v beginMidiLearn:K];
+        Check([[v muewMidiMapText] hasSuffix:@"learning=4"] && [titles([v midiLearnMenuForKnob:K])[0] isEqualToString:@"Cancel MIDI Learn"], "MIDI Learn arms the knob and the menu offers to cancel");
+        Snapshot(v,"midi-learn");
+        Check(![v midiController:7 value:0.5f] && [[v muewMidiMapText] hasSuffix:@"learning=4"] && v->midiMap.encode().empty(), "a fixed-function CC cannot be learned and learning stays armed");
+        Check([v midiController:74 value:0.5f] && host->mapText=="74:4" && [[v muewMidiMapText] hasSuffix:@"learning=-1"], "moving a controller stores CC74 on CUTOFF, saves it through the host and ends learning");
+        v->current.voice.filterCutoff=1000; [v historyReset];
+        const size_t s0=v->editHistory.undoSteps();
+        Check([v midiController:74 value:1.0f] && std::fabs(v->current.voice.filterCutoff-18000)<1 && v->edited, "CC74 at 127 moves CUTOFF to its top");
+        [v midiController:74 value:0.0f]; [v midiController:74 value:0.5f];
+        Check(v->editHistory.undoSteps()==s0, "a sweep is still one gesture while it moves");
+        [v finishMidiGesture];
+        Check(v->editHistory.undoSteps()==s0+1 && v->editHistory.canUndo(), "a finished CC sweep is exactly one UNDO step");
+        Snapshot(v,"midi-mapped");
+        NSArray* t1=titles([v midiLearnMenuForKnob:K]);
+        Check(t1.count==3 && [t1[1] isEqualToString:@"Forget CC 74"] && [t1[2] hasPrefix:@"Clear All MIDI Mappings (1)"], "a mapped knob offers Forget CC and Clear All with the count");
+        Check([v midiKnobForParam:P]==K, "the stored parameter maps back to its knob");
+        host->mapText="74:4"; [v reloadMidiMap];
+        v->current.voice.filterCutoff=1000;
+        Check([v midiController:74 value:1.0f] && std::fabs(v->current.voice.filterCutoff-18000)<1, "after a reload from the host's stored text (a relaunch) the same CC still moves CUTOFF");
+        [v finishMidiGesture];
+        [v beginMidiLearn:muew::ui::Resonance]; Check([v midiController:74 value:0.2f] && host->mapText=="74:5", "learning CC74 on another knob moves the pairing"); 
+        [v beginMidiLearn:K]; [v keyDown:Key(w,NSEventTypeKeyDown,@"\e",53)];
+        Check([[v muewMidiMapText] hasSuffix:@"learning=-1"] && host->mapText=="74:5", "Escape leaves MIDI Learn without changing the map");
+        [v forgetMidiKnob:muew::ui::Resonance];
+        Check(host->mapText.empty() && ![v midiController:74 value:1.0f], "Forget removes the mapping and the CC stops doing anything");
+        [v beginMidiLearn:K]; [v midiController:20 value:0.5f];
+        NSMenuItem* clearI=[[NSMenuItem alloc] initWithTitle:@"Clear MIDI Mappings" action:@selector(clearMidiMappings:) keyEquivalent:@""];
+        Check([v validateMenuItem:clearI], "Edit > Clear MIDI Mappings is available once something is mapped");
+        [v clearMidiMappings:nil];
+        Check(host->mapText.empty() && ![v validateMenuItem:clearI], "clearing empties the stored map and disables the item");
+        Check(ClosedAXTree(v), "MIDI learn leaves the closed-browser AX tree unchanged");
+        [v adoptPreset:keepP index:keepI edited:keepE]; [v historyReset];
     }
     Check(w.isKeyWindow && w.firstResponder == v, "editor is the standalone key responder");
     const int original = v->currentIndex;

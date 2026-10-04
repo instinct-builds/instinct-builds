@@ -12,7 +12,7 @@
 namespace muew {
 
 struct MidiEvent {
-    enum Kind { NoteOn, NoteOff, Wheel, Aftertouch, PolyAftertouch, Bend, Sustain, AllNotesOff, Program, Volume } kind; // Program: note = program number (0.102.0)
+    enum Kind { NoteOn, NoteOff, Wheel, Aftertouch, PolyAftertouch, Bend, Sustain, AllNotesOff, Program, Volume, Controller } kind; // Program: note = program number (0.102.0); Controller: note = CC number (0.118.0)
     int note = 0;
     float value = 0.0f; // velocity / controller 0..1 / bend -1..1
 };
@@ -34,6 +34,7 @@ inline std::vector<MidiEvent> parseMidiBytes(const uint8_t* d, size_t n) {
             else if (data[0] == 7) out.push_back({MidiEvent::Volume, 0, (data[1] & 0x7F) / 127.0f}); // 0.104.0
             else if (data[0] == 64) out.push_back({MidiEvent::Sustain, 0, data[1] >= 64 ? 1.0f : 0.0f});
             else if (data[0] == 120 || data[0] == 123) out.push_back({MidiEvent::AllNotesOff, 0, 0.0f});
+            else if (data[0] < 120) out.push_back({MidiEvent::Controller, data[0] & 0x7F, (data[1] & 0x7F) / 127.0f}); // 0.118.0: any other CC is available to MIDI learn
         } else if (type == 0xC0) out.push_back({MidiEvent::Program, data[0] & 0x7F, 0.0f});
         else if (type == 0xD0) out.push_back({MidiEvent::Aftertouch, 0, (data[0] & 0x7F) / 127.0f});
         else if (type == 0xA0) out.push_back({MidiEvent::PolyAftertouch, data[0] & 0x7F, (data[1] & 0x7F) / 127.0f});

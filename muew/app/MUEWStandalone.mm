@@ -42,6 +42,12 @@ struct StandaloneHost : MUEWEditorHost {
         synth->setParams(p.voice, p.routes);
         synth->setFX(p.fx);
     }
+    bool supportsMidiLearn() const override { return true; } // 0.118.0: one global per-user CC map, outside presets and sessions
+    std::string midiMapText() const override {
+        NSString* t = [[NSUserDefaults standardUserDefaults] stringForKey:@"MUEWMidiMap"];
+        return t ? std::string([t UTF8String]) : std::string();
+    }
+    void setMidiMapText(const std::string& s) override { [[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithUTF8String:s.c_str()] forKey:@"MUEWMidiMap"]; }
     bool hasOutputVolume() const override { return true; } // 0.117.0
     float outputVolume() const override { return gOutGain.position(); }
     void setOutputVolume(float p) override { gOutGain.setPosition(p); }
@@ -72,6 +78,7 @@ struct StandaloneHost : MUEWEditorHost {
     binding = new StandaloneHost(&synth, &lock);
     v = [[MUEWEditorView alloc] initWithFrame:f];
     v->host = binding;
+    [v reloadMidiMap]; // 0.118.0
     w.contentView = v;
     int start = ui::indexOfSlug("formant-talker");
     // 0.100.0: reopen on the sound that was on screen at quit. The proof launches keep their fixed start.
@@ -117,14 +124,19 @@ struct StandaloneHost : MUEWEditorHost {
         std::string step = stepc ? stepc : "";
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (step == "edit") { v->current.voice.filterCutoff = 777; binding->applyPreset(v->current, v->currentIndex, true); }
+            // 0.118.0 MIDI learn relaunch proof: learn CC74 on CUTOFF; next launch a CC74 must move it; then clear.
+            const double cutoff0 = v->current.voice.filterCutoff;
+            if (step == "learn") { [v beginMidiLearn:ui::Cutoff]; [v midiController:74 value:0.5f]; }
+            if (step == "cc") [v midiController:74 value:1.0f];
+            if (step == "clear") [v clearMidiMappings:nil];
             if (step == "corrupt") {
                 gSessionNoSave = true;
                 [[NSUserDefaults standardUserDefaults] setObject:@"not a session" forKey:@"MUEWSession"];
                 [[NSUserDefaults standardUserDefaults] synchronize];
             }
             const bool edited = v->currentIndex >= 0 ? !(v->current == ui::library().at(v->currentIndex)) : true;
-            NSString* line = [NSString stringWithFormat:@"name=%s index=%d cutoff=%d edited=%d\n",
-                              v->current.info.name.c_str(), v->currentIndex, (int)v->current.voice.filterCutoff, edited ? 1 : 0];
+            NSString* line = [NSString stringWithFormat:@"name=%s index=%d cutoff=%d edited=%d cutoff0=%d midimap=%s\n",
+                              v->current.info.name.c_str(), v->currentIndex, (int)v->current.voice.filterCutoff, edited ? 1 : 0, (int)cutoff0, v->midiMap.encode().c_str()];
             [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
             [NSApp terminate:nil];
         });
@@ -185,6 +197,10 @@ struct StandaloneHost : MUEWEditorHost {
         case MidiEvent::Sustain: s->setSustain(e.value > 0.5f); break;
         case MidiEvent::AllNotesOff: s->allNotesOff(); break;
         case MidiEvent::Volume: gOutGain.setFromMidi(e.value); break; // 0.104.0
+        case MidiEvent::Controller: { // 0.118.0: MIDI learn; the editor owns the map, on the main thread
+            const int cc = e.note; const float val = e.value; MUEWEditorView* vw = view0;
+            dispatch_async(dispatch_get_main_queue(), ^{ [vw midiController:cc value:val]; });
+            break; }
         case MidiEvent::Program: { // 0.102.0: program N is factory sound N; off the main thread, after the lock is released
             const int prog = e.note; MUEWEditorView* vw = view0;
             if (prog < kFactoryPresetCount) dispatch_async(dispatch_get_main_queue(), ^{ [vw loadPresetIndex:prog]; });
