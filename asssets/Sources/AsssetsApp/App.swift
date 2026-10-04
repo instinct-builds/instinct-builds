@@ -6,6 +6,7 @@ import AVFoundation
 import AVKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import CoreSpotlight
 import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
@@ -87,6 +88,7 @@ struct ASSSETSApp: App {
                 Button("Write Metadata to Files (.xmp sidecars)") { library.writeMetadata(library.selection) }.disabled(!library.canWriteMetadata)
                 Button("Read Finder Tags from Files") { library.readFinderTags(library.selection) }.disabled(!library.canWriteMetadata)
                 Toggle("Write Finder Tags on Folder Export", isOn: $library.exportFinderTags)
+                Toggle("Index Library in Spotlight", isOn: $library.indexInSpotlight)
                 Button("Reveal in Finder") { library.reveal(library.selection) }
                     .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!library.canReveal)
                 Button("Contact Sheet & Brand Kit…") { library.openContactSheetForCurrentView() }
@@ -99,6 +101,91 @@ struct ASSSETSApp: App {
 extension UTType {
     /// Internal drag payload (asset IDs); declared in Info.plist and only visible inside ASSSETS.
     static let asssetsSelection = UTType(exportedAs: "co.instinct.asssets.selection")
+}
+
+/// Resumes a continuation exactly once, from whichever of the query's completion or the timeout comes first.
+final class SpotlightCountBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    private var cont: CheckedContinuation<Int, Never>?
+    init(_ c: CheckedContinuation<Int, Never>) { cont = c }
+    func add(_ k: Int) { lock.lock(); n += k; lock.unlock() }
+    func finish() {
+        lock.lock(); let c = cont; cont = nil; let total = n; lock.unlock()
+        c?.resume(returning: total)
+    }
+}
+
+/// 1.95: keeps ASSSETS' own CoreSpotlight index in step with the library. App-local index, no entitlement.
+/// Visual Spotlight results are not something CI can see; what is proven is that the index accepts and removes items.
+@MainActor
+final class SpotlightSync {
+    static let shared = SpotlightSync()
+    private var known: [UUID: SpotlightRecord] = [:]
+    private var firstRun = true
+    private var pending: DispatchWorkItem?
+
+    static func item(_ r: SpotlightRecord) -> CSSearchableItem {
+        let set = CSSearchableItemAttributeSet(contentType: .item)
+        set.title = r.title
+        set.displayName = r.title
+        set.keywords = r.keywords
+        set.contentDescription = r.detail
+        set.textContent = r.text.isEmpty ? nil : r.text
+        if let p = r.path, FileManager.default.fileExists(atPath: p) { set.contentURL = URL(fileURLWithPath: p) }
+        return CSSearchableItem(uniqueIdentifier: r.id.uuidString, domainIdentifier: SpotlightPlan.domain, attributeSet: set)
+    }
+
+    func index(_ records: [SpotlightRecord]) async -> Bool {
+        if records.isEmpty { return true }
+        return await withCheckedContinuation { cont in
+            CSSearchableIndex.default().indexSearchableItems(records.map(Self.item)) { cont.resume(returning: $0 == nil) }
+        }
+    }
+
+    func remove(ids: [UUID]) async -> Bool {
+        if ids.isEmpty { return true }
+        return await withCheckedContinuation { cont in
+            CSSearchableIndex.default().deleteSearchableItems(withIdentifiers: ids.map(\.uuidString)) { cont.resume(returning: $0 == nil) }
+        }
+    }
+
+    func removeAll() async -> Bool {
+        known = [:]
+        return await withCheckedContinuation { cont in
+            CSSearchableIndex.default().deleteSearchableItems(withDomainIdentifiers: [SpotlightPlan.domain]) { cont.resume(returning: $0 == nil) }
+        }
+    }
+
+    /// Informational only: asks the system how many items match a title. Gives up after 5 s so a headless runner cannot hang a caller.
+    func count(titled title: String) async -> Int {
+        await withCheckedContinuation { cont in
+            let box = SpotlightCountBox(cont)
+            let escaped = title.replacingOccurrences(of: "\"", with: "")
+            let q = CSSearchQuery(queryString: "title == \"\(escaped)\"cd", queryContext: nil)
+            q.foundItemsHandler = { items in box.add(items.count) }
+            q.completionHandler = { _ in box.finish() }
+            q.start()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5) { box.finish() }
+        }
+    }
+
+    /// Debounced. The first sync after launch clears the app's domain, so assets removed while ASSSETS was closed do not linger.
+    func schedule(_ catalog: @escaping @MainActor () -> StudioCatalog) {
+        pending?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                let now = SpotlightPlan.records(catalog())
+                if self.firstRun { self.firstRun = false; _ = await self.removeAll() }
+                let d = SpotlightPlan.diff(known: self.known, now: now)
+                if await self.index(d.index) { for r in d.index { self.known[r.id] = r } }
+                if await self.remove(ids: d.delete) { for id in d.delete { self.known[id] = nil } }
+            }
+        }
+        pending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
+    }
 }
 
 /// 1.93: the Help window. A plain AppKit window so the menu command, the shortcut and the harness all open the same one.
@@ -1491,6 +1578,7 @@ final class StudioLibrary: ObservableObject {
         if catalogSaveBlocked { return }
         if cleanupEntryExists(cleanupJournalURL) { return } // preserve the digest until recovery settles
         if let data = try? catalog.encoded() { try? data.write(to: catalogURL, options: .atomic) }
+        scheduleSpotlightSync()
     }
 
     /// Pass a label for edits the user makes; background updates (scans, suggested tags, metadata) stay out of undo.
@@ -1594,6 +1682,25 @@ final class StudioLibrary: ObservableObject {
         flash(msg)
     }
     var canWriteMetadata: Bool { selectedAssets.contains { !$0.isStarter && $0.importedPath != nil } }
+
+    /// 1.95: on by default. Titles, tags and client note text go into ASSSETS' own Spotlight index on this Mac.
+    @Published var indexInSpotlight: Bool = (UserDefaults.standard.object(forKey: "indexInSpotlight") as? Bool) ?? true {
+        didSet {
+            UserDefaults.standard.set(indexInSpotlight, forKey: "indexInSpotlight")
+            guard !isDemo else { return }
+            if indexInSpotlight { scheduleSpotlightSync() } else { Task { _ = await SpotlightSync.shared.removeAll() } }
+        }
+    }
+    func scheduleSpotlightSync() {
+        guard indexInSpotlight, !isDemo else { return }
+        SpotlightSync.shared.schedule { [weak self] in self?.catalog ?? StudioCatalog() }
+    }
+    /// Spotlight result clicked: show that asset.
+    func openFromSpotlight(identifier: String) {
+        guard let id = UUID(uuidString: identifier), catalog.assets.contains(where: { $0.id == id }) else { flash("That asset is no longer in the library"); return }
+        show(collection: StudioCatalog.allAssets)
+        search = ""; selection = [id]; focusID = id; anchorID = id
+    }
 
     /// 1.94: off by default, because ASSSETS tags can be internal. When on, folder exports put the asset's tags on the
     /// exported COPY as Finder tags. The library's own files are never written to.
@@ -4394,6 +4501,30 @@ final class StudioLibrary: ObservableObject {
                 self.exportFinderTags = false
                 let marker = "done imported=\(imported) copyTags=\(copyTags.joined(separator: ",")) colorKept=\(rawKept) sourceUntouched=\(sourceUntouched)"
                 try? marker.write(to: self.supportRoot.appendingPathComponent("demo-finder-tags.txt"), atomically: true, encoding: .utf8)
+            }
+        case "spotlight-index":
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("spotlight-\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let file = dir.appendingPathComponent("Spotlight Proof Logo.png")
+            try? (Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==") ?? Data()).write(to: file)
+            var newID: UUID?
+            mutate { c in if let id = c.importFile(path: file.path) { newID = id; _ = c.addTags("spotlight proof", to: [id]) } }
+            show(collection: StudioCatalog.allAssets)
+            search = "spotlight"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                Task { @MainActor in
+                    let records = SpotlightPlan.records(self.catalog)
+                    let mine = records.filter { $0.id == newID }
+                    let accepted = await SpotlightSync.shared.index(mine)
+                    // Informational: whether the system search sees it yet. Indexing is asynchronous and a headless runner may not answer.
+                    let found = await SpotlightSync.shared.count(titled: "Spotlight Proof Logo")
+                    self.selection = []; self.focusID = nil
+                    if let id = newID { self.openFromSpotlight(identifier: id.uuidString) }
+                    let opened = newID.map { self.selection == [$0] && self.focusID == $0 } ?? false
+                    let deleted = await SpotlightSync.shared.remove(ids: mine.map(\.id))
+                    let marker = "done accepted=\(accepted) items=\(mine.count) keywords=\(mine.first?.keywords.joined(separator: ",") ?? "none") deleted=\(deleted) opened=\(opened) found=\(found > 0 ? "yes" : "no")"
+                    try? marker.write(to: self.supportRoot.appendingPathComponent("demo-spotlight-index.txt"), atomically: true, encoding: .utf8)
+                }
             }
         case "catalog-recovery":
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -8142,6 +8273,9 @@ struct StudioView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.recoveryNotice)
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            if let id = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String { model.openFromSpotlight(identifier: id) }
+        }
     }
 }
 

@@ -1539,3 +1539,12 @@ Finder tags live in the `com.apple.metadata:_kMDItemUserTags` extended attribute
 - The library's own files are never written to. This keeps the 1.13 promise that originals are untouched.
 
 Limits: only the folder exports (Export Selection As Shown and Export Original Files into a folder) write Finder tags; single-file export and drag-out do not. A tag containing a comma is split into two on import, because ASSSETS tags are comma-separated. Finder tag colors are not mapped to ASSSETS color labels. The CI `finder-tags` demo writes real extended attributes on a temp file and proves the round trip; Finder itself is not driven.
+
+## 1.95.0: assets in Spotlight
+
+ASSSETS keeps its own CoreSpotlight index (no entitlement, app-local) in step with the library. Your own assets appear in Spotlight on this Mac with their title, tags, collection and kind. Client note text is searchable there too but is not displayed. The bundled starter library is not indexed. Clicking a result opens ASSSETS on that asset.
+
+- File > Index Library in Spotlight is on by default; turning it off deletes everything ASSSETS put in the index.
+- The index is updated about 2.5 s after the library saves, and only for assets that changed or were removed. The first update after launch clears ASSSETS' entries first, so assets removed while the app was closed do not linger.
+
+What CI proves: the index accepts items and removes them (the completion handlers report no error), the record contents are right (unit tests), and the click-through selects the asset. What it cannot prove: that Spotlight's own window lists the asset, because indexing is asynchronous, and a headless runner may not run Spotlight at all. The `spotlight-index` demo also asks the system for the title and records `found=yes|no` as information only; it does not gate the build. Client note text in a system index is a privacy choice: it is stored only on this Mac, and the toggle removes it.

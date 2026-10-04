@@ -40,6 +40,7 @@ public enum HelpContent {
             menu("Import Files…", "Add files to the library.", Shortcut("i")),
             menu("Watch Folder…", "New files in a folder land in the library on their own.", Shortcut("i", [.command, .shift])),
             menu("Read Finder Tags from Files", "Adds tags you set in Finder as ASSSETS tags. Imports read them automatically. Nothing is removed."),
+            Entry("Index Library in Spotlight", "On by default. Your own assets (titles, tags, client note text) appear in Spotlight on this Mac. Turn off to remove them.", anchor: "Toggle(\"Index Library in Spotlight\""),
             Entry("Search box", "Matches titles, tags, colors, client note text and reviewer labels.", anchor: "Search titles, tags, colors, notes, reviewers…"),
         ]),
         Section(title: "Organize", entries: [
