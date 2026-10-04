@@ -324,7 +324,7 @@ jobs:
           rm -f "$SUP/demo-feedback-undo.txt"
           shoot feedback-undo 1440x900 feedback-undo demo-feedback-undo.txt before
           cat "$SUP/demo-feedback-undo.txt"
-          grep -q '^done imported=true equalsBefore=true redoEquals=true notes=0 ledger=0 viewValid=true$' "$SUP/demo-feedback-undo.txt"
+          grep -q '^done imported=true equalsBefore=true redoEquals=true notes=0 ledger=0 viewValid=true toast=Undid_Import_Client_Feedback$' "$SUP/demo-feedback-undo.txt"
           cp "$SUP/demo-feedback-undo.txt" "ASSSETS-$ASSSETS_VERSION-feedback-undo.txt"
           rm -f "$SUP/demo-help-window.txt"
           shoot help-window 1440x900 help-window demo-help-window.txt before

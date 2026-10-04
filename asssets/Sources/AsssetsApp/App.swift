@@ -4314,9 +4314,11 @@ final class StudioLibrary: ObservableObject {
                 _ = self.history.undo(&c); self.catalog = c; self.save(); self.dropMissingSelection()
                 self.flash("Undid Import Client Feedback")
                 let viewValid = self.selectedSmart == nil && self.selectedBoard == nil && !self.filtered.isEmpty
-                let marker = "done imported=\(imported) equalsBefore=\(equalsBefore) redoEquals=\(redoEquals) notes=\(self.catalog.clientNoteCount) ledger=\(self.catalog.feedbackPickLedger.count) viewValid=\(viewValid)"
-                // Let the grid and toast render before the harness takes its screenshot.
+                let head = "done imported=\(imported) equalsBefore=\(equalsBefore) redoEquals=\(redoEquals) notes=\(self.catalog.clientNoteCount) ledger=\(self.catalog.feedbackPickLedger.count) viewValid=\(viewValid)"
+                // Let the grid and toast render before the harness takes its screenshot. The toast is read from the
+                // published state at write time (it lasts 2.6 s), so the marker proves it is on screen without screenshot timing.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    let marker = head + " toast=" + (self.toast ?? "none").replacingOccurrences(of: " ", with: "_")
                     try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-undo.txt"), atomically: true, encoding: .utf8)
                 }
             }

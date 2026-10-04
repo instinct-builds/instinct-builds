@@ -1525,3 +1525,7 @@ Help > ASSSETS Help (Cmd-?) opens a window that lists the main workflows and the
 The content lives in `HelpContent` in the core library, and a unit test reads `App.swift` and checks every listed menu item or control exists and every listed shortcut matches the app's `.keyboardShortcut` (key and modifiers). A shortcut cannot be listed in Help without being wired. The CI `help-window` demo opens the window and writes a marker with the section, entry and shortcut counts plus the first entry and the Help shortcut.
 
 Limits: the test checks the menu declarations in the source, not that a key press reaches the app while some other control is first responder. Keys handled by the in-app key monitor (cull and viewer keys) are not listed, because they are not menu shortcuts and are not covered by that check.
+
+## 1.93.1: proof that the undo toast is on screen
+
+The `feedback-undo` marker now ends with `toast=Undid_Import_Client_Feedback`, read from the published toast state 0.6 s after the undo (the toast lasts 2.6 s). That proves the toast was set and still showing without depending on screenshot timing. No product change.
