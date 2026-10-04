@@ -12,7 +12,7 @@ static NSMenuItem* MUEWMenuItem(NSMenu* m, NSString* title, SEL action, NSString
     return it;
 }
 
-// Items: [0] MUEW, [1] Edit, [2] Window.
+// Items: [0] MUEW, [1] File, [2] Edit, [3] Window.
 static NSMenu* MUEWMakeMainMenu() {
     NSMenu* bar = [NSMenu new];
     NSMenuItem* appItem = [NSMenuItem new]; [bar addItem:appItem];
@@ -24,6 +24,13 @@ static NSMenu* MUEWMakeMainMenu() {
     MUEWMenuItem(app, @"Show All", @selector(unhideAllApplications:), @"", 0);
     [app addItem:[NSMenuItem separatorItem]];
     MUEWMenuItem(app, @"Quit MUEW", @selector(terminate:), @"q");
+
+    NSMenuItem* fileItem = [NSMenuItem new]; [bar addItem:fileItem]; // 0.114.0: the sound file actions that were only buttons
+    NSMenu* file = [[NSMenu alloc] initWithTitle:@"File"]; fileItem.submenu = file;
+    MUEWMenuItem(file, @"Save Sound\u2026", @selector(saveSound:), @"s");
+    MUEWMenuItem(file, @"Open Sound\u2026", @selector(openSound:), @"o");
+    [file addItem:[NSMenuItem separatorItem]];
+    MUEWMenuItem(file, @"Export Sound\u2026", @selector(exportSound:), @"e", NSEventModifierFlagCommand | NSEventModifierFlagShift);
 
     NSMenuItem* editItem = [NSMenuItem new]; [bar addItem:editItem];
     NSMenu* edit = [[NSMenu alloc] initWithTitle:@"Edit"]; editItem.submenu = edit;

@@ -40,7 +40,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.113.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.114.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -159,10 +159,10 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
             auto item=[&](NSInteger menu,NSString* title)->NSMenuItem* {
                 for (NSMenuItem* it in [bar itemAtIndex:menu].submenu.itemArray) if ([it.title isEqualToString:title]) return it;
                 return nil; };
-            NSMenuItem *quit=item(0,@"Quit MUEW"), *hide=item(0,@"Hide MUEW"), *undoI=item(1,@"Undo"), *redoI=item(1,@"Redo"),
-                       *revertI=item(1,@"Revert to Loaded Sound"), *mini=item(2,@"Minimize"), *closeI=item(2,@"Close");
-            Check(bar.itemArray.count==3 && [[bar itemAtIndex:0].submenu.title isEqualToString:@"MUEW"] && [[bar itemAtIndex:1].submenu.title isEqualToString:@"Edit"] &&
-                  [[bar itemAtIndex:2].submenu.title isEqualToString:@"Window"], "menu bar has the MUEW, Edit and Window menus");
+            NSMenuItem *quit=item(0,@"Quit MUEW"), *hide=item(0,@"Hide MUEW"), *undoI=item(2,@"Undo"), *redoI=item(2,@"Redo"),
+                       *revertI=item(2,@"Revert to Loaded Sound"), *mini=item(3,@"Minimize"), *closeI=item(3,@"Close");
+            Check(bar.itemArray.count==4 && [[bar itemAtIndex:0].submenu.title isEqualToString:@"MUEW"] && [[bar itemAtIndex:1].submenu.title isEqualToString:@"File"] &&
+                  [[bar itemAtIndex:2].submenu.title isEqualToString:@"Edit"] && [[bar itemAtIndex:3].submenu.title isEqualToString:@"Window"], "menu bar has the MUEW, File, Edit and Window menus");
             Check(quit && quit.action==@selector(terminate:) && [quit.keyEquivalent isEqualToString:@"q"] && quit.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
                   hide && [hide.keyEquivalent isEqualToString:@"h"] && mini && [mini.keyEquivalent isEqualToString:@"m"] && closeI && [closeI.keyEquivalent isEqualToString:@"w"],
                   "Quit, Hide, Minimize and Close carry the standard Command keys");
@@ -172,8 +172,18 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                   "Edit has Undo (Cmd-Z), Redo (Shift-Cmd-Z) and Revert wired to the editor actions");
             Check([v validateMenuItem:undoI]==v->editHistory.canUndo() && [v validateMenuItem:redoI]==v->editHistory.canRedo() &&
                   [v validateMenuItem:revertI]==[v canRevert], "menu items enable exactly when the editor can act");
+            {   // 0.114.0 File menu: the sound file actions, wired to the editor (the dialogs themselves are not opened here)
+                NSMenuItem *saveI=item(1,@"Save Sound\u2026"), *openI=item(1,@"Open Sound\u2026"), *exportI=item(1,@"Export Sound\u2026");
+                Check(saveI && saveI.action==@selector(saveSound:) && [saveI.keyEquivalent isEqualToString:@"s"] && saveI.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
+                      openI && openI.action==@selector(openSound:) && [openI.keyEquivalent isEqualToString:@"o"] && openI.keyEquivalentModifierMask==NSEventModifierFlagCommand &&
+                      exportI && exportI.action==@selector(exportSound:) && [exportI.keyEquivalent isEqualToString:@"e"] &&
+                      exportI.keyEquivalentModifierMask==(NSEventModifierFlagCommand|NSEventModifierFlagShift),
+                      "File has Save (Cmd-S), Open (Cmd-O) and Export (Shift-Cmd-E) Sound wired to the editor");
+                Check([v validateMenuItem:saveI] && [v validateMenuItem:openI] && [v validateMenuItem:exportI], "the File items are available when no dialog is open");
+                Check([v respondsToSelector:@selector(saveSound:)] && [v respondsToSelector:@selector(openSound:)] && [v respondsToSelector:@selector(exportSound:)], "the editor handles all three File actions");
+            }
             {   // 0.109.0 Edit > All Notes Off (Cmd-.)
-                NSMenuItem* panicI=item(1,@"All Notes Off");
+                NSMenuItem* panicI=item(2,@"All Notes Off");
                 Check(panicI && panicI.action==@selector(panic:) && [panicI.keyEquivalent isEqualToString:@"."] && panicI.keyEquivalentModifierMask==NSEventModifierFlagCommand,
                       "Edit has All Notes Off on Cmd-period wired to the editor");
                 Check([v validateMenuItem:panicI], "All Notes Off is available while the host plays notes");

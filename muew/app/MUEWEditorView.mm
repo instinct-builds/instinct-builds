@@ -447,6 +447,9 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
 - (void)undo:(id)sender { if (wtEdit >= 0) [self wtStep:NO]; else [self performHistoryStep:NO]; }
 - (void)redo:(id)sender { if (wtEdit >= 0) [self wtStep:YES]; else [self performHistoryStep:YES]; }
 - (void)revertSound:(id)sender { [self revertToLoaded]; }
+- (void)saveSound:(id)sender { [self promptSave]; }     // 0.114.0: same as the SAVE button
+- (void)openSound:(id)sender { [self promptImport]; }   // same as the IMPORT button
+- (void)exportSound:(id)sender { [self promptExport]; } // same as the EXPORT button
 - (void)panic:(id)sender { [self releaseHeldKeyboardNotes]; if (host) host->allNotesOff(); } // 0.109.0
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     const SEL a = item.action;
@@ -454,6 +457,7 @@ static size_t PresetWeight(const muew::Preset& p) { // snapshot cost for the byt
     if (a == @selector(redo:)) return wtEdit >= 0 || (!browserOpen && editHistory.canRedo());
     if (a == @selector(revertSound:)) return !browserOpen && [self canRevert];
     if (a == @selector(panic:)) return host && host->playsNotes();
+    if (a == @selector(saveSound:) || a == @selector(openSound:) || a == @selector(exportSound:)) return !browserDialogActive && !browserDialogQueued;
     return YES;
 }
 - (BOOL)revertToLoaded { // 0.97.0: back to the loaded sound as one undoable step
