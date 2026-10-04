@@ -1517,3 +1517,11 @@ Limits: undo history lives in memory, so it is gone after a quit. Reverting an i
 ## 1.92.1: undo no longer leaves an empty grid
 
 Importing feedback can create a smart collection or pin a board and switch the view to it. Undoing the import removed that collection, but the window still pointed at it and showed "Nothing here yet" under All Assets. Undo and Redo now return to All Assets when the collection or board being viewed no longer exists. The `feedback-undo` demo asserts `viewValid=true` (nothing selected, grid is not empty) and waits 0.6 s before writing its marker so the proof PNG captures the grid and the toast.
+
+## 1.93.0: a Help window
+
+Help > ASSSETS Help (Cmd-?) opens a window that lists the main workflows and the real shortcuts: bringing files in, organizing, review and compare, client feedback (including Undo Import Client Feedback, the Open notes and Decisions chips, the revision brief and the CSV exports), export, boards, and backup and restore. The window is a plain AppKit window, so the menu, the shortcut and the CI demo all open the same one.
+
+The content lives in `HelpContent` in the core library, and a unit test reads `App.swift` and checks every listed menu item or control exists and every listed shortcut matches the app's `.keyboardShortcut` (key and modifiers). A shortcut cannot be listed in Help without being wired. The CI `help-window` demo opens the window and writes a marker with the section, entry and shortcut counts plus the first entry and the Help shortcut.
+
+Limits: the test checks the menu declarations in the source, not that a key press reaches the app while some other control is first responder. Keys handled by the in-app key monitor (cull and viewer keys) are not listed, because they are not menu shortcuts and are not covered by that check.

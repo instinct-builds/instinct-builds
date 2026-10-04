@@ -49,6 +49,9 @@ struct ASSSETSApp: App {
                     Divider(); Button("No Label") { library.label(library.selection, nil) }
                 }.disabled(library.selection.isEmpty)
             }
+            CommandGroup(replacing: .help) {
+                Button("ASSSETS Help") { HelpWindow.shared.show() }.keyboardShortcut("?", modifiers: .command)
+            }
             CommandGroup(replacing: .undoRedo) {
                 Button(library.history.undoLabel.map { "Undo \($0)" } ?? "Undo") { library.undo() }.keyboardShortcut("z")
                 Button(library.history.redoLabel.map { "Redo \($0)" } ?? "Redo") { library.redo() }.keyboardShortcut("z", modifiers: [.command, .shift])
@@ -94,6 +97,67 @@ struct ASSSETSApp: App {
 extension UTType {
     /// Internal drag payload (asset IDs); declared in Info.plist and only visible inside ASSSETS.
     static let asssetsSelection = UTType(exportedAs: "co.instinct.asssets.selection")
+}
+
+/// 1.93: the Help window. A plain AppKit window so the menu command, the shortcut and the harness all open the same one.
+@MainActor
+final class HelpWindow {
+    static let shared = HelpWindow()
+    private var window: NSWindow?
+    var isOpen: Bool { window?.isVisible ?? false }
+    func show() {
+        if let w = window { w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
+        let host = NSHostingController(rootView: HelpView())
+        let w = NSWindow(contentViewController: host)
+        w.title = "ASSSETS Help"
+        w.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+        w.setContentSize(NSSize(width: 680, height: 760))
+        w.isReleasedWhenClosed = false
+        w.center()
+        window = w
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+struct HelpView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ASSSETS Help").font(.system(size: 24, weight: .bold))
+                    Text("Workflows and shortcuts. Every shortcut here is in the menus.").font(.callout).foregroundStyle(.secondary)
+                }
+                ForEach(HelpContent.sections, id: \.title) { section in
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(section.title.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(Theme.accent).padding(.bottom, 8)
+                        ForEach(Array(section.entries.enumerated()), id: \.offset) { i, e in
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(e.title).font(.system(size: 13, weight: .semibold))
+                                    Text(e.detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 12)
+                                if let sc = e.shortcut {
+                                    Text(sc.display).font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .padding(.horizontal, 8).padding(.vertical, 3)
+                                        .background(Theme.raised, in: RoundedRectangle(cornerRadius: 6))
+                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.hairline))
+                                }
+                            }
+                            .padding(.vertical, 7)
+                            if i < section.entries.count - 1 { Divider().overlay(Theme.hairline) }
+                        }
+                    }
+                }
+            }
+            .padding(28).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Theme.backdrop)
+        .preferredColorScheme(.dark)
+        .tint(Theme.accent)
+        .frame(minWidth: 520, minHeight: 420)
+    }
 }
 
 enum Theme {
@@ -4254,6 +4318,15 @@ final class StudioLibrary: ObservableObject {
                 // Let the grid and toast render before the harness takes its screenshot.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     try? marker.write(to: self.supportRoot.appendingPathComponent("demo-feedback-undo.txt"), atomically: true, encoding: .utf8)
+                }
+            }
+        case "help-window":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                HelpWindow.shared.show()
+                let first = HelpContent.sections.first?.entries.first
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    let marker = "done open=\(HelpWindow.shared.isOpen) sections=\(HelpContent.sections.count) entries=\(HelpContent.entryCount) shortcuts=\(HelpContent.shortcutCount) first=\(first?.title.replacingOccurrences(of: " ", with: "_") ?? "none")=\(first?.shortcut?.display ?? "none") help=\(HelpContent.sections.last?.entries.first?.shortcut?.display ?? "none")"
+                    try? marker.write(to: self.supportRoot.appendingPathComponent("demo-help-window.txt"), atomically: true, encoding: .utf8)
                 }
             }
         case "catalog-recovery":
