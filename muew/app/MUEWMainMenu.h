@@ -43,6 +43,8 @@ static NSMenu* MUEWMakeMainMenu() {
     MUEWMenuItem(edit, @"Paste", @selector(paste:), @"v");
     MUEWMenuItem(edit, @"Select All", @selector(selectAll:), @"a");
     [edit addItem:[NSMenuItem separatorItem]];
+    MUEWMenuItem(edit, @"Find Sound", @selector(findSound:), @"f"); // 0.115.0: Cmd-F opens the browser with the search field active
+    [edit addItem:[NSMenuItem separatorItem]];
     MUEWMenuItem(edit, @"All Notes Off", @selector(panic:), @".");  // 0.109.0: Cmd-. releases every sounding note
 
     NSMenuItem* winItem = [NSMenuItem new]; [bar addItem:winItem];

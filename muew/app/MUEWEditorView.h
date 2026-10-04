@@ -227,6 +227,7 @@ struct MUEWEditorHost {
 - (void)redo:(id)sender;
 - (void)revertSound:(id)sender;
 - (void)panic:(id)sender; // 0.109.0
+- (void)findSound:(id)sender; // 0.115.0
 - (void)saveSound:(id)sender; - (void)openSound:(id)sender; - (void)exportSound:(id)sender; // 0.114.0: File menu
 - (BOOL)validateMenuItem:(NSMenuItem*)item;
 // Saves the current sound as a user preset and selects it (the + Save button

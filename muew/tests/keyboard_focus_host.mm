@@ -40,7 +40,7 @@ static void Up(MUEWEditorView* v, NSWindow* w, NSString* s) { [v keyUp:Key(w,NSE
 static void Snapshot(MUEWEditorView* v, const char* name) {
     const char* dir = std::getenv("MUEW_FOCUS_PROOF_DIR");
     if (!dir || !*dir) return;
-    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.114.0-focus-%s.png",name]];
+    NSString* path = [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:[NSString stringWithFormat:@"MUEW-0.115.0-focus-%s.png",name]];
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     NSData* data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
@@ -838,6 +838,20 @@ static void RunChecks(MUEWEditorView* v, NSWindow* w, KeyboardHost* host) {
                       "dropping the file imports it and loads that sound");
                 [pb releaseGlobally]; [pb2 releaseGlobally];
             }
+    {   // 0.115.0 Edit > Find Sound (Cmd-F): opens the browser and puts the caret in Search
+        NSMenu* fbar=MUEWMakeMainMenu(); NSMenuItem* findI=nil;
+        for (NSMenuItem* it in [fbar itemAtIndex:2].submenu.itemArray) if ([it.title isEqualToString:@"Find Sound"]) findI=it;
+        Check(findI && findI.action==@selector(findSound:) && [findI.keyEquivalent isEqualToString:@"f"] && findI.keyEquivalentModifierMask==NSEventModifierFlagCommand,
+              "Edit has Find Sound on Cmd-F wired to the editor");
+        Check([v validateMenuItem:findI], "Find Sound is available with no dialog open");
+        [v setBrowserOpen:false]; [w makeFirstResponder:v];
+        [v findSound:findI];
+        id fr=w.firstResponder;
+        Check(v->browserOpen && [fr isKindOfClass:[NSTextView class]] && [(NSTextView*)fr delegate]==v->search && !v->browserListFocus,
+              "Find Sound opens the browser and the caret is in Search");
+        [v findSound:findI];
+        Check(v->browserOpen && [w.firstResponder isKindOfClass:[NSTextView class]], "Find Sound again keeps it open with Search active");
+    }
     std::printf("%s keyboard focus host test\n",failures?"FAIL:":"PASS:");
     fflush(stdout);
     // Bypass runner AppKit teardown after capturing assertions and pixels. The
