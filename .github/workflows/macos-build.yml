@@ -31,7 +31,32 @@ jobs:
           file "$mount/ARCHITER.app/Contents/MacOS/ARCHITER"
           lipo "$mount/ARCHITER.app/Contents/MacOS/ARCHITER" -verify_arch arm64 x86_64
           codesign --verify --deep --strict --verbose=4 "$mount/ARCHITER.app"
+          # Mounted-payload identity: the version and icon wiring read back from
+          # the DMG itself, not only the pre-packaging bundle.
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$mount/ARCHITER.app/Contents/Info.plist")" = "${{ steps.architer-ver.outputs.value }}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$mount/ARCHITER.app/Contents/Info.plist")" = "${{ steps.architer-ver.outputs.value }}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIconFile' "$mount/ARCHITER.app/Contents/Info.plist")" = "ARCHITER"
+          test -s "$mount/ARCHITER.app/Contents/Resources/ARCHITER.icns"
           hdiutil detach "$mount"
+      - name: Install and launch ARCHITER from the DMG
+        run: |
+          set -euo pipefail
+          cd architer
+          V="ARCHITER-${{ steps.architer-ver.outputs.value }}.dmg"
+          mount=$(mktemp -d); install=$(mktemp -d); smoke=$(mktemp -d)
+          hdiutil attach "$V" -nobrowse -readonly -mountpoint "$mount"
+          cp -R "$mount/ARCHITER.app" "$install/ARCHITER.app"
+          hdiutil detach "$mount"
+          # Launch the installed copy: the app binary's --smoke mode renders a
+          # real party view offscreen and exits non-zero on any failure.
+          "$install/ARCHITER.app/Contents/MacOS/ARCHITER" --smoke "$smoke"
+          test -s "$smoke/viz-launch-smoke.png"
+          cp "$smoke/viz-launch-smoke.png" out/viz-launch-smoke.png
+          # Gatekeeper evidence on a quarantined copy: an ad-hoc signature is
+          # expected to be rejected by spctl; record the actual verdict as a
+          # proof instead of asserting first-launch behavior. Not a failure.
+          xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");Safari;" "$install/ARCHITER.app" || true
+          { spctl --assess --type execute -vv "$install/ARCHITER.app" 2>&1 || true; } | tee out/gatekeeper-assess.txt
       - name: Upload ARCHITER artifacts
         if: always()
         uses: actions/upload-artifact@v4

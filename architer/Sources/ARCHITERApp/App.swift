@@ -3,7 +3,6 @@ import SwiftUI
 import ARCHITERUI
 import ArchiterCore
 
-@main
 struct ARCHITERApp: App {
     @StateObject private var model = AppModel()
 
@@ -50,6 +49,21 @@ struct ARCHITERApp: App {
         }
     }
 }
+// Entry point: `--smoke <outdir>` runs the headless launch smoke used by CI
+// to prove the installed DMG payload launches and renders; anything else
+// starts the normal app.
+@main
+enum ARCHITERMain {
+    static func main() {
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--smoke"), i + 1 < args.count {
+            LaunchSmoke.run(outDir: args[i + 1])
+        } else {
+            ARCHITERApp.main()
+        }
+    }
+}
+
 #else
 @main
 struct LinuxBuildStub {
