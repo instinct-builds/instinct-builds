@@ -1063,10 +1063,12 @@ jobs:
           "$LS" -dump > out/lsregister-dump.log 2>&1 || true
           grep -c 'co.instinct.muew' out/lsregister-dump.log || true
           printf 'muew-preset 2\nname LS Proof\ncategory Lead\n' > "$RUNNER_TEMP/ls-proof.muew"
-          handler=$(LS_PROOF="$RUNNER_TEMP/ls-proof.muew" osascript -l JavaScript -e 'ObjC.import("CoreServices"); ObjC.import("Foundation"); var p=$.NSProcessInfo.processInfo.environment.objectForKey("LS_PROOF"); var out="none"; try { var arr=$.LSCopyApplicationURLsForURL($.NSURL.fileURLWithPath(p), $.kLSRolesEditor); if (arr && arr.count > 0) { out = arr.objectAtIndex(0).path.js; } } catch(e) { out = "osascript-error"; } out' 2>&1)
-          echo "default editor for .muew: $handler"
-          case "$handler" in *MUEW.app*) ;; *) echo "FAIL: .muew default editor is not MUEW.app: $handler"; exit 1;; esac
-          echo "LAUNCH SERVICES .muew DEFAULT EDITOR IS MUEW.APP"
+          # Numeric role mask 4 = kLSRolesEditor: header enum constants are not bridged into JXA, and an undefined $.kLSRolesEditor passed as 0 (kLSRolesNone) was the prime suspect in run 708's empty result (the 708 dump confirmed the .muew claim registered with role Editor 0x4, so the claim itself is sound). Printed diagnostics settle enum bridging, UTI minting, and handler resolution independently.
+          LS_INFO=$(LS_PROOF="$RUNNER_TEMP/ls-proof.muew" osascript -l JavaScript -e 'ObjC.import("CoreServices"); ObjC.import("Foundation"); var p=$.NSProcessInfo.processInfo.environment.objectForKey("LS_PROOF").js; var u=$.NSURL.fileURLWithPath(p); var lines=[]; lines.push("typeof kLSRolesEditor: " + typeof $.kLSRolesEditor); var uti=$.UTTypeCreatePreferredIdentifierForTag("public.filename-extension", "muew", $()); lines.push("uti: " + (uti ? ObjC.unwrap(uti) : "null")); var apps=$.LSCopyApplicationURLsForURL(u, 4); if (apps && apps.count > 0) { var names=[]; for (var i=0; i<apps.count; i++) { names.push(apps.objectAtIndex(i).path.js); } lines.push("apps: " + names.join(" | ")); } else { lines.push("apps: none"); } if (uti) { var h=$.LSCopyDefaultRoleHandlerForContentType(uti, 4); lines.push("default editor bundle id: " + (h ? ObjC.unwrap(h) : "none")); } lines.join("\n")' 2>&1)
+          echo "$LS_INFO"
+          handler=$(printf '%s\n' "$LS_INFO" | sed -n 's/^apps: //p')
+          case "$handler" in *MUEW.app*) ;; *) echo "FAIL: .muew editor handler list has no MUEW.app (see diagnostics above)"; exit 1;; esac
+          echo "LAUNCH SERVICES .muew EDITOR HANDLER IS MUEW.APP"
       - name: Capture MUEW designed UI proof
         run: |
           cd muew
