@@ -54,5 +54,10 @@ cat > "$APP_DIR/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+# CI-visible self-checks: the bundle carries the real version (monotonic
+# over the "2" shipped through 3.86.0) and the icon wiring.
+test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP_DIR/Info.plist")" = "$VERSION"
+test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIconFile' "$APP_DIR/Info.plist")" = "ARCHITER"
+test "$(echo "$VERSION" | cut -d. -f1)" -gt 2
 codesign --force --deep --sign - "$APP_DIR/.."
 hdiutil create -volname ARCHITER -srcfolder out/ARCHITER.app -ov -format UDZO "out/ARCHITER-$VERSION.dmg"
