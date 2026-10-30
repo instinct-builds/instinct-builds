@@ -33,6 +33,11 @@ struct FeedbackReviewerIdentityTests {
         let clearAll = c.previewFeedback(f("JORDAN", [], gallery: g.lowercased()))
         #expect(clearAll.withdrawals == 2 && clearAll.noteRemovals == 2 && clearAll.noteReplacements == 0)
         #expect(clearAll.replacementSummary == "2 picks withdrawn, 2 notes removed, 0 notes replaced")
+        // Singular withdrawal: a keeps its pick and note, b loses only its pick.
+        let onePick = c.previewFeedback(f("Jordan", [.init(id: a.uuidString, favorite: true, note: "Old crop"),
+                                                     .init(id: b.uuidString, favorite: false, note: "Old lighting")], gallery: g.lowercased()))
+        #expect(onePick.withdrawals == 1 && onePick.noteRemovals == 0 && onePick.noteReplacements == 0)
+        #expect(onePick.replacementSummary == "1 pick withdrawn, 0 notes removed, 0 notes replaced")
         #expect(p.rows.first?.removedNote == "Old crop" && p.rows.last?.removedNote == "Old lighting")
         #expect(p.rows.last?.remainsPicked == true)
         let r = c.applyFeedback(replacement)
@@ -51,9 +56,11 @@ struct FeedbackReviewerIdentityTests {
         let back = StudioCatalog.decode(try c.encoded())!
         #expect(back == c)
         let clear = f("JORDAN", [], gallery: g.lowercased())
+        // The replacement was favorite: false, so Jordan's round is an explicit empty
+        // pick withdrawal: clearing it withdraws no picks, only the remaining note.
         let clearPreview = back.previewFeedback(clear)
         #expect(clearPreview.noteRemovals == 1)
-        #expect(clearPreview.replacementSummary == "1 pick withdrawn, 1 note removed, 0 notes replaced")
+        #expect(clearPreview.replacementSummary == "0 picks withdrawn, 1 note removed, 0 notes replaced")
         var final = back
         _ = final.applyFeedback(clear)
         #expect(final.assets.first { $0.id == a }!.clientNotes.isEmpty)
