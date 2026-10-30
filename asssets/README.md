@@ -59,10 +59,12 @@ swift test   # 21 tests: metadata, import, search, persistence, zlib/PNG/BMP
              # decode, PNG encode, palette, thumbnails, derivatives
 ```
 
-## Next
+## Out of scope
 
-Phase 2 remainder: PSD/AI composite previews (via QuickLook on macOS).
-Phase 3: connectors the user authorizes to their own licensed sources.
+Phase 3 connectors to licensed asset sources are deliberately not built:
+they need the user's own provider accounts and approval flows, which are
+outside this build's constraints. iCloud/CloudKit sync is excluded. The
+library stays the user's own files, kept local.
 
 ## Phase 2c status: PSD composite previews (complete, tested)
 
@@ -1548,3 +1550,37 @@ ASSSETS keeps its own CoreSpotlight index (no entitlement, app-local) in step wi
 - The index is updated about 2.5 s after the library saves, and only for assets that changed or were removed. The first update after launch clears ASSSETS' entries first, so assets removed while the app was closed do not linger.
 
 What CI proves: the index accepts items and removes them (the completion handlers report no error), the record contents are right (unit tests), and the click-through selects the asset. What it cannot prove: that Spotlight's own window lists the asset, because indexing is asynchronous, and a headless runner may not run Spotlight at all. The `spotlight-index` demo also asks the system for the title and records `found=yes|no` as information only; it does not gate the build. Client note text in a system index is a privacy choice: it is stored only on this Mac, and the toggle removes it.
+
+## 2.0.0: release candidate
+
+The finished-state candidate for the app as shipped to the user.
+
+- Real app icon: original artwork (stacked asset cards, image glyph,
+  palette strip on the studio-dark squircle), committed as base64 in
+  `app/icon/` and expanded to `ASSSETS.icns` by `make_dmg.sh` via sips and
+  iconutil. `CFBundleIconFile` is wired in the bundle's Info.plist.
+- `CFBundleVersion` is a separate monotonic release build counter in
+  `BUILD_NUMBER` (25 for this candidate), bumped by hand for each
+  release; it no longer encodes the marketing version. Apple's current
+  reference allows one to three period-separated integers, digits only,
+  with a single integer read as N.0.0
+  (developer.apple.com/documentation/bundleresources/information_property_list/cfbundleversion
+  and developer.apple.com/help/glossary/build-string/), which state no
+  magnitude cap. The four-digit bound is a conservative choice honoring
+  the stricter archived first-component limit identified in the suite's
+  signing review (not verified here against an Apple-hosted source). The
+  counter is valid under both readings: one integer, above the hardcoded
+  24 shipped through 1.95.0, four digits max. make_dmg.sh and a CI step enforce the
+  digit-only shape and both bounds, and the mounted-DMG check compares
+  CFBundleVersion against BUILD_NUMBER. Nothing auto-increments it.
+- CI verifies the icon and build number inside the mounted DMG alongside
+  the existing hdiutil/lipo/codesign checks.
+
+Honest limits, unchanged: the DMG is ad-hoc signed. CI proves the app
+installs, launches and passes its full native proof harness on a clean
+macOS runner, including relaunch and upgrade without duplicates. It does
+not prove the first-launch path of a quarantined download on a user's
+Mac; Developer-ID signing and notarization are a separate distribution
+decision that needs a paid Apple Developer account under the user's
+identity. The version label is a candidate, not completion evidence: it
+becomes the release when the CI run and the rendered proof pass review.
