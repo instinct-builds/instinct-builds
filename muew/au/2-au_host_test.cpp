@@ -404,14 +404,15 @@ int main() {
         for (int i = 0; i < mp::Count; ++i) {
             const mp::Def& d = mp::def(i);
             float t = (float)(d.lo + 0.37 * (d.hi - d.lo));
-            if (std::fabs(t - (float)mp::get(fp, i)) < 1e-3f * (float)std::max(1.0, std::fabs(d.hi - d.lo)))
+            const double span = std::fabs(d.hi - d.lo);
+            if (std::fabs((double)t - mp::get(fp, i)) < 1e-3 * std::max(1.0, span))
                 t = (float)(d.lo + 0.73 * (d.hi - d.lo));
             if (AudioUnitSetParameter(unit, i, kAudioUnitScope_Global, 0, t, 0) != noErr) {
                 printf("FAIL: set parameter %s\n", d.name); return 1;
             }
             AudioUnitParameterValue got = 0;
             AudioUnitGetParameter(unit, i, kAudioUnitScope_Global, 0, &got);
-            if (std::fabs(got - t) > 1e-4f * (float)std::max(1.0, std::fabs(t))) {
+            if (std::fabs((double)got - (double)t) > 1e-4 * std::max(1.0, std::fabs((double)t))) {
                 printf("FAIL: parameter roundtrip %s (%g vs %g)\n", d.name, got, t); return 1;
             }
         }
