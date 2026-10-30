@@ -42,8 +42,12 @@ Roadmap:
   score/modifier tables; two original built-ins: Starfarer and Gumshoe),
   templated blocks ({placeholder} rendering incl. custom abilities, unknown
   tokens shown as [?name]), carried-over scores on ruleset switch,
-  export/PDF support, legacy-JSON compatibility. Remaining: iCloud sync.
-- v1.0: signed + notarized DMG, app icon, Sparkle auto-update.
+  export/PDF support, legacy-JSON compatibility. iCloud sync: excluded/deferred optional roadmap item (Oct 2026 scope decision).
+- v1.0: signed + notarized DMG (ad-hoc signed DMG has shipped since the
+  2.x line; Developer-ID notarization is a paid Apple Developer decision for
+  the owner), app icon (done, 3.87.0). Sparkle auto-update: excluded/deferred
+  optional roadmap item, not part of the agreed completion scope (Oct 2026
+  scope decision).
 
 ## Product 2 — MUEW (software synthesizer for Ableton Live)
 

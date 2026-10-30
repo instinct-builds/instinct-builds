@@ -4604,6 +4604,46 @@ func run(model: AppModel, character: Character, outDir: String) {
         model.characters = vzOrigChars
         model.selectedID = vzOrigSel
         model.partyDetailPanelOpen = vzOrigOpen
+        // 3.87.0: long-roster party render - the owed visual gate for a full eight-member roster.
+        let lrSaveChars = model.characters, lrSaveSel = model.selectedID, lrSaveOpen = model.partyDetailPanelOpen
+        func lrMember(_ name: String, ac: Int, wisdom: Int, inspired: Bool = false) -> Character {
+            var c = Character(name: name, maxHP: 20, currentHP: 20)
+            c.armorClass = ac
+            var d = Dictionary(uniqueKeysWithValues: Ability.allCases.map { ($0, 10) })
+            d[.wisdom] = wisdom
+            c.scores = AbilityScores(d)
+            c.inspiration = inspired
+            return c
+        }
+        let lrRoster = [
+            lrMember("Ayla", ac: 12, wisdom: 10),
+            lrMember("Bram", ac: 17, wisdom: 16),
+            lrMember("Cora", ac: 15, wisdom: 16, inspired: true),
+            lrMember("Dorian", ac: 11, wisdom: 12),
+            lrMember("Elowen", ac: 14, wisdom: 18),
+            lrMember("Fenn", ac: 16, wisdom: 8),
+            lrMember("Greta", ac: 13, wisdom: 14),
+            lrMember("Haldor", ac: 18, wisdom: 10),
+        ]
+        model.characters = lrRoster; model.selectedID = lrRoster[0].id; model.partyDetailPanelOpen = true
+        var lrLines = ["Long-roster party render (3.87.0)",
+                       "the owed visual gate: an eight-member roster through the detail panel and the strip; the glance line derives over all eight"]
+        let lrRows = partyDetailRows(model.characters)
+        let lrLine = partyTableFactsLine(lrRows) ?? "nil"
+        lrLines.append("rows: \(lrRows.count) members \(lrRows.count == 8)")
+        lrLines.append("per-row facts over eight members: \(lrRows.map { "\($0.name) AC \($0.armorClass) PP \($0.passivePerception)" }) \(lrRows.map(\.armorClass) == [12, 17, 15, 11, 14, 16, 13, 18] && lrRows.map(\.passivePerception) == [10, 13, 13, 11, 14, 9, 12, 10])")
+        lrLines.append("glance line: \(lrLine) \(lrLine == "Best passive Perception 14 (Elowen) \u{00B7} Lowest AC 11 (Dorian) \u{00B7} Inspired: Cora")")
+        for w in [480, 720] as [CGFloat] {
+            renderPNG(PartyDetailPanelView().padding().background(Theme.surface).environmentObject(model),
+                      width: w, name: "viz-party-long-\(Int(w))", outDir: outDir, minHeight: 200, maxHeight: 1600)
+        }
+        renderPNG(PartyStripView().padding().background(Theme.surface).environmentObject(model),
+                  width: 720, name: "viz-party-long-strip-720", outDir: outDir, minHeight: 60, maxHeight: 400)
+        lrLines.append("rendered viz-party-long-480, viz-party-long-720, viz-party-long-strip-720 (eight members, one inspired)")
+        model.characters = lrSaveChars; model.selectedID = lrSaveSel; model.partyDetailPanelOpen = lrSaveOpen
+        lrLines.append("hygiene: roster restored \(model.characters == lrSaveChars)")
+        try? lrLines.joined(separator: "\n")
+            .write(to: URL(fileURLWithPath: "\(outDir)/partyfacts-long.txt"), atomically: true, encoding: .utf8)
     }
     print("exports written (pdf \(pdf.count) bytes)")
     print("RENDER DONE")
