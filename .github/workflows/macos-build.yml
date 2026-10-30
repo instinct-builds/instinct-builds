@@ -1053,19 +1053,20 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' out/MUEW.app/Contents/Info.plist | grep -qx MUEW
           sips -s format png out/MUEW.app/Contents/Resources/MUEW.icns --out out/MUEW-0.120.0-app-icon.png
           test "$(sips -g pixelWidth out/MUEW-0.120.0-app-icon.png | awk '/pixelWidth/{print $2}')" -ge 512
-          # Launch Services: the .muew document claim must register on a stock Mac (Finder double-click evidence, no user machine needed)
+          # Gatekeeper first, so diagnostics exist even if the handler check fails: record the exact assessment a first launch gets (ad-hoc, not notarized; diagnostic, not a gate)
+          spctl --assess --verbose=4 out/MUEW.app > out/spctl-app.log 2>&1 || true
+          spctl --assess --verbose=4 out/MUEW.component > out/spctl-component.log 2>&1 || true
+          cat out/spctl-app.log out/spctl-component.log
+          # Launch Services: .muew must resolve to MUEW.app as the default editor. This is registration evidence only; an actual Finder double-click remains a real-machine check.
           LS=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
           "$LS" -f "$PWD/out/MUEW.app"
-          "$LS" -dump > out/lsregister-dump.txt
-          grep -n 'co.instinct.muew' out/lsregister-dump.txt | head -3
-          regline=$(grep -n 'co.instinct.muew' out/lsregister-dump.txt | head -1 | cut -d: -f1)
-          test -n "$regline" || { echo "FAIL: app not registered with Launch Services"; exit 1; }
-          tail -n +"$regline" out/lsregister-dump.txt | head -120 | grep -q 'muew' || { echo "FAIL: no .muew claim near the registration"; exit 1; }
-          echo "LAUNCH SERVICES .muew CLAIM REGISTERED"
-          # Gatekeeper: record the exact assessment a first launch gets (ad-hoc, not notarized; diagnostic, not a gate)
-          spctl --assess --verbose=4 out/MUEW.app > out/spctl-app.txt 2>&1 || true
-          spctl --assess --verbose=4 out/MUEW.component > out/spctl-component.txt 2>&1 || true
-          cat out/spctl-app.txt out/spctl-component.txt
+          "$LS" -dump > out/lsregister-dump.log 2>&1 || true
+          grep -c 'co.instinct.muew' out/lsregister-dump.log || true
+          printf 'muew-preset 2\nname LS Proof\ncategory Lead\n' > "$RUNNER_TEMP/ls-proof.muew"
+          handler=$(LS_PROOF="$RUNNER_TEMP/ls-proof.muew" osascript -l JavaScript -e 'ObjC.import("CoreServices"); ObjC.import("Foundation"); var p=$.NSProcessInfo.processInfo.environment.objectForKey("LS_PROOF"); var out="none"; try { var arr=$.LSCopyApplicationURLsForURL($.NSURL.fileURLWithPath(p), $.kLSRolesEditor); if (arr && arr.count > 0) { out = arr.objectAtIndex(0).path.js; } } catch(e) { out = "osascript-error"; } out' 2>&1)
+          echo "default editor for .muew: $handler"
+          case "$handler" in *MUEW.app*) ;; *) echo "FAIL: .muew default editor is not MUEW.app: $handler"; exit 1;; esac
+          echo "LAUNCH SERVICES .muew DEFAULT EDITOR IS MUEW.APP"
       - name: Capture MUEW designed UI proof
         run: |
           cd muew

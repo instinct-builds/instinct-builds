@@ -50,7 +50,9 @@ user requirements.
   Open Anyway flow, no quarantine stripping); AU component version now tracks
   the app release (0.120.0/120) with a build-time drift check.
 - 0.1.1 opened on Spence's Mac historically; 0.120.0 first-launch on his
-  hardware is unverified but the install path is unchanged.
+  hardware is unverified; the install steps are the same, though 0.120.0
+  changed the INSTALL.txt guidance text itself (Open Anyway replaces
+  quarantine advice).
 
 ## 4. "Installable .dmg, not a web app" / "looks like a commercial plugin"
 

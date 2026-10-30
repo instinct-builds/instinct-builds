@@ -1,7 +1,10 @@
 # MUEW acceptance evidence (0.120.0, launch-readiness)
 
-Run-specific facts below cite the 0.119.0 CI run 699; 0.120.0 re-runs the same gates
-(product code is unchanged - harness, installer text, docs and versions only).
+Run-specific facts below cite CI run 699 (0.119.0) and run 706 at f299e8c
+(0.120.0): 706 is green with all 40 parameters roundtripped off-default,
+offline bounce peak 0.778 / sustain 0.17087 / tail 0.03596, auval green,
+and AX IPC trusted=1 PASS. The Launch Services handler assertion and spctl
+diagnostics are pending a green run of the repaired verify step.
 
 Every claim below maps to the proof that supports it. "CI" means the
 macOS-build workflow at the tip commit. CI proofs run on a real Mac through
@@ -49,10 +52,11 @@ or a person's own machine is what remains unconfirmed.
   machine blocks the app, not a promise about every machine's policy.
   Quarantine stripping is not required and is not recommended.
   Developer ID + notarization is a public-distribution decision for the owner.
-- Accessibility: the external-process AX probe RAN GREEN for 0.119.0
-  (CI run 699, ax_ipc_client.log: trusted=1, ends "AX IPC PASS", no 77
-  blocked marker), so checklist items 1-3 (browser list, rows, traversal,
-  sort, propose/press, close) are covered by real cross-process AX evidence.
+- Accessibility: the external-process AX probe RAN GREEN (CI run 699 for
+  0.119.0 and again in run 706 for 0.120.0: trusted=1, ends "AX IPC PASS",
+  no 77 blocked marker), so checklist items 1-3 (browser list, rows,
+  traversal, sort, propose/press, close) are covered by real cross-process
+  AX evidence.
   Still open: checklist item 4 (behavior inside a real AU host, native
   save/import dialogs, focus return) and literal VoiceOver speech output -
   the probe is an AX client, not VoiceOver.
