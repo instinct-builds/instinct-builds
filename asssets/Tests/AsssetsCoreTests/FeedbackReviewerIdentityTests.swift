@@ -28,6 +28,11 @@ struct FeedbackReviewerIdentityTests {
         let p = c.previewFeedback(replacement)
         #expect(p.reviewer == "Jordan")
         #expect(p.replaces && p.withdrawals == 2 && p.noteRemovals == 1 && p.noteReplacements == 1)
+        #expect(p.replacementSummary == "2 picks withdrawn, 1 note removed, 1 note replaced")
+        // Plural removals and withdrawals: clearing Jordan's original two-note, two-pick round.
+        let clearAll = c.previewFeedback(f("JORDAN", [], gallery: g.lowercased()))
+        #expect(clearAll.withdrawals == 2 && clearAll.noteRemovals == 2 && clearAll.noteReplacements == 0)
+        #expect(clearAll.replacementSummary == "2 picks withdrawn, 2 notes removed, 0 notes replaced")
         #expect(p.rows.first?.removedNote == "Old crop" && p.rows.last?.removedNote == "Old lighting")
         #expect(p.rows.last?.remainsPicked == true)
         let r = c.applyFeedback(replacement)
@@ -46,7 +51,9 @@ struct FeedbackReviewerIdentityTests {
         let back = StudioCatalog.decode(try c.encoded())!
         #expect(back == c)
         let clear = f("JORDAN", [], gallery: g.lowercased())
-        #expect(back.previewFeedback(clear).noteRemovals == 1)
+        let clearPreview = back.previewFeedback(clear)
+        #expect(clearPreview.noteRemovals == 1)
+        #expect(clearPreview.replacementSummary == "1 pick withdrawn, 1 note removed, 0 notes replaced")
         var final = back
         _ = final.applyFeedback(clear)
         #expect(final.assets.first { $0.id == a }!.clientNotes.isEmpty)

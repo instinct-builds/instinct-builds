@@ -43,6 +43,10 @@ public struct FeedbackPreview: Equatable, Sendable {
     public var withdrawals: Int { rows.filter(\.withdrawsPick).count }
     public var noteRemovals: Int { rows.filter { $0.removedNote != nil && !$0.replacesNote }.count }
     public var noteReplacements: Int { rows.filter(\.replacesNote).count }
+    /// One-sentence summary of what re-importing this reviewer's file replaces, pluralized.
+    public var replacementSummary: String {
+        "\(withdrawals) \(withdrawals == 1 ? "pick" : "picks") withdrawn, \(noteRemovals) \(noteRemovals == 1 ? "note" : "notes") removed, \(noteReplacements) \(noteReplacements == 1 ? "note" : "notes") replaced"
+    }
     public var additions: Int { rows.filter { $0.known && $0.favorite && !$0.withdrawsPick }.count }
     public var hasVerifiedEntry: Bool { rows.contains { $0.known && !$0.withdrawsPick } }
     public var canImport: Bool { rosterIssue == nil && (withdrawals > 0 || noteRemovals > 0 || noteReplacements > 0 || !isEmpty || (replaces && (rows.isEmpty || hasVerifiedEntry))) }

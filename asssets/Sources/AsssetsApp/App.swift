@@ -13543,7 +13543,7 @@ struct FeedbackPreviewSheet: View {
             }
             if p.skippedCount > 0 { Text("\(p.skippedCount) skipped or unverified item(s)").font(.caption2).foregroundStyle(Theme.warning) }
             if p.replaces {
-                Label("Replacing \(p.reviewer)'s earlier feedback: \(p.withdrawals) picks withdrawn, \(p.noteRemovals) notes removed, \(p.noteReplacements) notes replaced. Other reviewers' notes and picks stay.", systemImage: "arrow.triangle.2.circlepath")
+                Label("Replacing \(p.reviewer)'s earlier feedback: \(p.replacementSummary). Other reviewers' notes and picks stay.", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2).foregroundStyle(Theme.warning)
             }
             VStack(spacing: 0) {
