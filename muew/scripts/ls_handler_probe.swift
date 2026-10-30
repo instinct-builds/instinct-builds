@@ -5,23 +5,32 @@ import Foundation
 // JXA cannot read the results of Create-rule LSCopy functions (they arrive as
 // opaque Refs; run 709 proved neither .count nor ObjC.unwrap recovers them),
 // so this probe is compiled Swift where the API contract is real types.
+// Run 710 compile evidence: on the current SDK these calls return optional
+// Unmanaged<T>?, so every result is explicitly nil-guarded before takeRetainedValue.
 
 let proofPath = ProcessInfo.processInfo.environment["LS_PROOF"] ?? ""
 let url = URL(fileURLWithPath: proofPath)
 
-let uti = UTTypeCreatePreferredIdentifierForTag(
-    kUTTagClassFilenameExtension as CFString, "muew" as CFString, nil
-).takeRetainedValue() as String
-print("uti: \(uti)")
+var uti: String? = nil
+if let utiRef = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension as CFString, "muew" as CFString, nil) {
+    uti = utiRef.takeRetainedValue() as String
+}
+print("uti: " + (uti ?? "null"))
 
 var appPaths: [String] = []
-if let apps = LSCopyApplicationURLsForURL(url as CFURL, .editor)?.takeRetainedValue() as? [URL] {
-    appPaths = apps.map { $0.path }
+if let appsRef = LSCopyApplicationURLsForURL(url as CFURL, .editor) {
+    if let apps = appsRef.takeRetainedValue() as? [URL] {
+        appPaths = apps.map { $0.path }
+    }
 }
 print("apps: " + (appPaths.isEmpty ? "none" : appPaths.joined(separator: " | ")))
 
-if let handler = LSCopyDefaultRoleHandlerForContentType(uti as CFString, .editor)?.takeRetainedValue() {
-    print("default editor bundle id: \(handler)")
+if let utiValue = uti {
+    if let handlerRef = LSCopyDefaultRoleHandlerForContentType(utiValue as CFString, .editor) {
+        print("default editor bundle id: \(handlerRef.takeRetainedValue())")
+    } else {
+        print("default editor bundle id: none")
+    }
 } else {
-    print("default editor bundle id: none")
+    print("default editor bundle id: skipped (no uti)")
 }
