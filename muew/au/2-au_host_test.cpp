@@ -399,6 +399,54 @@ int main() {
         if (AudioUnitInitialize(unit) != noErr) { printf("FAIL: reinitialize\n"); return 1; }
         AudioUnitGetParameter(unit, mp::Cutoff, kAudioUnitScope_Global, 0, &v);
         if (v != 200.0f) { printf("FAIL: parameter lost across initialize\n"); return 1; }
+
+        // Roundtrip: every parameter accepts and returns an off-default value.
+        for (int i = 0; i < mp::Count; ++i) {
+            const mp::Def& d = mp::def(i);
+            float t = (float)(d.lo + 0.37 * (d.hi - d.lo));
+            if (std::fabs(t - (float)mp::get(fp, i)) < 1e-3f * (float)std::max(1.0, std::fabs(d.hi - d.lo)))
+                t = (float)(d.lo + 0.73 * (d.hi - d.lo));
+            if (AudioUnitSetParameter(unit, i, kAudioUnitScope_Global, 0, t, 0) != noErr) {
+                printf("FAIL: set parameter %s\n", d.name); return 1;
+            }
+            AudioUnitParameterValue got = 0;
+            AudioUnitGetParameter(unit, i, kAudioUnitScope_Global, 0, &got);
+            if (std::fabs(got - t) > 1e-4f * (float)std::max(1.0, std::fabs(t))) {
+                printf("FAIL: parameter roundtrip %s (%g vs %g)\n", d.name, got, t); return 1;
+            }
+        }
+        printf("all %d parameters roundtrip at off-default values\n", (int)mp::Count);
+
+        // Offline bounce contract: a held triad renders finite, bounded and
+        // non-silent over sustained blocks, the invariants a DAW bounce needs.
+        if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
+            printf("FAIL: reselect Init Saw for bounce\n"); return 1;
+        }
+        AudioUnitReset(unit, kAudioUnitScope_Global, 0);
+        {
+            double peak = 0, sustain = 0, tail = 0; bool finite = true;
+            MusicDeviceMIDIEvent(unit, 0x90, 60, 110, 0);
+            MusicDeviceMIDIEvent(unit, 0x90, 64, 110, 0);
+            MusicDeviceMIDIEvent(unit, 0x90, 67, 110, 0);
+            for (int blk = 0; blk < 64; ++blk) {
+                if (!render(unit, l, r)) { printf("FAIL: bounce render\n"); return 1; }
+                for (UInt32 i = 0; i < frames; ++i) {
+                    if (!std::isfinite(l[i]) || !std::isfinite(r[i])) finite = false;
+                    double a = std::max(std::fabs(l[i]), std::fabs(r[i]));
+                    if (a > peak) peak = a;
+                    if (blk < 32) sustain += l[i]*l[i] + r[i]*r[i]; else tail += l[i]*l[i] + r[i]*r[i];
+                }
+                if (blk == 31) {
+                    MusicDeviceMIDIEvent(unit, 0x80, 60, 0, 0);
+                    MusicDeviceMIDIEvent(unit, 0x80, 64, 0, 0);
+                    MusicDeviceMIDIEvent(unit, 0x80, 67, 0, 0);
+                }
+            }
+            if (!finite) { printf("FAIL: bounce non-finite\n"); return 1; }
+            if (peak > 1.0 + 1e-3) { printf("FAIL: bounce over full scale (peak %g)\n", peak); return 1; }
+            if (sustain < 1e-3) { printf("FAIL: bounce silent (sustain %g)\n", sustain); return 1; }
+            printf("offline bounce: peak %.3f sustain %.5f tail %.5f\n", peak, sustain/(32*frames), tail/(32*frames));
+        }
         // Macro knobs (params 12-15): Macro 1 (Bright) opens the filter on every factory preset.
         static_assert(mp::Count == 40, "0.34.0 publishes 40 parameters");
         if (AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0, &sel, sizeof(sel)) != noErr) {
