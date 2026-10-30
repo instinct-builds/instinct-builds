@@ -4,9 +4,9 @@ Run-specific facts below cite the 0.119.0 CI run 699; 0.120.0 re-runs the same g
 (product code is unchanged - harness, installer text, docs and versions only).
 
 Every claim below maps to the proof that supports it. "CI" means the
-macOS-build workflow at the tip commit. Emulator-grade means proven in CI on a
-Mac runner without human hands; real-machine means only confirmed when Spence
-(or another human) does it on his hardware.
+macOS-build workflow at the tip commit. CI proofs run on a real Mac through
+the real APIs, without human hands; hardware-scoped means the physical device
+or a person's own machine is what remains unconfirmed.
 
 ## Proven, CI-grade
 
@@ -26,7 +26,7 @@ Mac runner without human hands; real-machine means only confirmed when Spence
 | Preset browser readable/drivable from outside the app (accessibility) | CI "Probe standalone accessibility from a separate process" |
 | DMG assembles and contains expected bundle | CI "Verify MUEW app and distribution" |
 
-## Emulator-grade, awaiting real-machine confirmation (Spence)
+## Real API paths proven in CI; physical/hardware confirmation still Spence-side
 
 - .muew double-click Finder association and real-mouse drag import.
 - MIDI learn on a physical controller. The CI proof uses a real CoreMIDI
